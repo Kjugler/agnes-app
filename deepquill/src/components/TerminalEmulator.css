@@ -1,0 +1,43 @@
+/* src/components/TerminalEmulator.css */
+.terminal-container {
+  --terminal-background: #1e1e1e;
+  --terminal-text: #22c55e; /* green-500 */
+  --terminal-prompt: #22c55e;
+  --terminal-cursor: #22c55e;
+}
+
+.terminal-container .terminal {
+  background-color: var(--terminal-background) !important;
+  color: var(--terminal-text) !important;
+  width: 100%;
+  height: 100%;
+}
+
+.react-terminal-input {
+    color: var(--terminal-text) !important;
+}
+
+.react-terminal-input:before {
+    color: var(--terminal-text) !important;
+    content: ">";
+}
+
+.react-terminal-wrapper {
+    color: var(--terminal-text) !important;
+}
+
+.terminal-container .terminal-prompt {
+  color: var(--terminal-prompt) !important;
+}
+
+.terminal-container .terminal-cursor {
+  background-color: var(--terminal-cursor) !important;
+}
+
+.terminal-container .terminal-output {
+  color: var(--terminal-text) !important;
+}
+
+.terminal-container .terminal-input {
+  color: var(--terminal-text) !important;
+}
