@@ -1,0 +1,83 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id        String      @id @default(cuid())
+  email     String      @unique
+  fname     String?
+  lname     String?
+  code      String      @unique
+  points    Int         @default(0)
+  createdAt DateTime    @default(now())
+  lastUrl   String?
+  events    Event[]
+  posts     Post[]
+  Purchase  Purchase[]
+  badges    UserBadge[]
+}
+
+model Event {
+  id        String   @id @default(cuid())
+  userId    String?
+  type      String
+  meta      Json?
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([userId, type, createdAt])
+}
+
+model Badge {
+  id          String      @id @default(cuid())
+  slug        String      @unique
+  title       String
+  points      Int
+  actionType  String
+  actionUrl   String?
+  cooldownHrs Int?
+  maxTimes    Int         @default(1)
+  active      Boolean     @default(true)
+  UserBadge   UserBadge[]
+}
+
+model UserBadge {
+  id         String   @id @default(cuid())
+  userId     String
+  badgeId    String
+  times      Int      @default(1)
+  lastEarned DateTime @default(now())
+  badge      Badge    @relation(fields: [badgeId], references: [id])
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, badgeId])
+}
+
+model Post {
+  id        String   @id @default(cuid())
+  userId    String
+  content   String
+  status    String   @default("approved")
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+}
+
+model Purchase {
+  id        String   @id
+  userId    String
+  sessionId String   @unique(map: "sqlite_autoindex_Purchase_2")
+  amount    Int?
+  currency  String?
+  source    String?
+  createdAt DateTime @default(now())
+  User      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+}
