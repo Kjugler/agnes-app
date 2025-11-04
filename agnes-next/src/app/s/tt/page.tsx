@@ -1,16 +1,8 @@
-// Instagram helper page - shows video content for users to share
-// Similar to /s/fb but for Instagram sharing flow
+// TikTok helper page - similar to /s/ig
+// This page shows content that users can share on TikTok
+// The caption is already copied to clipboard when they arrive here
 
-type Props = {
-  searchParams: { i?: string; ref?: string };
-};
-
-export default function InstagramSharePage({ searchParams }: Props) {
-  const i = Number(searchParams.i || '1');
-  const validI = [1, 2, 3].includes(i) ? i : 1;
-  const ref = searchParams.ref || '';
-  
-  // Use the same videos/images as fb (ig1, ig2, ig3)
+export default function TikTokSharePage() {
   return (
     <div style={{
       margin: 0,
@@ -22,16 +14,12 @@ export default function InstagramSharePage({ searchParams }: Props) {
       alignItems: 'center',
       justifyContent: 'center',
     }}>
-      <div style={{ maxWidth: 900, margin: '40px auto', padding: 16 }}>
-        <video
-          src={`/videos/ig${validI}.mp4`}
-          poster={`/images/fb${validI}.jpg`}
-          controls
-          playsInline
-          muted
-          style={{ width: '100%', borderRadius: 14 }}
-        />
-        <div style={{ marginTop: 14, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+      <div style={{ maxWidth: 900, margin: '40px auto', padding: 16, textAlign: 'center' }}>
+        <h1 style={{ fontSize: '24px', marginBottom: '16px' }}>Caption Copied!</h1>
+        <p style={{ fontSize: '16px', marginBottom: '24px', opacity: 0.9 }}>
+          Your caption is ready to paste. Open TikTok and create a new post.
+        </p>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
           <a
             href="/contest/score"
             style={{
@@ -59,11 +47,6 @@ export default function InstagramSharePage({ searchParams }: Props) {
             Buy the book
           </a>
         </div>
-        {ref && (
-          <div style={{ opacity: 0.8, fontSize: 14, marginTop: 10 }}>
-            Ref: {ref}
-          </div>
-        )}
       </div>
     </div>
   );

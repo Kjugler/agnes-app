@@ -737,17 +737,12 @@ export default function ScorePage() {
         }}
       />
 
-      {/* dreamy backdrop */}
-      <div style={{ position: 'fixed', inset: 0, zIndex: -10 }}>
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            backgroundImage: "url('/images/score-bg.jpg')",
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-          }}
-        />
+      {/* HERO SECTION - wraps existing backdrop and caption */}
+      <section
+        className="relative min-h-[44vh] md:min-h-[56vh] flex items-center bg-cover bg-center"
+        style={{ backgroundImage: "url('/images/score-bg.jpg')" }}
+      >
+        {/* Keep existing backdrop overlay */}
         <div
           style={{
             position: 'absolute',
@@ -759,117 +754,92 @@ export default function ScorePage() {
             transition: 'opacity .3s ease',
           }}
         />
-      </div>
-
-      {/* SUCCESS BANNERS (absolute, top, no layout shift) */}
-      {!dismiss && (sid || shared) && (
-        <div
-          style={{
-            position: 'absolute',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            top: 16,
-            zIndex: 40,
-            width: 'min(92vw, 1100px)',
-          }}
-        >
-          <div
-            style={{
-              borderRadius: 12,
-              background: 'rgba(16,185,129,0.12)',
-              border: '1px solid rgba(16,185,129,0.35)',
-              color: '#065f46',
-              padding: '12px 16px',
-              display: 'flex',
-              justifyContent: 'space-between',
-              gap: 12,
-            }}
-          >
-             <div style={{ fontWeight: 700 }}>
-              {sid
-                ? 'Great job purchasing the book. +500 pts! Now read it and play trivia to earn even more.'
-                : shared === 'x'
-                ? "Thanks for sharing on X! +100 if you hadn't already today."
-                : shared === 'ig'
-                ? "Thanks for sharing on Instagram! +100 if you hadn't already today."
-                : shared === 'fb'
-                ? "Thanks for sharing on Facebook! +100 if you hadn't already today."
-                : shared === 'truth'
-                ? "Thanks for sharing on Truth Social! +100 if you hadn't already today."
-                : shared === 'tt'
-                ? "Thanks for sharing on TikTok! +100 if you hadn't already today."
-                : 'Nice one—+100 pts! You can earn +100 again tomorrow by sharing again.'}
+        <div className="absolute inset-0 bg-black/40" />
+        
+        <div className="relative z-10 w-full max-w-6xl mx-auto px-4 py-8">
+          {/* SUCCESS BANNERS - moved into hero */}
+          {!dismiss && (sid || shared) && (
+            <div className="mb-6 max-w-4xl">
+              <div
+                style={{
+                  borderRadius: 12,
+                  background: 'rgba(16,185,129,0.12)',
+                  border: '1px solid rgba(16,185,129,0.35)',
+                  color: '#065f46',
+                  padding: '12px 16px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                }}
+              >
+                <div style={{ fontWeight: 700 }}>
+                  {sid
+                    ? 'Great job purchasing the book. +500 pts! Now read it and play trivia to earn even more.'
+                    : shared === 'x'
+                    ? "Thanks for sharing on X! +100 if you hadn't already today."
+                    : shared === 'ig'
+                    ? "Thanks for sharing on Instagram! +100 if you hadn't already today."
+                    : shared === 'fb'
+                    ? "Thanks for sharing on Facebook! +100 if you hadn't already today."
+                    : shared === 'truth'
+                    ? "Thanks for sharing on Truth Social! +100 if you hadn't already today."
+                    : shared === 'tt'
+                    ? "Thanks for sharing on TikTok! +100 if you hadn't already today."
+                    : 'Nice one—+100 pts! You can earn +100 again tomorrow by sharing again.'}
+                </div>
+                <button
+                  onClick={() => setDismiss(true)}
+                  aria-label="Dismiss"
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    cursor: 'pointer',
+                    fontWeight: 700,
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
             </div>
-            <button
-              onClick={() => setDismiss(true)}
-              aria-label="Dismiss"
-              style={{
-                border: 'none',
-                background: 'transparent',
-                cursor: 'pointer',
-                fontWeight: 700,
-              }}
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-      )}
+          )}
 
-      {/* CAPTION STAGE (centered, top third - where roller coaster/water slides are) */}
-      <div
-        style={{
-          pointerEvents: 'none',
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          top: '8vh',  // Positioned in top third to show upper deck
+          {/* CAPTION STAGE - moved into hero, no absolute positioning */}
+          {stageVisible && stageText && (
+            <div className="text-center mb-6">
+              <div
+                style={{
+                  fontSize: 'clamp(1.75rem,5vw,3.25rem)',
+                  fontWeight: 900,
+                  letterSpacing: '-0.02em',
+                  color: 'rgba(255,255,255,0.95)',
+                  textShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                  opacity: stageVisible ? 1 : 0,
+                  transform: stageVisible
+                    ? 'translateY(0)'
+                    : reducedMotion
+                      ? 'translateY(0)'
+                      : 'translateY(10px)',
+                  transition: reducedMotion
+                    ? `opacity ${reducedMotion ? '200ms' : '400ms'} ease`
+                    : `opacity ${reducedMotion ? '200ms' : '400ms'} ease, transform ${reducedMotion ? '200ms' : '400ms'} ease`,
+                }}
+              >
+                {stageText}
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* CONTENT SECTION - wraps existing button grid */}
+      <section className="max-w-6xl mx-auto px-4 py-8">
+        <div style={{
           display: 'flex',
-          justifyContent: 'center',
-          zIndex: 40,
-        }}
-      >
-        <div style={{ 
-          textAlign: 'center', 
-          padding: '0 24px',
-          maxWidth: '960px',
+          flexDirection: 'column',
+          justifyContent: 'flex-start',
+          paddingTop: '40px',
+          paddingBottom: '40px',
         }}>
-          <div
-            style={{
-              fontSize: 'clamp(36px, 8vw, 64px)',
-              fontWeight: 900,
-              letterSpacing: '-0.02em',
-              color: 'rgba(0,0,0,0.85)',
-              textShadow: '0 2px 8px rgba(0,0,0,0.1)',
-              opacity: stageVisible ? 1 : 0,
-              transform: stageVisible
-                ? 'translateY(0)'
-                : reducedMotion
-                  ? 'translateY(0)'
-                  : 'translateY(10px)',
-              transition: reducedMotion
-                ? `opacity ${reducedMotion ? '200ms' : '400ms'} ease`
-                : `opacity ${reducedMotion ? '200ms' : '400ms'} ease, transform ${reducedMotion ? '200ms' : '400ms'} ease`,
-            }}
-          >
-            {stageText}
-          </div>
-        </div>
-      </div>
-
-      {/* BOTTOM THIRD: Button Grid + Progress Bars (positioned in bottom third) */}
-      <div style={{
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        minHeight: '33vh',  // Bottom third of viewport
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'flex-start',  // Start from top of bottom section
-        paddingTop: '40px',
-        paddingBottom: '40px',
-      }}>
         {/* Compact Points Pill */}
         <div style={{
           maxWidth: '1152px',
@@ -896,20 +866,15 @@ export default function ScorePage() {
           </div>
         </div>
 
-        {/* Button Grid - positioned in bottom third */}
+        {/* Button Grid - now responsive with Tailwind */}
         <div style={{
           maxWidth: '1152px',
           margin: '0 auto',
           width: '100%',
           padding: '0 24px',
-          marginBottom: '32px',  // Space before progress bars
+          marginBottom: '32px',
         }}>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            columnGap: '32px',
-            rowGap: '48px',
-          }}>
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             <ActionButton
               label="Buy the Book"
               sub="500 pts"
@@ -1059,7 +1024,8 @@ export default function ScorePage() {
             </div>
           </div>
         </div>
-      </div>
+        </div>
+      </section>
     </main>
   );
 }

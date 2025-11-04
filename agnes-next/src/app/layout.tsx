@@ -1,8 +1,25 @@
 import "../styles/globals.css";
+import type { Metadata } from "next";
 
-export const metadata = {
-  title: "Agnes App",
-  description: "Welcome to the Agnes Protocol App",
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3002";
+
+export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
+  title: "The Agnes Protocol — The End of Truth Begins Here",
+  description: "A cinematic tech-thriller. #WhereIsJodyVernon",
+  openGraph: {
+    type: "website",
+    url: "/",
+    title: "The Agnes Protocol — The End of Truth Begins Here",
+    description: "A cinematic tech-thriller. #WhereIsJodyVernon",
+    images: ["/og-default.jpg"],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "The Agnes Protocol — The End of Truth Begins Here",
+    description: "A cinematic tech-thriller. #WhereIsJodyVernon",
+    images: ["/og-default.jpg"],
+  },
 };
 
 import CheckoutWiring from "./contest/CheckoutWiring";
