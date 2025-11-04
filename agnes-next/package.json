@@ -7,13 +7,17 @@
     "dev": "next dev -p 3002",
     "build": "next build",
     "start": "next start -p 3002",
-    "lint": "next lint"
+    "lint": "next lint",
+    "prisma:gen": "prisma generate",
+    "prisma:migrate": "prisma migrate dev --name init-ledger"
   },
   "dependencies": {
     "@prisma/client": "^6.17.1",
+    "canvas-confetti": "^1.9.4",
     "next": "15.4.1",
     "react": "19.1.0",
-    "react-dom": "19.1.0"
+    "react-dom": "19.1.0",
+    "stripe": "^17.7.0"
   },
   "devDependencies": {
     "@types/node": "^20",

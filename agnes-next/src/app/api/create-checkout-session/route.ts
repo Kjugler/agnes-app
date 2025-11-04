@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
 
 type LineItem = {
   price?: string;
@@ -22,6 +23,7 @@ function serializeCheckoutPayload(params: {
   success_url: string;
   cancel_url: string;
   line_items: LineItem[];
+  metadata?: Record<string, string>;
 }): string {
   const base: Record<string, string | number | boolean> = {
     mode: params.mode,
@@ -30,6 +32,13 @@ function serializeCheckoutPayload(params: {
   };
 
   const parts: string[] = [encodeForm(base)];
+
+  // Add metadata if provided
+  if (params.metadata) {
+    Object.entries(params.metadata).forEach(([key, value]) => {
+      parts.push(encodeForm({ [`metadata[${key}]`]: value }));
+    });
+  }
 
   params.line_items.forEach((item, index) => {
     if (item.price) {
@@ -112,14 +121,25 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const successUrl = `${origin}/badge?sid={CHECKOUT_SESSION_ID}`;
-    const cancelUrl = `${origin}/checkout-cancelled`;
+    // Read referral code from cookie
+    const cookieStore = cookies();
+    const refCode = cookieStore.get('ref')?.value || null;
+
+    const successUrl = `${origin}/contest/score?sid={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = `${origin}/checkout/cancel`;
+
+    // Include referral code in metadata if present
+    const metadata: Record<string, string> = {};
+    if (refCode) {
+      metadata.ref = refCode;
+    }
 
     const bodyEncoded = serializeCheckoutPayload({
       mode: "payment",
       success_url: successUrl,
       cancel_url: cancelUrl,
       line_items: lineItems,
+      metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
     });
 
     const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {

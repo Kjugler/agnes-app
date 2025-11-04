@@ -1,83 +1,117 @@
+// prisma/schema.prisma
+
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "sqlite"
-  url      = "file:./dev.db"
+  url      = env("DATABASE_URL")
 }
 
 model User {
-  id        String      @id @default(cuid())
-  email     String      @unique
-  fname     String?
-  lname     String?
-  code      String      @unique
-  points    Int         @default(0)
-  createdAt DateTime    @default(now())
-  lastUrl   String?
-  events    Event[]
-  posts     Post[]
-  Purchase  Purchase[]
-  badges    UserBadge[]
+  id                  String    @id @default(cuid())
+  email               String    @unique
+  fname               String?
+  lname               String?
+  firstName           String?
+  code                String    @unique
+  referralCode        String    @unique
+  referredBy          String?
+  createdAt           DateTime  @default(now())
+  points              Int       @default(0)
+  earnedPurchaseBook  Boolean   @default(false)
+  events              Event[]
+  badges              UserBadge[]
+  posts               Post[]
+  purchases           Purchase[]
+  ledger              Ledger[]
+
+  @@index([referralCode])
+}
+
+model Ledger {
+  id        String     @id @default(cuid())
+  userId    String
+  type      LedgerType
+  points    Int        @default(0)
+  usd       Decimal    @default(0)
+  note      String?
+  createdAt DateTime   @default(now())
+  user      User       @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+}
+
+enum LedgerType {
+  PURCHASE_BOOK
+  REFER_FRIEND_PAYOUT
+  MANUAL_ADJUST
+  SHARE_X
+  SHARE_IG
+  SHARE_FB
+  SHARE_TRUTH
+  CONTEST_JOIN
+  SUBSCRIBE_DIGEST
+  TRIVIA
 }
 
 model Event {
   id        String   @id @default(cuid())
+  user      User?    @relation(fields: [userId], references: [id])
   userId    String?
   type      String
   meta      Json?
   createdAt DateTime @default(now())
-  user      User?    @relation(fields: [userId], references: [id])
 
   @@index([userId, type, createdAt])
 }
 
 model Badge {
-  id          String      @id @default(cuid())
-  slug        String      @unique
-  title       String
-  points      Int
-  actionType  String
-  actionUrl   String?
-  cooldownHrs Int?
-  maxTimes    Int         @default(1)
-  active      Boolean     @default(true)
-  UserBadge   UserBadge[]
+  id           String      @id @default(cuid())
+  slug         String      @unique
+  title        String
+  points       Int
+  actionType   String
+  actionUrl    String?
+  cooldownHrs  Int?
+  maxTimes     Int         @default(1)
+  active       Boolean     @default(true)
+  userBadges   UserBadge[]  // ADD THIS LINE
 }
 
 model UserBadge {
-  id         String   @id @default(cuid())
-  userId     String
-  badgeId    String
-  times      Int      @default(1)
-  lastEarned DateTime @default(now())
-  badge      Badge    @relation(fields: [badgeId], references: [id])
-  user       User     @relation(fields: [userId], references: [id])
+  id          String   @id @default(cuid())
+  user        User     @relation(fields: [userId], references: [id])
+  userId      String
+  badge       Badge    @relation(fields: [badgeId], references: [id])
+  badgeId     String
+  times       Int      @default(1)
+  lastEarned  DateTime @default(now())
 
   @@unique([userId, badgeId])
 }
 
 model Post {
   id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
   userId    String
   content   String
   status    String   @default("approved")
   createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id])
 
   @@index([userId, createdAt])
 }
 
 model Purchase {
-  id        String   @id
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
   userId    String
-  sessionId String   @unique(map: "sqlite_autoindex_Purchase_2")
+  sessionId String   @unique
   amount    Int?
   currency  String?
   source    String?
   createdAt DateTime @default(now())
-  User      User     @relation(fields: [userId], references: [id])
 
   @@index([userId, createdAt])
 }
