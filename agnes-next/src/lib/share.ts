@@ -8,6 +8,19 @@ export function withUtm(path: string, source: string): string {
   return u.toString();
 }
 
+export function withParams(path: string, params: Record<string, string>): string {
+  const u = new URL(path, baseUrl());
+  Object.entries(params).forEach(([key, value]) => {
+    if (value) u.searchParams.set(key, value);
+  });
+  return u.toString();
+}
+
+export function buildShareMessage({ code }: { code?: string }): string {
+  const codeText = code ?? "YOUR-CODE";
+  return `The Agnes Protocol — The End of Truth Begins Here.\n#WhereIsJodyVernon [secret access code]\n\nSomething's happening at ${baseUrl()} now!\nUse code ${codeText} for 15% off the book. Play games, win money, prizes, and a vacation.`;
+}
+
 export const shareTargets = {
   facebook: (url: string) =>
     `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`,

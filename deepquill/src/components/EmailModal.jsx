@@ -2,15 +2,69 @@
 import React, { useState } from 'react';
 import { subscribeEmail } from '../api/subscribeEmail';
 
+const NEXT_PUBLIC_SITE_URL =
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_NEXT_PUBLIC_SITE_URL) ||
+  'http://localhost:3002';
+
+// Fetch with timeout helper
+async function fetchWithTimeout(url, opts = {}, timeoutMs = 2000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...opts, signal: controller.signal, cache: 'no-store' });
+    return res;
+  } finally {
+    clearTimeout(id);
+  }
+}
+
+// Ping ngrok health endpoint with retries
+async function pingNgrok(maxRetries = 3) {
+  const url = `${NEXT_PUBLIC_SITE_URL}/api/ok`;
+  let attempt = 0;
+  let lastErr = null;
+
+  while (attempt < maxRetries) {
+    try {
+      const res = await fetchWithTimeout(url, {}, 2000 + attempt * 500);
+      if (res.ok) {
+        const j = await res.json().catch(() => ({}));
+        console.info('[handoff:ok]', { url, attempt, j });
+        return true;
+      }
+      lastErr = new Error(`HTTP ${res.status}`);
+    } catch (e) {
+      lastErr = e;
+    }
+    attempt += 1;
+    await new Promise((r) => setTimeout(r, 400 * attempt)); // small backoff
+  }
+  console.warn('[handoff:fail]', { url, lastErr, attempts: attempt });
+  return false;
+}
+
 const EmailModal = ({ isOpen, onClose }) => {
   const [email, setEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [checking, setChecking] = useState(false);
   const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+
+  const handleHandoff = (code, email) => {
+    const bootUrl = new URL('/contest/boot', NEXT_PUBLIC_SITE_URL);
+    if (code) bootUrl.searchParams.set('code', code);
+    if (email) bootUrl.searchParams.set('email', email);
+    bootUrl.searchParams.set('next', '/lightening');
+
+    console.info('[handoff:url]', bootUrl.toString());
+    window.location.href = bootUrl.toString();
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
     setMessage('');
+    setError('');
 
     try {
       const result = await subscribeEmail(email);
@@ -19,38 +73,34 @@ const EmailModal = ({ isOpen, onClose }) => {
         setMessage(`✅ ${result.message}`);
         setEmail('');
 
-        // --- fire tracking event to Next (agnes-next) ---
-        const NEXT_BASE =
-          (typeof import.meta !== 'undefined' && import.meta.env?.VITE_NEXT_BASE) ||
-          'http://localhost:3002';
+        // Extract code from URL params (ref or code)
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('ref') || urlParams.get('code') || '';
 
-        try {
-          fetch(`${NEXT_BASE}/api/track`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              type: 'CONTEST_ENTERED',
-              email,
-              source: 'contest',
-              ref: new URLSearchParams(location.search).get('ref') || undefined,
-              meta: { path: '/lightening' },
-            }),
-          }).catch(() => {});
-        } catch {}
-        // ------------------------------------------------
+        // Pre-handoff health check
+        setChecking(true);
+        const healthy = await pingNgrok(3);
 
-        // redirect to the Next app
-        const NEXT_PATH = '/lightening';
+        if (!healthy) {
+          setChecking(false);
+          setError(
+            'Public server is offline. Start ngrok for port 3002 and verify VITE_NEXT_PUBLIC_SITE_URL. ' +
+              'You can retry, or Force Handoff if you know it just came up.'
+          );
+          return;
+        }
+
+        setChecking(false);
+        // Small delay for UX, then handoff
         setTimeout(() => {
-          const url = `${NEXT_BASE}${NEXT_PATH}`;
-          console.log('[deepquill] redirecting to', url);
-          window.location.href = url;
-        }, 1200);
+          handleHandoff(code, email);
+        }, 300);
       } else {
         setMessage(`❌ ${result?.error || 'Something went wrong. Please try again.'}`);
       }
     } catch (error) {
       setMessage('❌ Something went wrong. Please try again.');
+      setChecking(false);
     } finally {
       setIsSubmitting(false);
     }
@@ -88,13 +138,38 @@ const EmailModal = ({ isOpen, onClose }) => {
             </p>
           )}
 
+          {error && (
+            <div className="p-3 bg-red-900/30 border border-red-500/50 rounded text-red-400 text-sm font-mono">
+              {error}
+            </div>
+          )}
+
           <button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || checking}
             className="w-full bg-green-500 text-black py-3 px-4 rounded hover:bg-green-600 transition-colors font-mono text-lg font-bold disabled:opacity-50"
           >
-            {isSubmitting ? 'REQUESTING...' : 'REQUEST ACCESS'}
+            {checking
+              ? 'Checking server…'
+              : isSubmitting
+                ? 'REQUESTING...'
+                : 'REQUEST ACCESS'}
           </button>
+
+          {/* Force Handoff button (shown when health check fails) */}
+          {error && (
+            <button
+              type="button"
+              onClick={() => {
+                const urlParams = new URLSearchParams(window.location.search);
+                const code = urlParams.get('ref') || urlParams.get('code') || '';
+                handleHandoff(code, email);
+              }}
+              className="w-full mt-2 bg-yellow-600 text-white py-2 px-4 rounded hover:bg-yellow-700 transition-colors font-mono text-sm font-bold"
+            >
+              Force Handoff
+            </button>
+          )}
         </form>
 
         {/* Access Report Block */}

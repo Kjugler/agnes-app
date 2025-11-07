@@ -3,7 +3,10 @@ const router = express.Router();
 const mailchimp = require('@mailchimp/mailchimp_marketing');
 const crypto = require('crypto');
 const dotenv = require('dotenv');
-dotenv.config();
+const path = require('path');
+
+// Load .env from deepquill/ directory
+dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 mailchimp.setConfig({
   apiKey: process.env.MAILCHIMP_API_KEY,

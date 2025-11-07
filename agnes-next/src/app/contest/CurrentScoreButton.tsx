@@ -164,6 +164,11 @@ export default function CurrentScoreButton({ className = '' }: { className?: str
 
       <a
         href="/contest/score" // switch to /contest/badges later together
+        onClick={() => {
+          try {
+            localStorage.setItem('score_previous_page', '/contest');
+          } catch {}
+        }}
         className={`${className} score-btn ${celebrate ? 'is-celebrate' : 'is-quiet'}`}
         data-qa="current-score-btn"
         aria-label="View your current contest score and badges"

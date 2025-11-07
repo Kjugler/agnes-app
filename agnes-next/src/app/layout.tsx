@@ -1,4 +1,5 @@
-import "../styles/globals.css";
+import "@/styles/globals.css";
+import "@/styles/fit-guard.css";
 import type { Metadata } from "next";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3002";
@@ -23,6 +24,7 @@ export const metadata: Metadata = {
 };
 
 import CheckoutWiring from "./contest/CheckoutWiring";
+import TestModeBanner from "../components/TestModeBanner";
 
 export default function RootLayout({
   children,
@@ -36,7 +38,8 @@ export default function RootLayout({
         {/* Preload the cruise background to avoid any flash */}
         <link rel="preload" as="image" href="/images/score-bg.jpg" />
       </head>
-      <body>
+      <body suppressHydrationWarning>
+        <TestModeBanner />
         {children}
         {/* Global, invisible, zero animation/layout impact */}
         <CheckoutWiring />

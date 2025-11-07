@@ -2,7 +2,8 @@
 
 import { useEffect, useRef } from 'react';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:5055';
+// Use Next.js API route instead of direct deepquill call
+const API_BASE = ''; // Empty string means relative path
 
 // Non-blocking tracker: prefer sendBeacon; fallback to keepalive fetch
 function trackCheckoutStarted(source: string, path: string) {
@@ -49,14 +50,14 @@ async function startCheckout(opts: StartOpts = {}) {
   trackCheckoutStarted(source, path);
 
   // 2) create Stripe session (blocking)
-  const res = await fetch(`${API_BASE}/api/create-checkout-session`, {
+  const res = await fetch('/api/checkout/start', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       qty,
       successPath,
       cancelPath,
-      metadata: { source }, // your existing server shape
+      source,
     }),
   });
 

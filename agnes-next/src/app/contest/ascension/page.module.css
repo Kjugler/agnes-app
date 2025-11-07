@@ -132,7 +132,7 @@
   position: relative;
 }
 
-/* prefer CSS door; image is optional overlay */
+/* door container - image is primary, gradient is fallback */
 .door {
   position: relative;
   width: 240px; 
@@ -146,6 +146,7 @@
     inset 0 -6px 10px rgba(0,0,0,.25);
   transform: translateZ(0);
   transition: transform .25s ease, box-shadow .25s ease, filter .25s ease;
+  overflow: hidden;
 }
 
 /* frame bevel */
@@ -159,7 +160,7 @@
   pointer-events: none;
 }
 
-/* inner panels */
+/* inner panels - subtle overlay on top of door image */
 .doorPanels {
   position: absolute; 
   inset: 22px;
@@ -167,18 +168,22 @@
   background:
     linear-gradient(90deg, transparent 32%, rgba(0,0,0,0.12) 33%, rgba(0,0,0,0.12) 35%, transparent 36%, transparent 64%, rgba(0,0,0,0.12) 65%, rgba(0,0,0,0.12) 67%, transparent 68%),
     linear-gradient(0deg, transparent 32%, rgba(0,0,0,0.12) 33%, rgba(0,0,0,0.12) 35%, transparent 36%, transparent 64%, rgba(0,0,0,0.12) 65%, rgba(0,0,0,0.12) 67%, transparent 68%);
-  opacity: .7;
+  opacity: .5;
   pointer-events: none;
+  z-index: 2;
 }
 
-/* optional: image overlay to lock look; keeps CSS lighting */
+/* door image - primary visual, CSS gradient is fallback */
 .doorImg {
   position: absolute; 
   inset: 0; 
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
   border-radius: 12px;
-  opacity: 0.18; 
-  mix-blend-mode: overlay; 
+  opacity: 1; 
   pointer-events: none;
+  z-index: 1;
 }
 
 /* metallic knob on the right */
@@ -187,7 +192,7 @@
   right: 22px; 
   top: 50%;
   width: 22px; 
-  height: 22px; 
+  height: 22px;
   margin-top: -11px;
   border-radius: 50%;
   background: radial-gradient(circle at 30% 30%, #ffd9a8, #c89b56 60%, #7a5b2a 100%);
@@ -196,6 +201,7 @@
     0 6px 12px rgba(0,0,0,.35),
     inset 0 1px 2px rgba(255,255,255,.6);
   transition: transform .2s ease, filter .2s ease;
+  z-index: 3;
 }
 
 /* Gold inscription on the door - MOVED TO TOP THIRD */
@@ -220,6 +226,7 @@
     0 0 18px rgba(255,255,255,0.45),
     0 0 36px rgba(255,220,100,0.28);
   pointer-events: none;
+  z-index: 3;
 }
 
 /* hover/focus: lean forward; knob glints */

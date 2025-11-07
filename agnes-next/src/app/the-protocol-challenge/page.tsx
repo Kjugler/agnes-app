@@ -1,8 +1,20 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 export default function ProtocolChallengePage() {
+  const [signupUrl, setSignupUrl] = useState('/contest/signup');
+
+  useEffect(() => {
+    // Build signup URL with current path and query params preserved
+    if (typeof window !== 'undefined') {
+      const currentPath = window.location.pathname;
+      const currentQuery = window.location.search;
+      const fromParam = encodeURIComponent(`${currentPath}${currentQuery}`);
+      setSignupUrl(`/contest/signup?from=${fromParam}`);
+    }
+  }, []);
+
   return (
     <div
       style={{
@@ -21,9 +33,9 @@ export default function ProtocolChallengePage() {
         6 Days. 5 Nights. All-Inclusive Family Cruise!
       </h1>
 
-      <a href="/contest" className="glitch-button">
-  ENTER CONTEST → SHOULD GO TO /contest ✅
-</a>
+      <a href={signupUrl} className="glitch-button">
+        ENTER CONTEST
+      </a>
 
       <br />
 

@@ -1,11 +1,20 @@
 // deepquill/api/create-checkout-session.cjs
-const Stripe = require('stripe');
 const dotenv = require('dotenv');
-dotenv.config();
+const path = require('path');
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: '2024-04-10',
-});
+// Load .env from deepquill/ directory
+dotenv.config({ path: path.join(__dirname, '..', '.env') });
+
+const { Stripe } = require('stripe');
+
+// Try both common names, fail loudly if missing
+const apiKey = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_API_KEY;
+if (!apiKey) {
+  throw new Error('Stripe API key missing. Set STRIPE_SECRET_KEY in deepquill/.env');
+}
+
+// Stripe v14–v16 supports this signature
+const stripe = new Stripe(apiKey, { apiVersion: '2024-06-20' });
 
 const PRICE_ID = process.env.STRIPE_PRICE_ID;
 

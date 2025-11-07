@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { startCheckout } from '@/lib/checkout';
 
 export default function SampleChaptersPage() {
   const [current, setCurrent] = useState(0);
@@ -46,26 +47,21 @@ export default function SampleChaptersPage() {
 
   const handleBuy = async () => {
     try {
-      const response = await fetch('http://localhost:5055/api/create-checkout-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      await startCheckout({
+        source: 'sample_chapters',
+        successPath: '/contest/thank-you',
+        cancelPath: '/sample-chapters',
       });
-
-      const data = await response.json();
-
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        alert('Unable to create checkout session.');
-      }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('An error occurred. Please try again.');
+      alert(err?.message || 'An error occurred. Please try again.');
     }
   };
 
   return (
     <div
+      className="sample-wrap"
+      data-has-test-banner
       style={{
         backgroundColor: 'black',
         color: '#00ffe5',
@@ -201,7 +197,7 @@ export default function SampleChaptersPage() {
         </a>
 
         <a
-          href="http://localhost:3001/contest"
+          href="/contest"
           style={{
             padding: '12px 24px',
             border: '2px solid #00ffe5',

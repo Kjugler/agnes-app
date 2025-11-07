@@ -31,7 +31,15 @@ export default function ContestPage() {
     }
   }, [sessionId, justPurchased]);
 
-  const buttons = useMemo(() => ([
+  const buttons = useMemo(() => {
+    // Build signup URL with current path and query params preserved
+    const currentPath = typeof window !== 'undefined' 
+      ? window.location.pathname + window.location.search 
+      : '/contest';
+    const fromParam = encodeURIComponent(currentPath);
+    const signupUrl = `/contest/signup?from=${fromParam}`;
+
+    return [
     {
       id: 'sampleBtn',
       label: 'Read Sample Chapters',
@@ -42,7 +50,7 @@ export default function ContestPage() {
       id: 'contestBtn',
       label: 'Enter the Contest',
       text: 'You can win this for your family!',
-      link: '/contest',
+      link: signupUrl,
     },
     {
       id: 'pointsBtn',
@@ -53,11 +61,12 @@ export default function ContestPage() {
     {
       id: 'buyBtn',
       label: 'Buy the Book',
-      text: 'The adventure’s great—and you’re already living it.',
+      text: "The adventure's great—and you're already living it.",
       // keep your existing link to preserve structure; our wiring will intercept
       link: 'https://buy.stripe.com/test_7sY9ATfsHgPK47i3vq',
     },
-  ]), []);
+    ];
+  }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -77,6 +86,8 @@ export default function ContestPage() {
 
   return (
     <div
+      className="contest-wrap"
+      data-has-test-banner
       style={{
         backgroundColor: 'black',
         color: 'white',

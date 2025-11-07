@@ -47,7 +47,26 @@ export default function ContestThankYou() {
     }
   }, [sessionId]);
 
-  // 2) Gentle auto-redirect back to contest
+  // 2) Upsert to Mailchimp and tag as purchased
+  useEffect(() => {
+    const email = typeof window !== 'undefined' ? localStorage.getItem('user_email') || '' : '';
+    const code =
+      typeof window !== 'undefined'
+        ? localStorage.getItem('discount_code') || localStorage.getItem('ap_code') || ''
+        : '';
+
+    if (email) {
+      fetch('/api/mc/purchased', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, code, source: 'checkout_success' }),
+      }).catch(() => {
+        // Silently fail - non-blocking
+      });
+    }
+  }, []);
+
+  // 3) Gentle auto-redirect back to contest
   useEffect(() => {
     const t = setTimeout(() => {
       router.replace('/contest?new=1');
