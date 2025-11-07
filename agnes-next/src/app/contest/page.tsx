@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import CheckoutWiring from './CheckoutWiring'; // â† invisible helper that wires the Buy button
+import CheckoutWiring from './CheckoutWiring'; // GåÉ invisible helper that wires the Buy button
 import CurrentScoreButton from './CurrentScoreButton';
 
 export default function ContestPage() {
@@ -11,7 +11,7 @@ export default function ContestPage() {
   const [tapsyText, setTapsyText] = useState('Tap here to read a sample chapter!');
   const [showScoreButton, setShowScoreButton] = useState(false);
 
-  // Detect â€œjust did something that earns pointsâ€ signals:
+  // Detect GÇ£just did something that earns pointsGÇ¥ signals:
   // - return from Stripe: ?session_id=...
   // - explicit flag: ?justPurchased=1
   const sessionId = qp.get('session_id');
@@ -31,15 +31,7 @@ export default function ContestPage() {
     }
   }, [sessionId, justPurchased]);
 
-  const buttons = useMemo(() => {
-    // Build signup URL with current path and query params preserved
-    const currentPath = typeof window !== 'undefined' 
-      ? window.location.pathname + window.location.search 
-      : '/contest';
-    const fromParam = encodeURIComponent(currentPath);
-    const signupUrl = `/contest/signup?from=${fromParam}`;
-
-    return [
+  const buttons = useMemo(() => ([
     {
       id: 'sampleBtn',
       label: 'Read Sample Chapters',
@@ -50,7 +42,7 @@ export default function ContestPage() {
       id: 'contestBtn',
       label: 'Enter the Contest',
       text: 'You can win this for your family!',
-      link: signupUrl,
+      link: '/contest',
     },
     {
       id: 'pointsBtn',
@@ -61,12 +53,11 @@ export default function ContestPage() {
     {
       id: 'buyBtn',
       label: 'Buy the Book',
-      text: "The adventure's greatâ€”and you're already living it.",
+      text: 'The adventureGÇÖs greatGÇöand youGÇÖre already living it.',
       // keep your existing link to preserve structure; our wiring will intercept
       link: 'https://buy.stripe.com/test_7sY9ATfsHgPK47i3vq',
     },
-    ];
-  }, []);
+  ]), []);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -86,8 +77,6 @@ export default function ContestPage() {
 
   return (
     <div
-      className="contest-wrap"
-      data-has-test-banner
       style={{
         backgroundColor: 'black',
         color: 'white',
@@ -138,7 +127,7 @@ export default function ContestPage() {
                     animation: 'bounce 1s infinite',
                   }}
                 >
-                  ğŸ‘‰
+                  =ƒæë
                 </div>
                 <div
                   style={{
@@ -171,7 +160,7 @@ export default function ContestPage() {
         ))}
       </div>
 
-      {/* â€œVIEW YOUR POINTSâ€ â€” animated component */}
+      {/* GÇ£VIEW YOUR POINTSGÇ¥ GÇö animated component */}
       {showScoreButton && (
         <div style={{ marginTop: '0.75rem' }}>
           <CurrentScoreButton />
@@ -200,9 +189,9 @@ export default function ContestPage() {
             animation: 'ticker 20s linear infinite',
           }}
         >
-          Agnes Protocol tops banned book list â€“ again â€¢ Jody Vernon breaks silence in viral
-          interview â€¢ New points leader: Billy Bronski â€“ 1,340 pts â€¢ Tapsy declares: â€œThis book
-          changes everythingâ€ â€¢ Enter to win the 6-day dream vacation NOW!
+          Agnes Protocol tops banned book list GÇô again GÇó Jody Vernon breaks silence in viral
+          interview GÇó New points leader: Billy Bronski GÇô 1,340 pts GÇó Tapsy declares: GÇ£This book
+          changes everythingGÇ¥ GÇó Enter to win the 6-day dream vacation NOW!
         </span>
       </div>
 

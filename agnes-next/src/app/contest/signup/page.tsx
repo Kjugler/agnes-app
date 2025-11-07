@@ -116,8 +116,6 @@ export default function SignupPage() {
 
   return (
     <div
-      className="enter-wrap"
-      data-has-test-banner
       style={{
         minHeight: '100vh',
         backgroundColor: '#000',

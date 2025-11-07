@@ -1,5 +1,4 @@
-import "@/styles/globals.css";
-import "@/styles/fit-guard.css";
+import "../styles/globals.css";
 import type { Metadata } from "next";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3002";

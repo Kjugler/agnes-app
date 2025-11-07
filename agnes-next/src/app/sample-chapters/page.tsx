@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { startCheckout } from '@/lib/checkout';
 
 export default function SampleChaptersPage() {
   const [current, setCurrent] = useState(0);
@@ -16,25 +15,25 @@ export default function SampleChaptersPage() {
     {
       id: 'btn2',
       label: 'Read Chapter 2',
-      text: 'Fred enters the scene â€“ Agnes already doesnâ€™t like him.',
+      text: 'Fred enters the scene GÇô Agnes already doesnGÇÖt like him.',
       link: '/chapters/chapter2.pdf',
     },
     {
       id: 'btn3',
       label: 'Read Chapter 9',
-      text: 'Meet Matt and Reese â€“ straight from the orphanage.',
+      text: 'Meet Matt and Reese GÇô straight from the orphanage.',
       link: '/chapters/chapter9.pdf',
     },
     {
       id: 'btn4',
       label: 'Read Chapter 45',
-      text: 'Fred and Jody â€“ always two steps ahead.',
+      text: 'Fred and Jody GÇô always two steps ahead.',
       link: '/chapters/chapter45.pdf',
     },
     {
       id: 'btn5',
       label: 'Buy the Book',
-      text: 'Enjoy the adventure â€“ youâ€™re already living the reality.',
+      text: 'Enjoy the adventure GÇô youGÇÖre already living the reality.',
     },
   ];
 
@@ -47,21 +46,26 @@ export default function SampleChaptersPage() {
 
   const handleBuy = async () => {
     try {
-      await startCheckout({
-        source: 'sample_chapters',
-        successPath: '/contest/thank-you',
-        cancelPath: '/sample-chapters',
+      const response = await fetch('http://localhost:5055/api/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
       });
-    } catch (err: any) {
+
+      const data = await response.json();
+
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert('Unable to create checkout session.');
+      }
+    } catch (err) {
       console.error(err);
-      alert(err?.message || 'An error occurred. Please try again.');
+      alert('An error occurred. Please try again.');
     }
   };
 
   return (
     <div
-      className="sample-wrap"
-      data-has-test-banner
       style={{
         backgroundColor: 'black',
         color: '#00ffe5',
@@ -145,7 +149,7 @@ export default function SampleChaptersPage() {
             >
               {btn.label}
               {current === index && (
-                <span style={{ marginLeft: '12px', fontSize: '1.2em' }}>ðŸ‘‰</span>
+                <span style={{ marginLeft: '12px', fontSize: '1.2em' }}>=ƒæë</span>
               )}
             </a>
             {current === index && (
@@ -192,12 +196,12 @@ export default function SampleChaptersPage() {
         >
           {buttons[4].label}
           {current === 4 && (
-            <span style={{ marginLeft: '12px', fontSize: '1.2em' }}>ðŸ‘‰</span>
+            <span style={{ marginLeft: '12px', fontSize: '1.2em' }}>=ƒæë</span>
           )}
         </a>
 
         <a
-          href="/contest"
+          href="http://localhost:3001/contest"
           style={{
             padding: '12px 24px',
             border: '2px solid #00ffe5',
@@ -237,7 +241,7 @@ export default function SampleChaptersPage() {
           color: '#00ff00',
         }}
       >
-        <p>Â© 2025 DeepQuill LLC â€“ All Rights Reserved</p>
+        <p>-¬ 2025 DeepQuill LLC GÇô All Rights Reserved</p>
         <p>
           Contact:{' '}
           <a href="mailto:hello@theagnesprotocol.com" style={{ color: '#00ff00' }}>
