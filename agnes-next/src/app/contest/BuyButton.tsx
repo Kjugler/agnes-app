@@ -1,10 +1,14 @@
 'use client';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:5055';
+const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || '').replace(/\/$/, '');
 
 export default function BuyButton() {
   async function onClick() {
     try {
+      if (!API_BASE) {
+        throw new Error('Checkout unavailable: NEXT_PUBLIC_API_BASE is not configured.');
+      }
+
       const res = await fetch(`${API_BASE}/api/create-checkout-session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

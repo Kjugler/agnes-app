@@ -1,9 +1,11 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useSafeBack } from '@/lib/nav';
 
 export default function SampleChaptersPage() {
   const [current, setCurrent] = useState(0);
+  const goBack = useSafeBack('/contest');
 
   const buttons = [
     {
@@ -46,9 +48,13 @@ export default function SampleChaptersPage() {
 
   const handleBuy = async () => {
     try {
-      const response = await fetch('http://localhost:5055/api/create-checkout-session', {
+      const base = ((process.env.NEXT_PUBLIC_API_BASE || '') as string).replace(/\/$/, '') ||
+        (typeof window !== 'undefined' ? window.location.origin : '');
+
+      const response = await fetch(`${base}/api/create-checkout-session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: 'sample-chapters' }),
       });
 
       const data = await response.json();
@@ -183,7 +189,7 @@ export default function SampleChaptersPage() {
           id="btn5"
           onClick={handleBuy}
           style={{
-            padding: '12px 24px',
+            padding: '10px 14px',
             border: '2px solid #00ffe5',
             color: current === 4 ? 'black' : '#00ffe5',
             backgroundColor: current === 4 ? '#00ffe5' : 'black',
@@ -192,6 +198,11 @@ export default function SampleChaptersPage() {
             textTransform: 'uppercase',
             cursor: 'pointer',
             boxShadow: '0 0 12px #00ffe5',
+            minHeight: 48,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '16px',
           }}
         >
           {buttons[4].label}
@@ -199,22 +210,27 @@ export default function SampleChaptersPage() {
             <span style={{ marginLeft: '12px', fontSize: '1.2em' }}>👉</span>
           )}
         </a>
-
-        <a
-          href="http://localhost:3001/contest"
+        <button
+          type="button"
+          onClick={goBack}
           style={{
-            padding: '12px 24px',
+            padding: '10px 14px',
             border: '2px solid #00ffe5',
             color: '#00ffe5',
-            textDecoration: 'none',
-            fontWeight: 'bold',
-            textTransform: 'uppercase',
             backgroundColor: 'black',
+            textTransform: 'uppercase',
+            fontWeight: 'bold',
             boxShadow: '0 0 12px #00ffe5',
+            minHeight: 48,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '16px',
+            cursor: 'pointer',
           }}
         >
           Go Back
-        </a>
+        </button>
       </div>
 
       {/* PULSE KEYFRAMES */}

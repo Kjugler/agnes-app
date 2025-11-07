@@ -1,163 +1,178 @@
 export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { stripe } from '@/lib/stripe';
-import { prisma } from '@/lib/db';
 import Stripe from 'stripe';
+import { prisma } from '@/lib/db';
 
-function generateReferralCode(): string {
-  const chars = '0123456789abcdefghijklmnopqrstuvwxyz';
-  let result = '';
-  for (let i = 0; i < 8; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY || '';
+const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
+const stripe = stripeSecretKey
+  ? new Stripe(stripeSecretKey, { apiVersion: '2024-06-20' })
+  : null;
+
+const BOOK_POINTS = 500;
+
+function normalizeCode(code: string | null | undefined) {
+  return (code ?? '').trim().toLowerCase();
+}
+
+async function resolveAssociate(code: string) {
+  const normalized = normalizeCode(code);
+  if (!normalized) return null;
+
+  return prisma.user.findFirst({
+    where: {
+      OR: [{ code: normalized }, { referralCode: normalized }],
+    },
+  });
+}
+
+async function resolveAssociateByEmail(email: string) {
+  const normalized = (email ?? '').trim().toLowerCase();
+  if (!normalized) return null;
+
+  return prisma.user.findUnique({
+    where: { email: normalized },
+  });
+}
+
+async function alreadyCredited(userId: string, intent: string) {
+  if (!intent) return true; // avoid double credit if intent missing
+
+  const existing = await prisma.ledger.findFirst({
+    where: {
+      userId,
+      type: 'PURCHASE_BOOK',
+      note: { contains: `intent:${intent}` },
+    },
+    select: { id: true },
+  });
+
+  return Boolean(existing);
+}
+
+async function addPointsForAssociate(
+  userId: string,
+  points: number,
+  intent: string,
+  source: string,
+  session: Stripe.Checkout.Session,
+) {
+  const amount = typeof session.amount_total === 'number' ? session.amount_total : null;
+  const currency = session.currency ?? null;
+
+  await prisma.$transaction([
+    prisma.ledger.create({
+      data: {
+        userId,
+        type: 'PURCHASE_BOOK',
+        points,
+        note: `Book purchase intent:${intent}`,
+      },
+    }),
+    prisma.user.update({
+      where: { id: userId },
+      data: { points: { increment: points }, earnedPurchaseBook: true },
+    }),
+    prisma.purchase.upsert({
+      where: { sessionId: session.id },
+      update: {
+        userId,
+        amount,
+        currency,
+        source,
+      },
+      create: {
+        userId,
+        sessionId: session.id,
+        amount,
+        currency,
+        source,
+      },
+    }),
+    prisma.event.create({
+      data: {
+        userId,
+        type: 'PURCHASE_COMPLETED',
+        meta: {
+          sessionId: session.id,
+          intent,
+          source,
+          amount,
+          currency,
+        },
+      },
+    }),
+  ]);
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.arrayBuffer();
-    const sig = req.headers.get('stripe-signature');
-
-    if (!sig) {
-      return new NextResponse('No signature', { status: 400 });
+    if (!stripe || !stripeSecretKey) {
+      console.error('[stripe-webhook] missing STRIPE_SECRET_KEY');
+      return new NextResponse('Server not configured for Stripe', { status: 500 });
     }
 
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
     if (!webhookSecret) {
-      console.error('[webhook] STRIPE_WEBHOOK_SECRET missing');
-      return new NextResponse('Webhook secret missing', { status: 500 });
+      console.error('[stripe-webhook] missing STRIPE_WEBHOOK_SECRET');
+      return new NextResponse('Webhook secret not configured', { status: 500 });
     }
+
+    const rawBody = Buffer.from(await req.arrayBuffer());
+    const signature = req.headers.get('stripe-signature') || '';
 
     let event: Stripe.Event;
     try {
-      event = stripe.webhooks.constructEvent(
-        Buffer.from(body),
-        sig,
-        webhookSecret
-      );
+      event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
     } catch (err: any) {
-      console.error('[webhook] signature verification failed', err.message);
-      return new NextResponse(`Webhook signature verification failed: ${err.message}`, { status: 400 });
+      console.error('[stripe-webhook] signature verification failed', err?.message);
+      return new NextResponse(`Webhook Error: ${err?.message}`, { status: 400 });
     }
 
     if (event.type === 'checkout.session.completed') {
-        const session = event.data.object as Stripe.Checkout.Session;
-        const email = session.customer_details?.email;
-  
-        console.log('[webhook] checkout.session.completed', { 
-          email, 
-          sessionId: session.id, 
-          payment_status: session.payment_status 
-        });
-  
-        if (!email) {
-          console.log('[webhook] No email in session');
-          return new NextResponse('No email', { status: 200 });
-        }
-  
-        // Upsert user by email
-        let user = await prisma.user.findUnique({
-          where: { email: email.toLowerCase() },
-        });
-  
-        console.log('[webhook] User lookup result', { 
-          found: !!user, 
-          userId: user?.id, 
-          currentPoints: user?.points 
-        });
-  
-        // ... rest of the code ...
-        // Create new user with referral code
-        const referralCode = generateReferralCode();
-        user = await prisma.user.create({
-          data: {
-            email: email.toLowerCase(),
-            referralCode,
-            code: referralCode, // Keep old field for backward compatibility
-          },
-        });
-      } else {
-        // Ensure referralCode exists (for old users)
-        if (!user.referralCode) {
-          const referralCode = generateReferralCode();
-          user = await prisma.user.update({
-            where: { id: user.id },
-            data: { referralCode, code: referralCode },
-          });
-        }
+      const session = event.data.object as Stripe.Checkout.Session;
+
+      if (session.payment_status !== 'paid') {
+        return NextResponse.json({ received: true });
       }
 
-      // Check idempotency: has this session ID already been processed?
-      const existingLedger = await prisma.ledger.findFirst({
-        where: {
-          userId: user.id,
-          note: { contains: `sid: ${session.id}` },
-        },
-      });
+      const associateCode = normalizeCode(session.metadata?.associateCode || session.metadata?.ref);
+      const mockEmail = (session.metadata?.mockEmail || '').trim().toLowerCase();
+      const paymentIntent = session.payment_intent ? session.payment_intent.toString() : '';
+      const source = (session.metadata?.source || 'contest').trim() || 'contest';
 
-      if (!existingLedger && session.payment_status === 'paid') {
-        // Award 500 points for book purchase
-        await prisma.ledger.create({
-          data: {
-            userId: user.id,
-            type: 'PURCHASE_BOOK',
-            points: 500,
-            note: `Book purchase (sid: ${session.id})`,
-          },
+      if (!associateCode && !mockEmail) {
+        console.log('[stripe-webhook] missing associate identifier', {
+          associateCode,
+          mockEmail,
         });
-
-        await prisma.user.update({
-          where: { id: user.id },
-          data: {
-            points: { increment: 500 },
-            earnedPurchaseBook: true,
-          },
-        });
+        return NextResponse.json({ received: true });
       }
 
-      // Handle referral payout
-      const ref = session.metadata?.ref;
-      if (ref && ref !== user.referralCode) {
-        const referrer = await prisma.user.findUnique({
-          where: { referralCode: ref },
+      const associate =
+        (associateCode ? await resolveAssociate(associateCode) : null) ??
+        (mockEmail ? await resolveAssociateByEmail(mockEmail) : null);
+
+      if (!associate || !paymentIntent) {
+        console.log('[stripe-webhook] associate not found or missing intent', {
+          associateCode,
+          mockEmail,
+          paymentIntent,
         });
-
-        if (referrer) {
-          // Check idempotency for referral payout
-          const existingReferralPayout = await prisma.ledger.findFirst({
-            where: {
-              userId: referrer.id,
-              type: 'REFER_FRIEND_PAYOUT',
-              note: { contains: `sid: ${session.id}` },
-            },
-          });
-
-          if (!existingReferralPayout) {
-            await prisma.ledger.create({
-              data: {
-                userId: referrer.id,
-                type: 'REFER_FRIEND_PAYOUT',
-                usd: 2.0,
-                note: `Referral ${email} (sid: ${session.id})`,
-              },
-            });
-
-            // Update user's referredBy if not set
-            if (!user.referredBy) {
-              await prisma.user.update({
-                where: { id: user.id },
-                data: { referredBy: ref },
-              });
-            }
-          }
-        }
+        return NextResponse.json({ received: true });
       }
+
+      const credited = await alreadyCredited(associate.id, paymentIntent);
+      if (credited) {
+        return NextResponse.json({ received: true });
+      }
+
+      await addPointsForAssociate(associate.id, BOOK_POINTS, paymentIntent, source, session);
     }
 
-    return new NextResponse('OK', { status: 200 });
+    return NextResponse.json({ received: true });
   } catch (err: any) {
-    console.error('[webhook] error', err);
-    return new NextResponse(`Webhook error: ${err.message}`, { status: 500 });
+    console.error('[stripe-webhook] error', err);
+    return new NextResponse(`Webhook error: ${err?.message ?? 'unknown error'}`, { status: 500 });
   }
 }

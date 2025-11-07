@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import CheckoutWiring from './CheckoutWiring'; // ← invisible helper that wires the Buy button
 import CurrentScoreButton from './CurrentScoreButton';
@@ -31,33 +32,38 @@ export default function ContestPage() {
     }
   }, [sessionId, justPurchased]);
 
-  const buttons = useMemo(() => ([
-    {
-      id: 'sampleBtn',
-      label: 'Read Sample Chapters',
-      text: 'Tap here to read a sample chapter!',
-      link: '/sample-chapters',
-    },
-    {
-      id: 'contestBtn',
-      label: 'Enter the Contest',
-      text: 'You can win this for your family!',
-      link: '/contest',
-    },
-    {
-      id: 'pointsBtn',
-      label: 'Earn Points',
-      text: 'Tap here to win points.',
-      link: '/earn-points',
-    },
-    {
-      id: 'buyBtn',
-      label: 'Buy the Book',
-      text: 'The adventure’s great—and you’re already living it.',
-      // keep your existing link to preserve structure; our wiring will intercept
-      link: 'https://buy.stripe.com/test_7sY9ATfsHgPK47i3vq',
-    },
-  ]), []);
+  const buttons = useMemo(
+    () => [
+      {
+        id: 'sampleBtn',
+        label: 'Read Sample Chapters',
+        text: 'Tap here to read a sample chapter!',
+        href: '/sample-chapters',
+        type: 'link' as const,
+      },
+      {
+        id: 'contestBtn',
+        label: 'Enter the Contest',
+        text: 'You can win this for your family!',
+        href: '/contest/signup?from=/contest',
+        type: 'link' as const,
+      },
+      {
+        id: 'pointsBtn',
+        label: 'Earn Points',
+        text: 'Tap here to win points.',
+        href: '/contest/ascension',
+        type: 'link' as const,
+      },
+      {
+        id: 'buyBtn',
+        label: 'Buy the Book',
+        text: 'The adventure’s great—and you’re already living it.',
+        type: 'button' as const,
+      },
+    ],
+    [],
+  );
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -68,12 +74,6 @@ export default function ContestPage() {
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, buttons]);
-
-  // unchanged for everything except Buy:
-  const handleClick = (btn: (typeof buttons)[number]) => {
-    if (btn.id === 'buyBtn') return; // let CheckoutWiring take over
-    window.location.href = btn.link;
-  };
 
   return (
     <div
@@ -140,22 +140,44 @@ export default function ContestPage() {
                 </div>
               </>
             )}
-            <button
-              {...(btn.id === 'buyBtn' ? { 'data-checkout': 'contest' } : {})}
-              onClick={() => handleClick(btn)}
-              style={{
-                padding: '1rem',
-                backgroundColor: index === current ? 'green' : '#111',
-                border: '2px solid green',
-                color: index === current ? 'black' : 'white',
-                fontSize: '1rem',
-                cursor: 'pointer',
-                animation: index === current ? 'pulse 1s infinite' : 'none',
-                transition: 'all 0.3s',
-              }}
-            >
-              {btn.label}
-            </button>
+            {btn.type === 'button' ? (
+              <button
+                data-checkout="contest"
+                style={{
+                  padding: '1rem',
+                  backgroundColor: index === current ? 'green' : '#111',
+                  border: '2px solid green',
+                  color: index === current ? 'black' : 'white',
+                  fontSize: '1rem',
+                  cursor: 'pointer',
+                  animation: index === current ? 'pulse 1s infinite' : 'none',
+                  transition: 'all 0.3s',
+                }}
+              >
+                {btn.label}
+              </button>
+            ) : (
+              <Link
+                href={btn.href}
+                prefetch={false}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '1rem',
+                  backgroundColor: index === current ? 'green' : '#111',
+                  border: '2px solid green',
+                  color: index === current ? 'black' : 'white',
+                  fontSize: '1rem',
+                  textDecoration: 'none',
+                  cursor: 'pointer',
+                  animation: index === current ? 'pulse 1s infinite' : 'none',
+                  transition: 'all 0.3s',
+                }}
+              >
+                {btn.label}
+              </Link>
+            )}
           </div>
         ))}
       </div>

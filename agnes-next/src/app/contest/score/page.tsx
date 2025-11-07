@@ -231,8 +231,9 @@ export default function ScorePage() {
         : '';
 
     const ORIGIN =
-      (typeof window !== 'undefined' ? window.location.origin : process.env.NEXT_PUBLIC_SITE_URL) ||
-      'http://localhost:3002';
+      (typeof window !== 'undefined' && window.location.origin) ||
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      '';
 
     // Instagram: open helper page, rotate videos/captions, copy caption, award points
     if (platform === 'ig') {

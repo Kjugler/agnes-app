@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:5055';
+const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || '').replace(/\/$/, '');
 
 // Non-blocking tracker: prefer sendBeacon; fallback to keepalive fetch
 function trackCheckoutStarted(source: string, path: string) {
@@ -47,6 +47,10 @@ async function startCheckout(opts: StartOpts = {}) {
 
   // 1) fire tracking first (non-blocking — does not affect animations)
   trackCheckoutStarted(source, path);
+
+  if (!API_BASE) {
+    throw new Error('Checkout unavailable: NEXT_PUBLIC_API_BASE is not configured.');
+  }
 
   // 2) create Stripe session (blocking)
   const res = await fetch(`${API_BASE}/api/create-checkout-session`, {

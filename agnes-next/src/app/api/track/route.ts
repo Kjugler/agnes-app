@@ -102,7 +102,17 @@ async function recordPurchase(email?: string, source?: string | null, meta?: any
 
 // ---- main ----------------------------------------------------------------
 
+if (process.env.NODE_ENV !== 'production' && process.env.TRACKER_ENABLED !== 'true') {
+  export async function POST() {
+    return NextResponse.json({ ok: true });
+  }
+}
+
 export async function POST(req: NextRequest) {
+  if (process.env.NODE_ENV !== 'production' && process.env.TRACKER_ENABLED !== 'true') {
+    return NextResponse.json({ ok: true });
+  }
+
   const headers = cors(req.headers.get('origin'));
   const DEV = process.env.NODE_ENV !== 'production';
 
