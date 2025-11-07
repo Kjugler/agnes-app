@@ -705,9 +705,9 @@ export default function ScorePage() {
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          height: '96px',
+          minHeight: 60,
           borderRadius: 16,
-          padding: '0 24px',
+          padding: '12px 20px',
           color: '#fff',
           background: isHovered ? colorHover : colorBase,
           boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
@@ -722,7 +722,7 @@ export default function ScorePage() {
           display: 'flex',
           alignItems: 'center',
           gap: 8,
-          fontSize: 'clamp(18px, 2vw, 24px)',
+          fontSize: 'clamp(15px, 1.4vw, 18px)',
           fontWeight: 800,
         }}>
           {label}
@@ -745,7 +745,7 @@ export default function ScorePage() {
         </div>
         {sub && (
           <div style={{
-            fontSize: 14,
+            fontSize: 13,
             lineHeight: 1,
             color: 'rgba(255,255,255,0.9)',
             marginTop: 4,
@@ -838,25 +838,33 @@ export default function ScorePage() {
 
           {/* CAPTION STAGE - moved into hero, no absolute positioning */}
           {stageVisible && stageText && (
-            <div className="text-center mb-6">
-              <div
-                style={{
-                  fontSize: 'clamp(1.75rem,5vw,3.25rem)',
-                  fontWeight: 900,
-                  letterSpacing: '-0.02em',
-                  color: 'rgba(255,255,255,0.95)',
-                  textShadow: '0 2px 8px rgba(0,0,0,0.3)',
-                  opacity: stageVisible ? 1 : 0,
-                  transform: stageVisible
+          <div
+            className="text-center mb-6"
+            style={{
+              minHeight: 'clamp(120px, 30vh, 260px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <div
+              style={{
+                fontSize: 'clamp(18px, 2vw, 28px)',
+                fontWeight: 900,
+                letterSpacing: '-0.02em',
+                color: 'rgba(255,255,255,0.95)',
+                textShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                opacity: stageVisible ? 1 : 0,
+                transform: stageVisible
+                  ? 'translateY(0)'
+                  : reducedMotion
                     ? 'translateY(0)'
-                    : reducedMotion
-                      ? 'translateY(0)'
-                      : 'translateY(10px)',
-                  transition: reducedMotion
-                    ? `opacity ${reducedMotion ? '200ms' : '400ms'} ease`
-                    : `opacity ${reducedMotion ? '200ms' : '400ms'} ease, transform ${reducedMotion ? '200ms' : '400ms'} ease`,
-                }}
-              >
+                    : 'translateY(10px)',
+                transition: reducedMotion
+                  ? `opacity ${reducedMotion ? '200ms' : '400ms'} ease`
+                  : `opacity ${reducedMotion ? '200ms' : '400ms'} ease, transform ${reducedMotion ? '200ms' : '400ms'} ease`,
+              }}
+            >
                 {stageText}
               </div>
             </div>
@@ -881,7 +889,13 @@ export default function ScorePage() {
           padding: '0 24px',
           marginBottom: '32px',
         }}>
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div
+            className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+            style={{
+              gap: 'clamp(10px, 1.4vw, 16px)',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            }}
+          >
             <ActionButton
               label="Buy the Book"
               sub="500 pts"
@@ -979,15 +993,17 @@ export default function ScorePage() {
                   display: 'grid',
                   gap: 6,
                   placeItems: 'center',
-                  height: '96px',
+                  minHeight: 60,
                   borderRadius: 16,
-                  padding: '0 24px',
+                  padding: '12px 18px',
                   color: '#fff',
                   background: 'linear-gradient(135deg, #19c37d, #0ea36d)',
                   boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
                   cursor: 'pointer',
                   textAlign: 'center',
                   outline: 'none',
+                  maxWidth: 260,
+                  width: '100%',
                 }}
               >
                 <span style={{ fontSize: 'clamp(16px, 1.6vw, 20px)', fontWeight: 700 }}>Your Code</span>
@@ -1005,14 +1021,16 @@ export default function ScorePage() {
                 display: 'grid',
                 gap: 6,
                 placeItems: 'center',
-                height: '96px',
+                minHeight: 60,
                 borderRadius: 16,
-                padding: '0 24px',
+                padding: '12px 18px',
                 color: '#fff',
                 background: 'linear-gradient(135deg, #111827, #1f2937)',
                 boxShadow: '0 10px 25px rgba(0,0,0,0.25)',
                 textAlign: 'center',
                 outline: 'none',
+                maxWidth: 260,
+                width: '100%',
               }}
             >
               <span style={{ fontSize: 'clamp(16px, 1.6vw, 20px)', fontWeight: 700 }}>Total Points</span>
@@ -1033,7 +1051,7 @@ export default function ScorePage() {
         }}>
           <div style={{ marginBottom: '16px' }}>
             <div style={{
-              fontSize: 16,
+              fontSize: 14,
               fontWeight: 600,
               color: 'rgba(0,0,0,0.7)',
               marginBottom: '4px',
@@ -1041,7 +1059,7 @@ export default function ScorePage() {
               Progress to next rank ({rankInfo.current} G�� {rankInfo.next})
             </div>
             <div style={{
-              height: 12,
+              height: 10,
               borderRadius: 999,
               background: '#e5e7eb',
               overflow: 'hidden',
@@ -1066,7 +1084,7 @@ export default function ScorePage() {
             style={{ cursor: 'pointer', marginBottom: '16px' }}
           >
             <div style={{
-              fontSize: 16,
+              fontSize: 14,
               fontWeight: 600,
               color: 'rgba(0,0,0,0.7)',
               marginBottom: '4px',
@@ -1074,7 +1092,7 @@ export default function ScorePage() {
               Rabbit challenge
             </div>
             <div style={{
-              height: 12,
+              height: 10,
               borderRadius: 999,
               background: '#e5e7eb',
               overflow: 'hidden',

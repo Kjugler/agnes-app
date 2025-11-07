@@ -1,9 +1,19 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 export default function SampleChaptersPage() {
   const [current, setCurrent] = useState(0);
+  const router = useRouter();
+
+  const goBack = () => {
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      router.back();
+    } else {
+      router.push('/contest');
+    }
+  };
 
   const buttons = [
     {
@@ -15,25 +25,25 @@ export default function SampleChaptersPage() {
     {
       id: 'btn2',
       label: 'Read Chapter 2',
-      text: 'Fred enters the scene GÇô Agnes already doesnGÇÖt like him.',
+      text: 'Fred enters the scene Gï¿½ï¿½ Agnes already doesnGï¿½ï¿½t like him.',
       link: '/chapters/chapter2.pdf',
     },
     {
       id: 'btn3',
       label: 'Read Chapter 9',
-      text: 'Meet Matt and Reese GÇô straight from the orphanage.',
+      text: 'Meet Matt and Reese Gï¿½ï¿½ straight from the orphanage.',
       link: '/chapters/chapter9.pdf',
     },
     {
       id: 'btn4',
       label: 'Read Chapter 45',
-      text: 'Fred and Jody GÇô always two steps ahead.',
+      text: 'Fred and Jody Gï¿½ï¿½ always two steps ahead.',
       link: '/chapters/chapter45.pdf',
     },
     {
       id: 'btn5',
       label: 'Buy the Book',
-      text: 'Enjoy the adventure GÇô youGÇÖre already living the reality.',
+      text: 'Enjoy the adventure Gï¿½ï¿½ youGï¿½ï¿½re already living the reality.',
     },
   ];
 
@@ -76,7 +86,12 @@ export default function SampleChaptersPage() {
         minHeight: '100vh',
       }}
     >
-      <h1 style={{ marginTop: '20px', fontSize: '1.6em' }}>
+      <h1
+        style={{
+          marginTop: '20px',
+          fontSize: 'clamp(22px, 2.4vw, 34px)',
+        }}
+      >
         Explore Sample Chapters from <em>The Agnes Protocol</em>
       </h1>
 
@@ -139,17 +154,23 @@ export default function SampleChaptersPage() {
               target="_blank"
               rel="noopener noreferrer"
               style={{
-                padding: '12px 24px',
+                padding: '10px 14px',
                 border: '2px solid #00ff00',
                 color: current === index ? 'black' : '#00ffe5',
                 backgroundColor: current === index ? '#00ff00' : 'black',
                 textDecoration: 'none',
                 animation: current === index ? 'pulse 1.5s infinite' : 'none',
+                minHeight: 48,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '16px',
+                fontWeight: 600,
               }}
             >
               {btn.label}
               {current === index && (
-                <span style={{ marginLeft: '12px', fontSize: '1.2em' }}>=ƒæë</span>
+                <span style={{ marginLeft: '12px', fontSize: '1.2em' }}>=ï¿½ï¿½ï¿½</span>
               )}
             </a>
             {current === index && (
@@ -183,7 +204,7 @@ export default function SampleChaptersPage() {
           id="btn5"
           onClick={handleBuy}
           style={{
-            padding: '12px 24px',
+            padding: '10px 14px',
             border: '2px solid #00ffe5',
             color: current === 4 ? 'black' : '#00ffe5',
             backgroundColor: current === 4 ? '#00ffe5' : 'black',
@@ -192,29 +213,40 @@ export default function SampleChaptersPage() {
             textTransform: 'uppercase',
             cursor: 'pointer',
             boxShadow: '0 0 12px #00ffe5',
+            minHeight: 48,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '16px',
           }}
         >
           {buttons[4].label}
           {current === 4 && (
-            <span style={{ marginLeft: '12px', fontSize: '1.2em' }}>=ƒæë</span>
+            <span style={{ marginLeft: '12px', fontSize: '1.2em' }}>=ï¿½ï¿½ï¿½</span>
           )}
         </a>
 
-        <a
-          href="http://localhost:3001/contest"
+        <button
+          type="button"
+          onClick={goBack}
           style={{
-            padding: '12px 24px',
+            padding: '10px 14px',
             border: '2px solid #00ffe5',
             color: '#00ffe5',
-            textDecoration: 'none',
-            fontWeight: 'bold',
-            textTransform: 'uppercase',
             backgroundColor: 'black',
+            textTransform: 'uppercase',
+            fontWeight: 'bold',
             boxShadow: '0 0 12px #00ffe5',
+            minHeight: 48,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '16px',
+            cursor: 'pointer',
           }}
         >
           Go Back
-        </a>
+        </button>
       </div>
 
       {/* PULSE KEYFRAMES */}
@@ -241,7 +273,7 @@ export default function SampleChaptersPage() {
           color: '#00ff00',
         }}
       >
-        <p>-¬ 2025 DeepQuill LLC GÇô All Rights Reserved</p>
+        <p>-ï¿½ 2025 DeepQuill LLC Gï¿½ï¿½ All Rights Reserved</p>
         <p>
           Contact:{' '}
           <a href="mailto:hello@theagnesprotocol.com" style={{ color: '#00ff00' }}>

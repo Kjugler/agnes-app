@@ -130,7 +130,11 @@ export default function SignupPage() {
     >
       {success ? (
         <div style={{ textAlign: 'center', maxWidth: '600px' }}>
-          <h1 style={{ fontSize: '2rem', marginBottom: '1rem' }}>You're in!</h1>
+          <h1
+            style={{ fontSize: 'clamp(24px, 2.6vw, 36px)', marginBottom: '1rem' }}
+          >
+            You're in!
+          </h1>
           <p style={{ fontSize: '1.2rem', marginBottom: '2rem' }}>
             Your code: <strong>{success.code}</strong> (15% off)
           </p>
@@ -138,7 +142,9 @@ export default function SignupPage() {
         </div>
       ) : (
         <>
-          <h1 style={{ fontSize: '2rem', marginBottom: '2rem' }}>
+          <h1
+            style={{ fontSize: 'clamp(24px, 2.6vw, 36px)', marginBottom: '2rem' }}
+          >
             Enter the Contest
           </h1>
           <form
@@ -154,7 +160,7 @@ export default function SignupPage() {
             <div>
               <label
                 htmlFor="firstName"
-                style={{ display: 'block', marginBottom: '0.5rem' }}
+                style={{ display: 'block', marginBottom: '0.5rem', fontSize: '15px' }}
               >
                 First Name *
               </label>
@@ -168,8 +174,9 @@ export default function SignupPage() {
                 }
                 style={{
                   width: '100%',
-                  padding: '0.75rem',
-                  fontSize: '1rem',
+                  height: '44px',
+                  padding: '10px 12px',
+                  fontSize: '16px',
                   borderRadius: '4px',
                   border: '1px solid #333',
                   backgroundColor: '#111',
@@ -181,7 +188,7 @@ export default function SignupPage() {
             <div>
               <label
                 htmlFor="lastName"
-                style={{ display: 'block', marginBottom: '0.5rem' }}
+                style={{ display: 'block', marginBottom: '0.5rem', fontSize: '15px' }}
               >
                 Last Name
               </label>
@@ -194,8 +201,9 @@ export default function SignupPage() {
                 }
                 style={{
                   width: '100%',
-                  padding: '0.75rem',
-                  fontSize: '1rem',
+                  height: '44px',
+                  padding: '10px 12px',
+                  fontSize: '16px',
                   borderRadius: '4px',
                   border: '1px solid #333',
                   backgroundColor: '#111',
@@ -207,7 +215,7 @@ export default function SignupPage() {
             <div>
               <label
                 htmlFor="email"
-                style={{ display: 'block', marginBottom: '0.5rem' }}
+                style={{ display: 'block', marginBottom: '0.5rem', fontSize: '15px' }}
               >
                 Email *
               </label>
@@ -221,8 +229,9 @@ export default function SignupPage() {
                 }
                 style={{
                   width: '100%',
-                  padding: '0.75rem',
-                  fontSize: '1rem',
+                  height: '44px',
+                  padding: '10px 12px',
+                  fontSize: '16px',
                   borderRadius: '4px',
                   border: '1px solid #333',
                   backgroundColor: '#111',
@@ -234,7 +243,7 @@ export default function SignupPage() {
             <div>
               <label
                 htmlFor="x"
-                style={{ display: 'block', marginBottom: '0.5rem' }}
+                style={{ display: 'block', marginBottom: '0.5rem', fontSize: '15px' }}
               >
                 X (Twitter) Handle
               </label>
@@ -248,8 +257,9 @@ export default function SignupPage() {
                 }
                 style={{
                   width: '100%',
-                  padding: '0.75rem',
-                  fontSize: '1rem',
+                  height: '44px',
+                  padding: '10px 12px',
+                  fontSize: '16px',
                   borderRadius: '4px',
                   border: '1px solid #333',
                   backgroundColor: '#111',
@@ -261,7 +271,7 @@ export default function SignupPage() {
             <div>
               <label
                 htmlFor="instagram"
-                style={{ display: 'block', marginBottom: '0.5rem' }}
+                style={{ display: 'block', marginBottom: '0.5rem', fontSize: '15px' }}
               >
                 Instagram Handle
               </label>
@@ -275,8 +285,9 @@ export default function SignupPage() {
                 }
                 style={{
                   width: '100%',
-                  padding: '0.75rem',
-                  fontSize: '1rem',
+                  height: '44px',
+                  padding: '10px 12px',
+                  fontSize: '16px',
                   borderRadius: '4px',
                   border: '1px solid #333',
                   backgroundColor: '#111',
@@ -288,7 +299,7 @@ export default function SignupPage() {
             <div>
               <label
                 htmlFor="tiktok"
-                style={{ display: 'block', marginBottom: '0.5rem' }}
+                style={{ display: 'block', marginBottom: '0.5rem', fontSize: '15px' }}
               >
                 TikTok Handle
               </label>
@@ -302,8 +313,9 @@ export default function SignupPage() {
                 }
                 style={{
                   width: '100%',
-                  padding: '0.75rem',
-                  fontSize: '1rem',
+                  height: '44px',
+                  padding: '10px 12px',
+                  fontSize: '16px',
                   borderRadius: '4px',
                   border: '1px solid #333',
                   backgroundColor: '#111',
@@ -343,8 +355,9 @@ export default function SignupPage() {
               type="submit"
               disabled={loading}
               style={{
-                padding: '1rem',
-                fontSize: '1.1rem',
+                padding: '10px 16px',
+                minHeight: 48,
+                fontSize: '16px',
                 fontWeight: 'bold',
                 backgroundColor: loading ? '#555' : '#00ff00',
                 color: loading ? '#aaa' : '#000',

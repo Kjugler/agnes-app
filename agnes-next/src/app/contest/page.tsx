@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import CheckoutWiring from './CheckoutWiring'; // GåÉ invisible helper that wires the Buy button
+import CheckoutWiring from './CheckoutWiring'; // Gï¿½ï¿½ invisible helper that wires the Buy button
 import CurrentScoreButton from './CurrentScoreButton';
 
 export default function ContestPage() {
@@ -53,7 +53,7 @@ export default function ContestPage() {
     {
       id: 'buyBtn',
       label: 'Buy the Book',
-      text: 'The adventureGÇÖs greatGÇöand youGÇÖre already living it.',
+      text: 'The adventureGï¿½ï¿½s greatGï¿½ï¿½and youGï¿½ï¿½re already living it.',
       // keep your existing link to preserve structure; our wiring will intercept
       link: 'https://buy.stripe.com/test_7sY9ATfsHgPK47i3vq',
     },
@@ -109,7 +109,15 @@ export default function ContestPage() {
       </div>
 
       {/* Tapsy COMMENT */}
-      <div style={{ textAlign: 'center', marginTop: '2rem', fontSize: '1.2rem' }}>{tapsyText}</div>
+      <div
+        style={{
+          textAlign: 'center',
+          marginTop: '2rem',
+          fontSize: 'clamp(16px, 1.8vw, 22px)',
+        }}
+      >
+        {tapsyText}
+      </div>
 
       {/* MENU BUTTONS */}
       <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '1.2rem' }}>
@@ -127,7 +135,7 @@ export default function ContestPage() {
                     animation: 'bounce 1s infinite',
                   }}
                 >
-                  =ƒæë
+                  =ï¿½ï¿½ï¿½
                 </div>
                 <div
                   style={{
@@ -141,14 +149,15 @@ export default function ContestPage() {
               </>
             )}
             <button
-              {...(btn.id === 'buyBtn' ? { 'data-checkout': 'contest' } : {})}
-              onClick={() => handleClick(btn)}
-              style={{
-                padding: '1rem',
+               {...(btn.id === 'buyBtn' ? { 'data-checkout': 'contest' } : {})}
+               onClick={() => handleClick(btn)}
+               style={{
+                padding: '10px 14px',
                 backgroundColor: index === current ? 'green' : '#111',
                 border: '2px solid green',
                 color: index === current ? 'black' : 'white',
-                fontSize: '1rem',
+                fontSize: '16px',
+                minHeight: 56,
                 cursor: 'pointer',
                 animation: index === current ? 'pulse 1s infinite' : 'none',
                 transition: 'all 0.3s',
@@ -160,7 +169,7 @@ export default function ContestPage() {
         ))}
       </div>
 
-      {/* GÇ£VIEW YOUR POINTSGÇ¥ GÇö animated component */}
+      {/* GÇ£VIEW YOUR POINTSGÇ¥ Gï¿½ï¿½ animated component */}
       {showScoreButton && (
         <div style={{ marginTop: '0.75rem' }}>
           <CurrentScoreButton />
@@ -179,6 +188,7 @@ export default function ContestPage() {
           width: '100%',
           padding: '0.5rem',
           fontWeight: 'bold',
+          fontSize: 'clamp(14px, 1.6vw, 18px)',
           zIndex: 1000,
         }}
       >
@@ -189,9 +199,9 @@ export default function ContestPage() {
             animation: 'ticker 20s linear infinite',
           }}
         >
-          Agnes Protocol tops banned book list GÇô again GÇó Jody Vernon breaks silence in viral
-          interview GÇó New points leader: Billy Bronski GÇô 1,340 pts GÇó Tapsy declares: GÇ£This book
-          changes everythingGÇ¥ GÇó Enter to win the 6-day dream vacation NOW!
+          Agnes Protocol tops banned book list Gï¿½ï¿½ again Gï¿½ï¿½ Jody Vernon breaks silence in viral
+          interview Gï¿½ï¿½ New points leader: Billy Bronski Gï¿½ï¿½ 1,340 pts Gï¿½ï¿½ Tapsy declares: GÇ£This book
+          changes everythingGÇ¥ Gï¿½ï¿½ Enter to win the 6-day dream vacation NOW!
         </span>
       </div>
 
