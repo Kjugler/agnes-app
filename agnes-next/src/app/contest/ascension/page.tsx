@@ -12,6 +12,7 @@ export default function AscensionPage() {
   const [audioPlayed, setAudioPlayed] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const flashRef = useRef<HTMLDivElement | null>(null);
+  const [awardingPurchase, setAwardingPurchase] = useState(false);
 
   const name = useMemo(() => {
     if (typeof window === 'undefined') return 'Explorer';
@@ -28,6 +29,74 @@ export default function AscensionPage() {
     
     return () => clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const purchase = qp.get('purchase');
+    const sessionId = qp.get('session_id');
+    if (purchase !== 'success' || !sessionId) return;
+    if (awardingPurchase) return;
+
+    const storageKey = `purchase_session_${sessionId}`;
+    let alreadyAwarded = false;
+    try {
+      alreadyAwarded = window.localStorage.getItem(storageKey) === '1';
+    } catch {
+      alreadyAwarded = false;
+    }
+    if (alreadyAwarded) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('purchase');
+      url.searchParams.delete('session_id');
+      router.replace(`${url.pathname}${url.search}${url.hash}`);
+      return;
+    }
+
+    setAwardingPurchase(true);
+
+    let associateCode: string | undefined;
+    let email: string | undefined;
+    try {
+      associateCode =
+        window.localStorage.getItem('ap_code') ||
+        window.localStorage.getItem('ref') ||
+        window.localStorage.getItem('discount_code') ||
+        undefined;
+      email =
+        window.localStorage.getItem('user_email') ||
+        window.localStorage.getItem('mockEmail') ||
+        undefined;
+    } catch {
+      associateCode = undefined;
+      email = undefined;
+    }
+
+    (async () => {
+      try {
+        await fetch('/api/points/award', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            kind: 'book_purchase',
+            sessionId,
+            associateCode,
+            email,
+          }),
+        });
+      } catch (err) {
+        console.warn('[ascension] book purchase award failed', err);
+      } finally {
+        try {
+          window.localStorage.setItem(storageKey, '1');
+        } catch {}
+        const url = new URL(window.location.href);
+        url.searchParams.delete('purchase');
+        url.searchParams.delete('session_id');
+        router.replace(`${url.pathname}${url.search}${url.hash}`);
+        setAwardingPurchase(false);
+      }
+    })();
+  }, [qp, awardingPurchase, router]);
 
   // Play audio function
   const playAudio = async () => {
