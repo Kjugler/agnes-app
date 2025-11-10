@@ -316,3 +316,79 @@
   .audioPrompt.hidden {
     display: none;
   }
+
+.joinOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.78);
+  backdrop-filter: blur(12px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 120;
+  padding: 2rem;
+}
+
+.joinCard {
+  width: min(420px, 90vw);
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.95), rgba(30, 64, 175, 0.85));
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  border-radius: 24px;
+  padding: 2.25rem 2rem;
+  text-align: center;
+  color: #f8fafc;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.55);
+  display: grid;
+  gap: 1rem;
+}
+
+.joinCard h2 {
+  font-size: 1.9rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  margin: 0;
+}
+
+.joinCard p {
+  margin: 0;
+}
+
+.joinActions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.joinActions button {
+  padding: 0.75rem 1.4rem;
+  border-radius: 999px;
+  border: none;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  color: #0f172a;
+  background: #fbbf24;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 15px 30px rgba(251, 191, 36, 0.35);
+}
+
+.joinActions button:hover {
+  transform: translateY(-2px);
+}
+
+.joinClose {
+  padding: 0.7rem 1.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: transparent;
+  color: rgba(226, 232, 240, 0.9);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.joinClose:hover {
+  border-color: rgba(148, 163, 184, 0.8);
+}
