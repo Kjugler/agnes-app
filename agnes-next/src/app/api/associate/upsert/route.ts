@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { customAlphabet } from 'nanoid';
+import { calcInitialRabbitTarget } from '@/lib/rabbit';
 
 const nanoid = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 6);
 
@@ -98,6 +99,8 @@ export async function POST(req: NextRequest) {
         handleInstagram,
         handleTiktok,
         handleTruth,
+        rabbitSeq: 1,
+        rabbitTarget: calcInitialRabbitTarget(existing?.points ?? 0),
       },
       update: {
         fname: firstName,
@@ -108,6 +111,12 @@ export async function POST(req: NextRequest) {
         handleInstagram,
         handleTiktok,
         handleTruth,
+        rabbitSeq: {
+          set: existing?.rabbitSeq && existing.rabbitSeq > 0 ? existing.rabbitSeq : 1,
+        },
+        rabbitTarget: existing?.rabbitTarget && existing.rabbitTarget > 0
+          ? existing.rabbitTarget
+          : calcInitialRabbitTarget(existing?.points ?? 0),
       },
       select: {
         id: true,
@@ -116,6 +125,9 @@ export async function POST(req: NextRequest) {
         lname: true,
         code: true,
         referralCode: true,
+        points: true,
+        rabbitTarget: true,
+        rabbitSeq: true,
       },
     });
 

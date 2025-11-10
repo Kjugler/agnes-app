@@ -16,13 +16,18 @@ export async function GET(req: NextRequest) {
   const user = await findRabbitUser(searchEmail ?? cookieEmail, searchCode ?? cookieCode);
 
   if (!user) {
-    return NextResponse.json({ totalPoints: 0, rabbitTarget: null, rabbitSeq: 1, nextRankThreshold: RANK_STEP });
+    return NextResponse.json({
+      points: 0,
+      rabbitTarget: RANK_STEP / 2,
+      rabbitSeq: 1,
+      nextRankThreshold: RANK_STEP,
+    });
   }
 
   const { user: ensured, nextRankThreshold } = await ensureRabbitState(user);
 
   return NextResponse.json({
-    totalPoints: ensured.points,
+    points: ensured.points,
     rabbitTarget: ensured.rabbitTarget,
     rabbitSeq: ensured.rabbitSeq,
     nextRankThreshold,

@@ -1,7 +1,8 @@
 'use client';
 
 import '@/styles/score.css';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { confettiCelebrate, confettiSprinkle } from '@/lib/confetti';
 import { useScore } from '@/hooks/useScore';
@@ -57,9 +58,9 @@ export default function ScorePage() {
   }, [reducedMotion]);
 
   // CAPTION STAGE state
-  const [stageText, setStageText] = useState<string>('');
+  const [stageText, setStageText] = useState<ReactNode>('');
   const [stageVisible, setStageVisible] = useState(false);
-  const [stageSequence, setStageSequence] = useState<'greetings' | 'info' | 'idle' | 'hover'>('greetings');
+  const [stageSequence, setStageSequence] = useState<'greetings' | 'info' | 'idle' | 'hover' | 'rabbit'>('greetings');
   const [greetingIndex, setGreetingIndex] = useState(0);
 
   const infoLines = [
@@ -68,7 +69,7 @@ export default function ScorePage() {
   ];
 
   // Button hover captions
-  const hoverCaptions: Record<string, string> = {
+  const hoverCaptions: Record<string, ReactNode> = {
     buy: 'You bought the book! +500 pts. After you read it, play trivia and earn +250 more.',
     x: 'Nice one—+100 pts today. You can earn +100 again tomorrow by sharing again.',
     ig: 'Nice one—+100 pts today. You can earn +100 again tomorrow by sharing again.',
@@ -78,7 +79,7 @@ export default function ScorePage() {
     contest: 'Game on! Enter the contest for +250 pts and a shot at the cruise.',
     refer: 'Invite friends: they save $3.90; you earn $2 each. It adds up fast.',
     subscribe: 'Stay in the loop—+50 pts when you join the weekly digest.',
-    rabbit: 'Catch the Rabbit and earn 1,000 points.',
+    rabbit: 'Catch the Rabbit and earn +500 points.',
   };
 
   // success banners
@@ -188,6 +189,7 @@ export default function ScorePage() {
   // Hover caption management with confetti sprinkle
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const onButtonEnter = (key: string) => {
+    if (stageSequence === 'rabbit') return;
     setHovered(key);
     if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
     setStageSequence('hover');
@@ -199,6 +201,7 @@ export default function ScorePage() {
     }
   };
   const onButtonLeave = () => {
+    if (stageSequence === 'rabbit') return;
     setHovered(null);
     if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
     hoverTimeoutRef.current = setTimeout(() => {
@@ -613,24 +616,132 @@ export default function ScorePage() {
   };
 
   // totals and progress
-  const { totalPoints, rabbitTarget, refresh: refreshScore } = useScore();
+  const {
+    totalPoints,
+    rabbitTarget,
+    rabbitSeq,
+    nextRankThreshold,
+    refresh: refreshScore,
+    apply: applyScore,
+  } = useScore();
 
-  const prevBand = Math.floor(totalPoints / 500) * 500;
-  const nextBand = prevBand + 500;
-  const rankPct = clamp(0, (totalPoints - prevBand) / 500, 1);
- 
-  const target = rabbitTarget ?? totalPoints + 500;
+  const computedNextBand = nextRankThreshold ?? 500;
+  const prevBand = Math.max(0, computedNextBand - 500);
+  const bandSize = Math.max(1, computedNextBand - prevBand);
+  const rankPct = clamp(0, (totalPoints - prevBand) / bandSize, 1);
+
+  const target = rabbitTarget && rabbitTarget > 0 ? rabbitTarget : totalPoints + 500;
   const rabbitPct = clamp(0, totalPoints / target, 1);
 
   const rankInfo = useMemo(() => ({
     current: prevBand,
-    next: nextBand,
+    next: computedNextBand,
     pct: rankPct * 100,
-  }), [prevBand, nextBand, rankPct]);
+  }), [prevBand, computedNextBand, rankPct]);
 
   const topFog = Math.min(mist, 0.85);
   const midFog = Math.max(mist - 0.35, 0);
   const wrapClassName = hovered ? 'score-wrap is-hovered' : 'score-wrap';
+
+  const rankMeterRef = useRef<HTMLDivElement | null>(null);
+  const rabbitMeterRef = useRef<HTMLDivElement | null>(null);
+  const celebratedSeqRef = useRef<number | null>(null);
+  const catchingRef = useRef(false);
+  const celebrationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => () => {
+    if (celebrationTimeoutRef.current) {
+      clearTimeout(celebrationTimeoutRef.current);
+    }
+  }, []);
+
+  const triggerRabbitCelebration = useCallback(() => {
+    setStageSequence('rabbit');
+    setStageText(
+      <span>
+        <span style={{ color: '#dc2626', fontWeight: 800 }}>Congratulations, {firstName}!</span>
+        <br />
+        <span>You caught the rabbit and earned </span>
+        <span style={{ color: '#2563eb', fontWeight: 800 }}>+500 pts.</span>
+        <br />
+        <span>Catch him again for 500 more!</span>
+      </span>
+    );
+    setStageVisible(true);
+
+    if (!reducedMotion && typeof window !== 'undefined') {
+      const rankRect = rankMeterRef.current?.getBoundingClientRect();
+      const rabbitRect = rabbitMeterRef.current?.getBoundingClientRect();
+      if (rankRect && rabbitRect && window.innerWidth > 0 && window.innerHeight > 0) {
+        const rankCenterX = rankRect.left + rankRect.width / 2;
+        const rabbitCenterX = rabbitRect.left + rabbitRect.width / 2;
+        const rankCenterY = rankRect.top + rankRect.height / 2;
+        const rabbitCenterY = rabbitRect.top + rabbitRect.height / 2;
+        const centerX = ((rankCenterX + rabbitCenterX) / 2) / window.innerWidth;
+        const centerY = ((rankCenterY + rabbitCenterY) / 2) / window.innerHeight;
+        void confettiCelebrate({ center: { x: centerX, y: centerY } });
+      } else {
+        void confettiCelebrate();
+      }
+    }
+
+    const duration = reducedMotion ? 3000 : 6000;
+    if (celebrationTimeoutRef.current) clearTimeout(celebrationTimeoutRef.current);
+    celebrationTimeoutRef.current = setTimeout(() => {
+      setStageVisible(false);
+      setTimeout(() => {
+        setStageSequence((prev) => (prev === 'rabbit' ? 'idle' : prev));
+      }, 400);
+      celebrationTimeoutRef.current = null;
+    }, duration);
+  }, [firstName, reducedMotion]);
+
+  useEffect(() => {
+    if (!rabbitTarget || !rabbitSeq) return;
+    if (totalPoints < rabbitTarget) return;
+    if (catchingRef.current) return;
+    if (celebratedSeqRef.current && celebratedSeqRef.current >= rabbitSeq) return;
+
+    let cancelled = false;
+    catchingRef.current = true;
+    celebratedSeqRef.current = rabbitSeq;
+
+    (async () => {
+      try {
+        const res = await fetch('/api/rabbit/catch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ rabbitSeqClient: rabbitSeq }),
+        });
+        const json = await res.json().catch(() => null);
+        if (cancelled || !json) return;
+        if (json.caught) {
+          celebratedSeqRef.current = json.rabbitSeq ?? rabbitSeq + 1;
+          applyScore({
+            points: json.points,
+            rabbitTarget: json.rabbitTarget,
+            rabbitSeq: json.rabbitSeq,
+            nextRankThreshold: json.nextRankThreshold,
+          });
+          triggerRabbitCelebration();
+          await refreshScore();
+        } else if (json.stale) {
+          await refreshScore();
+        }
+      } catch (err) {
+        console.warn('[score] rabbit catch failed', err);
+      } finally {
+        if (!cancelled) {
+          catchingRef.current = false;
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [rabbitTarget, rabbitSeq, totalPoints, applyScore, refreshScore, triggerRabbitCelebration]);
 
   // Button component
   const ActionButton = ({
@@ -863,16 +974,17 @@ export default function ScorePage() {
       </section>
 
       <aside className="score-sidebar">
-        <div className="meter" data-key="rank">
+        <div className="meter" data-key="rank" ref={rankMeterRef}>
           <div className="label">Rank</div>
           <div className="track">
             <div className="fill" style={{ height: `${Math.round(rankPct * 100)}%` }} />
           </div>
-          <div className="value">{prevBand} → {nextBand}</div>
+          <div className="value">{prevBand} → {computedNextBand}</div>
         </div>
         <div
           className="meter"
           data-key="rabbit"
+          ref={rabbitMeterRef}
           onMouseEnter={() => onButtonEnter('rabbit')}
           onMouseLeave={onButtonLeave}
           onFocus={() => onButtonEnter('rabbit')}
