@@ -106,11 +106,15 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    const rawSuccess = toAbsolute(successPath);
+    const successUrl = `${rawSuccess}${rawSuccess.includes('?') ? '&' : '?'}session_id={CHECKOUT_SESSION_ID}`;
+
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       allow_promotion_codes: true,
+      payment_method_types: ['card'],
       line_items: lineItems,
-      success_url: toAbsolute(successPath),
+      success_url: successUrl,
       cancel_url: toAbsolute(cancelPath),
       metadata,
     });
