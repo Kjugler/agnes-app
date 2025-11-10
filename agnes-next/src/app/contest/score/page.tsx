@@ -1,8 +1,10 @@
 'use client';
 
+import '@/styles/score.css';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { confettiCelebrate, confettiSprinkle } from '@/lib/confetti';
+import { useScore } from '@/hooks/useScore';
 
 function clamp(min: number, v: number, max: number) {
   return Math.max(min, Math.min(max, v));
@@ -37,7 +39,7 @@ export default function ScorePage() {
   }, []);
   useEffect(() => setMist(mistTarget), [mistTarget]);
   useEffect(() => {
-    const spot = hovered ? Math.max(0.18, mistTarget - 0.08) : mistTarget;
+    const spot = hovered ? 0.05 : mistTarget;
     const id = setTimeout(() => setMist(spot), 150);
     return () => clearTimeout(id);
   }, [hovered, mistTarget]);
@@ -606,38 +608,24 @@ export default function ScorePage() {
   };
 
   // totals and progress
-  const total = Number(data?.totalPoints || 0);
-  
-  // Rank tiers: 0, 500, 1000, 2000, 5000
-  const RANKS = [0, 500, 1000, 2000, 5000];
-  const rankInfo = useMemo(() => {
-    let current = RANKS[0];
-    let next = RANKS[1];
-    
-    for (let i = 0; i < RANKS.length - 1; i++) {
-      if (total >= RANKS[i] && total < RANKS[i + 1]) {
-        current = RANKS[i];
-        next = RANKS[i + 1];
-        break;
-      }
-    }
-    
-    // If at max tier or above
-    if (total >= RANKS[RANKS.length - 1]) {
-      current = RANKS[RANKS.length - 1];
-      next = RANKS[RANKS.length - 1];
-    }
-    
-    const pct = next > current 
-      ? Math.min(100, Math.max(0, ((total - current) / (next - current)) * 100))
-      : 100;
-    
-    return { current, next, pct };
-  }, [total]);
-  
-  const rabbitPct = typeof window !== 'undefined'
-    ? Number(localStorage.getItem('rabbit_pct') ?? '0')
-    : 0;
+  const { totalPoints, rabbitTarget } = useScore();
+
+  const prevBand = Math.floor(totalPoints / 500) * 500;
+  const nextBand = prevBand + 500;
+  const rankPct = clamp(0, (totalPoints - prevBand) / 500, 1);
+ 
+  const target = rabbitTarget ?? totalPoints + 500;
+  const rabbitPct = clamp(0, totalPoints / target, 1);
+
+  const rankInfo = useMemo(() => ({
+    current: prevBand,
+    next: nextBand,
+    pct: rankPct * 100,
+  }), [prevBand, nextBand, rankPct]);
+
+  const topFog = Math.min(mist, 0.85);
+  const midFog = Math.max(mist - 0.35, 0);
+  const wrapClassName = hovered ? 'score-wrap is-hovered' : 'score-wrap';
 
   // Button component
   const ActionButton = ({
@@ -726,122 +714,46 @@ export default function ScorePage() {
   };
 
   return (
-    <main ref={rootRef} style={{ position: 'relative', minHeight: '100vh' }}>
-      {/* confetti layer overlay */}
-      <div
-        id="confetti-layer"
-        style={{
-          position: 'fixed',
-          inset: 0,
-          pointerEvents: 'none',
-          zIndex: 30,
-        }}
-      />
+    <div ref={rootRef} className={wrapClassName}>
+      <div id="confetti-layer" className="score-confetti" />
 
-      {/* dreamy backdrop */}
-      <div style={{ position: 'fixed', inset: 0, zIndex: -10 }}>
+      <section className="score-stage">
         <div
+          className="ship-mist"
           style={{
-            position: 'absolute',
-            inset: 0,
-            backgroundImage: "url('/images/score-bg.jpg')",
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
+            background: `linear-gradient(to bottom, rgba(255,255,255,${topFog}), rgba(255,255,255,${midFog}) 55%, rgba(255,255,255,0) 100%)`,
           }}
         />
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            backdropFilter: 'blur(4px)',
-            background: `linear-gradient(to bottom, rgba(255,255,255,${mist}), rgba(255,255,255,${
-              mist * 0.7
-            }))`,
-            transition: 'opacity .3s ease',
-          }}
-        />
-      </div>
 
-      {/* SUCCESS BANNERS (absolute, top, no layout shift) */}
-      {!dismiss && (sid || shared) && (
-        <div
-          style={{
-            position: 'absolute',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            top: 16,
-            zIndex: 40,
-            width: 'min(92vw, 1100px)',
-          }}
-        >
-          <div
-            style={{
-              borderRadius: 12,
-              background: 'rgba(16,185,129,0.12)',
-              border: '1px solid rgba(16,185,129,0.35)',
-              color: '#065f46',
-              padding: '12px 16px',
-              display: 'flex',
-              justifyContent: 'space-between',
-              gap: 12,
-            }}
-          >
-             <div style={{ fontWeight: 700 }}>
-              {sid
-                ? 'Great job purchasing the book. +500 pts! Now read it and play trivia to earn even more.'
-                : shared === 'x'
-                ? "Thanks for sharing on X! +100 if you hadn't already today."
-                : shared === 'ig'
-                ? "Thanks for sharing on Instagram! +100 if you hadn't already today."
-                : shared === 'fb'
-                ? "Thanks for sharing on Facebook! +100 if you hadn't already today."
-                : shared === 'truth'
-                ? "Thanks for sharing on Truth Social! +100 if you hadn't already today."
-                : shared === 'tt'
-                ? "Thanks for sharing on TikTok! +100 if you hadn't already today."
-                : 'Nice one—+100 pts! You can earn +100 again tomorrow by sharing again.'}
+        {!dismiss && (sid || shared) && (
+          <div className="score-banner">
+            <div className="score-banner-inner">
+              <div className="score-banner-text">
+                {sid
+                  ? 'Great job purchasing the book. +500 pts! Now read it and play trivia to earn even more.'
+                  : shared === 'x'
+                  ? "Thanks for sharing on X! +100 if you hadn't already today."
+                  : shared === 'ig'
+                  ? "Thanks for sharing on Instagram! +100 if you hadn't already today."
+                  : shared === 'fb'
+                  ? "Thanks for sharing on Facebook! +100 if you hadn't already today."
+                  : shared === 'truth'
+                  ? "Thanks for sharing on Truth Social! +100 if you hadn't already today."
+                  : shared === 'tt'
+                  ? "Thanks for sharing on TikTok! +100 if you hadn't already today."
+                  : 'Nice one—+100 pts! You can earn +100 again tomorrow by sharing again.'}
+              </div>
+              <button onClick={() => setDismiss(true)} aria-label="Dismiss" className="score-banner-dismiss">
+                ✕
+              </button>
             </div>
-            <button
-              onClick={() => setDismiss(true)}
-              aria-label="Dismiss"
-              style={{
-                border: 'none',
-                background: 'transparent',
-                cursor: 'pointer',
-                fontWeight: 700,
-              }}
-            >
-              ✕
-            </button>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* CAPTION STAGE (centered, top third - where roller coaster/water slides are) */}
-      <div
-        style={{
-          pointerEvents: 'none',
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          top: '8vh',  // Positioned in top third to show upper deck
-          display: 'flex',
-          justifyContent: 'center',
-          zIndex: 40,
-        }}
-      >
-        <div style={{ 
-          textAlign: 'center', 
-          padding: '0 24px',
-          maxWidth: '960px',
-        }}>
+        <div className="caption-wrap">
           <div
+            className="caption-text"
             style={{
-              fontSize: 'clamp(36px, 8vw, 64px)',
-              fontWeight: 900,
-              letterSpacing: '-0.02em',
-              color: 'rgba(0,0,0,0.85)',
-              textShadow: '0 2px 8px rgba(0,0,0,0.1)',
               opacity: stageVisible ? 1 : 0,
               transform: stageVisible
                 ? 'translateY(0)'
@@ -856,211 +768,119 @@ export default function ScorePage() {
             {stageText}
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* BOTTOM THIRD: Button Grid + Progress Bars (positioned in bottom third) */}
-      <div style={{
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        minHeight: '33vh',  // Bottom third of viewport
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'flex-start',  // Start from top of bottom section
-        paddingTop: '40px',
-        paddingBottom: '40px',
-      }}>
-        {/* Compact Points Pill */}
-        <div style={{
-          maxWidth: '1152px',
-          margin: '0 auto',
-          width: '100%',
-          padding: '0 24px',
-          marginBottom: '16px',
-          display: 'flex',
-          justifyContent: 'flex-end',
-          zIndex: 20,
-        }}>
-          <div style={{
-            borderRadius: 999,
-            background: 'rgba(0,0,0,0.8)',
-            color: '#fff',
-            padding: '8px 16px',
-            fontSize: 'clamp(14px, 2vw, 16px)',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-          }}>
-            Total Points:{' '}
-            <span style={{ fontWeight: 700, fontSize: 'clamp(18px, 2.5vw, 20px)' }}>
-              {total}
-            </span>
-          </div>
+      <section className="buttons-grid">
+        <div className="points-pill">
+          Total Points{' '}
+          <span>{totalPoints}</span>
         </div>
+        <div className="buttons-grid-inner">
+          <ActionButton
+            label="Buy the Book"
+            sub="500 pts"
+            href="/buy"
+            hoverKey="buy"
+            showTick={!!data?.earned?.purchase_book}
+            colorBase="#059669"
+            colorHover="#047857"
+          />
+          <ActionButton
+            label="Share to X"
+            sub="100 pts"
+            href="#"
+            hoverKey="x"
+            onClick={(e: any) => handleShareClick('x', e)}
+            colorBase="#000000"
+            colorHover="#262626"
+          />
+          <ActionButton
+            label="Share to Instagram"
+            sub="100 pts"
+            href="/share/ig?source=score"
+            hoverKey="ig"
+            onClick={(e: any) => handleShareClick('ig', e)}
+            colorBase="#c026d3"
+            colorHover="#a21caf"
+          />
+          <ActionButton
+            label="Share to Facebook"
+            sub="100 pts"
+            href="#"
+            hoverKey="fb"
+            onClick={(e: any) => handleShareClick('fb', e)}
+            colorBase="#1877f2"
+            colorHover="#1565c0"
+          />
+          <ActionButton
+            label="Share to Truth"
+            sub="100 pts"
+            href="#"
+            hoverKey="truth"
+            onClick={(e: any) => handleShareClick('truth', e)}
+            colorBase="#6366f1"
+            colorHover="#4f46e5"
+          />
+          <ActionButton
+            label="Join the Contest"
+            sub="250 pts"
+            href="/contest"
+            hoverKey="contest"
+            colorBase="#4f46e5"
+            colorHover="#4338ca"
+          />
+          <ActionButton
+            label="Refer a Friend"
+            sub="$2 each"
+            href="/contest/referral"
+            hoverKey="refer"
+            colorBase="#ea580c"
+            colorHover="#c2410c"
+          />
+          <ActionButton
+            label="Weekly Digest Opt‑in"
+            sub="50 pts"
+            href="/subscribe"
+            hoverKey="subscribe"
+            colorBase="#e11d48"
+            colorHover="#be123c"
+          />
+          <ActionButton
+            label="Share to TikTok"
+            sub="100 pts"
+            href="#"
+            hoverKey="tt"
+            onClick={(e: any) => handleShareClick('tiktok', e)}
+            colorBase="#1a1a1a"
+            colorHover="#2d2d2d"
+          />
+        </div>
+      </section>
 
-        {/* Button Grid - positioned in bottom third */}
-        <div style={{
-          maxWidth: '1152px',
-          margin: '0 auto',
-          width: '100%',
-          padding: '0 24px',
-          marginBottom: '32px',  // Space before progress bars
-        }}>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            columnGap: '32px',
-            rowGap: '48px',
-          }}>
-            <ActionButton
-              label="Buy the Book"
-              sub="500 pts"
-              href="/buy"
-              hoverKey="buy"
-              showTick={!!data?.earned?.purchase_book}
-              colorBase="#059669"
-              colorHover="#047857"
-            />
-            <ActionButton
-              label="Share to X"
-              sub="100 pts"
-              href="#"
-              hoverKey="x"
-              onClick={(e: any) => handleShareClick('x', e)}
-              colorBase="#000000"
-              colorHover="#262626"
-            />
-            <ActionButton
-              label="Share to Instagram"
-              sub="100 pts"
-              href="/share/ig?source=score"
-              hoverKey="ig"
-              onClick={(e: any) => handleShareClick('ig', e)}
-              colorBase="#c026d3"
-              colorHover="#a21caf"
-            />
-            <ActionButton
-              label="Share to Facebook"
-              sub="100 pts"
-              href="#"
-              hoverKey="fb"
-              onClick={(e: any) => handleShareClick('fb', e)}
-              colorBase="#1877f2"
-              colorHover="#1565c0"
-            />
-            <ActionButton
-              label="Share to Truth"
-              sub="100 pts"
-              href="#"
-              hoverKey="truth"
-              onClick={(e: any) => handleShareClick('truth', e)}
-              colorBase="#6366f1"
-              colorHover="#4f46e5"
-            />
-            <ActionButton
-              label="Join the Contest"
-              sub="250 pts"
-              href="/contest"
-              hoverKey="contest"
-              colorBase="#4f46e5"
-              colorHover="#4338ca"
-            />
-            <ActionButton
-              label="Refer a Friend"
-              sub="$2 each"
-              href="/contest/referral"
-              hoverKey="refer"
-              colorBase="#ea580c"
-              colorHover="#c2410c"
-            />
-            <ActionButton
-              label="Weekly Digest Opt‑in"
-              sub="50 pts"
-              href="/subscribe"
-              hoverKey="subscribe"
-              colorBase="#e11d48"
-              colorHover="#be123c"
-            />
-            <ActionButton
-              label="Share to TikTok"
-              sub="100 pts"
-              href="#"
-              hoverKey="tt"
-              onClick={(e: any) => handleShareClick('tiktok', e)}
-              colorBase="#1a1a1a"
-              colorHover="#2d2d2d"
-            />
+      <aside className="score-sidebar">
+        <div className="meter" data-key="rank">
+          <div className="label">Rank</div>
+          <div className="track">
+            <div className="fill" style={{ height: `${Math.round(rankPct * 100)}%` }} />
           </div>
+          <div className="value">{prevBand} → {nextBand}</div>
         </div>
-
-        {/* Progress Bars (slim, no cards) - at very bottom */}
-        <div style={{
-          maxWidth: '1152px',
-          margin: '0 auto',
-          width: '100%',
-          padding: '0 24px',
-          marginBottom: '20px',
-        }}>
-          <div style={{ marginBottom: '16px' }}>
-            <div style={{
-              fontSize: 16,
-              fontWeight: 600,
-              color: 'rgba(0,0,0,0.7)',
-              marginBottom: '4px',
-            }}>
-              Progress to next rank ({rankInfo.current} → {rankInfo.next})
-            </div>
-            <div style={{
-              height: 12,
-              borderRadius: 999,
-              background: '#e5e7eb',
-              overflow: 'hidden',
-            }}>
-              <div
-                style={{
-                  height: '100%',
-                  borderRadius: 999,
-                  background: '#22c55e',
-                  width: `${rankInfo.pct}%`,
-                  transition: 'width 0.3s ease',
-                }}
-              />
-            </div>
+        <div
+          className="meter"
+          data-key="rabbit"
+          onMouseEnter={() => onButtonEnter('rabbit')}
+          onMouseLeave={onButtonLeave}
+          onFocus={() => onButtonEnter('rabbit')}
+          onBlur={onButtonLeave}
+          tabIndex={0}
+        >
+          <div className="label">Rabbit</div>
+          <div className="track">
+            <div className="fill" style={{ height: `${Math.round(rabbitPct * 100)}%` }} />
           </div>
-          <div
-            onMouseEnter={() => onButtonEnter('rabbit')}
-            onMouseLeave={onButtonLeave}
-            onFocus={() => onButtonEnter('rabbit')}
-            onBlur={onButtonLeave}
-            tabIndex={0}
-            style={{ cursor: 'pointer', marginBottom: '16px' }}
-          >
-            <div style={{
-              fontSize: 16,
-              fontWeight: 600,
-              color: 'rgba(0,0,0,0.7)',
-              marginBottom: '4px',
-            }}>
-              Rabbit challenge
-            </div>
-            <div style={{
-              height: 12,
-              borderRadius: 999,
-              background: '#e5e7eb',
-              overflow: 'hidden',
-            }}>
-              <div
-                style={{
-                  height: '100%',
-                  borderRadius: 999,
-                  background: '#22c55e',
-                  width: `${rabbitPct}%`,
-                  transition: 'width 0.3s ease',
-                }}
-              />
-            </div>
-          </div>
+          <div className="value">{Math.round(rabbitPct * 100)}%</div>
         </div>
-      </div>
-    </main>
+      </aside>
+    </div>
   );
 }
