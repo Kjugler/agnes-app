@@ -21,6 +21,10 @@ model User {
   createdAt           DateTime  @default(now())
   points              Int       @default(0)
   earnedPurchaseBook  Boolean   @default(false)
+  rabbitStep          Int       @default(500)
+  rabbitTarget        Int?
+  rabbitCatches       Int       @default(0)
+  lastRabbitBonusIntent String?
   events              Event[]
   badges              UserBadge[]
   posts               Post[]
@@ -54,6 +58,7 @@ enum LedgerType {
   CONTEST_JOIN
   SUBSCRIBE_DIGEST
   TRIVIA
+  RABBIT_BONUS
 }
 
 model Event {

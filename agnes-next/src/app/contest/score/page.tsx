@@ -288,6 +288,7 @@ export default function ScorePage() {
               referrals: j.referrals?.friends_purchased_count || 0,
               earnings_week_usd: j.referrals?.earnings_week_usd || 0,
             });
+            refreshScore();
           } catch (err) {
             console.error('[share][ig] award failed', err);
           }
@@ -357,6 +358,7 @@ export default function ScorePage() {
               referrals: j.referrals?.friends_purchased_count || 0,
               earnings_week_usd: j.referrals?.earnings_week_usd || 0,
             });
+            refreshScore();
           } catch (err) {
             console.error('[share][tiktok] award failed', err);
           }
@@ -440,6 +442,7 @@ export default function ScorePage() {
             referrals: j.referrals?.friends_purchased_count || 0,
             earnings_week_usd: j.referrals?.earnings_week_usd || 0,
           });
+          refreshScore();
         } catch (err) {
           console.error('[share][fb] award failed', err);
         }
@@ -516,6 +519,7 @@ export default function ScorePage() {
             referrals: j.referrals?.friends_purchased_count || 0,
             earnings_week_usd: j.referrals?.earnings_week_usd || 0,
           });
+          refreshScore();
         } catch (err) {
           console.error('[share][truth] award failed', err);
         }
@@ -592,6 +596,7 @@ export default function ScorePage() {
             referrals: j.referrals?.friends_purchased_count || 0,
             earnings_week_usd: j.referrals?.earnings_week_usd || 0,
           });
+          refreshScore();
         } catch (err) {
           console.error('[share][x] award failed', err);
         }
@@ -608,7 +613,7 @@ export default function ScorePage() {
   };
 
   // totals and progress
-  const { totalPoints, rabbitTarget } = useScore();
+  const { totalPoints, rabbitTarget, refresh: refreshScore } = useScore();
 
   const prevBand = Math.floor(totalPoints / 500) * 500;
   const nextBand = prevBand + 500;
