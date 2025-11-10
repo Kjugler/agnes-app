@@ -10,6 +10,8 @@ export default function AscensionPage() {
   const [reduced, setReduced] = useState(false);
   const [doorsVisible, setDoorsVisible] = useState(false);
   const [audioPlayed, setAudioPlayed] = useState(false);
+  const [joinModal, setJoinModal] = useState<{ name: string; code: string } | null>(null);
+  const [copied, setCopied] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const flashRef = useRef<HTMLDivElement | null>(null);
   const [awardingPurchase, setAwardingPurchase] = useState(false);
@@ -97,6 +99,93 @@ export default function AscensionPage() {
       }
     })();
   }, [qp, awardingPurchase, router]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (qp.get('joined') !== '1') return;
+
+    try {
+      const stored = window.localStorage.getItem('associate');
+      if (stored) {
+        const parsed = JSON.parse(stored) as { name?: string; code?: string };
+        if (parsed?.code) {
+          setJoinModal({
+            name: parsed.name || 'Explorer',
+            code: parsed.code,
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('ascension load associate failed', err);
+    }
+  }, [qp]);
+
+  const closeJoinModal = () => {
+    setJoinModal(null);
+    setCopied(false);
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('joined');
+      router.replace(`${url.pathname}${url.search}${url.hash}`);
+    }
+  };
+
+  const copyCode = async () => {
+    if (!joinModal) return;
+    try {
+      await navigator.clipboard.writeText(joinModal.code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch (err) {
+      console.warn('copy failed', err);
+    }
+  };
+
+  const downloadCard = () => {
+    if (typeof window === 'undefined' || !joinModal) return;
+    const canvas = document.createElement('canvas');
+    const width = 1200;
+    const height = 630;
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, width, height);
+
+    const gradient = ctx.createLinearGradient(0, 0, width, height);
+    gradient.addColorStop(0, '#312e81');
+    gradient.addColorStop(1, '#0ea5e9');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(40, 40, width - 80, height - 80);
+
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.fillRect(60, 200, width - 120, 300);
+
+    ctx.font = 'bold 72px "Segoe UI", sans-serif';
+    ctx.fillStyle = '#e0f2fe';
+    ctx.fillText('Associate Access', 80, 160);
+
+    ctx.font = '48px "Segoe UI", sans-serif';
+    ctx.fillStyle = '#f8fafc';
+    const nameText = joinModal.name.toUpperCase();
+    ctx.fillText(nameText, 110, 320);
+
+    ctx.font = '40px "Segoe UI", sans-serif';
+    ctx.fillStyle = '#facc15';
+    ctx.fillText(`CODE: ${joinModal.code}`, 110, 400);
+
+    ctx.font = '28px "Segoe UI", sans-serif';
+    ctx.fillStyle = '#bfdbfe';
+    ctx.fillText('agnesprotocol.com/contest', 110, 470);
+
+    const url = canvas.toDataURL('image/png');
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `agnes-code-${joinModal.code}.png`;
+    link.click();
+  };
 
   // Play audio function
   const playAudio = async () => {
@@ -254,6 +343,30 @@ export default function AscensionPage() {
         onLoadedData={() => console.log('🎵 Audio loaded')}
         onPlay={() => console.log('🎵 Audio playing!')}
       />
+      {joinModal && (
+        <div className={styles.joinOverlay}>
+          <div className={styles.joinCard}>
+            <h2>Welcome aboard!</h2>
+            <p>
+              Your code: <strong>{joinModal.code}</strong>
+            </p>
+            <p style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>
+              Share for 15% off • Earn $2 for every purchase
+            </p>
+            <div className={styles.joinActions}>
+              <button type="button" onClick={copyCode}>
+                {copied ? 'Copied!' : 'Copy Code'}
+              </button>
+              <button type="button" onClick={downloadCard}>
+                Download Card
+              </button>
+            </div>
+            <button type="button" className={styles.joinClose} onClick={closeJoinModal}>
+              Continue
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

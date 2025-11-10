@@ -30,6 +30,8 @@ function mapAction(a: string) {
       return { type: 'CONTEST_JOIN' as const, points: 250 };
     case 'subscribe_digest':
       return { type: 'SUBSCRIBE_DIGEST' as const, points: 50 };
+    case 'signup':
+      return { type: 'SIGNUP_BONUS' as const, points: 100 };
     default:
       return null;
   }
@@ -173,7 +175,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const action = body?.action as string | undefined;
+    const action = (body?.action ?? body?.kind) as string | undefined;
 
     if (!action) {
       return NextResponse.json(
@@ -207,13 +209,16 @@ export async function POST(req: NextRequest) {
       (map.type === 'SHARE_X' ||
         map.type === 'SHARE_IG' ||
         map.type === 'SHARE_FB' ||
-        map.type === 'SHARE_TRUTH')
+        map.type === 'SHARE_TRUTH' ||
+        map.type === 'SIGNUP_BONUS')
     ) {
       const exists = await prisma.ledger.findFirst({
         where: {
           userId: user.id,
           type: map.type,
-          createdAt: { gte: startOfToday() },
+          ...(map.type === 'SIGNUP_BONUS'
+            ? {}
+            : { createdAt: { gte: startOfToday() } }),
         },
         select: { id: true },
       });

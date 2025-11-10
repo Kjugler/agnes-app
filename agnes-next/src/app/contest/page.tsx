@@ -2,15 +2,17 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import CheckoutWiring from './CheckoutWiring'; // ← invisible helper that wires the Buy button
 import CurrentScoreButton from './CurrentScoreButton';
 
 export default function ContestPage() {
   const qp = useSearchParams();
+  const router = useRouter();
   const [current, setCurrent] = useState(0);
   const [tapsyText, setTapsyText] = useState('Tap here to read a sample chapter!');
   const [showScoreButton, setShowScoreButton] = useState(false);
+  const [hasAssociate, setHasAssociate] = useState(false);
 
   // Detect “just did something that earns points” signals:
   // - return from Stripe: ?session_id=...
@@ -74,6 +76,31 @@ export default function ContestPage() {
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, buttons]);
+
+  useEffect(() => {
+    const syncAssociate = () => {
+      if (typeof window === 'undefined') return;
+      try {
+        const stored = window.localStorage.getItem('associate');
+        setHasAssociate(Boolean(stored));
+      } catch {
+        setHasAssociate(false);
+      }
+    };
+    syncAssociate();
+    window.addEventListener('storage', syncAssociate);
+    return () => {
+      window.removeEventListener('storage', syncAssociate);
+    };
+  }, []);
+
+  const handleContestEntry = (href: string) => {
+    if (hasAssociate) {
+      router.push('/contest/score');
+    } else {
+      router.push(href);
+    }
+  };
 
   return (
     <div
@@ -140,7 +167,25 @@ export default function ContestPage() {
                 </div>
               </>
             )}
-            {btn.type === 'button' ? (
+            {btn.id === 'contestBtn' ? (
+              <button
+                type="button"
+                onClick={() => handleContestEntry(btn.href)}
+                style={{
+                  padding: '1rem',
+                  backgroundColor: index === current ? 'green' : '#111',
+                  border: '2px solid green',
+                  color: index === current ? 'black' : 'white',
+                  fontSize: '1rem',
+                  cursor: 'pointer',
+                  animation: index === current ? 'pulse 1s infinite' : 'none',
+                  transition: 'all 0.3s',
+                  minWidth: '200px',
+                }}
+              >
+                {hasAssociate ? 'See Your Progress' : btn.label}
+              </button>
+            ) : btn.type === 'button' ? (
               <button
                 data-checkout="contest"
                 style={{
