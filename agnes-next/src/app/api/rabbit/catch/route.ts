@@ -3,144 +3,116 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
+import { calcInitialRabbitTarget, calcNextRankThreshold, ensureRabbitState, findRabbitUser } from '@/lib/rabbit';
 
-const DEFAULT_STEP = 500;
 const BONUS_POINTS = 500;
 
-function normalize(value?: string | null) {
-  return (value ?? '').trim().toLowerCase();
-}
-
-const selectUserFields = {
-  id: true,
-  email: true,
-  code: true,
-  referralCode: true,
-  points: true,
-  rabbitTarget: true,
-  rabbitStep: true,
-  rabbitCatches: true,
-};
-
-type UserShape = Awaited<ReturnType<typeof findUser>>;
-
 type Body = {
-  email?: string | null;
-  code?: string | null;
+  rabbitSeqClient?: number;
 };
-
-async function findUser(email?: string | null, code?: string | null) {
-  const normalizedEmail = normalize(email);
-  const normalizedCode = normalize(code);
-
-  if (!normalizedEmail && !normalizedCode) return null;
-
-  if (normalizedEmail) {
-    const user = await prisma.user.findUnique({
-      where: { email: normalizedEmail },
-      select: selectUserFields,
-    });
-    if (user) return user;
-  }
-
-  if (normalizedCode) {
-    return prisma.user.findFirst({
-      where: {
-        OR: [{ code: normalizedCode }, { referralCode: normalizedCode }],
-      },
-      select: selectUserFields,
-    });
-  }
-
-  return null;
-}
-
-function ensureStep(step?: number | null) {
-  const value = step ?? DEFAULT_STEP;
-  return Math.max(DEFAULT_STEP, Math.min(value, 2500));
-}
-
-function nextStepAfterCatch(catches: number) {
-  return Math.min(DEFAULT_STEP + 100 * catches, 2500);
-}
-
-async function ensureRabbit(user: NonNullable<UserShape>) {
-  const step = ensureStep(user.rabbitStep);
-
-  if (!user.rabbitTarget) {
-    const target = user.points + step;
-    const updated = await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        rabbitStep: step,
-        rabbitTarget: target,
-      },
-      select: { points: true, rabbitTarget: true, rabbitStep: true, rabbitCatches: true },
-    });
-    return updated;
-  }
-
-  if (user.points >= user.rabbitTarget) {
-    const newCatches = (user.rabbitCatches ?? 0) + 1;
-    const newStep = nextStepAfterCatch(newCatches);
-    const newTotal = user.points + BONUS_POINTS;
-    const newTarget = newTotal + newStep;
-
-    const [, updated] = await prisma.$transaction([
-      prisma.ledger.create({
-        data: {
-          userId: user.id,
-          type: 'RABBIT_BONUS',
-          points: BONUS_POINTS,
-          note: `Rabbit catch #${newCatches}`,
-        },
-      }),
-      prisma.user.update({
-        where: { id: user.id },
-        data: {
-          points: { increment: BONUS_POINTS },
-          rabbitCatches: { increment: 1 },
-          rabbitStep: newStep,
-          rabbitTarget: newTarget,
-        },
-        select: { points: true, rabbitTarget: true, rabbitStep: true, rabbitCatches: true },
-      }),
-    ]);
-
-    return updated;
-  }
-
-  return {
-    points: user.points,
-    rabbitTarget: user.rabbitTarget,
-    rabbitStep: user.rabbitStep ?? step,
-    rabbitCatches: user.rabbitCatches,
-  };
-}
 
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as Body;
-  const url = new URL(req.url);
+  const rabbitSeqClient = typeof body.rabbitSeqClient === 'number' ? body.rabbitSeqClient : undefined;
 
-  const searchEmail = body.email ?? url.searchParams.get('email') ?? url.searchParams.get('mockEmail');
-  const searchCode = body.code ?? url.searchParams.get('code') ?? url.searchParams.get('ref');
+  const url = new URL(req.url);
+  const searchEmail = url.searchParams.get('email') ?? url.searchParams.get('mockEmail');
+  const searchCode = url.searchParams.get('code') ?? url.searchParams.get('ref');
 
   const cookieStore = cookies();
   const cookieEmail = cookieStore.get('mockEmail')?.value ?? undefined;
   const cookieCode = cookieStore.get('ref')?.value ?? undefined;
 
-  const user = await findUser(searchEmail ?? cookieEmail, searchCode ?? cookieCode);
+  const user = await findRabbitUser(searchEmail ?? cookieEmail, searchCode ?? cookieCode);
 
   if (!user) {
-    return NextResponse.json({ ok: false, error: 'user_not_found' }, { status: 404 });
+    return NextResponse.json({ ok: false, caught: false, error: 'user_not_found' }, { status: 404 });
   }
 
-  const updated = await ensureRabbit(user);
+  const { user: ensured } = await ensureRabbitState(user);
+
+  if (typeof rabbitSeqClient !== 'number' || rabbitSeqClient !== ensured.rabbitSeq) {
+    return NextResponse.json({ ok: true, caught: false, stale: true });
+  }
+
+  if (!ensured.rabbitTarget || ensured.points < ensured.rabbitTarget) {
+    return NextResponse.json({ ok: true, caught: false });
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const fresh = await tx.user.findUnique({
+      where: { id: ensured.id },
+      select: {
+        id: true,
+        points: true,
+        rabbitTarget: true,
+        rabbitSeq: true,
+      },
+    });
+
+    if (!fresh) {
+      return { caught: false, error: 'user_not_found' } as const;
+    }
+
+    if (!fresh.rabbitTarget || fresh.points < fresh.rabbitTarget) {
+      return { caught: false } as const;
+    }
+
+    if (fresh.rabbitSeq !== rabbitSeqClient) {
+      return { caught: false, stale: true } as const;
+    }
+
+    const nextPoints = fresh.points + BONUS_POINTS;
+    const nextRankThreshold = calcNextRankThreshold(nextPoints);
+    const nextTarget = calcInitialRabbitTarget(nextPoints);
+
+    await tx.ledger.create({
+      data: {
+        userId: fresh.id,
+        type: 'RABBIT_BONUS',
+        points: BONUS_POINTS,
+        note: `rabbit seq ${fresh.rabbitSeq}`,
+      },
+    });
+
+    const updated = await tx.user.update({
+      where: { id: fresh.id },
+      data: {
+        points: nextPoints,
+        rabbitTarget: nextTarget,
+        rabbitSeq: { increment: 1 },
+        lastRabbitCatchAt: new Date(),
+      },
+      select: {
+        points: true,
+        rabbitTarget: true,
+        rabbitSeq: true,
+      },
+    });
+
+    return {
+      caught: true as const,
+      points: updated.points,
+      rabbitTarget: updated.rabbitTarget,
+      rabbitSeq: updated.rabbitSeq,
+      nextRankThreshold,
+    };
+  });
+
+  if (!('caught' in result)) {
+    return NextResponse.json({ ok: false, caught: false, error: 'unknown' }, { status: 500 });
+  }
+
+  if (!result.caught) {
+    return NextResponse.json({ ok: true, caught: false, stale: result.stale ?? false });
+  }
+
   return NextResponse.json({
     ok: true,
-    totalPoints: updated.points,
-    rabbitTarget: updated.rabbitTarget,
-    rabbitStep: updated.rabbitStep,
-    rabbitCatches: updated.rabbitCatches,
+    caught: true,
+    points: result.points,
+    rabbitTarget: result.rabbitTarget,
+    rabbitSeq: result.rabbitSeq,
+    nextRankThreshold: result.nextRankThreshold,
   });
 }

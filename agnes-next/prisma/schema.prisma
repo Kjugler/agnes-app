@@ -25,6 +25,8 @@ model User {
   rabbitTarget        Int?
   rabbitCatches       Int       @default(0)
   lastRabbitBonusIntent String?
+  rabbitSeq           Int       @default(1)
+  lastRabbitCatchAt   DateTime?
   phone               String?
   handleX             String?
   handleInstagram     String?
