@@ -1,10 +1,13 @@
-// Ensure Node runtime (Prisma needs Node)
-export const runtime = 'nodejs';
-
 import { NextRequest, NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
 import { upsertContact, addTags, sendEvent } from '@/lib/mailchimp';
-import { prisma } from '@/lib/db'; // shared Prisma client
+import { prisma } from '@/lib/db';
+
+export const runtime = 'nodejs';
+
+const trackerDisabled =
+  process.env.NODE_ENV !== 'production' &&
+  process.env.TRACKER_ENABLED !== 'true';
 
 // --- CORS allowlist (Next 3002, Vite 5181)
 const ALLOW_ORIGINS = new Set(['http://localhost:3002', 'http://localhost:5181']);
@@ -102,14 +105,8 @@ async function recordPurchase(email?: string, source?: string | null, meta?: any
 
 // ---- main ----------------------------------------------------------------
 
-if (process.env.NODE_ENV !== 'production' && process.env.TRACKER_ENABLED !== 'true') {
-  export async function POST() {
-    return NextResponse.json({ ok: true });
-  }
-}
-
 export async function POST(req: NextRequest) {
-  if (process.env.NODE_ENV !== 'production' && process.env.TRACKER_ENABLED !== 'true') {
+  if (trackerDisabled) {
     return NextResponse.json({ ok: true });
   }
 
