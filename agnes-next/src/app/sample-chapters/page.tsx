@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useSafeBack } from '@/lib/nav';
+import { readContestEmail } from '@/lib/identity';
 
 export default function SampleChaptersPage() {
   const [current, setCurrent] = useState(0);
@@ -48,12 +49,20 @@ export default function SampleChaptersPage() {
 
   const handleBuy = async () => {
     try {
+      const contestEmail = readContestEmail();
+      if (!contestEmail) {
+        throw new Error('Please start the contest flow so we know who to credit.');
+      }
+
       const base = ((process.env.NEXT_PUBLIC_API_BASE || '') as string).replace(/\/$/, '') ||
         (typeof window !== 'undefined' ? window.location.origin : '');
 
       const response = await fetch(`${base}/api/create-checkout-session`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-Email': contestEmail,
+        },
         body: JSON.stringify({ source: 'sample-chapters' }),
       });
 
@@ -66,7 +75,7 @@ export default function SampleChaptersPage() {
       }
     } catch (err) {
       console.error(err);
-      alert('An error occurred. Please try again.');
+      alert((err as Error)?.message || 'An error occurred. Please try again.');
     }
   };
 

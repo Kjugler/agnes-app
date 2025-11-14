@@ -1,5 +1,7 @@
 'use client';
 
+import { readContestEmail } from '@/lib/identity';
+
 const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || '').replace(/\/$/, '');
 
 export default function BuyButton() {
@@ -9,13 +11,19 @@ export default function BuyButton() {
         throw new Error('Checkout unavailable: NEXT_PUBLIC_API_BASE is not configured.');
       }
 
+      const email = readContestEmail();
+      if (!email) {
+        throw new Error('Please enter the contest first so we know who to credit.');
+      }
+
       const res = await fetch(`${API_BASE}/api/create-checkout-session`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-Email': email,
+        },
         body: JSON.stringify({
           qty: 1,
-          successPath: '/contest/thank-you', // adjust if you prefer another return page
-          cancelPath: '/contest',
           metadata: { source: 'contest' },
         }),
       });

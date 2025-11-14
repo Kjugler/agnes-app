@@ -2,27 +2,21 @@ export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { cookies } from 'next/headers';
+import { ensureAssociateMinimal } from '@/lib/associate';
+import { normalizeEmail } from '@/lib/email';
 
 export async function GET(req: NextRequest) {
   try {
-    // Get email from query param (dev) or cookie (dev), or later from auth session (prod)
-    const { searchParams } = new URL(req.url);
-    const mockEmailParam = searchParams.get('mockEmail');
-    
-    const cookieStore = await cookies();
-    const mockEmailCookie = cookieStore.get('mockEmail')?.value;
+    const headerEmail = req.headers.get('x-user-email');
+    if (!headerEmail) {
+      return NextResponse.json({ error: 'missing_user_email' }, { status: 400 });
+    }
 
-    const email = mockEmailParam || mockEmailCookie;
+    const email = normalizeEmail(headerEmail);
 
-    console.log('[points/me] Request', { 
-      mockEmailParam, 
-      mockEmailCookie, 
-      emailUsed: email 
-    });
+    console.log('[points/me] Request', { emailUsed: email });
 
     if (!email) {
-      console.log('[points/me] No email provided, returning zeros');
       return NextResponse.json({
         total: 0,
         firstName: null,
@@ -35,8 +29,10 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    await ensureAssociateMinimal(email);
+
     const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
+      where: { email },
       include: {
         ledger: {
           orderBy: { createdAt: 'desc' },
@@ -46,14 +42,14 @@ export async function GET(req: NextRequest) {
     });
 
     console.log('[points/me] User lookup', { 
-      emailSearched: email.toLowerCase(), 
+      emailSearched: email, 
       found: !!user, 
       userId: user?.id,
       points: user?.points 
     });
 
     if (!user) {
-      console.log('[points/me] User not found, returning zeros');
+      console.log('[points/me] User not found after ensure, returning zeros');
       return NextResponse.json({
         total: 0,
         firstName: null,
@@ -97,15 +93,22 @@ export async function GET(req: NextRequest) {
       deltaUsd: Number(entry.usd),
     }));
 
+    // Determine if this is a first-time visitor (created within last hour)
+    // Users created more than 1 hour ago are considered returning visitors
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const createdNow = user.createdAt > oneHourAgo;
+
     console.log('[points/me] Returning data', {
       total: user.points,
       firstName: user.firstName || user.fname,
       earnedPurchaseBook: user.earnedPurchaseBook,
+      createdNow,
     });
 
     return NextResponse.json({
       total: user.points,
       firstName: user.firstName || user.fname || null,
+      createdNow,
       earned: {
         purchase_book: user.earnedPurchaseBook,
         share_x: false, // TODO: implement share tracking
@@ -124,4 +127,4 @@ export async function GET(req: NextRequest) {
       { status: 500 }
     );
   }
-}// ... rest of the code stays the same ...
+}

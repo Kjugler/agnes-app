@@ -7,18 +7,23 @@ type ScorePayload = {
   nextRankThreshold?: number | null;
 };
 
-export function useScore() {
+export function useScore(email?: string | null) {
   const [totalPoints, setTotalPoints] = useState(0);
   const [rabbitTarget, setRabbitTarget] = useState<number | null>(null);
   const [rabbitSeq, setRabbitSeq] = useState<number | null>(null);
   const [nextRankThreshold, setNextRankThreshold] = useState<number | null>(null);
   const isMounted = useRef(true);
+  const emailRef = useRef<string | null>(email ?? null);
 
   useEffect(() => {
     return () => {
       isMounted.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    emailRef.current = email ?? null;
+  }, [email]);
 
   const apply = useCallback((data: ScorePayload) => {
     if (!isMounted.current) return;
@@ -28,9 +33,16 @@ export function useScore() {
     setNextRankThreshold(data.nextRankThreshold ?? null);
   }, []);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (overrideEmail?: string | null) => {
+    const targetEmail = overrideEmail ?? emailRef.current;
+    if (!targetEmail) return;
     try {
-      const res = await fetch('/api/rabbit/state', { cache: 'no-store' });
+      const res = await fetch('/api/rabbit/state', {
+        cache: 'no-store',
+        headers: {
+          'X-User-Email': targetEmail,
+        },
+      });
       if (!res.ok) return;
       const data: ScorePayload = await res.json().catch(() => ({}));
       apply(data);
@@ -41,8 +53,17 @@ export function useScore() {
 
   useEffect(() => {
     isMounted.current = true;
-    load();
-  }, [load]);
+    if (emailRef.current) {
+      load(emailRef.current);
+    }
+  }, [load, email]);
 
-  return { totalPoints, rabbitTarget, rabbitSeq, nextRankThreshold, refresh: load, apply };
+  return {
+    totalPoints,
+    rabbitTarget,
+    rabbitSeq,
+    nextRankThreshold,
+    refresh: () => load() ?? Promise.resolve(),
+    apply,
+  };
 }

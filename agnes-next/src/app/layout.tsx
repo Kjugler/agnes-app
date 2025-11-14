@@ -19,7 +19,7 @@ export default function RootLayout({
         {/* Preload the cruise background to avoid any flash */}
         <link rel="preload" as="image" href="/images/score-bg.jpg" />
       </head>
-      <body>
+      <body suppressHydrationWarning={true}>
         {children}
         {/* Global, invisible, zero animation/layout impact */}
         <CheckoutWiring />

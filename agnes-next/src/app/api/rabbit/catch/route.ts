@@ -1,9 +1,10 @@
 'use server';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { calcInitialRabbitTarget, calcNextRankThreshold, ensureRabbitState, findRabbitUser } from '@/lib/rabbit';
+import { ensureAssociateMinimal } from '@/lib/associate';
+import { normalizeEmail } from '@/lib/email';
 
 const BONUS_POINTS = 500;
 
@@ -15,15 +16,14 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as Body;
   const rabbitSeqClient = typeof body.rabbitSeqClient === 'number' ? body.rabbitSeqClient : undefined;
 
-  const url = new URL(req.url);
-  const searchEmail = url.searchParams.get('email') ?? url.searchParams.get('mockEmail');
-  const searchCode = url.searchParams.get('code') ?? url.searchParams.get('ref');
+  const headerEmail = req.headers.get('x-user-email');
+  if (!headerEmail) {
+    return NextResponse.json({ ok: false, caught: false, error: 'missing_user_email' }, { status: 400 });
+  }
 
-  const cookieStore = cookies();
-  const cookieEmail = cookieStore.get('mockEmail')?.value ?? undefined;
-  const cookieCode = cookieStore.get('ref')?.value ?? undefined;
-
-  const user = await findRabbitUser(searchEmail ?? cookieEmail, searchCode ?? cookieCode);
+  const normalizedEmail = normalizeEmail(headerEmail);
+  const baseUser = await ensureAssociateMinimal(normalizedEmail);
+  const user = await findRabbitUser(normalizedEmail, baseUser.code);
 
   if (!user) {
     return NextResponse.json({ ok: false, caught: false, error: 'user_not_found' }, { status: 404 });
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
       return { caught: false } as const;
     }
 
-    if (fresh.rabbitSeq !== rabbitSeqClient) {
+    if (typeof rabbitSeqClient !== 'number' || fresh.rabbitSeq !== rabbitSeqClient) {
       return { caught: false, stale: true } as const;
     }
 
