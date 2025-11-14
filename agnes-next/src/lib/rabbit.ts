@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import { normalizeEmail } from '@/lib/email';
 
 export const RANK_STEP = 500;
 
@@ -11,10 +12,6 @@ export function calcInitialRabbitTarget(points: number) {
   const nextRank = calcNextRankThreshold(points);
   const base = points + 250;
   return Math.min(nextRank, base);
-}
-
-function normalize(value?: string | null) {
-  return (value ?? '').trim().toLowerCase();
 }
 
 const selectUserFields = {
@@ -38,7 +35,7 @@ export type RabbitUser = {
 };
 
 export async function findRabbitUser(email?: string | null, code?: string | null) {
-  const normalizedEmail = normalize(email);
+  const normalizedEmail = email ? normalizeEmail(email) : '';
   const normalizedCode = (code ?? '').trim();
 
   if (normalizedEmail) {

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { bootstrapContestEmail, readContestEmail } from '@/lib/identity';
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || '').replace(/\/$/, '');
 
@@ -9,6 +10,7 @@ function trackCheckoutStarted(source: string, path: string) {
   const payload = { type: 'CHECKOUT_STARTED', source, meta: { path } };
 
   try {
+    const email = readContestEmail();
     if (typeof navigator !== 'undefined' && 'sendBeacon' in navigator) {
       navigator.sendBeacon(
         '/api/track',
@@ -16,9 +18,11 @@ function trackCheckoutStarted(source: string, path: string) {
       );
     } else {
       // fire-and-forget; do NOT await
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (email) headers['X-User-Email'] = email;
       fetch('/api/track', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(payload),
         keepalive: true, // survives navigation
       }).catch(() => {});
@@ -30,10 +34,10 @@ function trackCheckoutStarted(source: string, path: string) {
 
 type StartOpts = {
   qty?: number;
+  source?: string; // goes into Stripe metadata.source
+  path?: string; // goes into track meta.path
   successPath?: string;
   cancelPath?: string;
-  source?: string; // goes into Stripe metadata.source
-  path?: string;   // goes into track meta.path
 };
 
 async function startCheckout(opts: StartOpts = {}) {
@@ -52,10 +56,18 @@ async function startCheckout(opts: StartOpts = {}) {
     throw new Error('Checkout unavailable: NEXT_PUBLIC_API_BASE is not configured.');
   }
 
+  const email = readContestEmail();
+  if (!email) {
+    throw new Error('Please enter the contest first so we know who to credit.');
+  }
+
   // 2) create Stripe session (blocking)
   const res = await fetch(`${API_BASE}/api/create-checkout-session`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'X-User-Email': email,
+    },
     body: JSON.stringify({
       qty,
       successPath,
@@ -74,6 +86,10 @@ async function startCheckout(opts: StartOpts = {}) {
 export default function CheckoutWiring() {
   // Prevent accidental double-clicks from spawning two sessions
   const busyRef = useRef(false);
+
+  useEffect(() => {
+    bootstrapContestEmail();
+  }, []);
 
   useEffect(() => {
     // Page-agnostic: wire ANY element with [data-checkout]
@@ -95,8 +111,6 @@ export default function CheckoutWiring() {
         // Per-button overrides via data-*
         const dataset = el.dataset || {};
         const qty = Number(dataset.qty || '1');
-        const successPath = dataset.success || '/contest/thank-you';
-        const cancelPath = dataset.cancel || '/contest';
         const source =
           dataset.source ||
           el.getAttribute('data-checkout') || // e.g. "contest"
@@ -105,7 +119,7 @@ export default function CheckoutWiring() {
           dataset.path ||
           (typeof window !== 'undefined' ? window.location.pathname : '/contest');
 
-        startCheckout({ qty, successPath, cancelPath, source, path })
+        startCheckout({ qty, source, path })
           .catch((err) => alert(err?.message || 'Could not start checkout.'))
           .finally(() => {
             // if we didn’t navigate (error), allow a retry

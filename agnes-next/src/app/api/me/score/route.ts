@@ -1,20 +1,20 @@
 'use server';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { RANK_STEP, ensureRabbitState, findRabbitUser } from '@/lib/rabbit';
+import { ensureAssociateMinimal } from '@/lib/associate';
+import { normalizeEmail } from '@/lib/email';
 
 export async function GET(req: NextRequest) {
-  const url = new URL(req.url);
-  const searchEmail = url.searchParams.get('email') ?? url.searchParams.get('mockEmail');
-  const searchCode = url.searchParams.get('code') ?? url.searchParams.get('ref');
+  const headerEmail = req.headers.get('x-user-email');
+  if (!headerEmail) {
+    return NextResponse.json({ error: 'missing_user_email' }, { status: 400 });
+  }
 
-  const cookieStore = cookies();
-  const cookieEmail = cookieStore.get('mockEmail')?.value ?? undefined;
-  const cookieCode = cookieStore.get('ref')?.value ?? undefined;
+  const normalizedEmail = normalizeEmail(headerEmail);
 
-  const user = await findRabbitUser(searchEmail ?? cookieEmail, searchCode ?? cookieCode);
-
+  const baseUser = await ensureAssociateMinimal(normalizedEmail);
+  const user = await findRabbitUser(normalizedEmail, baseUser.code);
   if (!user) {
     return NextResponse.json({ totalPoints: 0, rabbitTarget: null, rabbitSeq: 1, nextRankThreshold: RANK_STEP });
   }

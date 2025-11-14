@@ -21,7 +21,7 @@ const EmailModal = ({ isOpen, onClose }) => {
 
         // --- fire tracking event to Next (agnes-next) ---
         const NEXT_BASE =
-          (typeof import.meta !== 'undefined' && import.meta.env?.VITE_NEXT_BASE) ||
+          (typeof import.meta !== 'undefined' && import.meta.env?.VITE_NEXT_PUBLIC_SITE_URL) ||
           'http://localhost:3002';
 
         try {
@@ -41,8 +41,13 @@ const EmailModal = ({ isOpen, onClose }) => {
 
         // redirect to the Next app
         const NEXT_PATH = '/lightening';
+        const ref = new URLSearchParams(location.search).get('ref');
+        const query = new URLSearchParams();
+        if (email) query.set('mockEmail', email);
+        if (ref) query.set('ref', ref);
+        const queryString = query.toString();
         setTimeout(() => {
-          const url = `${NEXT_BASE}${NEXT_PATH}`;
+          const url = `${NEXT_BASE}${NEXT_PATH}${queryString ? `?${queryString}` : ''}`;
           console.log('[deepquill] redirecting to', url);
           window.location.href = url;
         }, 1200);

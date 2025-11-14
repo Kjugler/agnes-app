@@ -3,14 +3,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
-import { customAlphabet } from 'nanoid';
-import { calcInitialRabbitTarget } from '@/lib/rabbit';
-
-const nanoid = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 6);
-
-function normalizeEmail(email: string) {
-  return email.trim().toLowerCase();
-}
+import { normalizeEmail } from '@/lib/email';
+import { upsertAssociateByEmail } from '@/lib/associate';
 
 function normalizePhone(input: string | null | undefined): string | null {
   if (!input) return null;
@@ -51,16 +45,29 @@ type Payload = {
 
 export async function POST(req: NextRequest) {
   try {
+    const headerEmailRaw = req.headers.get('x-user-email');
+    if (!headerEmailRaw) {
+      return NextResponse.json({ ok: false, error: 'missing_user_email' }, { status: 400 });
+    }
+
     const body = (await req.json().catch(() => ({}))) as Partial<Payload>;
 
     const firstName = (body.firstName || '').trim();
     const lastName = (body.lastName || '').trim();
-    const emailRaw = body.email || '';
+    const emailRaw = body.email || headerEmailRaw;
     const email = normalizeEmail(emailRaw);
+    const headerEmail = normalizeEmail(headerEmailRaw);
 
     if (!firstName || !lastName || !email) {
       return NextResponse.json(
         { ok: false, error: 'missing_fields' },
+        { status: 400 },
+      );
+    }
+
+    if (email !== headerEmail) {
+      return NextResponse.json(
+        { ok: false, error: 'email_mismatch' },
         { status: 400 },
       );
     }
@@ -72,77 +79,30 @@ export async function POST(req: NextRequest) {
     const handleTiktok = cleanHandle(handles.tiktok);
     const handleTruth = cleanHandle(handles.truth);
 
-    const associateName = `${firstName} ${lastName}`.trim();
-
-    const existing = await prisma.user.findUnique({ where: { email } });
-
-    let code = existing?.code;
-    let referralCode = existing?.referralCode;
-
-    if (!code || !referralCode) {
-      const generated = nanoid();
-      code = code || generated;
-      referralCode = referralCode || generated;
-    }
-
-    const user = await prisma.user.upsert({
-      where: { email },
-      create: {
-        email,
-        fname: firstName,
-        lname: lastName,
-        firstName,
-        code,
-        referralCode,
-        phone,
-        handleX,
-        handleInstagram,
-        handleTiktok,
-        handleTruth,
-        rabbitSeq: 1,
-        rabbitTarget: calcInitialRabbitTarget(existing?.points ?? 0),
-      },
-      update: {
-        fname: firstName,
-        lname: lastName,
-        firstName,
-        phone,
-        handleX,
-        handleInstagram,
-        handleTiktok,
-        handleTruth,
-        rabbitSeq: {
-          set: existing?.rabbitSeq && existing.rabbitSeq > 0 ? existing.rabbitSeq : 1,
-        },
-        rabbitTarget: existing?.rabbitTarget && existing.rabbitTarget > 0
-          ? existing.rabbitTarget
-          : calcInitialRabbitTarget(existing?.points ?? 0),
-      },
-      select: {
-        id: true,
-        email: true,
-        fname: true,
-        lname: true,
-        code: true,
-        referralCode: true,
-        points: true,
-        rabbitTarget: true,
-        rabbitSeq: true,
-      },
+    const user = await upsertAssociateByEmail(email, {
+      fname: firstName,
+      lname: lastName,
+      firstName,
+      phone,
+      handleX,
+      handleInstagram,
+      handleTiktok,
+      handleTruth,
     });
 
-    const cookieStore = cookies();
-    cookieStore.set('mockEmail', email, { httpOnly: false, path: '/', maxAge: 60 * 60 * 24 * 365 });
-    cookieStore.set('ref', user.referralCode, { httpOnly: false, path: '/', maxAge: 60 * 60 * 24 * 365 });
-
-    const name = user.fname && user.lname ? `${user.fname} ${user.lname}` : associateName;
+    const name = user.fname && user.lname ? `${user.fname} ${user.lname}` : `${firstName} ${lastName}`.trim();
 
     const res = NextResponse.json({
       ok: true,
-      associateId: user.id,
+      id: user.id,
+      email: user.email,
       name,
       code: user.referralCode,
     });
+
+    // Set cookies on response (Next.js 15 compatible)
+    res.cookies.set('mockEmail', email, { httpOnly: false, path: '/', maxAge: 60 * 60 * 24 * 365 });
+    res.cookies.set('ref', user.referralCode, { httpOnly: false, path: '/', maxAge: 60 * 60 * 24 * 365 });
 
     return res;
   } catch (err) {

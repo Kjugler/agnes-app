@@ -1,7 +1,16 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState, type CSSProperties, type ChangeEvent } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState, type CSSProperties, type ChangeEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import {
+  clearAssociateCaches,
+  readAssociate,
+  readContestEmail,
+  writeAssociate,
+  writeContestEmail,
+  type AssociateCache,
+} from '@/lib/identity';
+import { normalizeEmail } from '@/lib/email';
 
 const initialState = {
   firstName: '',
@@ -16,12 +25,6 @@ const initialState = {
 
 type FormState = typeof initialState;
 
-type AssociatePayload = {
-  associateId: string;
-  name: string;
-  code: string;
-};
-
 export default function ContestSignupPage() {
   const router = useRouter();
   const qp = useSearchParams();
@@ -30,52 +33,83 @@ export default function ContestSignupPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [contestEmail, setContestEmail] = useState<string | null>(null);
+  const [contestEmailOverride, setContestEmailOverride] = useState<string | null>(null);
+  const [associateCache, setAssociateCache] = useState<AssociateCache | null>(null);
+
+  const handleChangeAccount = useCallback(() => {
+    clearAssociateCaches();
+    setContestEmail(null);
+    setContestEmailOverride(null);
+    setAssociateCache(null);
+    router.replace('/contest');
+  }, [router]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    try {
-      const stored = window.localStorage.getItem('associate');
-      if (stored) {
-        const parsed = JSON.parse(stored) as {
-          name?: string;
-          email?: string;
-          code?: string;
-          firstName?: string;
-          lastName?: string;
-          phone?: string;
-          handles?: Record<string, string>;
-        };
-        if (parsed) {
-          setForm((prev) => ({
-            ...prev,
-            firstName: parsed.firstName || parsed.name?.split(' ')[0] || prev.firstName,
-            lastName:
-              parsed.lastName || parsed.name?.split(' ').slice(1).join(' ') || prev.lastName,
-            email: parsed.email || prev.email,
-            phone: parsed.phone || prev.phone,
-            x: parsed.handles?.x || prev.x,
-            instagram: parsed.handles?.instagram || prev.instagram,
-            tiktok: parsed.handles?.tiktok || prev.tiktok,
-            truth: parsed.handles?.truth || prev.truth,
-          }));
-        }
+    const email = readContestEmail();
+    const stored = readAssociate();
+    setContestEmail(email);
+    setAssociateCache(stored);
+    setForm((prev) => {
+      const next = { ...prev };
+      if (stored?.name) {
+        const parts = stored.name.trim().split(' ');
+        if (parts.length > 0 && !prev.firstName) next.firstName = parts[0];
+        if (parts.length > 1 && !prev.lastName) next.lastName = parts.slice(1).join(' ');
       }
-    } catch {
-      // ignore
-    }
+      if (stored?.email && !prev.email) next.email = stored.email;
+      if (email) next.email = email;
+      return next;
+    });
   }, []);
 
+  const effectiveContestEmail = contestEmailOverride ?? contestEmail;
+
+  const emailMismatch = useMemo(() => {
+    if (!effectiveContestEmail) return false;
+    return normalizeEmail(form.email) !== effectiveContestEmail.toLowerCase();
+  }, [effectiveContestEmail, form.email]);
+
   const canSubmit = useMemo(() => {
+    const emailValid = /.+@.+/.test(form.email.trim());
     return (
       form.firstName.trim().length > 0 &&
       form.lastName.trim().length > 0 &&
-      /.+@.+/.test(form.email.trim())
+      emailValid &&
+      !emailMismatch
     );
-  }, [form]);
+  }, [form, emailMismatch]);
 
   const onChange = (key: keyof FormState) => (e: ChangeEvent<HTMLInputElement>) => {
     setForm((prev) => ({ ...prev, [key]: e.target.value }));
   };
+
+  useEffect(() => {
+    if (associateCache) return;
+    const normalized = normalizeEmail(form.email);
+    const looksValid = /.+@.+/.test(normalized);
+    if (!looksValid) return;
+    if (effectiveContestEmail && normalized === effectiveContestEmail.toLowerCase()) return;
+    writeContestEmail(normalized);
+    setContestEmail(normalized);
+    setContestEmailOverride(null);
+  }, [associateCache, effectiveContestEmail, form.email]);
+
+  const handleOverrideEmail = useCallback(() => {
+    const normalizedEmail = normalizeEmail(form.email);
+    if (!normalizedEmail) {
+      setError('Enter a valid email address before switching.');
+      return;
+    }
+
+    clearAssociateCaches();
+    writeContestEmail(normalizedEmail);
+    setContestEmailOverride(normalizedEmail);
+    setContestEmail(normalizedEmail);
+    setAssociateCache(null);
+    setError(null);
+  }, [form.email]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -85,13 +119,29 @@ export default function ContestSignupPage() {
     setSuccessMessage(null);
 
     try {
+      const normalizedEmail = normalizeEmail(form.email);
+      if (effectiveContestEmail && normalizedEmail !== effectiveContestEmail.toLowerCase()) {
+        setError(`You’re currently signed in as ${effectiveContestEmail}. Click “Use this email for the contest” to switch.`);
+        setSubmitting(false);
+        return;
+      }
+
+      const targetEmail = normalizedEmail;
+      if (!effectiveContestEmail) {
+        writeContestEmail(targetEmail);
+        setContestEmail(targetEmail);
+      }
+
       const res = await fetch('/api/associate/upsert', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-Email': targetEmail,
+        },
         body: JSON.stringify({
           firstName: form.firstName,
           lastName: form.lastName,
-          email: form.email,
+          email: targetEmail,
           phone: form.phone,
           handles: {
             x: form.x,
@@ -103,44 +153,29 @@ export default function ContestSignupPage() {
         }),
       });
 
-      if (!res.ok) {
-        throw new Error('Could not save. Please try again.');
+      const data = (await res.json()) as { ok: boolean; id: string; email: string; name: string; code: string };
+      if (!res.ok || !data.ok) {
+        throw new Error(data?.['error'] || 'Could not save. Please try again.');
       }
 
-      const data = (await res.json()) as { ok: boolean } & AssociatePayload;
-      if (!data.ok) {
-        throw new Error('Save failed. Please try again.');
-      }
-
-      try {
-        const associate = {
-          id: data.associateId,
-          name: data.name,
-          firstName: form.firstName,
-          lastName: form.lastName,
-          email: form.email,
-          phone: form.phone,
-          code: data.code,
-          handles: {
-            x: form.x,
-            instagram: form.instagram,
-            tiktok: form.tiktok,
-            truth: form.truth,
-          },
-        };
-        window.localStorage.setItem('associate', JSON.stringify(associate));
-        window.localStorage.setItem('ap_code', data.code);
-        window.localStorage.setItem('discount_code', data.code);
-        window.localStorage.setItem('ref', data.code);
-        window.localStorage.setItem('user_email', form.email);
-      } catch (storageErr) {
-        console.warn('associate storage failed', storageErr);
-      }
+      const associatePayload: AssociateCache = {
+        id: data.id,
+        email: data.email,
+        name: data.name,
+        code: data.code,
+      };
+      writeAssociate(associatePayload);
+      setAssociateCache(associatePayload);
+      setContestEmail(data.email);
+      setContestEmailOverride(null);
 
       try {
         await fetch('/api/points/award', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'X-User-Email': targetEmail,
+          },
           body: JSON.stringify({ kind: 'signup' }),
         });
       } catch (awardErr) {
@@ -187,6 +222,40 @@ export default function ContestSignupPage() {
         <p style={{ marginBottom: '1.5rem', color: '#cbd5f5' }}>
           Join the crew, earn points, and unlock insider rewards.
         </p>
+        {effectiveContestEmail ? (
+          <p
+            style={{
+              marginBottom: '1.5rem',
+              color: '#a5b4fc',
+              fontSize: '0.9rem',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '1rem',
+              flexWrap: 'wrap',
+            }}
+          >
+            Signed in as <strong>{effectiveContestEmail}</strong>
+            <button
+              type="button"
+              onClick={handleChangeAccount}
+              style={{
+                background: 'transparent',
+                border: '1px solid rgba(148, 163, 184, 0.45)',
+                color: '#cbd5f5',
+                padding: '0.4rem 1rem',
+                borderRadius: 999,
+                cursor: 'pointer',
+              }}
+            >
+              Change account
+            </button>
+          </p>
+        ) : (
+          <p style={{ marginBottom: '1.5rem', color: '#fca5a5', fontSize: '0.9rem' }}>
+            No contest email is set. Use “Change account” on the previous page to restart the flow.
+          </p>
+        )}
 
         <div style={{ display: 'grid', gap: '1rem' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
@@ -224,6 +293,34 @@ export default function ContestSignupPage() {
               placeholder="you@example.com"
               style={inputStyle}
             />
+            {effectiveContestEmail && emailMismatch && (
+              <span
+                style={{
+                  color: '#fca5a5',
+                  fontSize: '0.8rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.4rem',
+                }}
+              >
+                You’re currently signed in as <strong>{effectiveContestEmail}</strong>.
+                <button
+                  type="button"
+                  onClick={handleOverrideEmail}
+                  style={{
+                    alignSelf: 'flex-start',
+                    background: 'transparent',
+                    border: '1px solid rgba(248, 113, 113, 0.5)',
+                    color: '#fca5a5',
+                    padding: '0.3rem 0.8rem',
+                    borderRadius: 999,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Use this email for the contest
+                </button>
+              </span>
+            )}
           </label>
 
           <label style={{ display: 'grid', gap: '0.35rem' }}>

@@ -245,6 +245,10 @@
   inset: 0; 
   border-radius: 16px; 
   outline: none;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  z-index: 20; /* Above all door decorative elements */
 }
 
 .doorLink:focus-visible { 

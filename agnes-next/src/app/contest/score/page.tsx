@@ -2,10 +2,16 @@
 
 import '@/styles/score.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import type { ReactNode } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { confettiCelebrate, confettiSprinkle } from '@/lib/confetti';
 import { useScore } from '@/hooks/useScore';
+import { clearAssociateCaches, readAssociate, readContestEmail, type AssociateCache } from '@/lib/identity';
+import { getNextVariant, type SharePlatform } from '@/lib/shareAssets';
+import { getNextTarget } from '@/lib/shareTarget';
+import { buildShareCaption } from '@/lib/shareCaption';
+import { buildShareUrl, buildPlatformShareUrl, hasSocialHandle, platformToHandleField } from '@/lib/shareHelpers';
+import SocialHandleModal from './SocialHandleModal';
 
 function clamp(min: number, v: number, max: number) {
   return Math.max(min, Math.min(max, v));
@@ -18,15 +24,60 @@ type PointsPayload = {
   referrals?: number;
   earnings_week_usd?: number;
   firstName?: string | null;
+  createdNow?: boolean;
 };
 
 export default function ScorePage() {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const qp = useSearchParams();
+  const router = useRouter();
+  const [contestEmail, setContestEmail] = useState<string | null>(null);
+  const [associate, setAssociate] = useState<AssociateCache | null>(null);
+  const [associateHandles, setAssociateHandles] = useState<{
+    x?: string | null;
+    instagram?: string | null;
+    tiktok?: string | null;
+    truth?: string | null;
+  } | null>(null);
+  const [socialHandleModal, setSocialHandleModal] = useState<{
+    isOpen: boolean;
+    platform: SharePlatform;
+    platformName: string;
+    pendingAction?: () => Promise<void>;
+  }>({
+    isOpen: false,
+    platform: 'fb',
+    platformName: 'Facebook',
+  });
   const [reducedMotion] = useState(
     typeof window !== 'undefined' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches
   );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const sync = () => {
+      const email = readContestEmail();
+      const stored = readAssociate();
+      if (stored && email && stored.email !== email) {
+        clearAssociateCaches({ keepContestEmail: true });
+        setAssociate(null);
+        setContestEmail(email);
+        return;
+      }
+      if (stored && !email) {
+        clearAssociateCaches();
+        setAssociate(null);
+        setContestEmail(null);
+        return;
+      }
+      setContestEmail(email);
+      setAssociate(stored);
+    };
+    sync();
+    window.addEventListener('storage', sync);
+    return () => window.removeEventListener('storage', sync);
+  }, []);
 
   // mist with +0.05 base boost
   const [mist, setMist] = useState(0.6);
@@ -87,56 +138,219 @@ export default function ScorePage() {
   const shared = qp.get('shared');
   const [dismiss, setDismiss] = useState(false);
 
+  const {
+    totalPoints,
+    rabbitTarget,
+    rabbitSeq,
+    nextRankThreshold,
+    refresh: refreshScore,
+    apply: applyScore,
+  } = useScore(contestEmail);
+
   // points fetch
   const [data, setData] = useState<PointsPayload | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/points/me', { method: 'GET', credentials: 'include' })
-      .then(r => r.json())
-      .then((j: any) => {
-        if (!cancelled) {
-          // Transform to match existing interface
-          setData({
-            totalPoints: j.total || 0,
-            firstName: j.firstName || null,
-            earned: {
-              purchase_book: j.earned?.purchase_book || false,
-            },
-            recent: j.recent?.map((r: any) => ({
-              type: r.label,
-              at: r.ts,
-            })) || [],
-            referrals: j.referrals?.friends_purchased_count || 0,
-            earnings_week_usd: j.referrals?.earnings_week_usd || 0,
-          });
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setData({ totalPoints: 0 });
+  const refreshPoints = useCallback(async () => {
+    if (!contestEmail) {
+      setData({ totalPoints: 0 });
+      return;
+    }
+    try {
+      const res = await fetch('/api/points/me', {
+        method: 'GET',
+        headers: {
+          'X-User-Email': contestEmail,
+        },
       });
-    return () => {
-      cancelled = true;
+      if (!res.ok) throw new Error('points_fetch_failed');
+      const j: any = await res.json();
+      setData({
+        totalPoints: j.total || 0,
+        firstName: j.firstName || null,
+        createdNow: j.createdNow ?? true, // Default to true (first-time) if not provided
+        earned: {
+          purchase_book: j.earned?.purchase_book || false,
+        },
+        recent: j.recent?.map((r: any) => ({
+          type: r.label,
+          at: r.ts,
+        })) || [],
+        referrals: j.referrals?.friends_purchased_count || 0,
+        earnings_week_usd: j.referrals?.earnings_week_usd || 0,
+      });
+    } catch (err) {
+      console.warn('[score] refreshPoints failed', err);
+      setData({ totalPoints: 0 });
+    }
+  }, [contestEmail]);
+
+  useEffect(() => {
+    refreshPoints();
+  }, [refreshPoints]);
+
+  // Fetch associate handles for social share checks
+  useEffect(() => {
+    if (!contestEmail) return;
+    
+    const fetchHandles = async () => {
+      try {
+        const res = await fetch('/api/associate/status', {
+          headers: { 'X-User-Email': contestEmail },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.handles) {
+            setAssociateHandles(data.handles);
+          }
+        }
+      } catch (err) {
+        console.warn('[score] failed to fetch handles', err);
+      }
     };
-  }, []);
+    
+    fetchHandles();
+  }, [contestEmail]);
+
+  // Reset greeting when data loads to ensure correct first-time vs returning message
+  useEffect(() => {
+    if (data !== null && stageSequence === 'greetings') {
+      setGreetingIndex(0);
+    }
+  }, [data, stageSequence]);
+
+  // Save social handle via associate upsert
+  const saveSocialHandle = useCallback(
+    async (platform: SharePlatform, handle: string) => {
+      if (!contestEmail) return;
+      
+      try {
+        // Get current associate data to preserve firstName/lastName
+        const statusRes = await fetch('/api/associate/status', {
+          headers: { 'X-User-Email': contestEmail },
+        });
+        if (!statusRes.ok) throw new Error('Failed to fetch associate data');
+        
+        const statusData = await statusRes.json();
+        const handles: Record<string, string | null> = {
+          ...(statusData.handles || {}),
+        };
+        
+        // Map platform to handle field
+        const handleField = platformToHandleField[platform];
+        if (handleField && handleField !== 'facebook') {
+          handles[handleField] = handle;
+        }
+        
+        // Update via associate upsert
+        const upsertRes = await fetch('/api/associate/upsert', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-User-Email': contestEmail,
+          },
+          body: JSON.stringify({
+            firstName: statusData.firstName || '',
+            lastName: statusData.lastName || '',
+            email: contestEmail,
+            handles: {
+              x: handles.x || null,
+              instagram: handles.instagram || null,
+              tiktok: handles.tiktok || null,
+              truth: handles.truth || null,
+            },
+          }),
+        });
+        
+        if (!upsertRes.ok) throw new Error('Failed to save handle');
+        
+        // Update local state
+        setAssociateHandles(handles as any);
+      } catch (err) {
+        console.error('[score] save handle error', err);
+        throw err;
+      }
+    },
+    [contestEmail]
+  );
+
+  const awardShare = useCallback(
+    async (action: string, targetVariant?: 'challenge' | 'terminal') => {
+      if (!contestEmail) {
+        alert('Please enter the contest first so we know who to credit.');
+        return false;
+      }
+      try {
+        const body: any = { action, source: 'contest_score' };
+        if (targetVariant) {
+          body.targetVariant = targetVariant;
+        }
+        
+        const res = await fetch('/api/points/award', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-User-Email': contestEmail,
+          },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          console.warn('[score] award failed', body);
+          return false;
+        }
+        await refreshPoints();
+        await refreshScore();
+        return true;
+      } catch (err) {
+        console.error('[score] award error', err);
+        return false;
+      }
+    },
+    [contestEmail, refreshPoints, refreshScore],
+  );
+
+  const handleChangeAccount = useCallback(() => {
+    clearAssociateCaches();
+    router.replace('/contest');
+  }, [router]);
 
   // Compute firstName after data is available
   const firstName = useMemo(() => {
+    if (associate?.name) {
+      const chunk = associate.name.trim().split(' ')[0];
+      if (chunk) return chunk;
+    }
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('first_name');
       if (stored) return stored;
     }
     return data?.firstName || 'Friend';
-  }, [data?.firstName]);
+  }, [associate?.name, data?.firstName]);
 
-  const greetingLines = [
-    `${firstName}—way to go!`,
-    'You made it.',
-    "You're in a good spot—You can win this.",
-  ];
+  // Dynamic greeting based on first-time vs returning visitor
+  const greetingLines = useMemo(() => {
+    if (data?.createdNow === false) {
+      // Returning visitor - multi-line motivational message
+      return [
+        `${firstName} — you're back!`,
+        "Now let's go win that vacation for your family.",
+        'And make you some serious money!',
+      ];
+    }
+    // First-time visitor - keep existing greeting unchanged
+    return [
+      `${firstName}—way to go!`,
+      'You made it.',
+      "You're in a good spot—You can win this.",
+    ];
+  }, [firstName, data?.createdNow]);
 
   // Greeting sequence (ONCE, 2.2s per line)
+  // Wait for data to load before starting greeting to ensure correct first-time vs returning message
   useEffect(() => {
     if (stageSequence !== 'greetings') return;
+    // Don't start greeting until we know if user is first-time or returning
+    if (data === null) return;
+    
     const duration = reducedMotion ? 1500 : 2200;
     const fadeDuration = reducedMotion ? 200 : 400;
 
@@ -159,7 +373,7 @@ export default function ScorePage() {
 
     showLine(greetingIndex);
     return () => clearTimeout(timeoutId);
-  }, [stageSequence, greetingIndex, reducedMotion, greetingLines]);
+  }, [stageSequence, greetingIndex, reducedMotion, greetingLines, data]);
 
   // INFO sequence (INFO1 → INFO2 → idle)
   useEffect(() => {
@@ -211,419 +425,127 @@ export default function ScorePage() {
       }, 300);
     }, 300);
   };
+  // A1: Check for social handle before sharing
+  const checkAndPromptHandle = useCallback(
+    async (platform: SharePlatform, platformName: string, proceedWithShare: () => Promise<void>) => {
+      // Facebook doesn't require a handle
+      if (platform === 'fb') {
+        await proceedWithShare();
+        return;
+      }
+      
+      // Check if handle exists
+      if (hasSocialHandle(associateHandles, platform)) {
+        await proceedWithShare();
+        return;
+      }
+      
+      // Show modal to collect handle
+      setSocialHandleModal({
+        isOpen: true,
+        platform,
+        platformName,
+        pendingAction: async () => {
+          await proceedWithShare();
+        },
+      });
+    },
+    [associateHandles]
+  );
+
   const handleShareClick = async (
     platform: 'x' | 'ig' | 'fb' | 'truth' | 'tiktok',
     e: React.MouseEvent<HTMLAnchorElement>
   ) => {
     e.preventDefault();
 
-    // Identify user email (for awarding)
-    let email: string | null = null;
-    if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      const mockEmail = urlParams.get('mockEmail');
-      const mockEmailCookie = document.cookie
-        .split('; ')
-        .find((row) => row.startsWith('mockEmail='))
-        ?.split('=')[1];
-      email = mockEmail || mockEmailCookie || null;
+    const email = contestEmail;
+    if (!email) {
+      alert('Please enter the contest first so we know who to credit.');
+      return;
     }
 
-    // Referral code (optional) from cookie
-    const referralCode =
-      typeof document !== 'undefined'
+    // Get referral code
+    const referralCode = associate?.code ||
+      (typeof document !== 'undefined'
         ? (document.cookie.split('; ').find((r) => r.startsWith('ref='))?.split('=')[1] || '')
-        : '';
+        : '') ||
+      '';
 
-    const ORIGIN =
+    if (!referralCode) {
+      alert('Unable to get your referral code. Please try again.');
+      return;
+    }
+
+    const baseUrl =
       (typeof window !== 'undefined' && window.location.origin) ||
       process.env.NEXT_PUBLIC_SITE_URL ||
       '';
 
-    // Instagram: open helper page, rotate videos/captions, copy caption, award points
-    if (platform === 'ig') {
-      const captions = [
-        'The Agnes Protocol — The End of Truth Begins Here. #WhereIsJodyVernon',
-        'This story will get under your skin. #AgnesProtocol',
-        'Big tech. Dark money. One con man who might save us all. #TheAgnesProtocol',
-      ];
+    // Map platform names
+    const platformNames: Record<SharePlatform, string> = {
+      fb: 'Facebook',
+      ig: 'Instagram',
+      x: 'X',
+      tt: 'TikTok',
+      truth: 'Truth Social',
+    };
 
-      // Rotate caption index
+    // Normalize platform name (tiktok -> tt)
+    const normalizedPlatform: SharePlatform = platform === 'tiktok' ? 'tt' : platform;
+
+    // A3: Get next variant (rotates, never repeats last)
+    const variant = getNextVariant(normalizedPlatform);
+
+    // A4: Get next target (50/50 toggle)
+    const target = getNextTarget();
+
+    // Build share URL
+    const shareUrl = buildShareUrl(normalizedPlatform, variant, referralCode, target, baseUrl);
+
+    // Build caption with firstName if available
+    const firstName = data?.firstName || null;
+    const caption = buildShareCaption({
+      firstName,
+      refCode: referralCode,
+      shareUrl,
+      includeSecretCode: target === 'terminal', // A2: Include secret code for terminal
+    });
+
+    // Navigate to share landing page (guided flow)
+    const performShare = async () => {
       try {
-        const capIdx = Number(localStorage.getItem('ig_cap_idx') || '0');
-        const nextCapIdx = (capIdx + 1) % captions.length;
-        localStorage.setItem('ig_cap_idx', String(nextCapIdx));
-        const captionIdx = capIdx % captions.length;
-
-        // Rotate video index (for helper page param)
-        const vIdx = Number(localStorage.getItem('ig_vid_idx') || '0');
-        const nextVIdx = (vIdx + 1) % 3;
-        localStorage.setItem('ig_vid_idx', String(nextVIdx));
-        const iParam = (vIdx % 3) + 1;
-
-        // Build caption with landing URL
-        const caption = `${captions[captionIdx]}\n${ORIGIN}/s/fb?v=${((captionIdx % 3) + 1)}&utm_source=instagram`;
-
-        // Copy caption
-        try {
-          await navigator.clipboard.writeText(caption);
-        } catch {}
-
-        // Open helper page
-        window.open(`${ORIGIN}/s/ig?i=${iParam}`, '_blank', 'noopener,noreferrer');
-
-        // Award points
-        if (email) {
-          try {
-            await fetch(`/api/points/award?mockEmail=${encodeURIComponent(email)}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action: 'share_ig' }),
-            });
-            // Refresh points
-            const res = await fetch('/api/points/me', { method: 'GET', credentials: 'include' });
-            const j = await res.json();
-            setData({
-              totalPoints: j.total || 0,
-              firstName: j.firstName || null,
-              earned: { purchase_book: j.earned?.purchase_book || false },
-              recent: j.recent?.map((r: any) => ({ type: r.label, at: r.ts })) || [],
-              referrals: j.referrals?.friends_purchased_count || 0,
-              earnings_week_usd: j.referrals?.earnings_week_usd || 0,
-            });
-            refreshScore();
-          } catch (err) {
-            console.error('[share][ig] award failed', err);
-          }
-        }
-
-        // Success banner
-        if (typeof window !== 'undefined') {
-          const url = new URL(window.location.href);
-          url.searchParams.set('shared', 'ig');
-          window.history.pushState({}, '', url.toString());
-        }
+        // Navigate to share landing page (same window)
+        router.push(shareUrl);
       } catch (err) {
-        console.error('[share][ig] handler failed', err);
+        console.error('[share] handler failed', err);
+        alert('Failed to open share page. Please try again.');
       }
-      return;
-    }
+    };
 
-    // TikTok: open helper page, rotate videos/captions, copy caption, award points
-    if (platform === 'tiktok') {
-      const captions = [
-        'The Agnes Protocol — The End of Truth Begins Here. #WhereIsJodyVernon',
-        'This story will get under your skin. #AgnesProtocol',
-        'Big tech. Dark money. One con man who might save us all. #TheAgnesProtocol',
-      ];
-
-      // Rotate caption index
-      try {
-        const capIdx = Number(localStorage.getItem('tt_cap_idx') || '0');
-        const nextCapIdx = (capIdx + 1) % captions.length;
-        localStorage.setItem('tt_cap_idx', String(nextCapIdx));
-        const captionIdx = capIdx % captions.length;
-
-        // Rotate video index (for helper page param)
-        const vIdx = Number(localStorage.getItem('tt_vid_idx') || '0');
-        const nextVIdx = (vIdx + 1) % 3;
-        localStorage.setItem('tt_vid_idx', String(nextVIdx));
-        const iParam = (vIdx % 3) + 1;
-
-        // Build caption with landing URL
-        const landingUrl = `${ORIGIN}/s/fb?v=${((captionIdx % 3) + 1)}&utm_source=tiktok${referralCode ? `&ref=${encodeURIComponent(referralCode)}` : ''}`;
-        const caption = `${captions[captionIdx]}\n${landingUrl}`;
-
-        // Copy caption
-        try {
-          await navigator.clipboard.writeText(caption);
-        } catch {}
-
-        // Open helper page
-        window.open(`${ORIGIN}/s/tt?i=${iParam}`, '_blank', 'noopener,noreferrer');
-
-        // Award points
-        if (email) {
-          try {
-            await fetch(`/api/points/award?mockEmail=${encodeURIComponent(email)}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action: 'share_tiktok' }),
-            });
-            // Refresh points
-            const res = await fetch('/api/points/me', { method: 'GET', credentials: 'include' });
-            const j = await res.json();
-            setData({
-              totalPoints: j.total || 0,
-              firstName: j.firstName || null,
-              earned: { purchase_book: j.earned?.purchase_book || false },
-              recent: j.recent?.map((r: any) => ({ type: r.label, at: r.ts })) || [],
-              referrals: j.referrals?.friends_purchased_count || 0,
-              earnings_week_usd: j.referrals?.earnings_week_usd || 0,
-            });
-            refreshScore();
-          } catch (err) {
-            console.error('[share][tiktok] award failed', err);
-          }
-        }
-
-        // Success banner
-        if (typeof window !== 'undefined') {
-          const url = new URL(window.location.href);
-          url.searchParams.set('shared', 'tt');
-          window.history.pushState({}, '', url.toString());
-        }
-      } catch (err) {
-        console.error('[share][tiktok] handler failed', err);
-      }
-      return;
-    }
-
-    // Facebook: rotate videos/captions, build landing URL, copy caption, open share dialog
-    if (platform === 'fb') {
-      // Helper: rotate index 0..(max-1) using localStorage
-      const nextIndex = (key: string, max: number) => {
-        try {
-          const n = Number(localStorage.getItem(key) || '0');
-          const nx = (isNaN(n) ? 0 : n + 1) % max;
-          localStorage.setItem(key, String(nx));
-          return n % max; // return current index before increment
-        } catch {
-          return 0;
-        }
-      };
-
-      // Rotate video index (1..3)
-      const vidIdx = nextIndex('fb_vid_idx', 3);
-      const v = vidIdx + 1;
-
-      // Rotate captions
-      const captions = [
-        'The Agnes Protocol — The End of Truth Begins Here. #WhereIsJodyVernon',
-        'This story will get under your skin. The Agnes Protocol — coming to light. #AgnesProtocol',
-        'Big tech. Dark money. One con man who might save us all. #TheAgnesProtocol',
-      ];
-      const capIdx = nextIndex('fb_cap_idx', captions.length);
-      
-      // Build landing URL with video parameter
-      const qp = new URLSearchParams({ v: String(v), utm_source: 'facebook' });
-      if (referralCode) qp.set('ref', referralCode);
-      const landing = `${ORIGIN}/s/fb?${qp.toString()}`;
-      
-      // Build caption with landing URL
-      const caption = `${captions[capIdx]}\n${landing}`;
-
-      // Copy caption to clipboard
-      try {
-        await navigator.clipboard.writeText(caption);
-      } catch {}
-
-      // Open Facebook Share Dialog
-      const fbUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(landing)}`;
-      const w = window.open(fbUrl, '_blank', 'noopener,noreferrer');
-      if (!w) {
-        // Popup blocked fallback
-        alert('Pop-up blocked. Caption copied—paste in Facebook:\n\n' + caption);
-      }
-
-      // Award points
-      if (email) {
-        try {
-          await fetch(`/api/points/award?mockEmail=${encodeURIComponent(email)}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'share_fb' }),
-          });
-          // Refresh points
-          const res = await fetch('/api/points/me', { method: 'GET', credentials: 'include' });
-          const j = await res.json();
-          setData({
-            totalPoints: j.total || 0,
-            firstName: j.firstName || null,
-            earned: { purchase_book: j.earned?.purchase_book || false },
-            recent: j.recent?.map((r: any) => ({ type: r.label, at: r.ts })) || [],
-            referrals: j.referrals?.friends_purchased_count || 0,
-            earnings_week_usd: j.referrals?.earnings_week_usd || 0,
-          });
-          refreshScore();
-        } catch (err) {
-          console.error('[share][fb] award failed', err);
-        }
-      }
-
-      // Success banner
-      if (typeof window !== 'undefined') {
-        const url = new URL(window.location.href);
-        url.searchParams.set('shared', 'fb');
-        window.history.pushState({}, '', url.toString());
-      }
-      return;
-    }
-
-    // Truth Social: use /s/fb landing (for OG preview), rotate videos/captions, copy caption
-    if (platform === 'truth') {
-      // Helper: rotate index 0..(max-1) using localStorage
-      const nextIndex = (key: string, max: number) => {
-        try {
-          const n = Number(localStorage.getItem(key) || '0');
-          const nx = (isNaN(n) ? 0 : n + 1) % max;
-          localStorage.setItem(key, String(nx));
-          return n % max; // return current index before increment
-        } catch {
-          return 0;
-        }
-      };
-
-      // Build landing URL using /s/fb (so OG preview works)
-      const vidIdx = nextIndex('truth_vid_idx', 3); // 0..2 → fb1, fb2, fb3
-      const v = vidIdx + 1;
-      const qp = new URLSearchParams({ v: String(v), utm_source: 'truth' });
-      if (referralCode) qp.set('ref', referralCode);
-      const landing = `${ORIGIN}/s/fb?${qp.toString()}`;
-
-      // Rotate captions
-      const captions = [
-        'The Agnes Protocol — The End of Truth Begins Here. #WhereIsJodyVernon',
-        'This story will get under your skin. The Agnes Protocol — coming to light. #AgnesProtocol',
-        'Big tech. Dark money. One con man who might save us all. #TheAgnesProtocol',
-      ];
-      const capIdx = nextIndex('truth_cap_idx', captions.length);
-      const caption = `${captions[capIdx]}\n${landing}`;
-
-      // Copy caption to clipboard
-      try {
-        await navigator.clipboard.writeText(caption);
-      } catch {}
-
-      // Open Truth Social composer
-      const truthUrl = `https://truthsocial.com/compose?text=${encodeURIComponent(caption)}`;
-      const w = window.open(truthUrl, '_blank', 'noopener,noreferrer');
-      if (!w) {
-        // Popup blocked fallback
-        alert('Pop-up blocked. Caption copied—paste in Truth Social:\n\n' + caption);
-      }
-
-      // Award points
-      if (email) {
-        try {
-          await fetch(`/api/points/award?mockEmail=${encodeURIComponent(email)}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'share_truth' }),
-          });
-          // Refresh points
-          const res = await fetch('/api/points/me', { method: 'GET', credentials: 'include' });
-          const j = await res.json();
-          setData({
-            totalPoints: j.total || 0,
-            firstName: j.firstName || null,
-            earned: { purchase_book: j.earned?.purchase_book || false },
-            recent: j.recent?.map((r: any) => ({ type: r.label, at: r.ts })) || [],
-            referrals: j.referrals?.friends_purchased_count || 0,
-            earnings_week_usd: j.referrals?.earnings_week_usd || 0,
-          });
-          refreshScore();
-        } catch (err) {
-          console.error('[share][truth] award failed', err);
-        }
-      }
-
-      // Success banner
-      if (typeof window !== 'undefined') {
-        const url = new URL(window.location.href);
-        url.searchParams.set('shared', 'truth');
-        window.history.pushState({}, '', url.toString());
-      }
-      return;
-    }
-
-    // X (Twitter): use /s/fb landing (for OG preview), rotate videos/captions, copy caption
-    if (platform === 'x') {
-      // Helper: rotate index 0..(max-1) using localStorage
-      const nextIndex = (key: string, max: number) => {
-        try {
-          const n = Number(localStorage.getItem(key) || '0');
-          const nx = (isNaN(n) ? 0 : n + 1) % max;
-          localStorage.setItem(key, String(nx));
-          return n % max; // return current index before increment
-        } catch {
-          return 0;
-        }
-      };
-
-      // Build landing URL using /s/fb (so OG preview works)
-      const vidIdx = nextIndex('x_vid_idx', 3); // 0..2 → fb1, fb2, fb3
-      const v = vidIdx + 1;
-      const qp = new URLSearchParams({ v: String(v), utm_source: 'twitter' });
-      if (referralCode) qp.set('ref', referralCode);
-      const landing = `${ORIGIN}/s/fb?${qp.toString()}`;
-
-      // Rotate captions
-      const captions = [
-        'The Agnes Protocol — The End of Truth Begins Here. #WhereIsJodyVernon',
-        'This story will get under your skin. #AgnesProtocol',
-        'Big tech. Dark money. One con man who might save us all. #TheAgnesProtocol',
-      ];
-      const capIdx = nextIndex('x_cap_idx', captions.length);
-      const caption = `${captions[capIdx]}\n${landing}`;
-
-      // Copy caption to clipboard
-      try {
-        await navigator.clipboard.writeText(caption);
-      } catch {}
-
-      // Open X composer with prefilled text and URL
-      const xUrl = `https://x.com/intent/tweet?text=${encodeURIComponent(caption)}`;
-      const w = window.open(xUrl, '_blank', 'noopener,noreferrer');
-      if (!w) {
-        // Popup blocked fallback
-        alert('Pop-up blocked. Caption copied—paste in X:\n\n' + caption);
-      }
-
-      // Award points
-      if (email) {
-        try {
-          await fetch(`/api/points/award?mockEmail=${encodeURIComponent(email)}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'share_x' }),
-          });
-          // Refresh points
-          const res = await fetch('/api/points/me', { method: 'GET', credentials: 'include' });
-          const j = await res.json();
-          setData({
-            totalPoints: j.total || 0,
-            firstName: j.firstName || null,
-            earned: { purchase_book: j.earned?.purchase_book || false },
-            recent: j.recent?.map((r: any) => ({ type: r.label, at: r.ts })) || [],
-            referrals: j.referrals?.friends_purchased_count || 0,
-            earnings_week_usd: j.referrals?.earnings_week_usd || 0,
-          });
-          refreshScore();
-        } catch (err) {
-          console.error('[share][x] award failed', err);
-        }
-      }
-
-      // Success banner
-      if (typeof window !== 'undefined') {
-        const url = new URL(window.location.href);
-        url.searchParams.set('shared', 'x');
-        window.history.pushState({}, '', url.toString());
-      }
-      return;
-    }
+    // A1: Check handle and proceed
+    await checkAndPromptHandle(normalizedPlatform, platformNames[normalizedPlatform], performShare);
   };
 
-  // totals and progress
-  const {
-    totalPoints,
-    rabbitTarget,
-    rabbitSeq,
-    nextRankThreshold,
-    refresh: refreshScore,
-    apply: applyScore,
-  } = useScore();
+  // Handle social handle modal save
+  const handleSaveSocialHandle = useCallback(
+    async (handle: string) => {
+      try {
+        await saveSocialHandle(socialHandleModal.platform, handle);
+        setSocialHandleModal({ ...socialHandleModal, isOpen: false });
+        
+        // Resume pending share action
+        if (socialHandleModal.pendingAction) {
+          await socialHandleModal.pendingAction();
+        }
+      } catch (err) {
+        console.error('[score] save handle failed', err);
+        alert('Failed to save handle. Please try again.');
+      }
+    },
+    [socialHandleModal, saveSocialHandle]
+  );
+
 
   const computedNextBand = nextRankThreshold ?? 500;
   const prevBand = Math.max(0, computedNextBand - 500);
@@ -697,6 +619,7 @@ export default function ScorePage() {
   }, [firstName, reducedMotion]);
 
   useEffect(() => {
+    if (!contestEmail) return;
     if (!rabbitTarget || !rabbitSeq) return;
     if (totalPoints < rabbitTarget) return;
     if (catchingRef.current) return;
@@ -710,8 +633,10 @@ export default function ScorePage() {
       try {
         const res = await fetch('/api/rabbit/catch', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-User-Email': contestEmail,
+          },
           body: JSON.stringify({ rabbitSeqClient: rabbitSeq }),
         });
         const json = await res.json().catch(() => null);
@@ -741,7 +666,7 @@ export default function ScorePage() {
     return () => {
       cancelled = true;
     };
-  }, [rabbitTarget, rabbitSeq, totalPoints, applyScore, refreshScore, triggerRabbitCelebration]);
+  }, [contestEmail, rabbitTarget, rabbitSeq, totalPoints, applyScore, refreshScore, triggerRabbitCelebration]);
 
   // Button component
   const ActionButton = ({
@@ -834,6 +759,28 @@ export default function ScorePage() {
       <div id="confetti-layer" className="score-confetti" />
 
       <section className="score-stage">
+        {contestEmail && (
+          <button
+            type="button"
+            onClick={handleChangeAccount}
+            style={{
+              position: 'absolute',
+              top: 16,
+              right: 16,
+              padding: '6px 14px',
+              borderRadius: 999,
+              border: '1px solid rgba(148, 163, 184, 0.6)',
+              background: 'rgba(15, 23, 42, 0.55)',
+              color: '#e2e8f0',
+              fontSize: 12,
+              letterSpacing: '0.04em',
+              cursor: 'pointer',
+              zIndex: 45,
+            }}
+          >
+            Change account ({contestEmail})
+          </button>
+        )}
         <div
           className="ship-mist"
           style={{
@@ -998,6 +945,15 @@ export default function ScorePage() {
           <div className="value">{Math.round(rabbitPct * 100)}%</div>
         </div>
       </aside>
+      
+      {/* Social Handle Modal */}
+      <SocialHandleModal
+        isOpen={socialHandleModal.isOpen}
+        platform={socialHandleModal.platform}
+        platformName={socialHandleModal.platformName}
+        onSave={handleSaveSocialHandle}
+        onCancel={() => setSocialHandleModal({ ...socialHandleModal, isOpen: false })}
+      />
     </div>
   );
 }

@@ -1,8 +1,9 @@
 'use client';
 
 import styles from './page.module.css';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { clearAssociateCaches, readAssociate, readContestEmail, type AssociateCache } from '@/lib/identity';
 
 export default function AscensionPage() {
   const router = useRouter();
@@ -10,6 +11,8 @@ export default function AscensionPage() {
   const [reduced, setReduced] = useState(false);
   const [doorsVisible, setDoorsVisible] = useState(false);
   const [audioPlayed, setAudioPlayed] = useState(false);
+  const [contestEmail, setContestEmail] = useState<string | null>(null);
+  const [associate, setAssociate] = useState<AssociateCache | null>(null);
   const [joinModal, setJoinModal] = useState<{ name: string; code: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -17,9 +20,14 @@ export default function AscensionPage() {
   const [awardingPurchase, setAwardingPurchase] = useState(false);
 
   const name = useMemo(() => {
+    if (associate?.name) {
+      const parts = associate.name.trim().split(' ');
+      if (parts.length) return parts[0];
+      return associate.name;
+    }
     if (typeof window === 'undefined') return 'Explorer';
     return localStorage.getItem('first_name') || 'Explorer';
-  }, []);
+  }, [associate?.name]);
 
   useEffect(() => {
     setReduced(window.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -34,12 +42,36 @@ export default function AscensionPage() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const purchase = qp.get('purchase');
-    const sessionId = qp.get('session_id');
-    if (purchase !== 'success' || !sessionId) return;
+    const syncIdentity = () => {
+      const email = readContestEmail();
+      const stored = readAssociate();
+      if (stored && email && stored.email !== email) {
+        clearAssociateCaches({ keepContestEmail: true });
+        setAssociate(null);
+        setContestEmail(email);
+        return;
+      }
+      if (stored && !email) {
+        clearAssociateCaches();
+        setAssociate(null);
+        setContestEmail(null);
+        return;
+      }
+      setAssociate(stored);
+      setContestEmail(email);
+    };
+    syncIdentity();
+    window.addEventListener('storage', syncIdentity);
+    return () => window.removeEventListener('storage', syncIdentity);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (qp.get('purchase') !== 'success') return;
+    if (!contestEmail) return;
     if (awardingPurchase) return;
 
-    const storageKey = `purchase_session_${sessionId}`;
+    const storageKey = `purchase_bonus_${contestEmail}`;
     let alreadyAwarded = false;
     try {
       alreadyAwarded = window.localStorage.getItem(storageKey) === '1';
@@ -56,33 +88,18 @@ export default function AscensionPage() {
 
     setAwardingPurchase(true);
 
-    let associateCode: string | undefined;
-    let email: string | undefined;
-    try {
-      associateCode =
-        window.localStorage.getItem('ap_code') ||
-        window.localStorage.getItem('ref') ||
-        window.localStorage.getItem('discount_code') ||
-        undefined;
-      email =
-        window.localStorage.getItem('user_email') ||
-        window.localStorage.getItem('mockEmail') ||
-        undefined;
-    } catch {
-      associateCode = undefined;
-      email = undefined;
-    }
+    const email = contestEmail;
 
     (async () => {
       try {
         await fetch('/api/points/award', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'X-User-Email': email,
+          },
           body: JSON.stringify({
             kind: 'book_purchase',
-            sessionId,
-            associateCode,
-            email,
           }),
         });
       } catch (err) {
@@ -93,32 +110,21 @@ export default function AscensionPage() {
         } catch {}
         const url = new URL(window.location.href);
         url.searchParams.delete('purchase');
-        url.searchParams.delete('session_id');
         router.replace(`${url.pathname}${url.search}${url.hash}`);
         setAwardingPurchase(false);
       }
     })();
-  }, [qp, awardingPurchase, router]);
-
+  }, [qp, awardingPurchase, router, contestEmail]);
+ 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
     if (qp.get('joined') !== '1') return;
-
-    try {
-      const stored = window.localStorage.getItem('associate');
-      if (stored) {
-        const parsed = JSON.parse(stored) as { name?: string; code?: string };
-        if (parsed?.code) {
-          setJoinModal({
-            name: parsed.name || 'Explorer',
-            code: parsed.code,
-          });
-        }
-      }
-    } catch (err) {
-      console.warn('ascension load associate failed', err);
+    if (associate?.code) {
+      setJoinModal({
+        name: associate.name || 'Explorer',
+        code: associate.code,
+      });
     }
-  }, [qp]);
+  }, [qp, associate]);
 
   const closeJoinModal = () => {
     setJoinModal(null);
@@ -248,8 +254,33 @@ export default function AscensionPage() {
     setTimeout(() => router.push(`/contest/${finalDest}`), 300);
   };
 
+  const handleChangeAccount = useCallback(() => {
+    clearAssociateCaches();
+    router.replace('/contest');
+  }, [router]);
+
   return (
     <div className={styles.root}>
+      <button
+        type="button"
+        onClick={handleChangeAccount}
+        style={{
+          position: 'absolute',
+          top: 18,
+          right: 18,
+          padding: '6px 14px',
+          borderRadius: 999,
+          border: '1px solid rgba(148, 163, 184, 0.6)',
+          background: 'rgba(15, 23, 42, 0.55)',
+          color: '#e2e8f0',
+          fontWeight: 600,
+          letterSpacing: '0.04em',
+          cursor: 'pointer',
+          zIndex: 110,
+        }}
+      >
+        Change account{contestEmail ? ` (${contestEmail})` : ''}
+      </button>
       {/* gradient clouds behind everything */}
       <div className={styles.cloudGrain} />
 
@@ -293,14 +324,14 @@ export default function AscensionPage() {
             <div className={styles.doorLabel}>
               See My<br />Score
             </div>
-            <a
+            <button
+              type="button"
               className={styles.doorLink}
-              href="/contest/score"
               aria-label="See My Score"
               onClick={(e) => {
                 e.preventDefault();
                 try { localStorage.setItem('hasAscended','true'); } catch {}
-                e.currentTarget.blur();
+                (e.currentTarget as HTMLButtonElement).blur();
                 handleSelect('score');
               }}
             />
@@ -316,14 +347,14 @@ export default function AscensionPage() {
             <div className={styles.doorLabel}>
               Explore<br />Badges
             </div>
-            <a
+            <button
+              type="button"
               className={styles.doorLink}
-              href="/contest/badges"
               aria-label="Explore Badges"
               onClick={(e) => {
                 e.preventDefault();
                 try { localStorage.setItem('hasAscended','true'); } catch {}
-                e.currentTarget.blur();
+                (e.currentTarget as HTMLButtonElement).blur();
                 handleSelect('badges');
               }}
             />
