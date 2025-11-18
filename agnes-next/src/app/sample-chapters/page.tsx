@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSafeBack } from '@/lib/nav';
 import { readContestEmail } from '@/lib/identity';
+import { BuyBookButton } from '@/components/BuyBookButton';
 
 export default function SampleChaptersPage() {
   const [current, setCurrent] = useState(0);
@@ -47,37 +48,6 @@ export default function SampleChaptersPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleBuy = async () => {
-    try {
-      const contestEmail = readContestEmail();
-      if (!contestEmail) {
-        throw new Error('Please start the contest flow so we know who to credit.');
-      }
-
-      const base = ((process.env.NEXT_PUBLIC_API_BASE || '') as string).replace(/\/$/, '') ||
-        (typeof window !== 'undefined' ? window.location.origin : '');
-
-      const response = await fetch(`${base}/api/create-checkout-session`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Email': contestEmail,
-        },
-        body: JSON.stringify({ source: 'sample-chapters' }),
-      });
-
-      const data = await response.json();
-
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        alert('Unable to create checkout session.');
-      }
-    } catch (err) {
-      console.error(err);
-      alert((err as Error)?.message || 'An error occurred. Please try again.');
-    }
-  };
 
   return (
     <div
@@ -194,18 +164,17 @@ export default function SampleChaptersPage() {
           flexWrap: 'wrap',
         }}
       >
-        <a
-          id="btn5"
-          onClick={handleBuy}
+        <BuyBookButton
+          source="sample-chapters"
+          successPath="/contest/thank-you"
+          cancelPath="/sample-chapters"
           style={{
             padding: '10px 14px',
             border: '2px solid #00ffe5',
             color: current === 4 ? 'black' : '#00ffe5',
             backgroundColor: current === 4 ? '#00ffe5' : 'black',
-            textDecoration: 'none',
             fontWeight: 'bold',
             textTransform: 'uppercase',
-            cursor: 'pointer',
             boxShadow: '0 0 12px #00ffe5',
             minHeight: 48,
             display: 'inline-flex',
@@ -218,7 +187,7 @@ export default function SampleChaptersPage() {
           {current === 4 && (
             <span style={{ marginLeft: '12px', fontSize: '1.2em' }}>👉</span>
           )}
-        </a>
+        </BuyBookButton>
         <button
           type="button"
           onClick={goBack}

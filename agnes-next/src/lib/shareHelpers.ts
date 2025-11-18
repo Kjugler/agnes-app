@@ -82,7 +82,8 @@ export function buildShareUrl(
 
 /**
  * Build platform-specific share composer URL
- * For guided flow: only include the URL, user will paste caption themselves
+ * For X: pre-fill tweet text with caption for reduced friction
+ * For other platforms: only include the URL, user will paste caption themselves
  */
 export function buildPlatformShareUrl(
   platform: SharePlatform,
@@ -91,8 +92,8 @@ export function buildPlatformShareUrl(
 ): string {
   switch (platform) {
     case 'x': {
-      // X (Twitter): open composer with just the URL (user pastes caption)
-      return `https://x.com/intent/tweet?url=${encodeURIComponent(shareUrl)}`;
+      // X (Twitter): pre-fill tweet text with caption (user can still edit)
+      return `https://x.com/intent/tweet?text=${encodeURIComponent(caption)}`;
     }
     case 'fb': {
       // Facebook: use sharer with just the URL (user pastes caption)

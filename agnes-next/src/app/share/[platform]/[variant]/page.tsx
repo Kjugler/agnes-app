@@ -71,12 +71,59 @@ export default function ShareLandingPage() {
     refCode,
     shareUrl,
     includeSecretCode: target === 'terminal', // A2: Include secret code for terminal
+    platform, // Pass platform for X-specific caption
   });
   
   // Build platform-specific share URL (for opening the social platform)
   const platformShareUrl = buildPlatformShareUrl(platform, shareUrl, caption);
   
-  // Award points when copy is clicked
+  // Award points helper function
+  const awardPoints = async () => {
+    if (pointsAwarded) return; // Prevent double-awarding
+    
+    setAwardingPoints(true);
+    const email = readContestEmail();
+    
+    if (!email) {
+      console.warn('[share] No email found, cannot award points');
+      setAwardingPoints(false);
+      return;
+    }
+    
+    // Map platform to action name
+    const actionMap: Record<SharePlatform, string> = {
+      fb: 'share_fb',
+      ig: 'share_ig',
+      x: 'share_x',
+      tt: 'share_tiktok',
+      truth: 'share_truth',
+    };
+    
+    const action = actionMap[platform];
+    const res = await fetch('/api/points/award', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-Email': email,
+      },
+      body: JSON.stringify({
+        action,
+        source: 'share_page',
+        targetVariant: target,
+      }),
+    });
+    
+    if (res.ok) {
+      setPointsAwarded(true);
+      // Optionally refresh parent window if it exists
+      if (window.opener) {
+        window.opener.postMessage({ type: 'points_awarded', action }, '*');
+      }
+    }
+    setAwardingPoints(false);
+  };
+  
+  // Copy caption handler
   const handleCopyCaption = async () => {
     if (hasCopied) return; // Prevent double-clicking
     
@@ -85,54 +132,22 @@ export default function ShareLandingPage() {
       await navigator.clipboard.writeText(caption);
       setHasCopied(true);
       
-      // Award points
-      setAwardingPoints(true);
-      const email = readContestEmail();
-      
-      if (!email) {
-        console.warn('[share] No email found, cannot award points');
-        setAwardingPoints(false);
-        return;
-      }
-      
-      // Map platform to action name
-      const actionMap: Record<SharePlatform, string> = {
-        fb: 'share_fb',
-        ig: 'share_ig',
-        x: 'share_x',
-        tt: 'share_tiktok',
-        truth: 'share_truth',
-      };
-      
-      const action = actionMap[platform];
-      const res = await fetch('/api/points/award', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Email': email,
-        },
-        body: JSON.stringify({
-          action,
-          source: 'contest_score',
-          targetVariant: target,
-        }),
-      });
-      
-      if (res.ok) {
-        setPointsAwarded(true);
-        // Optionally refresh parent window if it exists
-        if (window.opener) {
-          window.opener.postMessage({ type: 'points_awarded', action }, '*');
-        }
+      // Award points for non-X platforms (X awards on "Open X to post")
+      if (platform !== 'x') {
+        await awardPoints();
       }
     } catch (err) {
-      console.error('[share] Failed to copy/award', err);
-    } finally {
-      setAwardingPoints(false);
+      console.error('[share] Failed to copy', err);
     }
   };
   
-  const handleOpenPlatform = () => {
+  // Open platform handler - awards points for X when clicked
+  const handleOpenPlatform = async () => {
+    // For X platform, award points when opening the composer (proxy for intent)
+    if (platform === 'x' && !pointsAwarded) {
+      await awardPoints();
+    }
+    
     // Open the platform share URL in a new tab
     window.open(platformShareUrl, '_blank', 'noopener,noreferrer');
   };

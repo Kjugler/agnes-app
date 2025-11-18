@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { ensureAssociateMinimal } from '@/lib/associate';
 import { normalizeEmail } from '@/lib/email';
+import { hasDailySharePoints, startOfToday } from '@/lib/dailySharePoints';
 
 export async function GET(req: NextRequest) {
   try {
@@ -21,6 +22,13 @@ export async function GET(req: NextRequest) {
         total: 0,
         firstName: null,
         earned: { purchase_book: false, share_x: false, share_ig: false },
+        dailyShares: {
+          facebookEarnedToday: false,
+          xEarnedToday: false,
+          instagramEarnedToday: false,
+        },
+        rabbit1Completed: false,
+        lastEvent: null,
         referrals: {
           friends_purchased_count: 0,
           earnings_week_usd: 0,
@@ -54,6 +62,13 @@ export async function GET(req: NextRequest) {
         total: 0,
         firstName: null,
         earned: { purchase_book: false, share_x: false, share_ig: false },
+        dailyShares: {
+          facebookEarnedToday: false,
+          xEarnedToday: false,
+          instagramEarnedToday: false,
+        },
+        rabbit1Completed: false,
+        lastEvent: null,
         referrals: {
           friends_purchased_count: 0,
           earnings_week_usd: 0,
@@ -98,11 +113,77 @@ export async function GET(req: NextRequest) {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
     const createdNow = user.createdAt > oneHourAgo;
 
+    // Check daily share status for each platform
+    const facebookEarnedToday = await hasDailySharePoints(user.id, 'facebook');
+    const xEarnedToday = await hasDailySharePoints(user.id, 'x');
+    const instagramEarnedToday = await hasDailySharePoints(user.id, 'instagram');
+
+    // Get most recent ledger entry to determine lastEvent
+    const mostRecentLedger = user.ledger.length > 0 ? user.ledger[0] : null;
+    let lastEvent: { type: string; referrerName?: string | null } | null = null;
+
+    if (mostRecentLedger) {
+      let eventType: string | null = null;
+      let referrerName: string | null = null;
+
+      if (mostRecentLedger.type === 'PURCHASE_BOOK') {
+        eventType = 'purchase_book';
+        // Try to find referrer from Purchase source or associate code
+        const purchase = await prisma.purchase.findFirst({
+          where: { userId: user.id },
+          orderBy: { createdAt: 'desc' },
+          select: { source: true },
+        });
+        
+        if (purchase?.source) {
+          // Source might be an associate code - try to resolve to name
+          const associate = await prisma.user.findFirst({
+            where: {
+              OR: [
+                { code: purchase.source.toLowerCase() },
+                { referralCode: purchase.source.toLowerCase() },
+              ],
+            },
+            select: { firstName: true, fname: true },
+          });
+          
+          if (associate) {
+            referrerName = associate.firstName || associate.fname || null;
+          } else {
+            // If not found, use source as-is (might be a name)
+            referrerName = purchase.source;
+          }
+        }
+      } else if (mostRecentLedger.type === 'SHARE_FB') {
+        eventType = 'share_fb';
+      } else if (mostRecentLedger.type === 'SHARE_X') {
+        eventType = 'share_x';
+      } else if (mostRecentLedger.type === 'SHARE_IG') {
+        eventType = 'share_ig';
+      } else if (mostRecentLedger.type === 'REFER_FRIEND_PAYOUT') {
+        eventType = 'invite_friend';
+      }
+
+      if (eventType) {
+        lastEvent = {
+          type: eventType,
+          referrerName: referrerName || null,
+        };
+      }
+    }
+
     console.log('[points/me] Returning data', {
       total: user.points,
       firstName: user.firstName || user.fname,
       earnedPurchaseBook: user.earnedPurchaseBook,
+      rabbit1Completed: user.rabbit1Completed,
       createdNow,
+      dailyShares: {
+        facebookEarnedToday,
+        xEarnedToday,
+        instagramEarnedToday,
+      },
+      lastEvent,
     });
 
     return NextResponse.json({
@@ -114,6 +195,13 @@ export async function GET(req: NextRequest) {
         share_x: false, // TODO: implement share tracking
         share_ig: false, // TODO: implement share tracking
       },
+      dailyShares: {
+        facebookEarnedToday,
+        xEarnedToday,
+        instagramEarnedToday,
+      },
+      rabbit1Completed: user.rabbit1Completed,
+      lastEvent,
       referrals: {
         friends_purchased_count: friendsPurchasedCount,
         earnings_week_usd: earningsWeekUsd,

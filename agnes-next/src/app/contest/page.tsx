@@ -5,6 +5,9 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import CheckoutWiring from './CheckoutWiring'; // ← invisible helper that wires the Buy button
 import CurrentScoreButton from './CurrentScoreButton';
+import { BuyBookButton } from '@/components/BuyBookButton';
+import { ContestEntryForm } from '@/components/ContestEntryForm';
+import { startCheckout } from '@/lib/checkout';
 import {
   clearAssociateCaches,
   readAssociate,
@@ -25,6 +28,7 @@ export default function ContestPage() {
   const [profileFirstName, setProfileFirstName] = useState<string | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
   const [statusLoaded, setStatusLoaded] = useState(false);
+  const [showEntryFormForCheckout, setShowEntryFormForCheckout] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -204,6 +208,31 @@ export default function ContestPage() {
     }
   };
 
+  const handleRequireContestEntry = useCallback(() => {
+    setShowEntryFormForCheckout(true);
+    // Optionally scroll into view
+    setTimeout(() => {
+      const formElement = document.querySelector('[data-contest-entry-form]');
+      if (formElement) {
+        formElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 100);
+  }, []);
+
+  const handleContestEntryCompletedFromBuy = useCallback(async () => {
+    try {
+      const path = typeof window !== 'undefined' ? window.location.pathname : '/contest';
+      await startCheckout({
+        source: 'contest',
+        path,
+        successPath: '/contest/thank-you',
+        cancelPath: '/contest',
+      });
+    } catch (err: any) {
+      alert(err?.message || 'Could not start checkout.');
+    }
+  }, []);
+
   return (
     <div
       style={{
@@ -339,8 +368,11 @@ export default function ContestPage() {
                     : btn.label}
               </button>
             ) : btn.type === 'button' ? (
-              <button
-                data-checkout="contest"
+              <BuyBookButton
+                source="contest"
+                successPath="/contest/thank-you"
+                cancelPath="/contest"
+                onRequireContestEntry={handleRequireContestEntry}
                 style={{
                   padding: '1rem',
                   backgroundColor: index === current ? 'green' : '#111',
@@ -353,7 +385,7 @@ export default function ContestPage() {
                 }}
               >
                 {btn.label}
-              </button>
+              </BuyBookButton>
             ) : (
               <Link
                 href={btn.href}
@@ -384,6 +416,25 @@ export default function ContestPage() {
       {showScoreButton && (
         <div style={{ marginTop: '0.75rem' }}>
           <CurrentScoreButton />
+        </div>
+      )}
+
+      {/* Contest Entry Form (shown when Buy button requires entry) */}
+      {showEntryFormForCheckout && (
+        <div
+          data-contest-entry-form
+          style={{
+            marginTop: '2rem',
+            width: '100%',
+            display: 'flex',
+            justifyContent: 'center',
+            padding: '0 1.5rem',
+          }}
+        >
+          <ContestEntryForm
+            suppressAscensionRedirect={true}
+            onCompleted={handleContestEntryCompletedFromBuy}
+          />
         </div>
       )}
 

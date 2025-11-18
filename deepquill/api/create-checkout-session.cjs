@@ -24,9 +24,9 @@ module.exports = async function handler(req, res) {
     const cancelPath  = req.body?.cancelPath  || '/contest';
     const metadata    = (req.body && req.body.metadata) || {};
 
-    // We want users to land back on Next (port 3002)
+    // We want users to land back on Next (via ngrok dev domain)
     // Still allow overriding via body if you want different pages per flow.
-    const origin = 'http://localhost:3002';
+    const origin = process.env.SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://agnes-dev.ngrok-free.app';
 
     const success_url = `${origin}${successPath}?session_id={CHECKOUT_SESSION_ID}`;
     const cancel_url  = `${origin}${cancelPath}`;

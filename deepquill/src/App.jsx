@@ -13,9 +13,18 @@ function App() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
+  console.log('[App] Render - isLoaded:', isLoaded);
+
   return (
     <>
-      {!isLoaded && <LoadingScreen onComplete={() => setIsLoaded(true)} />}{" "}
+      {!isLoaded && (
+        <LoadingScreen 
+          onComplete={() => {
+            console.log('[App] LoadingScreen onComplete called');
+            setIsLoaded(true);
+          }} 
+        />
+      )}
       <div
         className={`min-h-screen transition-opacity duration-700 ${
           isLoaded ? "opacity-100" : "opacity-0"

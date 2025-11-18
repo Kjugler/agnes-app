@@ -29,23 +29,41 @@ export async function POST(req: NextRequest) {
       qty?: number;
       metadata?: Record<string, string> | null;
       source?: string;
+      successPath?: string;
+      cancelPath?: string;
     };
 
     const headerEmail = req.headers.get('x-user-email');
     if (!headerEmail) {
-      return NextResponse.json({ error: 'missing_user_email' }, { status: 400 });
+      console.warn('[create-checkout-session] No x-user-email header; proceeding with fallback');
+      // Don't block checkout, but log it
     }
-
-    const email = normalizeEmail(headerEmail);
-    await ensureAssociateMinimal(email);
+    
+    const email = headerEmail ? normalizeEmail(headerEmail) : null;
+    
+    if (email) {
+      try {
+        await ensureAssociateMinimal(email);
+      } catch (associateErr) {
+        console.warn('[create-checkout-session] Associate ensure failed, continuing with fallback', associateErr);
+      }
+    }
 
     const priceId = body?.priceId || defaultPriceId;
     const quantity = Number.isFinite(body?.qty) && Number(body?.qty) > 0 ? Number(body.qty) : 1;
 
     const baseUrl = siteEnv || `${req.nextUrl.protocol}//${req.nextUrl.host}`;
 
-    const successUrl = `${baseUrl}/contest/ascension?purchase=success`;
-    const cancelUrl = `${baseUrl}/contest`;
+    // Use provided paths or fall back to defaults
+    const successPath = body?.successPath || '/contest/thank-you';
+    const cancelPath = body?.cancelPath || '/contest';
+    
+    // Ensure paths are relative (no leading slash needed, but handle it)
+    const normalizedSuccessPath = successPath.startsWith('/') ? successPath : `/${successPath}`;
+    const normalizedCancelPath = cancelPath.startsWith('/') ? cancelPath : `/${cancelPath}`;
+    
+    const successUrl = `${baseUrl}${normalizedSuccessPath}`;
+    const cancelUrl = `${baseUrl}${normalizedCancelPath}`;
 
     const source = typeof body?.source === 'string' && body.source.trim().length > 0
       ? body.source.trim()
@@ -54,7 +72,7 @@ export async function POST(req: NextRequest) {
     const metadata: Record<string, string> = {
       action: 'buy_book',
       source,
-      contest_email: email,
+      contest_email: email || 'unknown',
     };
 
     if (body?.metadata && typeof body.metadata === 'object') {
@@ -96,7 +114,6 @@ export async function POST(req: NextRequest) {
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       allow_promotion_codes: true,
-      automatic_payment_methods: { enabled: false },
       payment_method_types: ['card'],
       line_items: lineItems,
       success_url: successUrl,
@@ -105,8 +122,16 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({ url: session.url });
-  } catch (err) {
-    console.error('checkout session error', err);
-    return NextResponse.json({ error: 'Unable to create checkout session.' }, { status: 500 });
+  } catch (err: any) {
+    console.error('[create-checkout-session] error', err);
+    const message =
+      typeof err?.message === 'string'
+        ? err.message
+        : 'Unknown error creating checkout session';
+
+    return NextResponse.json(
+      { error: message },
+      { status: 400 }
+    );
   }
 }

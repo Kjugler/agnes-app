@@ -11,6 +11,11 @@ import { getNextVariant, type SharePlatform } from '@/lib/shareAssets';
 import { getNextTarget } from '@/lib/shareTarget';
 import { buildShareCaption } from '@/lib/shareCaption';
 import { buildShareUrl, buildPlatformShareUrl, hasSocialHandle, platformToHandleField } from '@/lib/shareHelpers';
+import { buildScoreCaption, type PlayerState } from '@/lib/scoreCaption';
+import { ScoreCaptionRotator } from '@/components/ScoreCaptionRotator';
+import { BuyBookButton } from '@/components/BuyBookButton';
+import { ContestEntryForm } from '@/components/ContestEntryForm';
+import { startCheckout } from '@/lib/checkout';
 import SocialHandleModal from './SocialHandleModal';
 
 function clamp(min: number, v: number, max: number) {
@@ -25,6 +30,16 @@ type PointsPayload = {
   earnings_week_usd?: number;
   firstName?: string | null;
   createdNow?: boolean;
+  dailyShares?: {
+    facebookEarnedToday: boolean;
+    xEarnedToday: boolean;
+    instagramEarnedToday: boolean;
+  };
+  rabbit1Completed?: boolean;
+  lastEvent?: {
+    type: "purchase_book" | "share_fb" | "share_x" | "share_ig" | "invite_friend" | null;
+    referrerName?: string | null;
+  } | null;
 };
 
 export default function ScorePage() {
@@ -49,6 +64,7 @@ export default function ScorePage() {
     platform: 'fb',
     platformName: 'Facebook',
   });
+  const [showEntryFormForCheckout, setShowEntryFormForCheckout] = useState(false);
   const [reducedMotion] = useState(
     typeof window !== 'undefined' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -176,6 +192,13 @@ export default function ScorePage() {
         })) || [],
         referrals: j.referrals?.friends_purchased_count || 0,
         earnings_week_usd: j.referrals?.earnings_week_usd || 0,
+        dailyShares: j.dailyShares ?? {
+          facebookEarnedToday: false,
+          xEarnedToday: false,
+          instagramEarnedToday: false,
+        },
+        rabbit1Completed: j.rabbit1Completed ?? false,
+        lastEvent: j.lastEvent ?? null,
       });
     } catch (err) {
       console.warn('[score] refreshPoints failed', err);
@@ -313,6 +336,31 @@ export default function ScorePage() {
     router.replace('/contest');
   }, [router]);
 
+  const handleRequireContestEntry = useCallback(() => {
+    setShowEntryFormForCheckout(true);
+    // Optionally scroll into view
+    setTimeout(() => {
+      const formElement = document.querySelector('[data-contest-entry-form]');
+      if (formElement) {
+        formElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 100);
+  }, []);
+
+  const handleContestEntryCompletedFromBuy = useCallback(async () => {
+    try {
+      const path = typeof window !== 'undefined' ? window.location.pathname : '/contest/score';
+      await startCheckout({
+        source: 'score',
+        path,
+        successPath: '/contest/thank-you',
+        cancelPath: '/contest/score',
+      });
+    } catch (err: any) {
+      alert(err?.message || 'Could not start checkout.');
+    }
+  }, []);
+
   // Compute firstName after data is available
   const firstName = useMemo(() => {
     if (associate?.name) {
@@ -325,6 +373,46 @@ export default function ScorePage() {
     }
     return data?.firstName || 'Friend';
   }, [associate?.name, data?.firstName]);
+
+  // Derive PlayerState and build score caption
+  const playerState: PlayerState = useMemo(() => {
+    // Check recent entries for share actions
+    // Recent entries have a 'type' field that contains the ledger entry label/note
+    const recentEntries = data?.recent || [];
+    const entryTypes = recentEntries.map((entry: any) => entry.type || '').join(' ').toUpperCase();
+    
+    const hasFacebookShare = entryTypes.includes('SHARE_FB') || entryTypes.includes('FACEBOOK');
+    const hasXShare = entryTypes.includes('SHARE_X') || entryTypes.includes(' SHARE_X ') || entryTypes.includes('X -');
+    const hasInstagramShare = entryTypes.includes('SHARE_IG') || entryTypes.includes('INSTAGRAM');
+
+    const dailyShares = data?.dailyShares ?? {
+      facebookEarnedToday: false,
+      xEarnedToday: false,
+      instagramEarnedToday: false,
+    };
+
+    const rabbits = {
+      rabbit1Completed: data?.rabbit1Completed ?? false,
+    };
+
+    const lastEvent = data?.lastEvent ?? null;
+
+    return {
+      name: firstName !== 'Friend' ? firstName : null,
+      score: totalPoints,
+      actions: {
+        facebookShare: hasFacebookShare,
+        xShare: hasXShare,
+        instagramShare: hasInstagramShare,
+        purchasedBook: data?.earned?.purchase_book || false,
+      },
+      dailyShares,
+      rabbits,
+      lastEvent,
+    };
+  }, [firstName, totalPoints, data?.recent, data?.earned?.purchase_book, data?.dailyShares, data?.rabbit1Completed, data?.lastEvent]);
+
+  const captionLines = useMemo(() => buildScoreCaption(playerState), [playerState]);
 
   // Dynamic greeting based on first-time vs returning visitor
   const greetingLines = useMemo(() => {
@@ -510,6 +598,7 @@ export default function ScorePage() {
       refCode: referralCode,
       shareUrl,
       includeSecretCode: target === 'terminal', // A2: Include secret code for terminal
+      platform: normalizedPlatform, // Pass platform for X-specific caption
     });
 
     // Navigate to share landing page (guided flow)
@@ -813,6 +902,9 @@ export default function ScorePage() {
           </div>
         )}
 
+        {/* Dynamic Score Caption - Rotating Display */}
+        {data !== null && <ScoreCaptionRotator lines={captionLines} />}
+
         <div className="caption-wrap">
           <div
             className="caption-text"
@@ -839,15 +931,80 @@ export default function ScorePage() {
           <span>{totalPoints}</span>
         </div>
         <div className="buttons-grid-inner">
-          <ActionButton
-            label="Buy the Book"
-            sub="500 pts"
-            href="/buy"
-            hoverKey="buy"
-            showTick={!!data?.earned?.purchase_book}
-            colorBase="#059669"
-            colorHover="#047857"
-          />
+          <div
+            onMouseEnter={() => onButtonEnter('buy')}
+            onMouseLeave={onButtonLeave}
+            onFocus={() => onButtonEnter('buy')}
+            onBlur={onButtonLeave}
+            style={{
+              display: 'inline-flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: '96px',
+              borderRadius: 16,
+              padding: '0 24px',
+              color: '#fff',
+              background: hovered === 'buy' ? '#047857' : '#059669',
+              boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
+              transition: 'all 0.2s ease',
+              transform: hovered === 'buy' ? (reducedMotion ? 'scale(1.005)' : 'scale(1.02)') : 'scale(1)',
+              outline: 'none',
+              cursor: 'pointer',
+            }}
+          >
+            <BuyBookButton
+              source="score"
+              successPath="/contest/thank-you"
+              cancelPath="/contest/score"
+              onRequireContestEntry={handleRequireContestEntry}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'transparent',
+                border: 'none',
+                color: 'inherit',
+                padding: 0,
+                cursor: 'pointer',
+                fontSize: 'clamp(18px, 2vw, 24px)',
+                fontWeight: 800,
+              }}
+            >
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+              }}>
+                Buy the Book
+                {data?.earned?.purchase_book && (
+                  <span
+                    aria-hidden
+                    style={{
+                      display: 'inline-block',
+                      fontSize: 12,
+                      padding: '2px 6px',
+                      borderRadius: 999,
+                      background: 'rgba(255,255,255,0.3)',
+                      color: '#fff',
+                      fontWeight: 700,
+                    }}
+                  >
+                    ✓
+                  </span>
+                )}
+              </div>
+              <div style={{
+                fontSize: 14,
+                lineHeight: 1,
+                color: 'rgba(255,255,255,0.9)',
+                marginTop: 4,
+              }}>
+                500 pts
+              </div>
+            </BuyBookButton>
+          </div>
           <ActionButton
             label="Share to X"
             sub="100 pts"
@@ -954,6 +1111,27 @@ export default function ScorePage() {
         onSave={handleSaveSocialHandle}
         onCancel={() => setSocialHandleModal({ ...socialHandleModal, isOpen: false })}
       />
+
+      {/* Contest Entry Form (shown when Buy button requires entry) */}
+      {showEntryFormForCheckout && (
+        <div
+          data-contest-entry-form
+          style={{
+            marginTop: '2rem',
+            width: '100%',
+            display: 'flex',
+            justifyContent: 'center',
+            padding: '0 1.5rem',
+            position: 'relative',
+            zIndex: 10,
+          }}
+        >
+          <ContestEntryForm
+            suppressAscensionRedirect={true}
+            onCompleted={handleContestEntryCompletedFromBuy}
+          />
+        </div>
+      )}
     </div>
   );
 }

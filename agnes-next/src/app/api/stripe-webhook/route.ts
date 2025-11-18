@@ -3,6 +3,7 @@ export const runtime = 'nodejs';
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/db';
+import { checkAndAwardRabbit1, getActionsSnapshot } from '@/lib/rabbitMissions';
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY || '';
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
@@ -168,6 +169,10 @@ export async function POST(req: NextRequest) {
       }
 
       await addPointsForAssociate(associate.id, BOOK_POINTS, paymentIntent, source, session);
+      
+      // Check and award Rabbit 1 after purchase
+      const actionsSnapshot = await getActionsSnapshot(associate.id);
+      await checkAndAwardRabbit1(associate.id, actionsSnapshot);
     }
 
     return NextResponse.json({ received: true });
