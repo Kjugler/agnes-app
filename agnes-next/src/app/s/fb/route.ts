@@ -8,7 +8,7 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
   const v = Number(searchParams.v || '1');
   const validV = [1, 2, 3].includes(v) ? v : 1;
   
-  const origin = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3002';
+  const origin = process.env.NEXT_PUBLIC_SITE_URL || 'https://agnes-dev.ngrok-free.app';
   const image = `${origin}/images/fb${validV}.jpg`;
   const video = `${origin}/videos/fb${validV}.mp4`;
   const pageUrl = `${origin}/s/fb?v=${validV}${searchParams.ref ? `&ref=${encodeURIComponent(searchParams.ref)}` : ''}`;

@@ -4,14 +4,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { ensureAssociateMinimal } from '@/lib/associate';
 import { normalizeEmail } from '@/lib/email';
+import { awardDailySharePoints, startOfToday } from '@/lib/dailySharePoints';
+import { checkAndAwardRabbit1, getActionsSnapshot } from '@/lib/rabbitMissions';
 
 const BOOK_POINTS = 500;
-
-function startOfToday() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
 
 function mapAction(a: string) {
   switch (a) {
@@ -63,6 +59,10 @@ async function handleBookPurchase(email: string) {
     });
   });
 
+  // Check and award Rabbit 1 after purchase
+  const actionsSnapshot = await getActionsSnapshot(user.id);
+  await checkAndAwardRabbit1(user.id, actionsSnapshot);
+
   return NextResponse.json({ ok: true, awarded: true, total: updated.points });
 }
 
@@ -102,15 +102,25 @@ export async function POST(req: NextRequest) {
     const user = await ensureAssociateMinimal(normalizedEmail);
 
     let alreadyAwarded = false;
-    if (
+    let pointsAwarded = 0;
+
+    // Handle daily share points using the helper function
+    if (map.type === 'SHARE_FB') {
+      pointsAwarded = await awardDailySharePoints(user.id, 'facebook');
+      alreadyAwarded = pointsAwarded === 0;
+    } else if (map.type === 'SHARE_X') {
+      pointsAwarded = await awardDailySharePoints(user.id, 'x');
+      alreadyAwarded = pointsAwarded === 0;
+    } else if (map.type === 'SHARE_IG') {
+      pointsAwarded = await awardDailySharePoints(user.id, 'instagram');
+      alreadyAwarded = pointsAwarded === 0;
+    } else if (
       map.points &&
-      (map.type === 'SHARE_X' ||
-        map.type === 'SHARE_IG' ||
-        map.type === 'SHARE_FB' ||
-        map.type === 'SHARE_TRUTH' ||
+      (map.type === 'SHARE_TRUTH' ||
         map.type === 'SHARE_TT' ||
         map.type === 'SIGNUP_BONUS')
     ) {
+      // Other share types and signup bonus still use the old logic
       const exists = await prisma.ledger.findFirst({
         where: {
           userId: user.id,
@@ -122,9 +132,26 @@ export async function POST(req: NextRequest) {
         select: { id: true },
       });
       alreadyAwarded = Boolean(exists);
-    }
 
-    if (!alreadyAwarded && map.points) {
+      if (!alreadyAwarded && map.points) {
+        await prisma.$transaction([
+          prisma.ledger.create({
+            data: {
+              userId: user.id,
+              type: map.type,
+              points: map.points,
+              note: `Auto award ${action}`,
+            },
+          }),
+          prisma.user.update({
+            where: { id: user.id },
+            data: { points: { increment: map.points } },
+          }),
+        ]);
+        pointsAwarded = map.points;
+      }
+    } else if (map.points) {
+      // Non-share actions (contest_join, subscribe_digest, etc.)
       await prisma.$transaction([
         prisma.ledger.create({
           data: {
@@ -139,6 +166,14 @@ export async function POST(req: NextRequest) {
           data: { points: { increment: map.points } },
         }),
       ]);
+      pointsAwarded = map.points;
+    }
+
+    // Check and award Rabbit 1 if conditions are met
+    if (pointsAwarded > 0 || map.type === 'PURCHASE_BOOK') {
+      // Get updated actions snapshot after this event
+      const actionsSnapshot = await getActionsSnapshot(user.id);
+      await checkAndAwardRabbit1(user.id, actionsSnapshot);
     }
 
     const fresh = await prisma.user.findUnique({

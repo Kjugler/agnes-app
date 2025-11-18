@@ -66,7 +66,8 @@ Add your actual Stripe keys:
 STRIPE_SECRET_KEY=sk_test_YOUR_ACTUAL_KEY
 STRIPE_WEBHOOK_SECRET=whsec_YOUR_ACTUAL_SECRET
 DATABASE_URL="file:./prisma/dev.db"
-NEXT_PUBLIC_SITE_URL=http://localhost:3002
+NEXT_PUBLIC_SITE_URL=https://agnes-dev.ngrok-free.app
+NEXT_PUBLIC_API_BASE=https://agnes-dev.ngrok-free.app
 ```
 
 #### For deepquill:
@@ -119,8 +120,8 @@ npm run dev
 ```
 
 ### 9. Test Everything Works
-- Visit http://localhost:3002
-- Check the score page: http://localhost:3002/contest/score?mockEmail=test@example.com
+- Visit http://localhost:3002 (local) or https://agnes-dev.ngrok-free.app (via ngrok)
+- Check the score page: https://agnes-dev.ngrok-free.app/contest/score?mockEmail=test@example.com
 - Test social sharing buttons
 - Verify points are displaying correctly
 

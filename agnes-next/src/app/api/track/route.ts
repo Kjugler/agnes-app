@@ -9,10 +9,14 @@ const trackerDisabled =
   process.env.NODE_ENV !== 'production' &&
   process.env.TRACKER_ENABLED !== 'true';
 
-// --- CORS allowlist (Next 3002, Vite 5181)
-const ALLOW_ORIGINS = new Set(['http://localhost:3002', 'http://localhost:5181']);
+// --- CORS allowlist (Next 3002, Vite 5181, ngrok dev domain)
+const ALLOW_ORIGINS = new Set([
+  'http://localhost:3002',
+  'http://localhost:5181',
+  'https://agnes-dev.ngrok-free.app',
+]);
 function cors(origin?: string | null) {
-  const o = origin && ALLOW_ORIGINS.has(origin) ? origin : 'http://localhost:3002';
+  const o = origin && ALLOW_ORIGINS.has(origin) ? origin : 'https://agnes-dev.ngrok-free.app';
   return {
     'Access-Control-Allow-Origin': o,
     'Access-Control-Allow-Methods': 'POST,OPTIONS',

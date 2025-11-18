@@ -1,87 +1,8 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { bootstrapContestEmail, readContestEmail } from '@/lib/identity';
-
-const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || '').replace(/\/$/, '');
-
-// Non-blocking tracker: prefer sendBeacon; fallback to keepalive fetch
-function trackCheckoutStarted(source: string, path: string) {
-  const payload = { type: 'CHECKOUT_STARTED', source, meta: { path } };
-
-  try {
-    const email = readContestEmail();
-    if (typeof navigator !== 'undefined' && 'sendBeacon' in navigator) {
-      navigator.sendBeacon(
-        '/api/track',
-        new Blob([JSON.stringify(payload)], { type: 'application/json' }),
-      );
-    } else {
-      // fire-and-forget; do NOT await
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (email) headers['X-User-Email'] = email;
-      fetch('/api/track', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-        keepalive: true, // survives navigation
-      }).catch(() => {});
-    }
-  } catch {
-    /* swallow */
-  }
-}
-
-type StartOpts = {
-  qty?: number;
-  source?: string; // goes into Stripe metadata.source
-  path?: string; // goes into track meta.path
-  successPath?: string;
-  cancelPath?: string;
-};
-
-async function startCheckout(opts: StartOpts = {}) {
-  const {
-    qty = 1,
-    successPath = '/contest/thank-you',
-    cancelPath = '/contest',
-    source = 'contest',
-    path = typeof window !== 'undefined' ? window.location.pathname : '/contest',
-  } = opts;
-
-  // 1) fire tracking first (non-blocking — does not affect animations)
-  trackCheckoutStarted(source, path);
-
-  if (!API_BASE) {
-    throw new Error('Checkout unavailable: NEXT_PUBLIC_API_BASE is not configured.');
-  }
-
-  const email = readContestEmail();
-  if (!email) {
-    throw new Error('Please enter the contest first so we know who to credit.');
-  }
-
-  // 2) create Stripe session (blocking)
-  const res = await fetch(`${API_BASE}/api/create-checkout-session`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-User-Email': email,
-    },
-    body: JSON.stringify({
-      qty,
-      successPath,
-      cancelPath,
-      metadata: { source }, // your existing server shape
-    }),
-  });
-
-  const data = await res.json().catch(() => ({} as any));
-  if (!res.ok || !data?.url) {
-    throw new Error(data?.error || `Checkout failed (HTTP ${res.status})`);
-  }
-  window.location.href = data.url; // go to Stripe Checkout
-}
+import { bootstrapContestEmail } from '@/lib/identity';
+import { startCheckout } from '@/lib/checkout';
 
 export default function CheckoutWiring() {
   // Prevent accidental double-clicks from spawning two sessions

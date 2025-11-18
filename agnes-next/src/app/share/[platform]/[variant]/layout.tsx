@@ -1,12 +1,13 @@
 import type { Metadata } from 'next';
 import type { SharePlatform } from '@/lib/shareAssets';
+import { shareAssets } from '@/lib/shareAssets';
 
 type Params = { platform?: string; variant?: string };
 type Search = { ref?: string; target?: string };
 
 // TEMP: hard-wire the current public base URL so Facebook always
 // gets a real, https, non-localhost URL.
-const BASE_URL = 'https://simona-nonindictable-pseudoapoplectically.ngrok-free.dev';
+const BASE_URL = 'https://agnes-dev.ngrok-free.app';
 
 export async function generateMetadata(
   props: {
@@ -24,8 +25,10 @@ export async function generateMetadata(
   const refCode = typeof sp?.ref === 'string' ? sp.ref : '';
   const target = typeof sp?.target === 'string' ? sp.target : 'challenge';
 
-  // Build absolute URLs by hand – no helpers, no env, no localhost.
-  const imageUrl = `${BASE_URL}/images/fb/fb${variant}.jpg`;
+  // Get image path from shareAssets (X platform uses FB thumbnails)
+  const assets = shareAssets[platform]?.variants[variant];
+  const thumbnailPath = assets?.thumbnail || `/images/fb/fb${variant}.jpg`;
+  const imageUrl = `${BASE_URL}${thumbnailPath}`;
 
   const query = [
     refCode ? `ref=${encodeURIComponent(refCode)}` : '',

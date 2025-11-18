@@ -1,3 +1,5 @@
+import type { SharePlatform } from './shareAssets';
+
 /**
  * Build consistent share caption across all platforms
  * A5: MUST include book pitch, discount code, vacation + money offer, referral link, secret code, CTA
@@ -7,12 +9,16 @@ export function buildShareCaption({
   refCode,
   shareUrl,
   includeSecretCode = true,
+  platform,
 }: {
   firstName?: string | null;
   refCode: string;
   shareUrl: string;
   includeSecretCode?: boolean;
+  platform?: SharePlatform;
 }) {
+  // X uses the same caption as FB (reuse FB copy)
+  // Default caption for all platforms (FB, X, IG, etc.)
   const intro = firstName ? `Hey, it's ${firstName}— ` : '';
   const secretCode = includeSecretCode ? ' #WhereIsJodyVernon' : '';
   

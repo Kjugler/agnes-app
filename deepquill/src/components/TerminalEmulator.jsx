@@ -66,19 +66,26 @@ const TerminalEmulator = () => {
   // download animation -> then show email modal
   useEffect(() => {
     if (isAccessGranted) {
+      console.log('[TerminalEmulator] Access granted, starting download animation');
       setIsDownloading(true);
+      setDownloadProgress(0); // Reset progress
       const downloadInterval = setInterval(() => {
         setDownloadProgress(prev => {
-          if (prev >= 100) {
+          const next = prev + 1;
+          if (next >= 100) {
+            console.log('[TerminalEmulator] Download complete, showing email modal');
             clearInterval(downloadInterval);
             setIsDownloading(false);
             setShowEmailModal(true);
             return 100;
           }
-          return prev + 1;
+          return next;
         });
       }, 50);
-      return () => clearInterval(downloadInterval);
+      return () => {
+        console.log('[TerminalEmulator] Cleaning up download interval');
+        clearInterval(downloadInterval);
+      };
     }
   }, [isAccessGranted]);
 
@@ -141,6 +148,7 @@ const TerminalEmulator = () => {
       ]);
       setIsAccessGranted(true);
       setIsIntroComplete(true);
+      console.log('[TerminalEmulator] Setting isAccessGranted to true');
     } else {
       setAttemptCount(prev => prev + 1);
 
@@ -218,9 +226,16 @@ const TerminalEmulator = () => {
         </Terminal>
       </div>
 
+      {(() => {
+        console.log('[TerminalEmulator] Render - showEmailModal:', showEmailModal);
+        return null;
+      })()}
       <EmailModal
         isOpen={showEmailModal}
-        onClose={() => setShowEmailModal(false)}
+        onClose={() => {
+          console.log('[TerminalEmulator] EmailModal onClose called');
+          setShowEmailModal(false);
+        }}
       />
       {/* debug badge: shows which app and API base are in use */}
 <div style={{

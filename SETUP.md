@@ -97,7 +97,7 @@ Application will start on http://localhost:3002
 | `STRIPE_SECRET_KEY` | Stripe secret key for payments | `sk_test_...` |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook endpoint secret | `whsec_...` |
 | `DATABASE_URL` | SQLite database file path | `"file:./prisma/dev.db"` |
-| `NEXT_PUBLIC_SITE_URL` | Public site URL for social sharing | `http://localhost:3002` |
+| `NEXT_PUBLIC_SITE_URL` | Public site URL for social sharing | `https://agnes-dev.ngrok-free.app` |
 
 ### deepquill Required Variables:
 | Variable | Description | Example |
@@ -108,7 +108,7 @@ Application will start on http://localhost:3002
 
 ## Testing the Setup
 
-1. Visit http://localhost:3002
+1. Visit http://localhost:3002 (local) or https://agnes-dev.ngrok-free.app (via ngrok)
 2. Navigate to the contest page
 3. Try purchasing the book (use Stripe test card: 4242 4242 4242 4242)
 4. Check that points are awarded correctly

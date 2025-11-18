@@ -20,9 +20,19 @@ const EmailModal = ({ isOpen, onClose }) => {
         setEmail('');
 
         // --- fire tracking event to Next (agnes-next) ---
-        const NEXT_BASE =
-          (typeof import.meta !== 'undefined' && import.meta.env?.VITE_NEXT_PUBLIC_SITE_URL) ||
-          'http://localhost:3002';
+        const envUrl = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_NEXT_PUBLIC_SITE_URL : null;
+        const NEXT_BASE = envUrl || 'https://agnes-dev.ngrok-free.app';
+        
+        // Debug: log what URL we're using (with alert for visibility)
+        console.log('[deepquill] NEXT_BASE env var:', envUrl);
+        console.log('[deepquill] NEXT_BASE final value:', NEXT_BASE);
+        console.log('[deepquill] import.meta.env:', import.meta.env);
+        console.log('[deepquill] All VITE_ vars:', Object.keys(import.meta.env || {}).filter(k => k.startsWith('VITE_')));
+        
+        // Temporary alert to verify the URL being used
+        if (NEXT_BASE.includes('simona-nonindictable')) {
+          alert('ERROR: Still using old domain! NEXT_BASE=' + NEXT_BASE);
+        }
 
         try {
           fetch(`${NEXT_BASE}/api/track`, {
@@ -61,8 +71,14 @@ const EmailModal = ({ isOpen, onClose }) => {
     }
   };
 
-  if (!isOpen) return null;
+  console.log('[EmailModal] Render - isOpen:', isOpen);
+  
+  if (!isOpen) {
+    console.log('[EmailModal] Not rendering - isOpen is false');
+    return null;
+  }
 
+  console.log('[EmailModal] Rendering modal');
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-[#1e1e1e] p-8 rounded-lg shadow-xl max-w-md w-full">

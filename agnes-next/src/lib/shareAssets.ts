@@ -10,9 +10,9 @@ export const shareAssets: Record<SharePlatform, {
 }> = {
   fb: {
     variants: {
-      1: { video: '/videos/fb1.mp4', thumbnail: '/images/fb1.jpg' },
-      2: { video: '/videos/fb2.mp4', thumbnail: '/images/fb2.jpg' },
-      3: { video: '/videos/fb3.mp4', thumbnail: '/images/fb3.jpg' },
+      1: { video: '/videos/fb1.mp4', thumbnail: '/images/fb/fb1.jpg' },
+      2: { video: '/videos/fb2.mp4', thumbnail: '/images/fb/fb2.jpg' },
+      3: { video: '/videos/fb3.mp4', thumbnail: '/images/fb/fb3.jpg' },
     },
   },
   ig: {
@@ -23,11 +23,11 @@ export const shareAssets: Record<SharePlatform, {
     },
   },
   x: {
-    // Reuse Facebook assets for now
+    // Use FB thumbnails and IG videos
     variants: {
-      1: { video: '/videos/fb1.mp4', thumbnail: '/images/fb1.jpg' },
-      2: { video: '/videos/fb2.mp4', thumbnail: '/images/fb2.jpg' },
-      3: { video: '/videos/fb3.mp4', thumbnail: '/images/fb3.jpg' },
+      1: { video: '/videos/ig1.mp4', thumbnail: '/images/fb/fb1.jpg' },
+      2: { video: '/videos/ig2.mp4', thumbnail: '/images/fb/fb2.jpg' },
+      3: { video: '/videos/ig3.mp4', thumbnail: '/images/fb/fb3.jpg' },
     },
   },
   tt: {
