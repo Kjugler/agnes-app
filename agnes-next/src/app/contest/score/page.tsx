@@ -1035,9 +1035,12 @@ export default function ScorePage() {
           <ActionButton
             label="Share to Truth"
             sub="100 pts"
-            href="#"
+            href="/contest/share/truth"
             hoverKey="truth"
-            onClick={(e: any) => handleShareClick('truth', e)}
+            onClick={(e: any) => {
+              e.preventDefault();
+              router.push('/contest/share/truth');
+            }}
             colorBase="#6366f1"
             colorHover="#4f46e5"
           />
@@ -1068,9 +1071,12 @@ export default function ScorePage() {
           <ActionButton
             label="Share to TikTok"
             sub="100 pts"
-            href="#"
+            href="/contest/share/tiktok"
             hoverKey="tt"
-            onClick={(e: any) => handleShareClick('tiktok', e)}
+            onClick={(e: any) => {
+              e.preventDefault();
+              router.push('/contest/share/tiktok');
+            }}
             colorBase="#1a1a1a"
             colorHover="#2d2d2d"
           />
