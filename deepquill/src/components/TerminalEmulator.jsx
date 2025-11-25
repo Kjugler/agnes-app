@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Terminal, { ColorMode, TerminalOutput } from 'react-terminal-ui';
 import EmailModal from './EmailModal';
+import JodyAssistant from './JodyAssistant';
 import './TerminalEmulator.css';
 import { subscribeEmail } from '../api/subscribeEmail';
 
@@ -55,7 +56,7 @@ const TerminalEmulator = () => {
         setLineData(prev => [
           ...prev,
           <TerminalOutput key={`hint2-${Date.now()}`} className="text-green-500">
-            {"Hint: It starts with 'Where'"}
+            {"Hint: It starts with '#where'"}
           </TerminalOutput>,
         ]);
       }
@@ -237,6 +238,10 @@ const TerminalEmulator = () => {
           setShowEmailModal(false);
         }}
       />
+      
+      {/* Jody Assistant - First IBM Terminal - Hide when email modal is open */}
+      {!showEmailModal && <JodyAssistant variant="em1" autoShowDelayMs={4000} />}
+      
       {/* debug badge: shows which app and API base are in use */}
 <div style={{
   position: 'fixed', right: 8, bottom: 8, zIndex: 99999,

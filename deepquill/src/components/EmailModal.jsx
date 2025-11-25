@@ -1,6 +1,7 @@
 // deepquill/src/components/EmailModal.jsx
 import React, { useState } from 'react';
 import { subscribeEmail } from '../api/subscribeEmail';
+import JodyAssistant from './JodyAssistant';
 
 const EmailModal = ({ isOpen, onClose }) => {
   const [email, setEmail] = useState('');
@@ -138,6 +139,9 @@ const EmailModal = ({ isOpen, onClose }) => {
           Close
         </button>
       </div>
+
+      {/* Jody Assistant - Second IBM Terminal (Email) */}
+      <JodyAssistant variant="em2" autoShowDelayMs={4000} />
     </div>
   );
 };

@@ -25,7 +25,7 @@ export async function generateMetadata(
   const refCode = typeof sp?.ref === 'string' ? sp.ref : '';
   const target = typeof sp?.target === 'string' ? sp.target : 'challenge';
 
-  // Get image path from shareAssets (X platform uses FB thumbnails)
+  // Get image path from shareAssets (X and IG platforms use FB thumbnails)
   const assets = shareAssets[platform]?.variants[variant];
   const thumbnailPath = assets?.thumbnail || `/images/fb/fb${variant}.jpg`;
   const imageUrl = `${BASE_URL}${thumbnailPath}`;
