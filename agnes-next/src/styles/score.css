@@ -2,7 +2,7 @@
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 220px;
-  grid-template-rows: 32vh 1fr;
+  grid-template-rows: minmax(260px, 40vh) 1fr;
   height: 100vh;
   overflow: hidden;
   color: #f8fafc;
@@ -12,7 +12,7 @@
   content: '';
   position: absolute;
   inset: 0;
-  background: url('/images/score-bg.jpg') center calc(50% - 160px) / cover no-repeat;
+  background: url('/images/score-bg.jpg') center calc(50% - 120px) / cover no-repeat;
   filter: brightness(0.82) saturate(0.9);
   transition: filter 0.35s ease;
   z-index: 0;
@@ -41,6 +41,25 @@
   grid-row: 1;
   position: relative;
   overflow: hidden;
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 2.5rem 1rem 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .score-stage {
+    min-height: 320px;
+    padding: 4rem 1rem 2rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .score-stage {
+    min-height: 380px;
+    padding: 5rem 1rem 2rem;
+  }
 }
 
 .ship-mist {
@@ -86,13 +105,28 @@
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  padding-top: 4vh;
+  padding-top: 2vh;
+  padding-bottom: 2vh;
   pointer-events: none;
+}
+
+@media (min-width: 768px) {
+  .caption-wrap {
+    padding-top: 3vh;
+    padding-bottom: 3vh;
+  }
+}
+
+@media (min-width: 1024px) {
+  .caption-wrap {
+    padding-top: 4vh;
+    padding-bottom: 4vh;
+  }
 }
 
 .caption-text {
   text-align: center;
-  padding: 0 32px;
+  padding: 1.25rem 1.25rem;
   max-width: 960px;
   font-size: clamp(32px, 6vw, 60px);
   font-weight: 900;
@@ -103,6 +137,18 @@
   white-space: pre-line; /* Preserve line breaks for multi-line greetings */
 }
 
+@media (min-width: 768px) {
+  .caption-text {
+    padding: 1.75rem 2rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .caption-text {
+    padding: 2rem 2.25rem;
+  }
+}
+
 .buttons-grid {
   grid-column: 1;
   grid-row: 2;
@@ -110,6 +156,26 @@
   flex-direction: column;
   gap: 24px;
   padding: 16px 32px 32px;
+  margin-top: 2.5rem;
+  background: transparent;
+}
+
+@media (min-width: 768px) {
+  .buttons-grid {
+    margin-top: 3.25rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .buttons-grid {
+    margin-top: 4rem;
+  }
+}
+
+@media (min-width: 1280px) {
+  .buttons-grid {
+    margin-top: 4.75rem;
+  }
 }
 
 .points-pill {
@@ -133,8 +199,26 @@
   grid-template-rows: repeat(2, minmax(120px, 1fr));
   grid-auto-flow: column;
   grid-auto-columns: minmax(180px, 1fr);
-  gap: 24px;
+  gap: 16px;
   align-content: start;
+  width: 100%;
+  max-width: 80rem;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+@media (min-width: 768px) {
+  .buttons-grid-inner {
+    gap: 18px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .buttons-grid-inner {
+    gap: 20px;
+  }
 }
 
 .score-sidebar {
@@ -212,7 +296,7 @@
 @media (max-width: 1100px) {
   .score-wrap {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: 32vh auto 220px;
+    grid-template-rows: minmax(260px, 40vh) auto 220px;
     height: auto;
   }
 

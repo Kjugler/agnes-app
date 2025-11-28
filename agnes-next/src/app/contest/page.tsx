@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import CheckoutWiring from './CheckoutWiring'; // ← invisible helper that wires the Buy button
@@ -8,6 +8,7 @@ import CurrentScoreButton from './CurrentScoreButton';
 import { BuyBookButton } from '@/components/BuyBookButton';
 import { ContestEntryForm } from '@/components/ContestEntryForm';
 import { startCheckout } from '@/lib/checkout';
+import HelpButton from '@/components/HelpButton';
 import {
   clearAssociateCaches,
   readAssociate,
@@ -15,6 +16,13 @@ import {
   writeAssociate,
   type AssociateCache,
 } from '@/lib/identity';
+
+declare global {
+  interface Window {
+    YT: any;
+    onYouTubeIframeAPIReady: () => void;
+  }
+}
 
 export default function ContestPage() {
   const qp = useSearchParams();
@@ -29,6 +37,8 @@ export default function ContestPage() {
   const [statusLoading, setStatusLoading] = useState(false);
   const [statusLoaded, setStatusLoaded] = useState(false);
   const [showEntryFormForCheckout, setShowEntryFormForCheckout] = useState(false);
+  const videoRef = useRef<HTMLDivElement>(null);
+  const playerRef = useRef<any>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -131,6 +141,183 @@ export default function ContestPage() {
   // - explicit flag: ?justPurchased=1
   const sessionId = qp.get('session_id');
   const justPurchased = qp.get('justPurchased') === '1';
+
+  // YouTube IFrame API setup for video looping
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    // Load YouTube IFrame API script
+    if (!window.YT) {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      const firstScriptTag = document.getElementsByTagName('script')[0];
+      firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
+    }
+
+    const initializePlayer = () => {
+      if (!window.YT || !window.YT.Player) {
+        console.log('[Contest Video] YouTube API not ready yet');
+        return;
+      }
+      
+      const containerId = 'contest-video-player';
+      const container = document.getElementById(containerId);
+      
+      if (!container) {
+        console.log('[Contest Video] Container not found, retrying...');
+        setTimeout(initializePlayer, 500);
+        return;
+      }
+
+      // Initialize video player
+      if (!playerRef.current) {
+        console.log('[Contest Video] Initializing YouTube player');
+        try {
+          playerRef.current = new window.YT.Player(containerId, {
+            videoId: '_DEmdMYdjXk',
+            playerVars: {
+              autoplay: 1,
+              mute: 1, // Start muted for autoplay compatibility, then unmute after playing
+              controls: 1,
+              rel: 0, // Don't show related videos
+              modestbranding: 1,
+              enablejsapi: 1,
+              loop: 1, // Enable looping
+              playlist: '_DEmdMYdjXk', // Required for loop to work
+            },
+            events: {
+              onReady: (event: any) => {
+                console.log('[Contest Video] Video ready, starting playback');
+                const player = event.target;
+                
+                // Start playing (should autoplay since mute: 1)
+                const startPlayback = () => {
+                  try {
+                    player.playVideo();
+                    console.log('[Contest Video] Play command sent');
+                    
+                    // Wait a moment, then check if playing and unmute
+                    setTimeout(() => {
+                      const state = player.getPlayerState();
+                      console.log('[Contest Video] Player state:', state);
+                      
+                      if (state === window.YT.PlayerState.PLAYING) {
+                        // Video is playing - unmute it
+                        try {
+                          player.unMute();
+                          console.log('[Contest Video] Video playing, unmuted successfully');
+                        } catch (e) {
+                          console.log('[Contest Video] Could not unmute:', e);
+                          // Try again after a bit
+                          setTimeout(() => {
+                            try {
+                              player.unMute();
+                            } catch (e2) {
+                              console.log('[Contest Video] Second unmute attempt failed:', e2);
+                            }
+                          }, 1000);
+                        }
+                      } else {
+                        // Not playing yet, try again
+                        console.log('[Contest Video] Video not playing yet, retrying...');
+                        setTimeout(() => {
+                          try {
+                            player.playVideo();
+                            setTimeout(() => {
+                              try {
+                                player.unMute();
+                              } catch (e) {
+                                console.log('[Contest Video] Could not unmute on retry:', e);
+                              }
+                            }, 1000);
+                          } catch (e) {
+                            console.log('[Contest Video] Retry play failed:', e);
+                          }
+                        }, 500);
+                      }
+                    }, 500);
+                  } catch (e) {
+                    console.error('[Contest Video] Error starting playback:', e);
+                  }
+                };
+                
+                // Start playback immediately
+                startPlayback();
+              },
+              onStateChange: (event: any) => {
+                const state = event.data;
+                console.log('[Contest Video] State changed:', state);
+                
+                // When video ends (state 0), restart it
+                if (state === window.YT.PlayerState.ENDED) {
+                  console.log('[Contest Video] Video ended, restarting');
+                  setTimeout(() => {
+                    if (playerRef.current) {
+                      try {
+                        playerRef.current.seekTo(0, true); // Restart from beginning
+                        playerRef.current.playVideo();
+                        playerRef.current.unMute(); // Ensure unmuted
+                        console.log('[Contest Video] Restarted video');
+                      } catch (e) {
+                        console.error('[Contest Video] Error restarting:', e);
+                      }
+                    }
+                  }, 500);
+                } else if (state === window.YT.PlayerState.PLAYING) {
+                  // Video is playing - ensure it's unmuted
+                  try {
+                    event.target.unMute();
+                  } catch (e) {
+                    console.log('[Contest Video] Could not unmute during playback:', e);
+                  }
+                } else if (state === window.YT.PlayerState.PAUSED) {
+                  // If paused, try to resume (shouldn't happen with autoplay, but just in case)
+                  console.log('[Contest Video] Video paused, attempting to resume');
+                  setTimeout(() => {
+                    try {
+                      event.target.playVideo();
+                      event.target.unMute();
+                    } catch (e) {
+                      console.log('[Contest Video] Could not resume:', e);
+                    }
+                  }, 1000);
+                }
+              },
+              onError: (event: any) => {
+                console.error('[Contest Video] YouTube Player Error:', event.data);
+              },
+            },
+          });
+        } catch (error) {
+          console.error('[Contest Video] Error initializing player:', error);
+        }
+      }
+    };
+
+    // Wait for YouTube API to be ready
+    if (window.YT && window.YT.Player) {
+      // API already loaded, initialize immediately
+      setTimeout(initializePlayer, 100);
+    } else {
+      // Wait for API to load
+      window.onYouTubeIframeAPIReady = () => {
+        console.log('[Contest Video] YouTube API ready');
+        setTimeout(initializePlayer, 100);
+      };
+    }
+
+    return () => {
+      // Cleanup
+      if (playerRef.current) {
+        try {
+          playerRef.current.destroy();
+          playerRef.current = null;
+        } catch (e) {
+          console.warn('Error destroying video player:', e);
+        }
+      }
+    };
+  }, []); // Empty deps - run once on mount
 
   // Make visibility sticky for the session
   useEffect(() => {
@@ -249,11 +436,9 @@ export default function ContestPage() {
     >
       {/* VIDEO SEGMENT */}
       <div style={{ width: '100%', height: '65vh', position: 'relative', overflow: 'hidden' }}>
-        <iframe
-          src="https://www.youtube.com/embed/_DEmdMYdjXk?autoplay=1&mute=1&controls=1&rel=0&modestbranding=1"
-          frameBorder="0"
-          allow="autoplay; encrypted-media"
-          allowFullScreen
+        <div
+          id="contest-video-player"
+          ref={videoRef}
           style={{
             width: '100%',
             height: '100%',
@@ -485,6 +670,7 @@ export default function ContestPage() {
 
       {/* Invisible behavior: wires Buy button to checkout */}
       <CheckoutWiring />
+      <HelpButton />
     </div>
   );
 }

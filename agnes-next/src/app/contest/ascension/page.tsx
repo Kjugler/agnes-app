@@ -4,6 +4,7 @@ import styles from './page.module.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { clearAssociateCaches, readAssociate, readContestEmail, type AssociateCache } from '@/lib/identity';
+import { JodyAssistant } from '@/components/JodyAssistant';
 
 export default function AscensionPage() {
   const router = useRouter();
@@ -193,49 +194,18 @@ export default function AscensionPage() {
     link.click();
   };
 
-  // Play audio function
-  const playAudio = async () => {
-    if (reduced || audioPlayed) return;
-    
-    try {
-      if (audioRef.current) {
-        audioRef.current.volume = 0.5;
-        await audioRef.current.play();
-        console.log('✅ Audio started');
-        setAudioPlayed(true);
-      }
-    } catch (error) {
-      console.log('⚠️ Audio blocked:', error);
-    }
-  };
-
-  // Try to play on mount
+  // Play Jody's voice on mount (for ascension page)
   useEffect(() => {
+    // Small cinematic delay so the page can settle
     const timer = setTimeout(() => {
-      playAudio();
-    }, 500);
+      audioRef.current?.play().catch((err) => {
+        console.warn('Ascension audio playback failed (maybe autoplay blocked):', err);
+      });
+    }, 600);
+
     return () => clearTimeout(timer);
   }, []);
 
-  // Listen for ANY interaction as fallback
-  useEffect(() => {
-    if (audioPlayed || reduced) return;
-    
-    const handleInteraction = () => {
-      playAudio();
-    };
-
-    const events = ['click', 'touchstart', 'mousemove', 'keydown'];
-    events.forEach(event => {
-      window.addEventListener(event, handleInteraction, { once: true });
-    });
-
-    return () => {
-      events.forEach(event => {
-        window.removeEventListener(event, handleInteraction);
-      });
-    };
-  }, [audioPlayed, reduced]);
 
   const handleSelect = (dest: 'score' | 'badges') => {
     try { localStorage.setItem('hasAscended', 'true'); } catch {}
@@ -362,18 +332,8 @@ export default function AscensionPage() {
         </div>
       </div>
 
-      {/* existing flash overlay + audio element remain as-is */}
+      {/* Flash overlay */}
       <div ref={flashRef} className={styles.flash} />
-      <audio 
-        ref={audioRef} 
-        src="/sfx/ascend.mp3" 
-        preload="auto"
-        loop
-        onError={(e) => console.log('Audio load error:', e)}
-        onLoadStart={() => console.log('🎵 Audio loading...')}
-        onLoadedData={() => console.log('🎵 Audio loaded')}
-        onPlay={() => console.log('🎵 Audio playing!')}
-      />
       {joinModal && (
         <div className={styles.joinOverlay}>
           <div className={styles.joinCard}>
@@ -398,6 +358,20 @@ export default function AscensionPage() {
           </div>
         </div>
       )}
+
+      {/* Jody Assistant */}
+      <JodyAssistant
+        variant="ascension"
+        autoShowDelayMs={4000} // still fine to pass; will be ignored when disableBubble is true
+        disableBubble={true}
+      />
+
+      {/* Jody's voice audio */}
+      <audio
+        ref={audioRef}
+        src="/audio/jody-ascend-init.mp3"
+        preload="auto"
+      />
     </div>
   );
 }

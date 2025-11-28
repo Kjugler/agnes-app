@@ -5,6 +5,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { readContestEmail, readAssociate } from '@/lib/identity';
 import { buildShareCaption } from '@/lib/shareCaption';
 import { getNextVariant, shareAssets } from '@/lib/shareAssets';
+import { JodyAssistant } from '@/components/JodyAssistant';
+import { JodyTrainingModal } from '@/components/JodyTrainingModal';
+import HelpButton from '@/components/HelpButton';
 
 export default function TruthSharePage() {
   const router = useRouter();
@@ -16,10 +19,14 @@ export default function TruthSharePage() {
   const [pointsAwarded, setPointsAwarded] = useState(false);
   const [firstName, setFirstName] = useState<string | null>(null);
   const [truthCaption, setTruthCaption] = useState('');
+  const [truthVideoSrc, setTruthVideoSrc] = useState<string | null>(null);
+  const [showTruthTraining, setShowTruthTraining] = useState(false);
 
-  // Get rotating Truth video variant
-  const truthVariant = getNextVariant('truth');
-  const truthVideoSrc = shareAssets.truth.variants[truthVariant].video;
+  // Get rotating Truth video variant - lock it on mount
+  useEffect(() => {
+    const variant = getNextVariant('truth');
+    setTruthVideoSrc(shareAssets.truth.variants[variant].video);
+  }, []);
 
   // Get refCode from searchParams or associate cache
   const refCodeFromParams = searchParams.get('ref') || '';
@@ -189,28 +196,30 @@ export default function TruthSharePage() {
       </p>
 
       {/* Video Preview Block */}
-      <div
-        style={{
-          marginTop: '1rem',
-          marginBottom: '1rem',
-          display: 'flex',
-          justifyContent: 'center',
-          width: '100%',
-          maxWidth: 640,
-        }}
-      >
-        <video
-          src={truthVideoSrc}
-          controls
+      {truthVideoSrc && (
+        <div
           style={{
-            borderRadius: 12,
-            boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+            marginTop: '1rem',
+            marginBottom: '1rem',
+            display: 'flex',
+            justifyContent: 'center',
             width: '100%',
-            maxWidth: '320px',
-            height: 'auto',
+            maxWidth: 640,
           }}
-        />
-      </div>
+        >
+          <video
+            src={truthVideoSrc}
+            controls
+            style={{
+              borderRadius: 12,
+              boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+              width: '100%',
+              maxWidth: '320px',
+              height: 'auto',
+            }}
+          />
+        </div>
+      )}
 
       {/* Caption Block */}
       <div
@@ -280,26 +289,28 @@ export default function TruthSharePage() {
           gap: '0.75rem',
         }}
       >
-        <a
-          href={truthVideoSrc}
-          download
-          onClick={handleDownloadVideo}
-          style={{
-            padding: '0.75rem 1.5rem',
-            borderRadius: 999,
-            border: 'none',
-            background: hasDownloaded ? '#10b981' : '#3b82f6',
-            color: 'white',
-            fontSize: '1rem',
-            fontWeight: 600,
-            cursor: 'pointer',
-            textAlign: 'center',
-            textDecoration: 'none',
-            transition: 'all 0.2s',
-          }}
-        >
-          {hasDownloaded ? '✓ Video Downloaded' : 'Download Truth Video'}
-        </a>
+        {truthVideoSrc && (
+          <a
+            href={truthVideoSrc}
+            download
+            onClick={handleDownloadVideo}
+            style={{
+              padding: '0.75rem 1.5rem',
+              borderRadius: 999,
+              border: 'none',
+              background: hasDownloaded ? '#10b981' : '#3b82f6',
+              color: 'white',
+              fontSize: '1rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              textAlign: 'center',
+              textDecoration: 'none',
+              transition: 'all 0.2s',
+            }}
+          >
+            {hasDownloaded ? '✓ Video Downloaded' : 'Download Truth Video'}
+          </a>
+        )}
 
         <a
           href="https://truthsocial.com"
@@ -432,6 +443,45 @@ export default function TruthSharePage() {
             : 'I Posted It ✔ Get My Points'}
         </button>
       </div>
+
+      {/* Jody Assistant */}
+      <JodyAssistant
+        variant="truth"
+        autoShowDelayMs={4000}
+        onShowTraining={() => setShowTruthTraining(true)}
+      />
+
+      {/* Truth Training Modal */}
+      {showTruthTraining && (
+        <JodyTrainingModal
+          isOpen={showTruthTraining}
+          onClose={() => setShowTruthTraining(false)}
+          title="How to Post on Truth Social"
+          videoSrc="/training/jody-truth-training.mp4"
+          steps={[
+            { text: <>On this page, click <strong>Copy caption</strong> to copy the full Truth Social caption with your personal code and links.</> },
+            { text: <>Click <strong>Download Truth Video</strong> to save the video to your device. It will usually go into your Downloads folder.</> },
+            { text: <>Open Truth Social in your browser or app and sign in to the account where you want to post.</> },
+            { text: <>Tap the <strong>New Post / camera icon</strong> to create a new post, then choose to upload a video from your device.</> },
+            { text: <>Browse to your Downloads folder (or wherever your browser saved the file) and select the video you just downloaded from DeepQuill.</> },
+            { text: <>Truth Social will show a preview of your video. Confirm it looks right, then move to the caption area.</> },
+            { text: <>Click or tap into the caption area and paste the text you copied earlier (<strong>Ctrl + V</strong> on desktop, or long-press &gt; Paste on mobile).</> },
+            { text: <>Review the post one last time — make sure the video, caption, and hashtags all look correct — then tap <strong>Post</strong>.</> },
+            { text: <>Wait until Truth Social clearly shows that your post is live before leaving the screen.</> },
+          ]}
+          importantNote={
+            <>
+              <strong>Important:</strong> if the video upload fails or you close the window too quickly, the post may not actually go live. DeepQuill LLC reserves the right to audit winning entries to confirm posts were truly published. We don't want you to lose eligibility because one video didn't finish uploading.
+            </>
+          }
+          afterPostNote={
+            <>
+              Once Truth Social confirms that your post is live, come back to this page and click <strong>&ldquo;I Posted It ✔ Get My Points&rdquo;</strong>. That records your share in the contest and updates your score on the scoreboard.
+            </>
+          }
+        />
+      )}
+      <HelpButton />
     </div>
   );
 }

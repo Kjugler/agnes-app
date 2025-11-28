@@ -1,7 +1,5 @@
 import { readContestEmail } from './identity';
 
-const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || '').replace(/\/$/, '');
-
 // Non-blocking tracker: prefer sendBeacon; fallback to keepalive fetch
 function trackCheckoutStarted(source: string, path: string) {
   const payload = { type: 'CHECKOUT_STARTED', source, meta: { path } };
@@ -49,62 +47,100 @@ export async function startCheckout(opts: StartCheckoutOpts = {}) {
   // 1) fire tracking first (non-blocking — does not affect animations)
   trackCheckoutStarted(source, path);
 
-  if (!API_BASE) {
-    throw new Error('Checkout unavailable: NEXT_PUBLIC_API_BASE is not configured.');
-  }
-
   const email = readContestEmail();
   if (!email) {
     throw new Error('Please enter the contest first so we know who to credit.');
   }
 
-  // 2) create Stripe session (blocking)
-  const res = await fetch(`${API_BASE}/api/create-checkout-session`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-User-Email': email,
-    },
-    body: JSON.stringify({
-      qty,
-      successPath,
-      cancelPath,
-      metadata: { source }, // your existing server shape
-    }),
-  });
+  // Capture referral code from query params, localStorage, or cookie
+  let referralCode: string | undefined;
+  if (typeof window !== 'undefined') {
+    // Try query param first (from /refer?code=... → /contest?ref=...)
+    const urlParams = new URLSearchParams(window.location.search);
+    const refFromQuery = urlParams.get('ref');
+    
+    if (refFromQuery) {
+      referralCode = refFromQuery;
+    } else {
+      // Fallback to localStorage (set by /refer page)
+      try {
+        referralCode = window.localStorage.getItem('referral_code') || undefined;
+      } catch {
+        // localStorage not available, try cookie
+        const cookies = document.cookie.split(';');
+        const referralCookie = cookies.find(c => c.trim().startsWith('referral_code='));
+        if (referralCookie) {
+          referralCode = referralCookie.split('=')[1]?.trim();
+        }
+      }
+    }
+  }
 
-  if (!res.ok) {
-    let errorText = '';
-    try {
-      errorText = await res.text();
-    } catch {
-      // ignore parsing error
+  // 2) create Stripe session via Next.js API route (blocking)
+  try {
+    const metadata: Record<string, string> = { source };
+    if (referralCode) {
+      metadata.referralCode = referralCode;
     }
 
-    console.error('[startCheckout] Failed to create checkout session', {
-      status: res.status,
-      statusText: res.statusText,
-      body: errorText,
+    const res = await fetch('/api/create-checkout-session', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-Email': email,
+      },
+      body: JSON.stringify({
+        qty,
+        successPath,
+        cancelPath,
+        metadata,
+      }),
     });
 
-    // Try to parse as JSON for structured error
-    let errorMessage = 'Unable to create checkout session.';
-    try {
-      const errorData = JSON.parse(errorText);
-      if (errorData?.error && typeof errorData.error === 'string') {
-        errorMessage = errorData.error;
+    if (!res.ok) {
+      let errorMessage = `Checkout failed with status ${res.status}`;
+      try {
+        const errorData = await res.json();
+        if (errorData?.error && typeof errorData.error === 'string') {
+          errorMessage = errorData.error;
+        }
+      } catch {
+        // If response isn't JSON, try to get text
+        try {
+          const errorText = await res.text();
+          if (errorText) {
+            errorMessage = errorText;
+          }
+        } catch {
+          // Use default message
+        }
       }
-    } catch {
-      // Use default message if not JSON
+
+      console.error('[startCheckout] Failed to create checkout session', {
+        status: res.status,
+        statusText: res.statusText,
+        error: errorMessage,
+      });
+
+      throw new Error(errorMessage);
     }
 
-    throw new Error(errorMessage);
-  }
+    const data = await res.json();
+    if (!data?.url) {
+      throw new Error(data?.error || 'Checkout session created but no URL returned');
+    }
 
-  const data = await res.json().catch(() => ({} as any));
-  if (!data?.url) {
-    throw new Error(data?.error || 'Checkout session created but no URL returned');
+    // Redirect to Stripe Checkout
+    window.location.href = data.url;
+  } catch (err: any) {
+    console.error('[startCheckout] Checkout error', err);
+    
+    // If it's already an Error with a message, use it; otherwise create a network error message
+    if (err instanceof Error && err.message) {
+      throw err;
+    }
+    
+    throw new Error('Network error while starting checkout. Please try again.');
   }
-  window.location.href = data.url; // go to Stripe Checkout
 }
 

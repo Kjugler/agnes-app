@@ -3,6 +3,7 @@
 import '@/styles/score.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { confettiCelebrate, confettiSprinkle } from '@/lib/confetti';
 import { useScore } from '@/hooks/useScore';
@@ -16,7 +17,9 @@ import { ScoreCaptionRotator } from '@/components/ScoreCaptionRotator';
 import { BuyBookButton } from '@/components/BuyBookButton';
 import { ContestEntryForm } from '@/components/ContestEntryForm';
 import { startCheckout } from '@/lib/checkout';
+import ReferFriendButton from '@/components/refer/ReferFriendButton';
 import SocialHandleModal from './SocialHandleModal';
+import HelpButton from '@/components/HelpButton';
 
 function clamp(min: number, v: number, max: number) {
   return Math.max(min, Math.min(max, v));
@@ -848,6 +851,39 @@ export default function ScorePage() {
       <div id="confetti-layer" className="score-confetti" />
 
       <section className="score-stage">
+        {/* Back to Contest button */}
+        <Link
+          href="/contest"
+          style={{
+            position: 'absolute',
+            top: 16,
+            left: 16,
+            padding: '6px 14px',
+            borderRadius: 999,
+            border: '1px solid rgba(148, 163, 184, 0.6)',
+            background: 'rgba(15, 23, 42, 0.55)',
+            color: '#e2e8f0',
+            fontSize: 12,
+            letterSpacing: '0.04em',
+            cursor: 'pointer',
+            zIndex: 45,
+            textDecoration: 'none',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
+            transition: 'all 0.2s ease',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(15, 23, 42, 0.75)';
+            e.currentTarget.style.borderColor = 'rgba(148, 163, 184, 0.8)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'rgba(15, 23, 42, 0.55)';
+            e.currentTarget.style.borderColor = 'rgba(148, 163, 184, 0.6)';
+          }}
+        >
+          ← Back to Contest
+        </Link>
         {contestEmail && (
           <button
             type="button"
@@ -930,6 +966,19 @@ export default function ScorePage() {
           Total Points{' '}
           <span>{totalPoints}</span>
         </div>
+        {data?.earnings_week_usd !== undefined && data.earnings_week_usd > 0 && (
+          <div
+            className="points-pill"
+            style={{
+              marginTop: '0.5rem',
+              fontSize: '0.875rem',
+              opacity: 0.9,
+            }}
+          >
+            Referral Earnings{' '}
+            <span>${(data.earnings_week_usd / 100).toFixed(2)}</span>
+          </div>
+        )}
         <div className="buttons-grid-inner">
           <div
             onMouseEnter={() => onButtonEnter('buy')}
@@ -1052,16 +1101,23 @@ export default function ScorePage() {
             colorBase="#4f46e5"
             colorHover="#4338ca"
           />
+          <div
+            style={{
+              position: 'relative',
+            }}
+            onMouseEnter={() => onButtonEnter('refer')}
+            onMouseLeave={onButtonLeave}
+            onFocus={() => onButtonEnter('refer')}
+            onBlur={onButtonLeave}
+          >
+            <ReferFriendButton
+              referralCode={associate?.code || ''}
+              referrerEmail={associate?.email || contestEmail || undefined}
+              className=""
+            />
+          </div>
           <ActionButton
-            label="Refer a Friend"
-            sub="$2 each"
-            href="/contest/referral"
-            hoverKey="refer"
-            colorBase="#ea580c"
-            colorHover="#c2410c"
-          />
-          <ActionButton
-            label="Weekly Digest Opt‑in"
+            label="Weekly Digest"
             sub="50 pts"
             href="/subscribe"
             hoverKey="subscribe"
@@ -1138,6 +1194,7 @@ export default function ScorePage() {
           />
         </div>
       )}
+      <HelpButton />
     </div>
   );
 }

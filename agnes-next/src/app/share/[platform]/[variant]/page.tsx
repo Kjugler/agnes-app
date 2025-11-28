@@ -10,6 +10,7 @@ import { buildPlatformShareUrl } from '@/lib/shareHelpers';
 import { readContestEmail } from '@/lib/identity';
 import { IGHelpPanel } from '@/components/IGHelpPanel';
 import { JodyAssistant } from '@/components/JodyAssistant';
+import HelpButton from '@/components/HelpButton';
 
 const platformNames: Record<SharePlatform, string> = {
   fb: 'Facebook',
@@ -598,6 +599,7 @@ export default function ShareLandingPage() {
 
       {/* Jody IG helper, bottom-right - Only show for IG platform */}
       {platform === 'ig' && <JodyAssistant variant="ig" autoShowDelayMs={4000} />}
+      <HelpButton />
     </div>
   );
 }

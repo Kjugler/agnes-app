@@ -3,21 +3,44 @@ import Stripe from 'stripe';
 import { normalizeEmail } from '@/lib/email';
 import { ensureAssociateMinimal } from '@/lib/associate';
 
+// SITE_URL:
+// In dev, set NEXT_PUBLIC_SITE_URL to your public ngrok URL so Stripe can redirect back:
+//   NEXT_PUBLIC_SITE_URL=https://agnes-dev.ngrok-free.app
+// In production, set it to your real domain.
+const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL ??
+  'https://agnes-dev.ngrok-free.app'; // safe default for dev
+
+// Log SITE_URL on module load to help debug
+console.log('[create-checkout-session] SITE_URL configured:', {
+  fromEnv: !!process.env.NEXT_PUBLIC_SITE_URL,
+  value: SITE_URL,
+  envValue: process.env.NEXT_PUBLIC_SITE_URL,
+});
+
+// Helper to build absolute URLs for Stripe redirects (Stripe requires absolute URLs)
+function withBase(path: string): string {
+  const url = `${SITE_URL.replace(/\/+$/, '')}${path}`;
+  console.log('[create-checkout-session] Building URL with withBase:', { path, url, SITE_URL });
+  return url;
+}
+
 const secretKey = process.env.STRIPE_SECRET_KEY;
 const defaultPriceId = process.env.STRIPE_PRICE_ID_BOOK || '';
-const siteEnv = (process.env.NEXT_PUBLIC_SITE_URL || '').replace(/\/+$/, '');
 const fallbackUnitAmount = Number(process.env.STRIPE_UNIT_AMOUNT_BOOK || '2600');
 const fallbackCurrency = (process.env.STRIPE_CURRENCY || 'usd').toLowerCase();
 const fallbackProductName = process.env.STRIPE_PRODUCT_NAME || 'The Agnes Protocol';
 
 const stripe = secretKey
-  ? new Stripe(secretKey, { apiVersion: '2024-06-20' })
+  ? new Stripe(secretKey, { apiVersion: '2024-06-20' as any })
   : null;
 
 export async function POST(req: NextRequest) {
   try {
+    console.log('[create-checkout-session] Request received');
+    
     if (!secretKey || !stripe) {
-      console.error('stripe env missing', { hasSecret: !!secretKey });
+      console.error('[create-checkout-session] Stripe env missing', { hasSecret: !!secretKey });
       return NextResponse.json(
         { error: 'Stripe env missing (check STRIPE_SECRET_KEY)' },
         { status: 500 },
@@ -31,7 +54,16 @@ export async function POST(req: NextRequest) {
       source?: string;
       successPath?: string;
       cancelPath?: string;
+      referralCode?: string;
     };
+
+    console.log('[create-checkout-session] Request body', {
+      qty: body?.qty,
+      source: body?.source,
+      hasMetadata: !!body?.metadata,
+      successPath: body?.successPath,
+      cancelPath: body?.cancelPath,
+    });
 
     const headerEmail = req.headers.get('x-user-email');
     if (!headerEmail) {
@@ -40,19 +72,28 @@ export async function POST(req: NextRequest) {
     }
     
     const email = headerEmail ? normalizeEmail(headerEmail) : null;
+    console.log('[create-checkout-session] Email from header', { email, headerEmail });
     
     if (email) {
       try {
-        await ensureAssociateMinimal(email);
-      } catch (associateErr) {
-        console.warn('[create-checkout-session] Associate ensure failed, continuing with fallback', associateErr);
+        console.log('[create-checkout-session] Ensuring associate exists for', email);
+        const associate = await ensureAssociateMinimal(email);
+        console.log('[create-checkout-session] Associate ensured', { 
+          id: associate.id, 
+          code: associate.code,
+          email: associate.email 
+        });
+      } catch (associateErr: any) {
+        console.error('[create-checkout-session] Associate ensure failed', {
+          error: associateErr?.message,
+          stack: associateErr?.stack,
+        });
+        // Don't block checkout - continue with fallback
       }
     }
 
     const priceId = body?.priceId || defaultPriceId;
     const quantity = Number.isFinite(body?.qty) && Number(body?.qty) > 0 ? Number(body.qty) : 1;
-
-    const baseUrl = siteEnv || `${req.nextUrl.protocol}//${req.nextUrl.host}`;
 
     // Use provided paths or fall back to defaults
     const successPath = body?.successPath || '/contest/thank-you';
@@ -62,8 +103,10 @@ export async function POST(req: NextRequest) {
     const normalizedSuccessPath = successPath.startsWith('/') ? successPath : `/${successPath}`;
     const normalizedCancelPath = cancelPath.startsWith('/') ? cancelPath : `/${cancelPath}`;
     
-    const successUrl = `${baseUrl}${normalizedSuccessPath}`;
-    const cancelUrl = `${baseUrl}${normalizedCancelPath}`;
+    // Build absolute URLs for Stripe (Stripe requires absolute URLs)
+    // Include session_id in success URL so we can verify the payment
+    const successUrl = withBase(`${normalizedSuccessPath}?session_id={CHECKOUT_SESSION_ID}`);
+    const cancelUrl = withBase(normalizedCancelPath);
 
     const source = typeof body?.source === 'string' && body.source.trim().length > 0
       ? body.source.trim()
@@ -81,6 +124,17 @@ export async function POST(req: NextRequest) {
           metadata[key] = value;
         }
       }
+    }
+
+    // Ensure referralCode is included if present (from metadata or body)
+    const referralCode =
+      typeof body?.referralCode === 'string'
+        ? body.referralCode.trim()
+        : metadata.referralCode || undefined;
+
+    if (referralCode) {
+      metadata.referralCode = referralCode;
+      console.log('[create-checkout-session] Referral code attached:', referralCode);
     }
 
     let lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
@@ -111,6 +165,13 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    console.log('[create-checkout-session] Creating Stripe session', {
+      lineItemsCount: lineItems.length,
+      successUrl,
+      cancelUrl,
+      metadata,
+    });
+
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       allow_promotion_codes: true,
@@ -121,9 +182,23 @@ export async function POST(req: NextRequest) {
       metadata,
     });
 
+    console.log('[create-checkout-session] Stripe session created', {
+      sessionId: session.id,
+      url: session.url ? 'present' : 'missing',
+    });
+
+    if (!session.url) {
+      throw new Error('Stripe session created but no checkout URL returned');
+    }
+
     return NextResponse.json({ url: session.url });
   } catch (err: any) {
-    console.error('[create-checkout-session] error', err);
+    console.error('[create-checkout-session] Error creating checkout session', {
+      error: err?.message,
+      stack: err?.stack,
+      name: err?.name,
+    });
+    
     const message =
       typeof err?.message === 'string'
         ? err.message
