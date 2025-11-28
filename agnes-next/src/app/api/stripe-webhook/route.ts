@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/db';
 import { checkAndAwardRabbit1, getActionsSnapshot } from '@/lib/rabbitMissions';
+import { handleReferralConversion } from '@/lib/referrals/handleReferralConversion';
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY || '';
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
@@ -135,6 +136,17 @@ export async function POST(req: NextRequest) {
 
       if (session.payment_status !== 'paid') {
         return NextResponse.json({ received: true });
+      }
+
+      // Handle referral conversion if referralCode is present
+      const referralCode = (session.metadata?.referralCode || '').trim();
+      if (referralCode) {
+        try {
+          await handleReferralConversion({ session, referralCode });
+        } catch (err: any) {
+          console.error('[stripe-webhook] Error handling referral conversion:', err);
+          // Don't block the rest of the webhook processing
+        }
       }
 
       const associateCode = normalizeCode(session.metadata?.associateCode || session.metadata?.ref);

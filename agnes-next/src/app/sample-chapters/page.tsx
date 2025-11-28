@@ -1,12 +1,25 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useSafeBack } from '@/lib/nav';
 import { readContestEmail } from '@/lib/identity';
 import { BuyBookButton } from '@/components/BuyBookButton';
+import HelpButton from '@/components/HelpButton';
+
+declare global {
+  interface Window {
+    YT: any;
+    onYouTubeIframeAPIReady: () => void;
+  }
+}
 
 export default function SampleChaptersPage() {
   const [current, setCurrent] = useState(0);
+  const [activeVideo, setActiveVideo] = useState<'left' | 'right'>('left');
+  const leftVideoRef = useRef<HTMLIFrameElement>(null);
+  const rightVideoRef = useRef<HTMLIFrameElement>(null);
+  const leftPlayerRef = useRef<any>(null);
+  const rightPlayerRef = useRef<any>(null);
   const goBack = useSafeBack('/contest');
 
   const buttons = [
@@ -48,6 +61,231 @@ export default function SampleChaptersPage() {
     return () => clearInterval(interval);
   }, []);
 
+  // YouTube IFrame API setup and video control
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    // Load YouTube IFrame API
+    if (!window.YT) {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      const firstScriptTag = document.getElementsByTagName('script')[0];
+      firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
+    }
+
+    const initializePlayers = () => {
+      if (!window.YT || !window.YT.Player) {
+        console.log('[Sample Chapters] YouTube API not ready yet');
+        return;
+      }
+
+      const leftContainerId = 'left-video-player';
+      const rightContainerId = 'right-video-player';
+      
+      const leftContainer = document.getElementById(leftContainerId);
+      const rightContainer = document.getElementById(rightContainerId);
+
+      if (!leftContainer || !rightContainer) {
+        console.log('[Sample Chapters] Containers not found, retrying...');
+        setTimeout(initializePlayers, 500);
+        return;
+      }
+
+      // Initialize left video player (Kris Video) - starts playing immediately
+      if (!leftPlayerRef.current) {
+        console.log('[Sample Chapters] Initializing left video player');
+        try {
+          leftPlayerRef.current = new window.YT.Player(leftContainerId, {
+            videoId: 'qj9H74Qy4HM',
+            playerVars: {
+              autoplay: 1,
+              mute: 1, // Start muted for autoplay compatibility
+              controls: 1,
+              rel: 0,
+              modestbranding: 1,
+              enablejsapi: 1,
+            },
+            events: {
+              onReady: (event: any) => {
+                console.log('[Sample Chapters] Left video ready, starting playback');
+                const player = event.target;
+                
+                const startPlayback = () => {
+                  try {
+                    player.playVideo();
+                    console.log('[Sample Chapters] Left video play command sent');
+                    
+                    // Wait a moment, then unmute
+                    setTimeout(() => {
+                      const state = player.getPlayerState();
+                      console.log('[Sample Chapters] Left video state:', state);
+                      
+                      if (state === window.YT.PlayerState.PLAYING) {
+                        try {
+                          player.unMute();
+                          console.log('[Sample Chapters] Left video playing, unmuted');
+                        } catch (e) {
+                          console.log('[Sample Chapters] Could not unmute left video:', e);
+                          setTimeout(() => {
+                            try {
+                              player.unMute();
+                            } catch (e2) {
+                              console.log('[Sample Chapters] Second unmute attempt failed:', e2);
+                            }
+                          }, 1000);
+                        }
+                      }
+                    }, 500);
+                  } catch (e) {
+                    console.error('[Sample Chapters] Error starting left video:', e);
+                  }
+                };
+                
+                startPlayback();
+              },
+              onStateChange: (event: any) => {
+                const state = event.data;
+                
+                // When left video ends, switch to right video
+                if (state === window.YT.PlayerState.ENDED) {
+                  console.log('[Sample Chapters] Left video ended, switching to right');
+                  setActiveVideo('right');
+                  
+                  // Pause left video
+                  try {
+                    event.target.pauseVideo();
+                  } catch (e) {
+                    console.log('[Sample Chapters] Error pausing left video:', e);
+                  }
+                  
+                  // Start right video
+                  setTimeout(() => {
+                    if (rightPlayerRef.current) {
+                      try {
+                        rightPlayerRef.current.playVideo();
+                        rightPlayerRef.current.unMute();
+                        console.log('[Sample Chapters] Right video started');
+                      } catch (e) {
+                        console.error('[Sample Chapters] Error starting right video:', e);
+                      }
+                    }
+                  }, 500);
+                } else if (state === window.YT.PlayerState.PLAYING) {
+                  // Ensure unmuted when playing
+                  try {
+                    event.target.unMute();
+                  } catch (e) {
+                    console.log('[Sample Chapters] Could not unmute left video:', e);
+                  }
+                }
+              },
+              onError: (event: any) => {
+                console.error('[Sample Chapters] Left video error:', event.data);
+              },
+            },
+          });
+        } catch (error) {
+          console.error('[Sample Chapters] Error initializing left player:', error);
+        }
+      }
+
+      // Initialize right video player (Beach Video) - waits for left to finish
+      if (!rightPlayerRef.current) {
+        console.log('[Sample Chapters] Initializing right video player');
+        try {
+          rightPlayerRef.current = new window.YT.Player(rightContainerId, {
+            videoId: 'Rp1C4kokLdE',
+            playerVars: {
+              autoplay: 0, // Don't autoplay - wait for left video to end
+              mute: 1, // Start muted
+              controls: 1,
+              rel: 0,
+              modestbranding: 1,
+              enablejsapi: 1,
+            },
+            events: {
+              onReady: (event: any) => {
+                console.log('[Sample Chapters] Right video ready (waiting for left to finish)');
+              },
+              onStateChange: (event: any) => {
+                const state = event.data;
+                
+                // When right video ends, switch back to left video
+                if (state === window.YT.PlayerState.ENDED) {
+                  console.log('[Sample Chapters] Right video ended, switching to left');
+                  setActiveVideo('left');
+                  
+                  // Pause right video
+                  try {
+                    event.target.pauseVideo();
+                  } catch (e) {
+                    console.log('[Sample Chapters] Error pausing right video:', e);
+                  }
+                  
+                  // Start left video
+                  setTimeout(() => {
+                    if (leftPlayerRef.current) {
+                      try {
+                        leftPlayerRef.current.seekTo(0, true); // Restart from beginning
+                        leftPlayerRef.current.playVideo();
+                        leftPlayerRef.current.unMute();
+                        console.log('[Sample Chapters] Left video restarted');
+                      } catch (e) {
+                        console.error('[Sample Chapters] Error restarting left video:', e);
+                      }
+                    }
+                  }, 500);
+                } else if (state === window.YT.PlayerState.PLAYING) {
+                  // Ensure unmuted when playing
+                  try {
+                    event.target.unMute();
+                  } catch (e) {
+                    console.log('[Sample Chapters] Could not unmute right video:', e);
+                  }
+                }
+              },
+              onError: (event: any) => {
+                console.error('[Sample Chapters] Right video error:', event.data);
+              },
+            },
+          });
+        } catch (error) {
+          console.error('[Sample Chapters] Error initializing right player:', error);
+        }
+      }
+    };
+
+    // Wait for YouTube API to be ready
+    if (window.YT && window.YT.Player) {
+      setTimeout(initializePlayers, 100);
+    } else {
+      window.onYouTubeIframeAPIReady = () => {
+        console.log('[Sample Chapters] YouTube API ready');
+        setTimeout(initializePlayers, 100);
+      };
+    }
+
+    return () => {
+      // Cleanup
+      if (leftPlayerRef.current) {
+        try {
+          leftPlayerRef.current.destroy();
+          leftPlayerRef.current = null;
+        } catch (e) {
+          console.warn('[Sample Chapters] Error destroying left player:', e);
+        }
+      }
+      if (rightPlayerRef.current) {
+        try {
+          rightPlayerRef.current.destroy();
+          rightPlayerRef.current = null;
+        } catch (e) {
+          console.warn('[Sample Chapters] Error destroying right player:', e);
+        }
+      }
+    };
+  }, []); // Empty deps - run once on mount
+
 
   return (
     <div
@@ -75,22 +313,18 @@ export default function SampleChaptersPage() {
           flexWrap: 'wrap',
         }}
       >
-        <iframe
-          src="https://www.youtube.com/embed/qj9H74Qy4HM"
-          title="Kris Video"
-          frameBorder="0"
-          allowFullScreen
+        <div
+          id="left-video-player"
+          ref={leftVideoRef}
           style={{
             width: '300px',
             height: '170px',
             border: '2px solid #00ff00',
           }}
         />
-        <iframe
-          src="https://www.youtube.com/embed/Rp1C4kokLdE"
-          title="Beach Video"
-          frameBorder="0"
-          allowFullScreen
+        <div
+          id="right-video-player"
+          ref={rightVideoRef}
           style={{
             width: '300px',
             height: '170px',
@@ -244,6 +478,7 @@ export default function SampleChaptersPage() {
         </p>
         <p>All purchases are final. Contact us with any issues.</p>
       </footer>
+      <HelpButton />
     </div>
   );
 }

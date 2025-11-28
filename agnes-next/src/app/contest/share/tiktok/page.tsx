@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { JodyAssistant } from '@/components/JodyAssistant';
 import { JodyTrainingModal } from '@/components/JodyTrainingModal';
 import { readContestEmail, readAssociate } from '@/lib/identity';
+import HelpButton from '@/components/HelpButton';
 import { buildShareCaption } from '@/lib/shareCaption';
 import { getNextVariant, shareAssets } from '@/lib/shareAssets';
 
@@ -19,10 +20,13 @@ export default function TikTokSharePage() {
   const [firstName, setFirstName] = useState<string | null>(null);
   const [tiktokCaption, setTiktokCaption] = useState('');
   const [showTikTokTraining, setShowTikTokTraining] = useState(false);
+  const [tiktokVideoSrc, setTiktokVideoSrc] = useState<string | null>(null);
 
-  // Get rotating TikTok video variant
-  const tiktokVariant = getNextVariant('tt');
-  const tiktokVideoSrc = shareAssets.tt.variants[tiktokVariant].video;
+  // Get rotating TikTok video variant - lock it on mount
+  useEffect(() => {
+    const variant = getNextVariant('tt');
+    setTiktokVideoSrc(shareAssets.tt.variants[variant].video);
+  }, []);
 
   // Get refCode from searchParams or associate cache
   const refCodeFromParams = searchParams.get('ref') || '';
@@ -192,28 +196,30 @@ export default function TikTokSharePage() {
       </p>
 
       {/* Video Preview Block */}
-      <div
-        style={{
-          marginTop: '1rem',
-          marginBottom: '1rem',
-          display: 'flex',
-          justifyContent: 'center',
-          width: '100%',
-          maxWidth: 640,
-        }}
-      >
-        <video
-          src={tiktokVideoSrc}
-          controls
+      {tiktokVideoSrc && (
+        <div
           style={{
-            borderRadius: 12,
-            boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+            marginTop: '1rem',
+            marginBottom: '1rem',
+            display: 'flex',
+            justifyContent: 'center',
             width: '100%',
-            maxWidth: '320px',
-            height: 'auto',
+            maxWidth: 640,
           }}
-        />
-      </div>
+        >
+          <video
+            src={tiktokVideoSrc}
+            controls
+            style={{
+              borderRadius: 12,
+              boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+              width: '100%',
+              maxWidth: '320px',
+              height: 'auto',
+            }}
+          />
+        </div>
+      )}
 
       {/* Caption Block */}
       <div
@@ -283,26 +289,28 @@ export default function TikTokSharePage() {
           gap: '0.75rem',
         }}
       >
-        <a
-          href={tiktokVideoSrc}
-          download
-          onClick={handleDownloadVideo}
-          style={{
-            padding: '0.75rem 1.5rem',
-            borderRadius: 999,
-            border: 'none',
-            background: hasDownloaded ? '#10b981' : '#3b82f6',
-            color: 'white',
-            fontSize: '1rem',
-            fontWeight: 600,
-            cursor: 'pointer',
-            textAlign: 'center',
-            textDecoration: 'none',
-            transition: 'all 0.2s',
-          }}
-        >
-          {hasDownloaded ? '✓ Video downloaded' : 'Download TikTok Video'}
-        </a>
+        {tiktokVideoSrc && (
+          <a
+            href={tiktokVideoSrc}
+            download
+            onClick={handleDownloadVideo}
+            style={{
+              padding: '0.75rem 1.5rem',
+              borderRadius: 999,
+              border: 'none',
+              background: hasDownloaded ? '#10b981' : '#3b82f6',
+              color: 'white',
+              fontSize: '1rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              textAlign: 'center',
+              textDecoration: 'none',
+              transition: 'all 0.2s',
+            }}
+          >
+            {hasDownloaded ? '✓ Video downloaded' : 'Download TikTok Video'}
+          </a>
+        )}
 
         <a
           href="https://www.tiktok.com/upload?lang=en"
@@ -473,6 +481,7 @@ export default function TikTokSharePage() {
           </>
         }
       />
+      <HelpButton />
     </div>
   );
 }

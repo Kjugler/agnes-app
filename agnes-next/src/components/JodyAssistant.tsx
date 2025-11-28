@@ -17,6 +17,7 @@ interface JodyAssistantProps {
   autoShowDelayMs?: number;
   defaultOpen?: boolean;
   onShowTraining?: () => void; // Callback to open training modal
+  disableBubble?: boolean; // NEW: don't show any bubble if disabled
 }
 
 const ICON_MAP: Record<JodyVariant, string> = {
@@ -35,21 +36,31 @@ export function JodyAssistant({
   autoShowDelayMs = 4000,
   defaultOpen = false,
   onShowTraining,
+  disableBubble = false,
 }: JodyAssistantProps) {
   const [showBubble, setShowBubble] = useState(defaultOpen);
   const [showTraining, setShowTraining] = useState(false);
   const [hasAutoShown, setHasAutoShown] = useState(false);
 
-  // Simple auto-show for the IG and TikTok variants
+  // Simple auto-show for the IG, TikTok, Truth, and Ascension variants
   useEffect(() => {
-    if (variant === 'ig' || variant === 'tiktok') {
+    // Don't auto-show if bubble is disabled
+    if (disableBubble) return;
+
+    const shouldAutoShow =
+      variant === 'ig' ||
+      variant === 'tiktok' ||
+      variant === 'truth' ||
+      variant === 'ascension';
+
+    if (shouldAutoShow) {
       const timer = setTimeout(() => {
         setShowBubble(true);
         setHasAutoShown(true);
       }, autoShowDelayMs);
 
       return () => clearTimeout(timer);
-    } else if (variant !== 'ig' && variant !== 'tiktok' && autoShowDelayMs && !hasAutoShown && !defaultOpen) {
+    } else if (autoShowDelayMs && !hasAutoShown && !defaultOpen) {
       // For other variants, use existing behavior
       const timer = setTimeout(() => {
         setShowBubble(true);
@@ -58,7 +69,7 @@ export function JodyAssistant({
 
       return () => clearTimeout(timer);
     }
-  }, [variant, autoShowDelayMs, hasAutoShown, defaultOpen]);
+  }, [variant, autoShowDelayMs, hasAutoShown, defaultOpen, disableBubble]);
 
   const iconSrc = ICON_MAP[variant];
 
@@ -121,6 +132,211 @@ export function JodyAssistant({
         type="button"
         onClick={() => {
           setShowTraining(true);
+          setShowBubble(false);
+        }}
+        style={{
+          borderRadius: 999,
+          border: 'none',
+          padding: '8px 14px',
+          fontSize: 13,
+          fontWeight: 600,
+          cursor: 'pointer',
+          backgroundColor: '#ffffff',
+          color: '#a100ff',
+          boxShadow: '0 4px 10px rgba(0,0,0,0.25)',
+          transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.transform = 'scale(1.05)';
+          e.currentTarget.style.boxShadow = '0 6px 15px rgba(0,0,0,0.35)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = 'scale(1)';
+          e.currentTarget.style.boxShadow = '0 4px 10px rgba(0,0,0,0.25)';
+        }}
+      >
+        Show me how
+      </button>
+
+      {/* pointer triangle */}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: -10,
+          right: 30,
+          width: 0,
+          height: 0,
+          borderLeft: '10px solid transparent',
+          borderRight: '10px solid transparent',
+          borderTop: '10px solid #a100ff',
+        }}
+      />
+    </div>
+  );
+
+  // Ascension-specific bubble content
+  const renderAscensionBubble = () => (
+    <div
+      style={{
+        background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+        color: '#fff',
+        borderRadius: 16,
+        padding: '14px 16px 12px',
+        boxShadow: '0 10px 25px rgba(0,0,0,0.35)',
+        fontSize: 14,
+        maxWidth: 360,
+        width: '90vw',
+        position: 'relative',
+        opacity: showBubble ? 1 : 0,
+        transform: showBubble ? 'translateY(0)' : 'translateY(8px)',
+        transition: 'opacity 220ms ease-out, transform 220ms ease-out',
+        pointerEvents: 'auto',
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setShowBubble(false)}
+        style={{
+          position: 'absolute',
+          top: 6,
+          right: 8,
+          border: 'none',
+          background: 'transparent',
+          color: '#fff',
+          fontSize: 16,
+          cursor: 'pointer',
+          width: 20,
+          height: 20,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 0,
+        }}
+        aria-label="Close"
+      >
+        ×
+      </button>
+
+      <div style={{ fontWeight: 600, marginBottom: 8 }}>
+        You made it. Welcome to the Ascension program.
+      </div>
+      <div style={{ marginBottom: 12, lineHeight: 1.5 }}>
+        You're officially in the contest. From here, you're on the road to
+        bigger and better things — real money, real prizes, and yes, real
+        vacations.
+        <br />
+        <br />
+        All you have to do is more of what you already do: post to social
+        media, play games, share things on our site, email friends, or buy
+        the book. None of it is mandatory. You can go as far, or as gently,
+        as you want.
+        <br />
+        <br />
+        The rewards are real. You really can win a family vacation. And you
+        really do earn $2 for every book purchased using your associate
+        publisher code.
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setShowBubble(false)}
+        style={{
+          borderRadius: 999,
+          border: 'none',
+          padding: '8px 14px',
+          fontSize: 13,
+          fontWeight: 600,
+          cursor: 'pointer',
+          backgroundColor: '#ffffff',
+          color: '#7c3aed',
+          boxShadow: '0 4px 10px rgba(0,0,0,0.25)',
+          transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.transform = 'scale(1.05)';
+          e.currentTarget.style.boxShadow = '0 6px 15px rgba(0,0,0,0.35)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = 'scale(1)';
+          e.currentTarget.style.boxShadow = '0 4px 10px rgba(0,0,0,0.25)';
+        }}
+      >
+        Got it — let's climb
+      </button>
+
+      {/* pointer triangle */}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: -10,
+          right: 30,
+          width: 0,
+          height: 0,
+          borderLeft: '10px solid transparent',
+          borderRight: '10px solid transparent',
+          borderTop: '10px solid #7c3aed',
+        }}
+      />
+    </div>
+  );
+
+  // Truth-specific bubble content
+  const renderTruthBubble = () => (
+    <div
+      style={{
+        background: 'linear-gradient(135deg, #ff3be0, #a100ff)',
+        color: '#fff',
+        borderRadius: 16,
+        padding: '14px 16px 12px',
+        boxShadow: '0 10px 25px rgba(0,0,0,0.35)',
+        fontSize: 14,
+        maxWidth: 360,
+        width: '90vw',
+        position: 'relative',
+        opacity: showBubble ? 1 : 0,
+        transform: showBubble ? 'translateY(0)' : 'translateY(8px)',
+        transition: 'opacity 220ms ease-out, transform 220ms ease-out',
+        pointerEvents: 'auto',
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setShowBubble(false)}
+        style={{
+          position: 'absolute',
+          top: 6,
+          right: 8,
+          border: 'none',
+          background: 'transparent',
+          color: '#fff',
+          fontSize: 16,
+          cursor: 'pointer',
+          width: 20,
+          height: 20,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 0,
+        }}
+        aria-label="Close"
+      >
+        ×
+      </button>
+
+      <div style={{ fontWeight: 600, marginBottom: 4 }}>
+        Truth Social can be a little… particular.
+      </div>
+      <div style={{ marginBottom: 10, lineHeight: 1.4 }}>
+        I'm Jody. I can walk you through posting this video to Truth Social
+        and making sure your contest points are recorded correctly.
+      </div>
+
+      <button
+        type="button"
+        onClick={() => {
+          if (onShowTraining) {
+            onShowTraining();
+          }
           setShowBubble(false);
         }}
         style={{
@@ -262,18 +478,28 @@ export function JodyAssistant({
   );
 
   const renderBubble = () => {
+    // Don't show any bubble if disabled
+    if (disableBubble) return null;
+    if (!showBubble) return null;
+
     if (variant === 'ig') {
-      if (!showBubble) return null;
       return renderIgBubble();
     }
 
     if (variant === 'tiktok') {
-      if (!showBubble) return null;
       return renderTikTokBubble();
     }
 
+    if (variant === 'truth') {
+      return renderTruthBubble();
+    }
+
+    if (variant === 'ascension') {
+      return renderAscensionBubble();
+    }
+
     // For other variants, use existing message-based bubble
-    if (!showBubble || !message) return null;
+    if (!message) return null;
 
     return (
       <div
@@ -405,18 +631,22 @@ export function JodyAssistant({
             }
           }}
         >
-          <img
-            src={iconSrc}
-            alt="Jody – your concierge"
-            style={{
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover',
-              objectPosition: variant === 'ig' ? 'center 35%' : 'center center',
-              display: 'block',
-            }}
-            loading="eager"
-          />
+            <img
+              src={iconSrc}
+              alt="Jody – your concierge"
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                objectPosition: variant === 'ig' 
+                  ? 'center 35%' 
+                  : variant === 'truth' 
+                  ? 'center 12%' 
+                  : 'center center',
+                display: 'block',
+              }}
+              loading="eager"
+            />
         </button>
       </div>
 

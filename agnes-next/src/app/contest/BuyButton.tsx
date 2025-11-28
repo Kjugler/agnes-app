@@ -2,21 +2,15 @@
 
 import { readContestEmail } from '@/lib/identity';
 
-const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || '').replace(/\/$/, '');
-
 export default function BuyButton() {
   async function onClick() {
     try {
-      if (!API_BASE) {
-        throw new Error('Checkout unavailable: NEXT_PUBLIC_API_BASE is not configured.');
-      }
-
       const email = readContestEmail();
       if (!email) {
         throw new Error('Please enter the contest first so we know who to credit.');
       }
 
-      const res = await fetch(`${API_BASE}/api/create-checkout-session`, {
+      const res = await fetch('/api/create-checkout-session', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -28,13 +22,29 @@ export default function BuyButton() {
         }),
       });
 
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data?.url) throw new Error(data?.error || `HTTP ${res.status}`);
+      if (!res.ok) {
+        let errorMessage = `Checkout failed with status ${res.status}`;
+        try {
+          const errorData = await res.json();
+          if (errorData?.error && typeof errorData.error === 'string') {
+            errorMessage = errorData.error;
+          }
+        } catch {
+          // If response isn't JSON, use default message
+        }
+        throw new Error(errorMessage);
+      }
+
+      const data = await res.json();
+      if (!data?.url) {
+        throw new Error(data?.error || 'Checkout session created but no URL returned');
+      }
 
       // go to Stripe Checkout
       window.location.href = data.url;
     } catch (e: any) {
-      alert(e?.message || 'Could not start checkout.');
+      console.error('[BuyButton] Checkout error', e);
+      alert(e?.message || 'Network error while starting checkout. Please try again.');
     }
   }
 

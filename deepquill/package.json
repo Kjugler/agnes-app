@@ -20,6 +20,7 @@
     "emailjs-com": "^3.2.0",
     "express": "^5.1.0",
     "node-fetch": "^3.3.2",
+    "nodemailer": "^7.0.11",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-terminal-ui": "^1.4.0",

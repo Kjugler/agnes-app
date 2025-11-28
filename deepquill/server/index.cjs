@@ -39,6 +39,16 @@ if (subscribeModule && typeof subscribeModule.use === 'function') {
 const checkoutHandler = require('../api/create-checkout-session.cjs');
 app.post('/api/create-checkout-session', checkoutHandler);
 
+// Referrals API
+const referralsRouter = require('../api/award-referral-commission.cjs');
+app.use('/api/referrals', referralsRouter);
+console.log('✅ Mounted /api/referrals');
+
+// Admin API (daily digests)
+const adminDigestsRouter = require('../api/send-daily-digests.cjs');
+app.use('/admin/referrals', adminDigestsRouter);
+console.log('✅ Mounted /admin/referrals');
+
 const PORT = 5055;
 app.listen(PORT, () => {
   console.log(`🚀 Server is running on http://localhost:${PORT}`);

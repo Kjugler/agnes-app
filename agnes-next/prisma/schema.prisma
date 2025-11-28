@@ -33,11 +33,13 @@ model User {
   handleInstagram     String?
   handleTiktok        String?
   handleTruth         String?
+  referralEarningsCents Int     @default(0)
   events              Event[]
   badges              UserBadge[]
   posts               Post[]
   purchases           Purchase[]
   ledger              Ledger[]
+  referralConversions ReferralConversion[]
 
   @@index([referralCode])
 }
@@ -129,4 +131,20 @@ model Purchase {
   createdAt DateTime @default(now())
 
   @@index([userId, createdAt])
+}
+
+model ReferralConversion {
+  id              String    @id @default(cuid())
+  referrerUserId  String
+  referralCode    String
+  buyerEmail      String?
+  stripeSessionId String    @unique
+  commissionCents Int
+  createdAt       DateTime  @default(now())
+  lastDigestDate  DateTime? // Date when this conversion was included in a digest
+  referrer         User      @relation(fields: [referrerUserId], references: [id])
+
+  @@index([referrerUserId, createdAt])
+  @@index([referralCode])
+  @@index([lastDigestDate])
 }

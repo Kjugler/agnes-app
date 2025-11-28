@@ -367,7 +367,7 @@ export default function JodyAssistant({
             width: '100%',
             height: '100%',
             objectFit: 'cover',
-            objectPosition: 'center 35%',
+            objectPosition: isEm2 ? 'center 16%' : 'center 35%',
             display: 'block',
           }}
           loading="eager"

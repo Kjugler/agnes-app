@@ -77,28 +77,34 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Get referral payouts (last 7 days)
-    const weekAgo = new Date();
-    weekAgo.setDate(weekAgo.getDate() - 7);
+    // Get referral conversions for the current week (Monday-Sunday)
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay()); // Sunday = 0
+    startOfWeek.setHours(0, 0, 0, 0);
 
-    const referralLedgers = await prisma.ledger.findMany({
-      where: {
-        userId: user.id,
-        type: 'REFER_FRIEND_PAYOUT',
-        createdAt: { gte: weekAgo },
-      },
-    });
+    // Use raw query for now until Prisma client is regenerated
+    // After running `npx prisma generate`, this can use prisma.referralConversion
+    const referralConversionsRaw = await prisma.$queryRaw<Array<{ commissionCents: number }>>`
+      SELECT commissionCents
+      FROM ReferralConversion
+      WHERE referrerUserId = ${user.id}
+        AND createdAt >= ${startOfWeek}
+    `;
 
-    const friendsPurchasedCount = await prisma.ledger.count({
-      where: {
-        userId: user.id,
-        type: 'REFER_FRIEND_PAYOUT',
-      },
-    });
-
-    const earningsWeekUsd = referralLedgers.reduce((sum, ledger) => {
-      return sum + Number(ledger.usd);
+    // Calculate weekly earnings from referral conversions (in cents, convert to USD)
+    const earningsWeekCents = referralConversionsRaw.reduce((sum: number, conv: { commissionCents: number }) => {
+      return sum + conv.commissionCents;
     }, 0);
+    const earningsWeekUsd = earningsWeekCents / 100;
+
+    // Count total friends who purchased (all-time)
+    const friendsPurchasedCountResult = await prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*) as count
+      FROM ReferralConversion
+      WHERE referrerUserId = ${user.id}
+    `;
+    const friendsPurchasedCount = Number(friendsPurchasedCountResult[0]?.count || 0);
 
     // Format recent ledger entries
     const recent = user.ledger.map((entry) => ({
