@@ -12,6 +12,7 @@
     "prisma:migrate": "prisma migrate dev --name init-ledger"
   },
   "dependencies": {
+    "@mailchimp/mailchimp_transactional": "^1.1.2",
     "@prisma/client": "^6.19.0",
     "canvas-confetti": "^1.9.4",
     "next": "15.4.1",

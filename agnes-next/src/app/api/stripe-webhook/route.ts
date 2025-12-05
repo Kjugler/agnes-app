@@ -138,6 +138,20 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ received: true });
       }
 
+      // Create order in deepquill orders store (non-blocking)
+      try {
+        const deepquillApiBase = process.env.DEEPQUILL_API_BASE || 'http://localhost:5055';
+        await fetch(`${deepquillApiBase}/api/orders/create-from-stripe`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(session),
+        }).catch((err) => {
+          console.warn('[stripe-webhook] Failed to create order in deepquill (non-blocking):', err.message);
+        });
+      } catch (err: any) {
+        console.warn('[stripe-webhook] Error calling deepquill orders endpoint (non-blocking):', err.message);
+      }
+
       // Handle referral conversion if referralCode is present
       const referralCode = (session.metadata?.referralCode || '').trim();
       if (referralCode) {

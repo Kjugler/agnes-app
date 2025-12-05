@@ -157,6 +157,107 @@ export default function ScorePage() {
   const shared = qp.get('shared');
   const [dismiss, setDismiss] = useState(false);
 
+  // Handle session_id from Stripe checkout redirect
+  const sessionId = qp.get('session_id');
+  const [sessionScore, setSessionScore] = useState<{
+    totalPoints: number;
+    basePoints: number;
+    purchasePoints: number;
+    referralPoints: number;
+  } | null>(null);
+  const [sessionScoreLoading, setSessionScoreLoading] = useState(false);
+  const [sessionScoreError, setSessionScoreError] = useState<string | null>(null);
+
+  // Store session_id in localStorage and fetch score if present
+  useEffect(() => {
+    if (sessionId && typeof window !== 'undefined') {
+      // Store in localStorage
+      try {
+        localStorage.setItem('last_session_id', sessionId);
+      } catch (err) {
+        console.warn('[score] Failed to store session_id in localStorage', err);
+      }
+
+      // Fetch score from API
+      setSessionScoreLoading(true);
+      setSessionScoreError(null);
+      fetch(`/api/contest/score?session_id=${encodeURIComponent(sessionId)}`)
+        .then(async (res) => {
+          const data = await res.json();
+          if (!res.ok) {
+            // Even if not ok, check if it's a graceful "not found" response
+            if (res.status === 404 || (data.message && data.message.includes('not found'))) {
+              // This is expected - order might not be processed yet
+              console.log('[score] Order not found yet (webhook may still be processing)', sessionId);
+              setSessionScore({
+                totalPoints: data.totalPoints || 0,
+                basePoints: data.basePoints || 0,
+                purchasePoints: data.purchasePoints || 0,
+                referralPoints: data.referralPoints || 0,
+              });
+              return;
+            }
+            throw new Error(data.error || data.message || `HTTP ${res.status}`);
+          }
+          // Success response
+          setSessionScore({
+            totalPoints: data.totalPoints || 0,
+            basePoints: data.basePoints || 0,
+            purchasePoints: data.purchasePoints || 0,
+            referralPoints: data.referralPoints || 0,
+          });
+        })
+        .catch((err) => {
+          console.error('[score] Failed to fetch session score', err);
+          // Don't show error for network issues - just log it
+          // The page will show the regular score instead
+          setSessionScoreError(null); // Clear error to show regular score
+        })
+        .finally(() => {
+          setSessionScoreLoading(false);
+        });
+    } else if (!sessionId && typeof window !== 'undefined') {
+      // Try to load from localStorage if no session_id in URL
+      try {
+        const storedSessionId = localStorage.getItem('last_session_id');
+        if (storedSessionId) {
+          setSessionScoreLoading(true);
+          fetch(`/api/contest/score?session_id=${encodeURIComponent(storedSessionId)}`)
+            .then(async (res) => {
+              if (!res.ok) {
+                const errorData = await res.json().catch(() => ({}));
+                throw new Error(errorData.error || `HTTP ${res.status}`);
+              }
+              return res.json();
+            })
+            .then(async (res) => {
+              const data = await res.json();
+              if (res.ok) {
+                setSessionScore({
+                  totalPoints: data.totalPoints || 0,
+                  basePoints: data.basePoints || 0,
+                  purchasePoints: data.purchasePoints || 0,
+                  referralPoints: data.referralPoints || 0,
+                });
+              } else {
+                // Order not found - that's okay, webhook may not have processed yet
+                console.log('[score] Stored session_id order not found yet', storedSessionId);
+              }
+            })
+            .catch((err) => {
+              console.warn('[score] Failed to fetch stored session score', err);
+              // Don't show error for stored session_id failures
+            })
+            .finally(() => {
+              setSessionScoreLoading(false);
+            });
+        }
+      } catch (err) {
+        console.warn('[score] Failed to read localStorage', err);
+      }
+    }
+  }, [sessionId]);
+
   const {
     totalPoints,
     rabbitTarget,
@@ -964,8 +1065,65 @@ export default function ScorePage() {
       <section className="buttons-grid">
         <div className="points-pill">
           Total Points{' '}
-          <span>{totalPoints}</span>
+          <span>{sessionScore ? sessionScore.totalPoints : totalPoints}</span>
         </div>
+        {sessionScore && (
+          <div
+            style={{
+              marginTop: '1rem',
+              padding: '1rem',
+              background: 'rgba(15, 23, 42, 0.6)',
+              borderRadius: 12,
+              border: '1px solid rgba(148, 163, 184, 0.3)',
+            }}
+          >
+            <div style={{ fontSize: '0.875rem', color: '#e2e8f0', marginBottom: '0.5rem', fontWeight: 600 }}>
+              Points Breakdown
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.875rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#cbd5e1' }}>
+                <span>Base Points:</span>
+                <span style={{ fontWeight: 600 }}>{sessionScore.basePoints}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#cbd5e1' }}>
+                <span>Purchase Points:</span>
+                <span style={{ fontWeight: 600, color: '#34d399' }}>+{sessionScore.purchasePoints}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#cbd5e1' }}>
+                <span>Referral Points:</span>
+                <span style={{ fontWeight: 600, color: '#60a5fa' }}>+{sessionScore.referralPoints}</span>
+              </div>
+            </div>
+            {sessionScore.purchasePoints === 0 && sessionId && (
+              <div
+                style={{
+                  marginTop: '0.75rem',
+                  padding: '0.5rem',
+                  background: 'rgba(59, 130, 246, 0.1)',
+                  borderRadius: 6,
+                  fontSize: '0.75rem',
+                  color: '#93c5fd',
+                  textAlign: 'center',
+                }}
+              >
+                Purchase points will appear here once the order is processed.
+              </div>
+            )}
+          </div>
+        )}
+        {sessionScoreLoading && (
+          <div
+            style={{
+              marginTop: '1rem',
+              padding: '1rem',
+              textAlign: 'center',
+              color: '#94a3b8',
+              fontSize: '0.875rem',
+            }}
+          >
+            Loading your score...
+          </div>
+        )}
         {data?.earnings_week_usd !== undefined && data.earnings_week_usd > 0 && (
           <div
             className="points-pill"
