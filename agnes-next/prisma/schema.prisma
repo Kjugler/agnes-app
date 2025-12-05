@@ -10,36 +10,36 @@ datasource db {
 }
 
 model User {
-  id                  String    @id @default(cuid())
-  email               String    @unique
-  fname               String?
-  lname               String?
-  firstName           String?
-  code                String    @unique
-  referralCode        String    @unique
-  referredBy          String?
-  createdAt           DateTime  @default(now())
-  points              Int       @default(0)
-  earnedPurchaseBook  Boolean   @default(false)
-  rabbit1Completed    Boolean   @default(false)
-  rabbitStep          Int       @default(500)
-  rabbitTarget        Int?
-  rabbitCatches       Int       @default(0)
+  id                    String               @id @default(cuid())
+  email                 String               @unique
+  fname                 String?
+  lname                 String?
+  firstName             String?
+  code                  String               @unique
+  referralCode          String               @unique
+  referredBy            String?
+  createdAt             DateTime             @default(now())
+  points                Int                  @default(0)
+  earnedPurchaseBook    Boolean              @default(false)
+  rabbit1Completed      Boolean              @default(false)
+  rabbitStep            Int                  @default(500)
+  rabbitTarget          Int?
+  rabbitCatches         Int                  @default(0)
   lastRabbitBonusIntent String?
-  rabbitSeq           Int       @default(1)
-  lastRabbitCatchAt   DateTime?
-  phone               String?
-  handleX             String?
-  handleInstagram     String?
-  handleTiktok        String?
-  handleTruth         String?
-  referralEarningsCents Int     @default(0)
-  events              Event[]
-  badges              UserBadge[]
-  posts               Post[]
-  purchases           Purchase[]
-  ledger              Ledger[]
-  referralConversions ReferralConversion[]
+  rabbitSeq             Int                  @default(1)
+  lastRabbitCatchAt     DateTime?
+  phone                 String?
+  handleX               String?
+  handleInstagram       String?
+  handleTiktok          String?
+  handleTruth           String?
+  referralEarningsCents Int                  @default(0)
+  events                Event[]
+  badges                UserBadge[]
+  posts                 Post[]
+  purchases             Purchase[]
+  ledger                Ledger[]
+  referralConversions   ReferralConversion[]
 
   @@index([referralCode])
 }
@@ -85,26 +85,26 @@ model Event {
 }
 
 model Badge {
-  id           String      @id @default(cuid())
-  slug         String      @unique
-  title        String
-  points       Int
-  actionType   String
-  actionUrl    String?
-  cooldownHrs  Int?
-  maxTimes     Int         @default(1)
-  active       Boolean     @default(true)
-  userBadges   UserBadge[]  // ADD THIS LINE
+  id          String      @id @default(cuid())
+  slug        String      @unique
+  title       String
+  points      Int
+  actionType  String
+  actionUrl   String?
+  cooldownHrs Int?
+  maxTimes    Int         @default(1)
+  active      Boolean     @default(true)
+  userBadges  UserBadge[] // ADD THIS LINE
 }
 
 model UserBadge {
-  id          String   @id @default(cuid())
-  user        User     @relation(fields: [userId], references: [id])
-  userId      String
-  badge       Badge    @relation(fields: [badgeId], references: [id])
-  badgeId     String
-  times       Int      @default(1)
-  lastEarned  DateTime @default(now())
+  id         String   @id @default(cuid())
+  user       User     @relation(fields: [userId], references: [id])
+  userId     String
+  badge      Badge    @relation(fields: [badgeId], references: [id])
+  badgeId    String
+  times      Int      @default(1)
+  lastEarned DateTime @default(now())
 
   @@unique([userId, badgeId])
 }
@@ -142,9 +142,54 @@ model ReferralConversion {
   commissionCents Int
   createdAt       DateTime  @default(now())
   lastDigestDate  DateTime? // Date when this conversion was included in a digest
-  referrer         User      @relation(fields: [referrerUserId], references: [id])
+  referrer        User      @relation(fields: [referrerUserId], references: [id])
 
   @@index([referrerUserId, createdAt])
   @@index([referralCode])
   @@index([lastDigestDate])
+}
+
+model Customer {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  name            String?
+  shippingStreet  String?
+  shippingCity    String?
+  shippingState   String?
+  shippingZip     String?
+  shippingCountry String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  orders          Order[]
+
+  @@index([email])
+}
+
+model Order {
+  id              String   @id @default(cuid())
+  customer        Customer @relation(fields: [customerId], references: [id])
+  customerId      String
+  stripeSessionId String   @unique
+  amountTotal     Int? // in cents
+  currency        String?
+  contestPlayerId String? // FK to User.id (optional)
+  referralCode    String?
+  pointsAwarded   Boolean  @default(false)
+  
+  // Shipping information
+  shippingName         String?
+  shippingAddressLine1 String?
+  shippingAddressLine2 String?
+  shippingCity         String?
+  shippingState        String?
+  shippingPostalCode   String?
+  shippingCountry      String?
+  shippingPhone        String?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([customerId, createdAt])
+  @@index([stripeSessionId])
+  @@index([contestPlayerId])
 }

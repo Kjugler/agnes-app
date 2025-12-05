@@ -55,6 +55,8 @@ export async function POST(req: NextRequest) {
       successPath?: string;
       cancelPath?: string;
       referralCode?: string;
+      email?: string;
+      contestPlayerId?: string;
     };
 
     console.log('[create-checkout-session] Request body', {
@@ -96,7 +98,8 @@ export async function POST(req: NextRequest) {
     const quantity = Number.isFinite(body?.qty) && Number(body?.qty) > 0 ? Number(body.qty) : 1;
 
     // Use provided paths or fall back to defaults
-    const successPath = body?.successPath || '/contest/thank-you';
+    // Default success path is /contest/score per spec
+    const successPath = body?.successPath || '/contest/score';
     const cancelPath = body?.cancelPath || '/contest';
     
     // Ensure paths are relative (no leading slash needed, but handle it)
@@ -117,6 +120,12 @@ export async function POST(req: NextRequest) {
       source,
       contest_email: email || 'unknown',
     };
+
+    // Add contestPlayerId to metadata if provided
+    if (body?.contestPlayerId && typeof body.contestPlayerId === 'string') {
+      metadata.contestPlayerId = body.contestPlayerId.trim();
+      console.log('[create-checkout-session] Contest player ID attached:', metadata.contestPlayerId);
+    }
 
     if (body?.metadata && typeof body.metadata === 'object') {
       for (const [key, value] of Object.entries(body.metadata)) {
@@ -172,6 +181,9 @@ export async function POST(req: NextRequest) {
       metadata,
     });
 
+    // Set customer_email if provided (from body or header)
+    const customerEmail = body?.email || email || undefined;
+
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       allow_promotion_codes: true,
@@ -180,6 +192,11 @@ export async function POST(req: NextRequest) {
       success_url: successUrl,
       cancel_url: cancelUrl,
       metadata,
+      customer_email: customerEmail,
+      shipping_address_collection: {
+        allowed_countries: ['US'], // ok to expand later
+      },
+      phone_number_collection: { enabled: true },
     });
 
     console.log('[create-checkout-session] Stripe session created', {
