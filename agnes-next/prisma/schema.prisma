@@ -41,6 +41,7 @@ model User {
   contestJoinedAt             DateTime?
   nonParticipantEmailSentAt   DateTime?
   missionaryEmailSentAt       DateTime?
+  engagedEmailSentAt          DateTime?
   events                Event[]
   badges                UserBadge[]
   posts                 Post[]

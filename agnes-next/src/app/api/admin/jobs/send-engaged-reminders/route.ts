@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { buildNonParticipantReminderEmail } from '@/lib/email/nonParticipantReminder';
+import { buildEngagedReminderEmail } from '@/lib/email/engagedReminder';
 import mailchimp from '@mailchimp/mailchimp_transactional';
 
 const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || 'https://agnes-dev.ngrok-free.app';
 const MAX_EMAILS_PER_RUN = 100;
-const TEST_MODE = false; // Group C: Production mode (2 days)
+const TEST_MODE = false; // Group B: Production mode (2 days)
 const CUTOFF_DELAY = TEST_MODE
   ? 10 * 1000
   : 2 * 24 * 60 * 60 * 1000; // 2 days
@@ -13,7 +13,7 @@ const CUTOFF_DELAY = TEST_MODE
 function getEmailClient() {
   const apiKey = process.env.MAILCHIMP_TRANSACTIONAL_KEY;
   if (!apiKey) {
-    console.warn('[non-participant-reminder] MAILCHIMP_TRANSACTIONAL_KEY missing');
+    console.warn('[engaged-reminder] MAILCHIMP_TRANSACTIONAL_KEY missing');
     return null;
   }
   return mailchimp(apiKey);
@@ -37,15 +37,8 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Find users who:
-    // 1. HAVE joined the contest (contestJoinedAt is NOT null)
-    // 2. Have zero points (points = 0)
-    // 3. Have no Purchase records
-    // 4. Are not in ReferralConversion buyerEmail list
-    // 5. Have no posts
-    // 6. Haven't received reminder email yet (nonParticipantEmailSentAt is null)
-    // 7. Created at least CUTOFF_DELAY ago
-    const cutoff = new Date(Date.now() - CUTOFF_DELAY);
+    // Compute 24-hour cutoff (or 10 seconds for testing)
+    const CUTOFF = new Date(Date.now() - CUTOFF_DELAY);
 
     // Get all buyer emails from ReferralConversion to exclude
     const conversions = await prisma.referralConversion.findMany({
@@ -62,19 +55,27 @@ export async function GET(req: NextRequest) {
       )
     );
 
+    // Find users who:
+    // 1. Have engagement (contestJoinedAt OR posts OR events)
+    // 2. Have no Purchase records
+    // 3. Are not in ReferralConversion buyerEmail list
+    // 4. Haven't received this email yet (engagedEmailSentAt is null)
+    // 5. Were created at least 24 hours ago (or 10 seconds for testing)
     const users = await prisma.user.findMany({
       where: {
-        nonParticipantEmailSentAt: null,
-        contestJoinedAt: { not: null }, // MUST have joined contest
-        points: 0, // MUST have zero points
+        engagedEmailSentAt: null,
         createdAt: {
-          lte: cutoff,
+          lte: CUTOFF,
         },
+        // Must have engagement
+        OR: [
+          { contestJoinedAt: { not: null } },
+          { posts: { some: {} } },
+          { events: { some: {} } },
+        ],
+        // Must NOT have purchases
         purchases: {
-          none: {}, // No purchases
-        },
-        posts: {
-          none: {}, // No posts
+          none: {},
         },
         // Must NOT be in ReferralConversion buyerEmail list
         ...(buyerEmails.length > 0
@@ -94,23 +95,36 @@ export async function GET(req: NextRequest) {
       take: MAX_EMAILS_PER_RUN,
     });
 
-    console.log(`[non-participant-reminder] Found ${users.length} users to send reminders to`);
+    console.log(
+      '[engaged-reminder candidates]',
+      users.map((u) => ({ email: u.email }))
+    );
+    console.log(`[engaged-reminder] Found ${users.length} users to send emails to`);
 
     let sentCount = 0;
     const errors: string[] = [];
 
     for (const user of users) {
       try {
+        // Ensure user has a referralCode before proceeding
+        if (!user.referralCode) {
+          console.warn(`[engaged-reminder] Skipping user ${user.email}: no referralCode found`);
+          continue;
+        }
+
+        // Build URLs
+        const buyUrl = `${BASE_URL}/sample-chapters`;
+        const challengeUrl = `${BASE_URL}/contest`;
+        const shareUrl = `${BASE_URL}/refer?code=${user.referralCode}`;
+        const journalUrl = `${BASE_URL}/journal`;
+
         // Build email
-        const referUrl = user.referralCode
-          ? `${BASE_URL}/refer?code=${user.referralCode}`
-          : `${BASE_URL}/refer`;
-        const { subject, html } = buildNonParticipantReminderEmail({
+        const { subject, html } = buildEngagedReminderEmail({
           firstName: user.firstName,
-          challengeUrl: `${BASE_URL}/contest`,
-          buyUrl: `${BASE_URL}/sample-chapters`,
-          sampleUrl: `${BASE_URL}/sample-chapters`,
-          shareUrl: referUrl,
+          buyUrl,
+          challengeUrl,
+          shareUrl,
+          journalUrl,
         });
 
         // Send email via Mailchimp Transactional
@@ -130,16 +144,16 @@ export async function GET(req: NextRequest) {
         await prisma.user.update({
           where: { id: user.id },
           data: {
-            nonParticipantEmailSentAt: new Date(),
+            engagedEmailSentAt: new Date(),
           },
         });
 
         sentCount++;
-        console.log(`[non-participant-reminder] Sent reminder to ${user.email}`);
+        console.log(`[engaged-reminder] Sent email to ${user.email}`);
       } catch (err: any) {
         const errorMsg = `Failed to send to ${user.email}: ${err?.message || 'Unknown error'}`;
         errors.push(errorMsg);
-        console.error(`[non-participant-reminder] ${errorMsg}`, err);
+        console.error(`[engaged-reminder] ${errorMsg}`, err);
         // Continue with next user even if one fails
       }
     }
@@ -151,7 +165,7 @@ export async function GET(req: NextRequest) {
       errors: errors.length > 0 ? errors : undefined,
     });
   } catch (err: any) {
-    console.error('[non-participant-reminder] Job error', err);
+    console.error('[engaged-reminder] Job error', err);
     return NextResponse.json(
       { ok: false, error: err?.message || 'Unknown error' },
       { status: 500 }
