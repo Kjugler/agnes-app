@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useSafeBack } from '@/lib/nav';
 import { readContestEmail } from '@/lib/identity';
 import { BuyBookButton } from '@/components/BuyBookButton';
@@ -14,6 +15,7 @@ declare global {
 }
 
 export default function SampleChaptersPage() {
+  const searchParams = useSearchParams();
   const [current, setCurrent] = useState(0);
   const [activeVideo, setActiveVideo] = useState<'left' | 'right'>('left');
   const leftVideoRef = useRef<HTMLIFrameElement>(null);
@@ -21,6 +23,27 @@ export default function SampleChaptersPage() {
   const leftPlayerRef = useRef<any>(null);
   const rightPlayerRef = useRef<any>(null);
   const goBack = useSafeBack('/contest');
+
+  // Preserve referral code from URL to localStorage/cookie (if not already stored)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    const codeFromUrl = searchParams.get('code');
+    if (codeFromUrl) {
+      try {
+        // Store in localStorage if not already present
+        const existingCode = window.localStorage.getItem('referral_code');
+        if (!existingCode || existingCode !== codeFromUrl) {
+          window.localStorage.setItem('referral_code', codeFromUrl);
+        }
+        
+        // Store in cookie
+        document.cookie = `referral_code=${encodeURIComponent(codeFromUrl)}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=Lax`;
+      } catch {
+        // Fail silently if storage not available
+      }
+    }
+  }, [searchParams]);
 
   const buttons = [
     {

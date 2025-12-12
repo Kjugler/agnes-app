@@ -146,6 +146,35 @@ export function bootstrapContestEmail() {
 
 export function readContestEmail() {
   if (typeof window === 'undefined') return null;
+  
+  // COOKIE IS SOURCE OF TRUTH - read it first
+  const cookieEmail = readCookieValue('contest_email') || readCookieValue('user_email');
+  if (cookieEmail) {
+    const normalizedCookieEmail = normalize(cookieEmail);
+    // ALWAYS update localStorage to match cookie (cookie is authoritative)
+    const currentLocalStorageEmail = safeGet(CONTEST_EMAIL_KEY);
+    const normalizedCurrent = normalize(currentLocalStorageEmail);
+    
+    if (normalizedCookieEmail !== normalizedCurrent) {
+      console.log('[identity] Cookie email differs from localStorage, updating localStorage', {
+        cookie: normalizedCookieEmail,
+        localStorage: currentLocalStorageEmail,
+        action: 'updating localStorage to match cookie',
+      });
+      // Clear any conflicting associate cache
+      const stored = readAssociate();
+      if (stored && normalize(stored.email) !== normalizedCookieEmail) {
+        console.log('[identity] Clearing associate cache due to email mismatch');
+        clearAssociateCaches({ keepContestEmail: false });
+      }
+      // Update localStorage to match cookie
+      writeContestEmail(normalizedCookieEmail);
+    }
+    return normalizedCookieEmail;
+  }
+  
+  // Fallback to localStorage/bootstrap if no cookie (shouldn't happen in normal flow)
+  console.log('[identity] No cookie found, falling back to localStorage/bootstrap');
   const updated = bootstrapContestEmail();
   if (updated) return updated;
   return safeGet(CONTEST_EMAIL_KEY);

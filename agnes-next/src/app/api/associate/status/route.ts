@@ -10,6 +10,7 @@ export async function GET(req: NextRequest) {
     const headerEmail = req.headers.get('x-user-email');
     const queryEmail = req.nextUrl.searchParams.get('email');
     const cookieEmail =
+      req.cookies.get('contest_email')?.value ||
       req.cookies.get('mockEmail')?.value ||
       req.cookies.get('user_email')?.value ||
       req.cookies.get('associate_email')?.value ||

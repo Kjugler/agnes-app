@@ -47,3 +47,6 @@ next-env.d.ts
 
 prisma/dev.db
 prisma/prisma/
+
+# jody-icons node_modules (should not be committed)
+/public/jody-icons/node_modules/

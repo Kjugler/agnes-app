@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { subscribeEmail } from '../api/subscribeEmail';
 import JodyAssistant from './JodyAssistant';
 
-const EmailModal = ({ isOpen, onClose }) => {
+const EmailModal = ({ isOpen, onClose, onEmailSubmitted }) => {
   const [email, setEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState('');
@@ -13,61 +13,139 @@ const EmailModal = ({ isOpen, onClose }) => {
     setIsSubmitting(true);
     setMessage('');
 
+    // Try to subscribe email (non-blocking - we'll proceed even if it fails)
     try {
-      const result = await subscribeEmail(email);
-
-      if (result?.message) {
-        setMessage(`✅ ${result.message}`);
-        setEmail('');
-
-        // --- fire tracking event to Next (agnes-next) ---
-        const envUrl = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_NEXT_PUBLIC_SITE_URL : null;
-        const NEXT_BASE = envUrl || 'https://agnes-dev.ngrok-free.app';
-        
-        // Debug: log what URL we're using (with alert for visibility)
-        console.log('[deepquill] NEXT_BASE env var:', envUrl);
-        console.log('[deepquill] NEXT_BASE final value:', NEXT_BASE);
-        console.log('[deepquill] import.meta.env:', import.meta.env);
-        console.log('[deepquill] All VITE_ vars:', Object.keys(import.meta.env || {}).filter(k => k.startsWith('VITE_')));
-        
-        // Temporary alert to verify the URL being used
-        if (NEXT_BASE.includes('simona-nonindictable')) {
-          alert('ERROR: Still using old domain! NEXT_BASE=' + NEXT_BASE);
-        }
-
-        try {
-          fetch(`${NEXT_BASE}/api/track`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              type: 'CONTEST_ENTERED',
-              email,
-              source: 'contest',
-              ref: new URLSearchParams(location.search).get('ref') || undefined,
-              meta: { path: '/lightening' },
-            }),
-          }).catch(() => {});
-        } catch {}
-        // ------------------------------------------------
-
-        // redirect to the Next app
-        const NEXT_PATH = '/lightening';
-        const ref = new URLSearchParams(location.search).get('ref');
-        const query = new URLSearchParams();
-        if (email) query.set('mockEmail', email);
-        if (ref) query.set('ref', ref);
-        const queryString = query.toString();
-        setTimeout(() => {
-          const url = `${NEXT_BASE}${NEXT_PATH}${queryString ? `?${queryString}` : ''}`;
-          console.log('[deepquill] redirecting to', url);
-          window.location.href = url;
-        }, 1200);
+      const subscribeResult = await subscribeEmail(email);
+      console.log('[EmailModal] subscribeEmail result:', subscribeResult);
+      if (subscribeResult?.message || subscribeResult?.ok === true) {
+        setMessage(`✅ ${subscribeResult.message || 'Email received!'}`);
       } else {
-        setMessage(`❌ ${result?.error || 'Something went wrong. Please try again.'}`);
+        console.warn('[EmailModal] subscribeEmail failed, but continuing:', subscribeResult);
       }
-    } catch (error) {
-      setMessage('❌ Something went wrong. Please try again.');
-    } finally {
+    } catch (subscribeErr) {
+      console.warn('[EmailModal] subscribeEmail error (non-blocking):', subscribeErr);
+      // Continue anyway - subscription is not required for contest login
+    }
+    
+    // Clear email field
+    setEmail('');
+
+    // --- fire tracking event to Next (agnes-next) ---
+    // Determine the correct base URL for agnes-next
+    // Priority: localhost detection > env var > ngrok fallback
+    let NEXT_BASE = null;
+    
+    // ALWAYS prefer localhost when running locally (even if env var is set)
+    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+      NEXT_BASE = 'http://localhost:3002'; // Next.js default port
+      console.log('[deepquill] Using localhost:3002 (detected localhost)');
+    } else {
+      // Check env vars only if not on localhost
+      const envUrl = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_AGNES_BASE_URL : null;
+      if (envUrl) {
+        NEXT_BASE = envUrl;
+        console.log('[deepquill] Using env var:', envUrl);
+      } else {
+        // Final fallback to ngrok (for production/ngrok scenarios)
+        NEXT_BASE = 'https://agnes-dev.ngrok-free.app';
+        console.log('[deepquill] Using ngrok fallback');
+      }
+    }
+    
+    // Debug: log what URL we're using
+    console.log('[deepquill] NEXT_BASE determined:', {
+      hostname: typeof window !== 'undefined' ? window.location.hostname : 'unknown',
+      port: typeof window !== 'undefined' ? window.location.port : 'unknown',
+      final: NEXT_BASE,
+    });
+
+    // Fire tracking event (non-blocking)
+    try {
+      fetch(`${NEXT_BASE}/api/track`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'CONTEST_ENTERED',
+          email,
+          source: 'contest',
+          ref: new URLSearchParams(location.search).get('ref') || undefined,
+          meta: { path: '/lightening' },
+        }),
+      }).catch(() => {});
+    } catch {}
+
+    // Call /api/contest/login to set session cookie, then redirect
+    const normalizedEmail = email.trim().toLowerCase();
+    const loginUrl = `${NEXT_BASE}/api/contest/login`;
+    console.log('[EmailModal] Calling /api/contest/login', {
+      email: normalizedEmail,
+      url: loginUrl,
+      NEXT_BASE,
+    });
+    
+    try {
+      const loginRes = await fetch(loginUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: normalizedEmail }),
+        credentials: 'include',
+      });
+
+      console.log('[EmailModal] Login response status:', loginRes.status, loginRes.statusText);
+
+      if (loginRes.ok) {
+        const loginData = await loginRes.json();
+        console.log('[EmailModal] Login successful:', loginData);
+        
+        // Clear any old localStorage data to ensure fresh start
+        try {
+          if (typeof window !== 'undefined' && window.localStorage) {
+            window.localStorage.removeItem('contest_email');
+            window.localStorage.removeItem('user_email');
+            window.localStorage.removeItem('associate_email');
+            console.log('[EmailModal] Cleared old localStorage data');
+          }
+        } catch (e) {
+          console.warn('[EmailModal] Could not clear localStorage', e);
+        }
+        
+        // Redirect to /lightening first (correct sequence: Terminal 1 → Terminal 2 → Lightning → Contest)
+        setTimeout(() => {
+          window.location.href = `${NEXT_BASE}/lightening`;
+        }, 500);
+      } else {
+        let errorMessage = `Failed to log in (status ${loginRes.status})`;
+        try {
+          const errorData = await loginRes.json();
+          console.error('[EmailModal] Login failed with response:', errorData);
+          if (errorData?.error) {
+            errorMessage = errorData.error;
+          }
+        } catch (parseErr) {
+          const errorText = await loginRes.text().catch(() => '');
+          console.error('[EmailModal] Login failed, response text:', errorText);
+        }
+        setMessage(`❌ ${errorMessage}. Please try again.`);
+        setIsSubmitting(false);
+      }
+    } catch (loginErr) {
+      console.error('[EmailModal] Login network error:', loginErr);
+      console.error('[EmailModal] Error details:', {
+        message: loginErr?.message,
+        stack: loginErr?.stack,
+        url: loginUrl,
+        NEXT_BASE,
+        hostname: typeof window !== 'undefined' ? window.location.hostname : 'unknown',
+      });
+      
+      // More helpful error message
+      let errorMsg = `❌ Network error: ${loginErr?.message || 'Failed to connect'}`;
+      if (loginErr?.message?.includes('Failed to fetch') || loginErr?.message?.includes('CORS')) {
+        errorMsg += '. This might be a CORS issue. Check that the Next.js server is running and accessible.';
+      }
+      errorMsg += `\n\nTrying to reach: ${loginUrl}`;
+      
+      setMessage(errorMsg);
       setIsSubmitting(false);
     }
   };

@@ -634,6 +634,7 @@ export function JodyAssistant({
             <img
               src={iconSrc}
               alt="Jody – your concierge"
+              className={variant === 'ascension' ? 'jody-avatar-ascension' : ''}
               style={{
                 width: '100%',
                 height: '100%',
@@ -642,8 +643,11 @@ export function JodyAssistant({
                   ? 'center 35%' 
                   : variant === 'truth' 
                   ? 'center 12%' 
+                  : variant === 'ascension'
+                  ? 'center 30%' // Adjusted to show more of the top of head
                   : 'center center',
                 display: 'block',
+                transform: variant === 'ascension' ? 'translateY(2px)' : 'none', // Changed to positive value to move DOWN slightly, showing top of head
               }}
               loading="eager"
             />

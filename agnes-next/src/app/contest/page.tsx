@@ -14,6 +14,7 @@ import {
   readAssociate,
   readContestEmail,
   writeAssociate,
+  writeContestEmail,
   type AssociateCache,
 } from '@/lib/identity';
 
@@ -40,29 +41,87 @@ export default function ContestPage() {
   const videoRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
 
+  // Handle email query param from IBM Terminal redirect
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    
+    const emailFromQuery = qp.get('email');
+    if (emailFromQuery) {
+      const normalizedEmail = emailFromQuery.trim().toLowerCase();
+      
+      // Call login API to set cookie and create/load user
+      fetch('/api/contest/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: normalizedEmail }),
+        credentials: 'include',
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.ok) {
+            // Set localStorage for client-side access
+            writeContestEmail(normalizedEmail);
+            
+            // Remove query param from URL (clean URL)
+            const newUrl = new URL(window.location.href);
+            newUrl.searchParams.delete('email');
+            window.history.replaceState({}, '', newUrl.toString());
+            
+            // Trigger sync to update state
+            const email = readContestEmail();
+            setContestEmail(email);
+          } else {
+            console.error('[contest] Login failed', data);
+          }
+        })
+        .catch((err) => {
+          console.error('[contest] Login error', err);
+        });
+    }
+  }, [qp]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    // Initial sync - read email from cookie immediately
     const sync = () => {
-      const email = readContestEmail();
+      const email = readContestEmail(); // This now reads from cookie first
       const stored = readAssociate();
+      
+      console.log('[contest] Sync called', { email, hasStored: !!stored, storedEmail: stored?.email });
+      
       if (stored && email && stored.email !== email) {
+        // Email mismatch - clear associate cache but keep contest email
         clearAssociateCaches({ keepContestEmail: true });
         setAssociate(null);
         setContestEmail(email);
         return;
       }
       if (stored && !email) {
+        // No email but has stored associate - clear everything
         clearAssociateCaches();
         setAssociate(null);
         setContestEmail(null);
         return;
       }
+      // Set email and associate
       setContestEmail(email);
       setAssociate(stored);
     };
+    
+    // Sync immediately
     sync();
+    
+    // Also sync after a short delay to catch cookies that might be set asynchronously
+    const delayedSync = setTimeout(sync, 100);
+    
+    // Listen for storage changes (localStorage)
     window.addEventListener('storage', sync);
-    return () => window.removeEventListener('storage', sync);
+    
+    return () => {
+      clearTimeout(delayedSync);
+      window.removeEventListener('storage', sync);
+    };
   }, []);
 
   useEffect(() => {
@@ -380,9 +439,28 @@ export default function ContestPage() {
     return statusLoaded && hasProfile && Boolean(contestEmail);
   }, [statusLoaded, hasProfile, contestEmail]);
 
-  const handleChangeAccount = useCallback(() => {
-    clearAssociateCaches();
-    router.replace('/contest');
+  const handleChangeAccount = useCallback(async () => {
+    try {
+      // Call logout API to clear cookies
+      await fetch('/api/contest/logout', {
+        method: 'POST',
+        credentials: 'include',
+      }).catch(() => {
+        // Continue even if logout API fails
+      });
+      
+      // Clear localStorage
+      clearAssociateCaches();
+      
+      // Redirect to IBM Terminal entry (Vite app)
+      const viteUrl = process.env.NEXT_PUBLIC_TERMINAL_URL || 'http://localhost:5173';
+      window.location.href = viteUrl;
+    } catch (err) {
+      console.error('[contest] Change account error', err);
+      // Fallback: just clear and reload
+      clearAssociateCaches();
+      router.replace('/contest');
+    }
   }, [router]);
 
   const handleContestEntry = (href: string) => {

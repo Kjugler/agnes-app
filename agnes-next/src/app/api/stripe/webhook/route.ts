@@ -4,6 +4,8 @@ import { prisma } from '@/lib/db';
 import { normalizeEmail } from '@/lib/email';
 import { ensureAssociateMinimal } from '@/lib/associate';
 import { sendOrderConfirmationEmail } from '@/lib/email/orderConfirmation';
+import { sendAssociateCommissionEmail } from '@/lib/email/associateCommission';
+import { ASSOCIATE_EARNING_CENTS, FRIEND_DISCOUNT_CENTS, BOOK_RETAIL_PRICE_CENTS } from '@/config/associate';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -497,6 +499,169 @@ export async function POST(req: NextRequest) {
             orderId: order.id,
           });
         });
+      }
+
+      // Process associate commission if referral code is present
+      if (referralCode && email) {
+        try {
+          const normalizedPurchaserEmail = normalizeEmail(email);
+          
+          // Find the referrer by referral code
+          const referrer = await prisma.user.findUnique({
+            where: { referralCode },
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              fname: true,
+              associateBalanceCents: true,
+              associateLifetimeEarnedCents: true,
+              associateFriendsSavedCents: true,
+            },
+          });
+
+          if (referrer) {
+            const normalizedReferrerEmail = normalizeEmail(referrer.email);
+            
+            // Check that purchaser is not the same as referrer (no self-commission)
+            if (normalizedPurchaserEmail !== normalizedReferrerEmail) {
+              // Get values from metadata (set during checkout) or use defaults
+              const finalPriceCentsFromMetadata = fullSession.metadata?.finalPriceCents
+                ? parseInt(fullSession.metadata.finalPriceCents, 10)
+                : null;
+              
+              const friendDiscountCentsFromMetadata = fullSession.metadata?.friendDiscountCents
+                ? parseInt(fullSession.metadata.friendDiscountCents, 10)
+                : null;
+              
+              const associateEarningCentsFromMetadata = fullSession.metadata?.associateEarningCents
+                ? parseInt(fullSession.metadata.associateEarningCents, 10)
+                : null;
+              
+              // Use metadata values if available, otherwise calculate from defaults
+              const finalPriceCents = finalPriceCentsFromMetadata || amountTotal || BOOK_RETAIL_PRICE_CENTS;
+              const friendSavedCents = friendDiscountCentsFromMetadata || (referralCode ? FRIEND_DISCOUNT_CENTS : 0);
+              const earningCents = associateEarningCentsFromMetadata || (referralCode ? ASSOCIATE_EARNING_CENTS : 0);
+              
+              console.log('[ASSOCIATE_COMMISSION] Price calculation', {
+                finalPriceCentsFromMetadata,
+                amountTotal,
+                finalPriceCents,
+                friendSavedCents,
+                earningCents,
+                retailPriceCents: BOOK_RETAIL_PRICE_CENTS,
+              });
+
+              // Award commission in a transaction
+              const updatedReferrer = await prisma.$transaction(async (tx) => {
+                // Create ReferralConversion record with all details
+                await tx.referralConversion.create({
+                  data: {
+                    referrerUserId: referrer.id,
+                    referralCode,
+                    buyerEmail: normalizedPurchaserEmail,
+                    stripeSessionId: fullSession.id,
+                    commissionCents: earningCents, // $2.00 flat earning
+                  },
+                });
+
+                // Create ledger entry for commission
+                await tx.ledger.create({
+                  data: {
+                    userId: referrer.id,
+                    type: 'REFER_PURCHASE',
+                    points: 0, // This is money, not points
+                    usd: earningCents / 100,
+                    note: `Commission from ${normalizedPurchaserEmail} purchase`,
+                  },
+                });
+
+                // Update referrer totals
+                const updated = await tx.user.update({
+                  where: { id: referrer.id },
+                  data: {
+                    associateBalanceCents: {
+                      increment: earningCents,
+                    },
+                    associateLifetimeEarnedCents: {
+                      increment: earningCents,
+                    },
+                    associateFriendsSavedCents: {
+                      increment: friendSavedCents,
+                    },
+                  },
+                  select: {
+                    associateBalanceCents: true,
+                    associateLifetimeEarnedCents: true,
+                    associateFriendsSavedCents: true,
+                  },
+                });
+
+                // Update order with commission info (optional, for admin visibility)
+                await tx.order.update({
+                  where: { id: result.orderId },
+                  data: {
+                    commissionCents: earningCents, // $2.00 flat earning
+                    friendSavedCents: friendSavedCents, // $3.90 discount
+                  },
+                });
+
+                return updated;
+              });
+
+              // Count total friends converted
+              const totalFriendsConverted = await prisma.referralConversion.count({
+                where: { referrerUserId: referrer.id },
+              });
+
+              console.log('[ASSOCIATE_COMMISSION] Friend purchased via referral', {
+                referrerEmail: referrer.email,
+                friendEmail: normalizedPurchaserEmail,
+                earningCents, // $2.00 flat
+                friendSavedCents, // $3.90 discount
+                finalPriceCents,
+                newBalanceCents: updatedReferrer.associateBalanceCents,
+                lifetimeEarnedCents: updatedReferrer.associateLifetimeEarnedCents,
+                lifetimeSavedCents: updatedReferrer.associateFriendsSavedCents,
+                totalFriendsConverted,
+                orderId: result.orderId,
+              });
+
+              // Send commission email (best-effort, don't fail webhook if email fails)
+              await sendAssociateCommissionEmail({
+                referrerEmail: referrer.email,
+                referrerCode: referralCode,
+                lastEarningCents: earningCents,
+                totalEarnedCents: updatedReferrer.associateLifetimeEarnedCents,
+                totalSavedForFriendsCents: updatedReferrer.associateFriendsSavedCents,
+                totalFriendsConverted,
+                referrerFirstName: referrer.firstName || referrer.fname || undefined,
+              }).catch((err) => {
+                console.error('[webhook] Commission email sending failed (non-blocking)', {
+                  error: err,
+                  referrerEmail: referrer.email,
+                  orderId: result.orderId,
+                });
+              });
+            } else {
+              console.log('[ASSOCIATE_COMMISSION] Skipping self-commission', {
+                email: normalizedPurchaserEmail,
+                referralCode,
+              });
+            }
+          } else {
+            console.log('[ASSOCIATE_COMMISSION] Referrer not found for referral code', {
+              referralCode,
+            });
+          }
+        } catch (err) {
+          // Log but don't fail webhook if commission processing fails
+          console.error('[webhook] Commission processing failed (non-blocking)', {
+            error: err,
+            referralCode,
+            orderId: result.orderId,
+          });
+        }
       }
 
       return NextResponse.json({ received: true, result });

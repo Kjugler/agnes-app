@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { normalizeEmail } from '@/lib/email';
 import { ensureAssociateMinimal } from '@/lib/associate';
+import { BOOK_RETAIL_PRICE_CENTS, FRIEND_DISCOUNT_CENTS, ASSOCIATE_EARNING_CENTS } from '@/config/associate';
 
 // SITE_URL:
 // In dev, set NEXT_PUBLIC_SITE_URL to your public ngrok URL so Stripe can redirect back:
@@ -67,14 +68,33 @@ export async function POST(req: NextRequest) {
       cancelPath: body?.cancelPath,
     });
 
+    // Read email from header first, then fall back to cookie
     const headerEmail = req.headers.get('x-user-email');
-    if (!headerEmail) {
-      console.warn('[create-checkout-session] No x-user-email header; proceeding with fallback');
-      // Don't block checkout, but log it
-    }
+    let email: string | null = null;
     
-    const email = headerEmail ? normalizeEmail(headerEmail) : null;
-    console.log('[create-checkout-session] Email from header', { email, headerEmail });
+    if (headerEmail) {
+      email = normalizeEmail(headerEmail);
+      console.log('[create-checkout-session] Email from header', { email, headerEmail });
+    } else {
+      // Fallback to cookie (source of truth for contest session)
+      const cookieHeader = req.headers.get('cookie') || '';
+      const contestEmailMatch = cookieHeader.match(/contest_email=([^;]+)/);
+      const userEmailMatch = cookieHeader.match(/user_email=([^;]+)/);
+      const cookieEmail = contestEmailMatch?.[1] || userEmailMatch?.[1];
+      
+      if (cookieEmail) {
+        try {
+          email = normalizeEmail(decodeURIComponent(cookieEmail));
+          console.log('[create-checkout-session] Email from cookie', { email, cookieEmail });
+        } catch (err) {
+          console.warn('[create-checkout-session] Failed to decode cookie email', err);
+        }
+      }
+      
+      if (!email) {
+        console.warn('[create-checkout-session] No email found in header or cookie; proceeding without email');
+      }
+    }
     
     if (email) {
       try {
@@ -146,32 +166,98 @@ export async function POST(req: NextRequest) {
       console.log('[create-checkout-session] Referral code attached:', referralCode);
     }
 
+    // Calculate price with discount if referral code is present
+    // Base price is BOOK_RETAIL_PRICE_CENTS ($26.00 = 2600 cents)
+    // Apply fixed discount of $3.90 (390 cents) when referral code is present
+    const basePriceCents = BOOK_RETAIL_PRICE_CENTS; // 2600
+    const finalPriceCents = referralCode 
+      ? basePriceCents - FRIEND_DISCOUNT_CENTS   // 2600 - 390 = 2210
+      : basePriceCents;
+
+    // Store all values in metadata for webhook to use
+    metadata.finalPriceCents = finalPriceCents.toString();
+    if (referralCode) {
+      metadata.friendDiscountCents = FRIEND_DISCOUNT_CENTS.toString();
+      metadata.associateEarningCents = ASSOCIATE_EARNING_CENTS.toString();
+    }
+
+    console.log('[create-checkout-session] Price calculation', {
+      referralCode: referralCode || 'none',
+      basePriceCents,
+      finalPriceCents,
+      friendDiscountCents: referralCode ? FRIEND_DISCOUNT_CENTS : 0,
+      associateEarningCents: referralCode ? ASSOCIATE_EARNING_CENTS : 0,
+    });
+
     let lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
 
-    if (priceId) {
+    // If we have a referral code, we MUST use price_data to set the discounted price
+    // Otherwise, we can use the priceId if available
+    if (referralCode) {
+      // Use price_data to set discounted price dynamically
+      const stripeProductId = process.env.STRIPE_PRODUCT_ID;
+      if (stripeProductId) {
+        // Use existing Stripe product
+        lineItems.push({
+          quantity,
+          price_data: {
+            currency: fallbackCurrency,
+            product: stripeProductId,
+            unit_amount: finalPriceCents,
+          },
+        });
+      } else {
+        // Fallback: create product_data inline
+        lineItems.push({
+          quantity,
+          price_data: {
+            currency: fallbackCurrency,
+            unit_amount: finalPriceCents,
+            product_data: {
+              name: fallbackProductName,
+            },
+          },
+        });
+      }
+    } else if (priceId) {
+      // No referral code, try to use existing priceId
       try {
         await stripe.prices.retrieve(priceId);
         lineItems.push({ price: priceId, quantity });
       } catch (priceErr) {
         console.warn('checkout price lookup failed, falling back to price_data', priceErr);
+        // Fall through to price_data fallback
       }
     }
 
+    // Fallback: use price_data if we don't have a priceId or if priceId lookup failed
     if (lineItems.length === 0) {
-      if (!Number.isFinite(fallbackUnitAmount) || fallbackUnitAmount <= 0) {
+      if (!Number.isFinite(finalPriceCents) || finalPriceCents <= 0) {
         throw new Error('Checkout configuration missing: STRIPE_PRICE_ID_BOOK or STRIPE_UNIT_AMOUNT_BOOK');
       }
 
-      lineItems.push({
-        quantity,
-        price_data: {
-          currency: fallbackCurrency,
-          unit_amount: Math.round(fallbackUnitAmount),
-          product_data: {
-            name: fallbackProductName,
+      const stripeProductId = process.env.STRIPE_PRODUCT_ID;
+      if (stripeProductId) {
+        lineItems.push({
+          quantity,
+          price_data: {
+            currency: fallbackCurrency,
+            product: stripeProductId,
+            unit_amount: finalPriceCents,
           },
-        },
-      });
+        });
+      } else {
+        lineItems.push({
+          quantity,
+          price_data: {
+            currency: fallbackCurrency,
+            unit_amount: finalPriceCents,
+            product_data: {
+              name: fallbackProductName,
+            },
+          },
+        });
+      }
     }
 
     console.log('[create-checkout-session] Creating Stripe session', {

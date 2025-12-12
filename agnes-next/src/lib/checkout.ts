@@ -55,12 +55,15 @@ export async function startCheckout(opts: StartCheckoutOpts = {}) {
   // Capture referral code from query params, localStorage, or cookie
   let referralCode: string | undefined;
   if (typeof window !== 'undefined') {
-    // Try query param first (from /refer?code=... → /contest?ref=...)
+    // Try query params first (check both 'code' and 'ref')
     const urlParams = new URLSearchParams(window.location.search);
-    const refFromQuery = urlParams.get('ref');
+    const codeFromQuery = urlParams.get('code'); // from /refer?code=...
+    const refFromQuery = urlParams.get('ref'); // from /contest?ref=...
     
-    if (refFromQuery) {
-      referralCode = refFromQuery;
+    if (codeFromQuery) {
+      referralCode = codeFromQuery.trim();
+    } else if (refFromQuery) {
+      referralCode = refFromQuery.trim();
     } else {
       // Fallback to localStorage (set by /refer page)
       try {

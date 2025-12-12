@@ -3,7 +3,7 @@
   --terminal-background: #1e1e1e;
   --terminal-text: #22c55e; /* green-500 */
   --terminal-prompt: #22c55e;
-  --terminal-cursor: #22c55e;
+  --terminal-cursor: #ffffff; /* White IBM-style block cursor */
 }
 
 .terminal-container .terminal {
@@ -30,8 +30,69 @@
   color: var(--terminal-prompt) !important;
 }
 
+/* Make sure the input area itself doesn't hide the cursor */
+.terminal-container .react-terminal-input {
+  position: relative;
+  /* Ensure input area is always visible and clickable */
+  min-height: 20px;
+  cursor: text !important;
+  /* Ensure input can receive focus and show text cursor */
+  z-index: 2 !important;
+  pointer-events: auto !important;
+  /* Keep whitespace so cursor position is correct */
+  white-space: pre !important;
+}
+
+/* Ensure the terminal wrapper doesn't block clicks */
+.terminal-container .react-terminal-wrapper {
+  position: relative;
+  /* Allow clicks to pass through to input */
+  pointer-events: auto;
+}
+
+/* Make sure terminal input line is always visible and keeps everything on one line */
+.terminal-container .react-terminal-line {
+  display: flex !important;
+  align-items: baseline !important; /* Changed from center to baseline for better text alignment */
+  min-height: 20px;
+  flex-wrap: nowrap !important;
+  flex-direction: row !important;
+  gap: 0 !important;
+}
+
+/* Hide react-terminal-ui's built-in cursor - we use CSS ::after instead */
 .terminal-container .terminal-cursor {
-  background-color: var(--terminal-cursor) !important;
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+}
+
+/* Cursor blink animation - IBM style blinking */
+@keyframes terminal-cursor-blink {
+  0%, 49% {
+    opacity: 1;
+  }
+  50%, 100% {
+    opacity: 0.3;
+  }
+}
+
+/* Inline cursor using ::after pseudo-element on the input */
+/* This renders the cursor inline right after the input text */
+.terminal-container .react-terminal-input::after {
+  content: '' !important;
+  display: inline-block !important;
+  width: 0.6ch !important; /* width of one character cell */
+  height: 1.1em !important; /* same height as the text line */
+  background-color: #ffffff !important; /* white block, IBM-style */
+  margin-left: 0.05ch !important;
+  vertical-align: baseline !important;
+  animation: terminal-cursor-blink 1s step-end infinite !important;
+  /* Don't block pointer events */
+  pointer-events: none !important;
+  /* Ensure it's visible */
+  opacity: 1 !important;
+  visibility: visible !important;
 }
 
 .terminal-container .terminal-output {

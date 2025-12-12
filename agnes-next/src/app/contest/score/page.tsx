@@ -283,8 +283,10 @@ export default function ScorePage() {
       });
       if (!res.ok) throw new Error('points_fetch_failed');
       const j: any = await res.json();
+      const newTotal = j.total || 0;
+      console.log('[Score] Refreshed after refer, new total:', newTotal);
       setData({
-        totalPoints: j.total || 0,
+        totalPoints: newTotal,
         firstName: j.firstName || null,
         createdNow: j.createdNow ?? true, // Default to true (first-time) if not provided
         earned: {
@@ -1065,7 +1067,7 @@ export default function ScorePage() {
       <section className="buttons-grid">
         <div className="points-pill">
           Total Points{' '}
-          <span>{sessionScore ? sessionScore.totalPoints : totalPoints}</span>
+          <span>{sessionScore ? sessionScore.totalPoints : (data?.totalPoints ?? totalPoints)}</span>
         </div>
         {sessionScore && (
           <div
@@ -1272,6 +1274,7 @@ export default function ScorePage() {
               referralCode={associate?.code || ''}
               referrerEmail={associate?.email || contestEmail || undefined}
               className=""
+              onReferralSent={refreshPoints}
             />
           </div>
           <ActionButton
