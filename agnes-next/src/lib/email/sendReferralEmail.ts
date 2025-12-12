@@ -7,7 +7,8 @@ export interface SendReferralEmailParams {
   videoId: ReferVideoId;
   videoLabel: string;
   thumbnailUrl: string;
-  referrerEmail?: string; // NEW: used for Reply-To
+  referrerEmail?: string; // Used for Reply-To
+  referrerFirstName?: string; // Optional: referrer's first name for personalization
 }
 
 export async function sendReferralEmail(
@@ -19,6 +20,7 @@ export async function sendReferralEmail(
     videoLabel,
     thumbnailUrl,
     referrerEmail,
+    referrerFirstName,
   } = params;
 
   // Check if email service is configured
@@ -33,7 +35,12 @@ export async function sendReferralEmail(
       : process.env.MAILCHIMP_FROM_NAME || 'The Agnes Protocol';
 
   // Email content
-  const subject = 'Your friend invited you to The Agnes Protocol';
+  const subject = 'I found a wild book you need to see';
+
+  // Use provided firstName, or extract from email, or fallback
+  const displayFirstName = referrerFirstName || 
+    (referrerEmail ? referrerEmail.split('@')[0].split('.')[0] : null) ||
+    'Your friend';
 
   const htmlBody = `
     <!DOCTYPE html>
@@ -43,8 +50,9 @@ export async function sendReferralEmail(
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
       </head>
       <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <p>Someone you know invited you to check out <strong>The Agnes Protocol</strong>.</p>
-        <p>Watch the short video and learn more about the book:</p>
+        <p>Hey there,</p>
+        <p>I'm part of the launch team for a new book called <strong>"The Agnes Protocol."</strong></p>
+        <p>If you decide to grab a copy, this link gives you <strong>$3.90 off</strong> the regular price:</p>
         <p style="text-align: center; margin: 20px 0;">
           <a href="${referralUrl}" style="display: inline-block;">
             <img
@@ -56,27 +64,44 @@ export async function sendReferralEmail(
         </p>
         <p style="text-align: center;">
           <a href="${referralUrl}" style="display: inline-block; padding: 12px 24px; background-color: #9333ea; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">
-            Watch Video & Learn More
+            Your discount link: Save $3.90
           </a>
         </p>
         <p style="font-size: 14px; color: #666; margin-top: 30px;">
           Or click here: <a href="${referralUrl}" style="color: #9333ea;">${referralUrl}</a>
         </p>
-        <p style="font-size: 14px; color: #666;">
-          If you buy the book, your friend will earn a $2 referral reward.
+        <p style="font-size: 14px; color: #666; margin-top: 20px;">
+          Every time someone uses my link, I earn $2—and you still get the full discount.
+        </p>
+        <p style="font-size: 14px; color: #666; margin-top: 20px;">
+          Most people who buy do it in the first four months, so if you're curious, don't wait too long.
+        </p>
+        <p style="font-size: 14px; color: #666; margin-top: 20px;">
+          Either way, thanks for checking it out.
+        </p>
+        <p style="font-size: 14px; color: #666; margin-top: 20px;">
+          — ${displayFirstName}
         </p>
       </body>
     </html>
   `;
 
-  const textBody = `A friend shared something with you:
+  const textBody = `Hey there,
 
-They thought you'd like this video and book: The Agnes Protocol.
+I'm part of the launch team for a new book called "The Agnes Protocol."
 
-Watch the video and learn more here:
+If you decide to grab a copy, this link gives you $3.90 off the regular price:
+
+Your discount link:
 ${referralUrl}
 
-If you purchase, they'll earn a $2 referral reward.`;
+Every time someone uses my link, I earn $2—and you still get the full discount.
+
+Most people who buy do it in the first four months, so if you're curious, don't wait too long.
+
+Either way, thanks for checking it out.
+
+— ${displayFirstName}`;
 
   // Debug logging (dev only)
   if (process.env.NODE_ENV !== 'production') {

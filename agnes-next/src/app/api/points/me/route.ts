@@ -168,6 +168,8 @@ export async function GET(req: NextRequest) {
         eventType = 'share_ig';
       } else if (mostRecentLedger.type === 'REFER_FRIEND_PAYOUT') {
         eventType = 'invite_friend';
+      } else if (mostRecentLedger.type === 'REFER_EMAIL') {
+        eventType = 'invite_friend';
       }
 
       if (eventType) {

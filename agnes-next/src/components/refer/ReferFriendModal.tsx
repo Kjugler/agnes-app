@@ -9,6 +9,7 @@ interface ReferFriendModalProps {
   onClose: () => void;
   referralCode: string;
   referrerEmail?: string;
+  onReferralSent?: () => void | Promise<void>; // Callback after successful referral send
 }
 
 export default function ReferFriendModal({
@@ -16,6 +17,7 @@ export default function ReferFriendModal({
   onClose,
   referralCode,
   referrerEmail,
+  onReferralSent,
 }: ReferFriendModalProps) {
   const [friendEmailsRaw, setFriendEmailsRaw] = useState('');
   const [selectedVideoId, setSelectedVideoId] = useState<ReferVideoId>('fb1');
@@ -23,6 +25,15 @@ export default function ReferFriendModal({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [pointsInfo, setPointsInfo] = useState<{
+    pointsAwarded: number;
+    daily: {
+      emailsSentToday: number;
+      pointsFromEmailsToday: number;
+      maxEmailsPerDay: number;
+      maxPointsPerDay: number;
+    };
+  } | null>(null);
 
   React.useEffect(() => {
     setMounted(true);
@@ -71,6 +82,7 @@ export default function ReferFriendModal({
     }
 
     setIsSubmitting(true);
+    setError(null);
 
     try {
       const res = await fetch('/api/refer', {
@@ -91,12 +103,30 @@ export default function ReferFriendModal({
       }
 
       setSuccess(true);
+      setPointsInfo({
+        pointsAwarded: data.pointsAwarded || 0,
+        daily: data.daily || {
+          emailsSentToday: emails.length,
+          pointsFromEmailsToday: data.pointsAwarded || 0,
+          maxEmailsPerDay: 20,
+          maxPointsPerDay: 100,
+        },
+      });
       setFriendEmailsRaw('');
 
-      // Auto-close after 3 seconds
+      // Refresh score after successful referral send
+      if (onReferralSent) {
+        try {
+          await onReferralSent();
+        } catch (err) {
+          console.error('[ReferFriendModal] Error refreshing score:', err);
+        }
+      }
+
+      // Auto-close after 5 seconds (longer to read feedback)
       setTimeout(() => {
         onClose();
-      }, 3000);
+      }, 5000);
     } catch (err: any) {
       setError(err.message || 'Something went wrong. Please try again.');
     } finally {
@@ -183,9 +213,30 @@ export default function ReferFriendModal({
             >
               Referral email(s) sent! ✅
             </h2>
-            <p style={{ fontSize: '0.875rem', color: '#666' }}>
-              You'll earn $2 when your friends buy the book.
-            </p>
+            {pointsInfo && pointsInfo.pointsAwarded > 0 ? (
+              <div style={{ fontSize: '0.875rem', color: '#666', marginTop: '0.5rem' }}>
+                <p style={{ marginBottom: '0.5rem' }}>
+                  You earned <strong>{pointsInfo.pointsAwarded} points</strong> from this send.
+                </p>
+                <p style={{ fontSize: '0.75rem', color: '#888' }}>
+                  Today's total from emails: <strong>{pointsInfo.daily.pointsFromEmailsToday}/{pointsInfo.daily.maxPointsPerDay} points</strong> ({pointsInfo.daily.emailsSentToday}/{pointsInfo.daily.maxEmailsPerDay} emails)
+                </p>
+                <p style={{ marginTop: '0.75rem', fontSize: '0.875rem', color: '#666' }}>
+                  You'll earn $2 when your friends buy the book.
+                </p>
+              </div>
+            ) : (
+              <div style={{ fontSize: '0.875rem', color: '#666', marginTop: '0.5rem' }}>
+                <p style={{ marginBottom: '0.5rem' }}>
+                  You've already reached today's referral email limit for points, but you can still earn $2 per purchase when people use your code.
+                </p>
+                {pointsInfo && (
+                  <p style={{ fontSize: '0.75rem', color: '#888' }}>
+                    Today: {pointsInfo.daily.pointsFromEmailsToday}/{pointsInfo.daily.maxPointsPerDay} points ({pointsInfo.daily.emailsSentToday}/{pointsInfo.daily.maxEmailsPerDay} emails)
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <>
@@ -199,9 +250,21 @@ export default function ReferFriendModal({
             >
               Refer a Friend
             </h2>
-            <p style={{ fontSize: '0.875rem', color: '#666', marginBottom: '1.5rem' }}>
-              Share a video + your referral link. Earn $2 when they buy.
-            </p>
+            <div style={{ fontSize: '0.875rem', color: '#666', marginBottom: '1.5rem', lineHeight: 1.6 }}>
+              <p style={{ marginBottom: '0.5rem', fontWeight: 600 }}>Earn points and cash</p>
+              <p style={{ marginBottom: '0.25rem' }}>
+                • 5 points for each valid email you send (up to 20 per day)
+              </p>
+              <p style={{ marginBottom: '0.25rem' }}>
+                • Max 100 points per day from emails
+              </p>
+              <p style={{ marginBottom: '0.25rem' }}>
+                • Your friends save $3.90 on their book
+              </p>
+              <p style={{ marginBottom: '0.5rem' }}>
+                • You earn $2.00 for every purchase using your code
+              </p>
+            </div>
 
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               {/* Email Input */}

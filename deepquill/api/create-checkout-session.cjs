@@ -50,6 +50,10 @@ module.exports = async function handler(req, res) {
       metadata,
       allow_promotion_codes: true,
       locale: 'en',            // quiet the "./en" warning in the browser
+      shipping_address_collection: {
+        allowed_countries: ['US'], // ok to expand later
+      },
+      phone_number_collection: { enabled: true },
     });
 
     return res.status(200).json({ url: session.url });

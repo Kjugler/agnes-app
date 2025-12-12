@@ -34,6 +34,13 @@ model User {
   handleTiktok          String?
   handleTruth           String?
   referralEarningsCents Int                  @default(0)
+  associateBalanceCents Int                  @default(0)
+  associateLifetimeEarnedCents Int           @default(0)
+  associateFriendsSavedCents Int             @default(0)
+  noPurchaseEmailSentAt        DateTime?
+  contestJoinedAt             DateTime?
+  nonParticipantEmailSentAt   DateTime?
+  missionaryEmailSentAt       DateTime?
   events                Event[]
   badges                UserBadge[]
   posts                 Post[]
@@ -60,6 +67,9 @@ model Ledger {
 enum LedgerType {
   PURCHASE_BOOK
   REFER_FRIEND_PAYOUT
+  REFER_EMAIL
+  REFER_PURCHASE
+  ASSOCIATE_PAYOUT
   MANUAL_ADJUST
   SHARE_X
   SHARE_IG
@@ -165,6 +175,18 @@ model Customer {
   @@index([email])
 }
 
+model FulfillmentUser {
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  printedOrders Order[]  @relation("LabelPrinter")
+  shippedOrders Order[]  @relation("Shipper")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([email])
+}
+
 model Order {
   id              String   @id @default(cuid())
   customer        Customer @relation(fields: [customerId], references: [id])
@@ -175,6 +197,19 @@ model Order {
   contestPlayerId String? // FK to User.id (optional)
   referralCode    String?
   pointsAwarded   Boolean  @default(false)
+  
+  // Commission tracking (optional, for admin visibility)
+  commissionCents Int?
+  friendSavedCents Int?
+  
+  // Fulfillment fields
+  status              String          @default("pending")
+  labelPrintedAt      DateTime?
+  shippedAt           DateTime?
+  labelPrintedById    String?
+  shippedById         String?
+  labelPrintedBy      FulfillmentUser? @relation("LabelPrinter", fields: [labelPrintedById], references: [id])
+  shippedBy           FulfillmentUser? @relation("Shipper", fields: [shippedById], references: [id])
   
   // Shipping information
   shippingName         String?
@@ -192,4 +227,7 @@ model Order {
   @@index([customerId, createdAt])
   @@index([stripeSessionId])
   @@index([contestPlayerId])
+  @@index([status])
+  @@index([labelPrintedById])
+  @@index([shippedById])
 }

@@ -186,10 +186,10 @@ export function ContestEntryForm({
             'Content-Type': 'application/json',
             'X-User-Email': targetEmail,
           },
-          body: JSON.stringify({ kind: 'signup' }),
+          body: JSON.stringify({ kind: 'contest_join' }),
         });
       } catch (awardErr) {
-        console.warn('signup award failed', awardErr);
+        console.warn('contest_join award failed', awardErr);
       }
 
       setSuccessMessage('You are in!');

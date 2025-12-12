@@ -1,7 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { REFER_VIDEOS, type ReferVideoId } from '@/config/referVideos';
-import { sendReferralEmail } from '@/lib/email/sendReferralEmail';
+import { sendReferralEmail } from '@/lib/email/referralEmail';
 import { logReferralInvite } from '@/lib/referrals/logReferralInvite';
+import { prisma } from '@/lib/db';
+import { startOfToday } from '@/lib/dailySharePoints';
+
+// SITE_URL: Use process.env.SITE_URL for referral email links
+// In dev, set SITE_URL to your public ngrok URL so emails link correctly:
+//   SITE_URL=https://agnes-dev.ngrok-free.app
+// In production, set it to your real domain.
+const SITE_URL = process.env.SITE_URL || '';
+
+// Helper to build absolute URLs for referral emails (never use localhost)
+function withBase(path: string): string {
+  if (!SITE_URL) {
+    throw new Error('SITE_URL environment variable is required for referral emails');
+  }
+  const url = `${SITE_URL.replace(/\/+$/, '')}${path}`;
+  return url;
+}
 
 type ReferRequestBody = {
   friendEmails: string[]; // REQUIRED, non-empty
@@ -65,20 +82,68 @@ export async function POST(req: NextRequest) {
     const videoConfig =
       REFER_VIDEOS.find((v) => v.id === videoId) ?? REFER_VIDEOS[0];
 
-    // Base URL and thumbnail URL
-    const baseUrl =
-      process.env.NEXT_PUBLIC_SITE_URL ||
-      `${req.nextUrl.protocol}//${req.nextUrl.host}`;
+    // Build referral URL using SITE_URL (never localhost)
+    const referralUrl = withBase(
+      `/refer?code=${encodeURIComponent(referralCode)}&v=${encodeURIComponent(videoConfig.id)}&src=email`
+    );
 
-    const referralUrl = `${baseUrl}/refer?code=${encodeURIComponent(
-      referralCode
-    )}&v=${videoConfig.id}&src=email`;
+    // Build thumbnail URL using SITE_URL
+    const thumbnailUrl = withBase(videoConfig.thumbnailSrc);
 
-    const thumbnailUrl = `${baseUrl}${videoConfig.thumbnailSrc}`;
+    // Log for debugging
+    console.log('[Refer] Built referralUrl', {
+      referralUrl,
+      SITE_URL: process.env.SITE_URL,
+    });
 
     // Get referrer email (optional, for Reply-To)
     const referrerEmail =
       typeof body.referrerEmail === 'string' ? body.referrerEmail.trim() : undefined;
+
+    // Find the user by referral code
+    const user = await prisma.user.findUnique({
+      where: { referralCode },
+      select: { id: true, email: true, firstName: true, fname: true, lname: true },
+    });
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Invalid referral code.' },
+        { status: 400 }
+      );
+    }
+
+    // Get referrer's full name for email personalization
+    const referrerName =
+      [user.firstName, user.lname].filter(Boolean).join(" ") ||
+      [user.fname, user.lname].filter(Boolean).join(" ") ||
+      null;
+
+    // Points constants
+    const MAX_EMAILS_PER_DAY = 20;
+    const MAX_POINTS_PER_DAY = 100;
+    const POINTS_PER_EMAIL = 5;
+
+    // Check today's referral email activity
+    const todayStart = startOfToday();
+    const todayReferralEmails = await prisma.ledger.findMany({
+      where: {
+        userId: user.id,
+        type: 'REFER_EMAIL',
+        createdAt: { gte: todayStart },
+      },
+      select: { points: true },
+    });
+
+    const emailsSentToday = todayReferralEmails.length;
+    const pointsFromEmailsToday = todayReferralEmails.reduce(
+      (sum, entry) => sum + entry.points,
+      0
+    );
+
+    // Calculate remaining capacity
+    const remainingEmails = Math.max(0, MAX_EMAILS_PER_DAY - emailsSentToday);
+    const remainingPoints = Math.max(0, MAX_POINTS_PER_DAY - pointsFromEmailsToday);
 
     console.log('[Refer] Sending referral emails', {
       emailCount: emails.length,
@@ -86,31 +151,103 @@ export async function POST(req: NextRequest) {
       videoId,
       referralUrl,
       referrerEmail: referrerEmail || '(not provided)',
+      userId: user.id,
+      emailsSentToday,
+      pointsFromEmailsToday,
+      remainingEmails,
+      remainingPoints,
     });
 
-    // Send to all recipients in parallel
-    try {
-      await Promise.all(
-        emails.map(async (friendEmail: string) => {
-          await sendReferralEmail({
-            friendEmail,
-            referrerCode: referralCode,
-            referralUrl,
-            videoId: videoConfig.id,
-            videoLabel: videoConfig.label,
-            thumbnailUrl,
-            referrerEmail, // new
-          });
+    // Process each email sequentially to properly track remaining capacity
+    const results: Array<{
+      email: string;
+      pointsAwarded: number;
+      sent: boolean;
+    }> = [];
 
-          // Fire-and-forget logging (can be awaited if you prefer)
-          await logReferralInvite({
-            referralCode,
-            friendEmail,
-            videoId: videoConfig.id,
-            channel: 'email',
+    // Track running totals as we process emails
+    let currentEmailsSent = emailsSentToday;
+    let currentPointsAwarded = pointsFromEmailsToday;
+
+    try {
+      // Process emails sequentially (not in parallel) to correctly track caps
+      for (const friendEmail of emails) {
+        // Check if we're still under caps
+        const eligibleForPoints =
+          currentEmailsSent < MAX_EMAILS_PER_DAY &&
+          currentPointsAwarded < MAX_POINTS_PER_DAY;
+        
+        let pointsForThisEmail = 0;
+        if (eligibleForPoints) {
+          const pointsRemaining = MAX_POINTS_PER_DAY - currentPointsAwarded;
+          pointsForThisEmail = Math.min(POINTS_PER_EMAIL, pointsRemaining);
+        }
+
+        // Send email via Mailchimp Transactional
+        await sendReferralEmail({
+          toEmail: friendEmail,
+          referralUrl,
+          thumbnailUrl,
+          videoLabel: videoConfig.label,
+          referrerEmail,
+          referrerName,
+        });
+
+        // Log referral invite
+        await logReferralInvite({
+          referralCode,
+          friendEmail,
+          videoId: videoConfig.id,
+          channel: 'email',
+        });
+
+        // Award points if eligible (always record in ledger, even if 0 points)
+        if (pointsForThisEmail > 0) {
+          await prisma.$transaction([
+            prisma.ledger.create({
+              data: {
+                userId: user.id,
+                type: 'REFER_EMAIL',
+                points: pointsForThisEmail,
+                note: `Referral email sent to ${friendEmail}`,
+              },
+            }),
+            prisma.user.update({
+              where: { id: user.id },
+              data: { points: { increment: pointsForThisEmail } },
+            }),
+          ]);
+          currentPointsAwarded += pointsForThisEmail;
+          console.log('[POINTS] Awarded', pointsForThisEmail, 'points for refer_email to', friendEmail, {
+            userId: user.id,
+            totalPointsAfter: currentPointsAwarded,
           });
-        })
-      );
+        } else {
+          // Still record in ledger for audit trail (0 points)
+          await prisma.ledger.create({
+            data: {
+              userId: user.id,
+              type: 'REFER_EMAIL',
+              points: 0,
+              note: `Referral email sent to ${friendEmail} (daily cap reached)`,
+            },
+          });
+          console.log('[POINTS] Referral email sent but no points awarded (daily cap reached)', {
+            userId: user.id,
+            friendEmail,
+            emailsSentToday: currentEmailsSent,
+            pointsFromEmailsToday: currentPointsAwarded,
+          });
+        }
+
+        currentEmailsSent += 1;
+
+        results.push({
+          email: friendEmail,
+          pointsAwarded: pointsForThisEmail,
+          sent: true,
+        });
+      }
     } catch (error: any) {
       console.error('[Refer] Error sending emails:', error);
       return NextResponse.json(
@@ -119,7 +256,23 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({ success: true });
+    // Calculate final totals (use tracked values)
+    const totalPointsAwarded = results.reduce((sum, r) => sum + r.pointsAwarded, 0);
+    const finalEmailsSentToday = currentEmailsSent;
+    const finalPointsFromEmailsToday = currentPointsAwarded;
+
+    return NextResponse.json({
+      success: true,
+      emailsSent: emails.length,
+      pointsAwarded: totalPointsAwarded,
+      daily: {
+        emailsSentToday: finalEmailsSentToday,
+        pointsFromEmailsToday: finalPointsFromEmailsToday,
+        maxEmailsPerDay: MAX_EMAILS_PER_DAY,
+        maxPointsPerDay: MAX_POINTS_PER_DAY,
+      },
+      results,
+    });
   } catch (error: any) {
     console.error('[Refer] Error handling referral request:', error);
     return NextResponse.json(

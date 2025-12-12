@@ -160,7 +160,7 @@ export default function JodyAssistant({
     flexDirection: 'column',
     alignItems: 'flex-end',
     justifyContent: 'flex-end',
-    pointerEvents: 'none',
+    pointerEvents: 'none', // Container doesn't block clicks
     gap: 12,
   };
 
@@ -367,8 +367,9 @@ export default function JodyAssistant({
             width: '100%',
             height: '100%',
             objectFit: 'cover',
-            objectPosition: isEm2 ? 'center 16%' : 'center 35%',
+            objectPosition: isEm2 ? 'center 16%' : 'center 25%', // Moved down from 35% to 25% to add space at top
             display: 'block',
+            transform: isEm2 ? 'none' : 'translateY(4px)', // Slight downward shift for em1 variant
           }}
           loading="eager"
           onError={(e) => {
@@ -449,7 +450,16 @@ export default function JodyAssistant({
         </div>
       )}
 
-      <div style={containerStyle}>
+      <div 
+        style={containerStyle}
+        onMouseDown={(e) => {
+          // Prevent Jody widget from stealing focus from terminal
+          // Only prevent if clicking on the container itself, not interactive elements
+          if (e.target === e.currentTarget) {
+            e.preventDefault();
+          }
+        }}
+      >
         {/* em1 bubbles - ONLY render if isEm1 */}
         {isEm1 && (phase === 1 || phase === 2) && renderEm1Bubble()}
 
