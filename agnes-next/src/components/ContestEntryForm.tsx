@@ -57,28 +57,52 @@ export function ContestEntryForm({
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const email = readContestEmail();
-    const stored = readAssociate();
-    setContestEmail(email);
-    setAssociateCache(stored);
-    setForm((prev) => {
-      const next = { ...prev };
-      if (stored?.name) {
-        const parts = stored.name.trim().split(' ');
-        if (parts.length > 0 && !prev.firstName) next.firstName = parts[0];
-        if (parts.length > 1 && !prev.lastName) next.lastName = parts.slice(1).join(' ');
-      }
-      if (stored?.email && !prev.email) next.email = stored.email;
-      if (email) next.email = email;
-      return next;
-    });
+    
+    const syncEmail = () => {
+      const email = readContestEmail();
+      const stored = readAssociate();
+      setContestEmail(email);
+      setAssociateCache(stored);
+      
+      setForm((prev) => {
+        const next = { ...prev };
+        // Only update if field is empty to avoid overwriting user input
+        if (stored?.name && !prev.firstName) {
+          const parts = stored.name.trim().split(' ');
+          if (parts.length > 0) next.firstName = parts[0];
+          if (parts.length > 1) next.lastName = parts.slice(1).join(' ');
+        }
+        // Email: prioritize contest email, then stored associate email
+        if (!prev.email) {
+          if (email) {
+            next.email = email;
+          } else if (stored?.email) {
+            next.email = stored.email;
+          }
+        }
+        return next;
+      });
+    };
+    
+    // Sync immediately
+    syncEmail();
+    
+    // Also sync after a short delay to catch cookies that might be set asynchronously
+    const delayedSync = setTimeout(syncEmail, 200);
+    
+    return () => {
+      clearTimeout(delayedSync);
+    };
   }, []);
 
   const effectiveContestEmail = contestEmailOverride ?? contestEmail;
 
   const emailMismatch = useMemo(() => {
     if (!effectiveContestEmail) return false;
-    return normalizeEmail(form.email) !== effectiveContestEmail.toLowerCase();
+    if (!form.email || !form.email.trim()) return false; // No mismatch if email field is empty
+    const normalizedFormEmail = normalizeEmail(form.email);
+    const normalizedContestEmail = effectiveContestEmail.toLowerCase().trim();
+    return normalizedFormEmail !== normalizedContestEmail;
   }, [effectiveContestEmail, form.email]);
 
   const canSubmit = useMemo(() => {
@@ -142,29 +166,71 @@ export function ContestEntryForm({
         setContestEmail(targetEmail);
       }
 
-      const res = await fetch('/api/associate/upsert', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Email': targetEmail,
-        },
-        body: JSON.stringify({
-          firstName: form.firstName,
-          lastName: form.lastName,
-          email: targetEmail,
-          phone: form.phone,
-          handles: {
-            x: form.x,
-            instagram: form.instagram,
-            tiktok: form.tiktok,
-            truth: form.truth,
-          },
-          source: 'contest-signup',
-        }),
+      console.log('[ContestEntryForm] Submitting form', { 
+        email: targetEmail, 
+        firstName: form.firstName, 
+        lastName: form.lastName,
+        hasHandles: !!(form.x || form.instagram || form.tiktok || form.truth)
       });
 
+      let res: Response;
+      try {
+        res = await fetch('/api/associate/upsert', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-User-Email': targetEmail,
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            firstName: form.firstName,
+            lastName: form.lastName,
+            email: targetEmail,
+            phone: form.phone,
+            handles: {
+              x: form.x,
+              instagram: form.instagram,
+              tiktok: form.tiktok,
+              truth: form.truth,
+            },
+            source: 'contest-signup',
+          }),
+        });
+      } catch (fetchError: any) {
+        console.error('[ContestEntryForm] Fetch error', fetchError);
+        // Network error or CORS issue
+        throw new Error(
+          fetchError?.message?.includes('Failed to fetch') || fetchError?.message?.includes('NetworkError')
+            ? 'Network error. Please check your connection and try again.'
+            : `Connection error: ${fetchError?.message || 'Unknown error'}`
+        );
+      }
+
+      if (!res.ok) {
+        let errorMessage = `Failed to save (status ${res.status})`;
+        try {
+          const errorData = await res.json();
+          console.error('[ContestEntryForm] API error response', errorData);
+          if (errorData?.error) {
+            errorMessage = errorData.error === 'missing_user_email' 
+              ? 'Email is required. Please refresh and try again.'
+              : errorData.error === 'email_mismatch'
+              ? 'Email mismatch. Please use the email you signed in with.'
+              : errorData.error === 'missing_fields'
+              ? 'Please fill in all required fields.'
+              : errorData.error === 'server_error'
+              ? `Server error: ${errorData.message || 'Please try again or contact support.'}`
+              : errorData.error || 'Could not save. Please try again.';
+          }
+        } catch (parseError) {
+          console.error('[ContestEntryForm] Failed to parse error response', parseError);
+          // If response isn't JSON, use default message
+        }
+        throw new Error(errorMessage);
+      }
+
       const data = (await res.json()) as { ok: boolean; id: string; email: string; name: string; code: string };
-      if (!res.ok || !data.ok) {
+      if (!data.ok) {
         throw new Error(data?.['error'] || 'Could not save. Please try again.');
       }
 

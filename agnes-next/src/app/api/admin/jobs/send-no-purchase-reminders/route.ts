@@ -77,13 +77,17 @@ export async function GET(req: NextRequest) {
           journalUrl: `${BASE_URL}/journal`, // Placeholder
         });
 
+        // Apply global test contest banner
+        const { applyGlobalEmailBanner } = await import('@/lib/emailBanner');
+        const { html: htmlWithBanner } = applyGlobalEmailBanner({ html });
+
         // Send email via Mailchimp Transactional
         await client.messages.send({
           message: {
             from_email: fromEmail,
             subject,
             to: [{ email: user.email, type: 'to' }],
-            html,
+            html: htmlWithBanner,
             headers: {
               'Reply-To': fromEmail,
             },

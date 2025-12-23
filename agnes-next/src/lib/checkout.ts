@@ -28,20 +28,24 @@ function trackCheckoutStarted(source: string, path: string) {
 }
 
 export type StartCheckoutOpts = {
+  product?: 'paperback' | 'ebook' | 'audio_preorder';
   qty?: number;
   source?: string; // goes into Stripe metadata.source
   path?: string; // goes into track meta.path
   successPath?: string;
   cancelPath?: string;
+  metadata?: Record<string, string>;
 };
 
 export async function startCheckout(opts: StartCheckoutOpts = {}) {
   const {
+    product = 'paperback', // Default to paperback
     qty = 1,
     successPath = '/contest/thank-you',
     cancelPath = '/contest',
     source = 'contest',
     path = typeof window !== 'undefined' ? window.location.pathname : '/contest',
+    metadata: providedMetadata = {},
   } = opts;
 
   // 1) fire tracking first (non-blocking — does not affect animations)
@@ -81,10 +85,25 @@ export async function startCheckout(opts: StartCheckoutOpts = {}) {
 
   // 2) create Stripe session via Next.js API route (blocking)
   try {
-    const metadata: Record<string, string> = { source };
-    if (referralCode) {
-      metadata.referralCode = referralCode;
+    // Merge provided metadata with source and referral code
+    const metadata: Record<string, string> = {
+      ...providedMetadata,
+      source,
+    };
+    
+    // Extract tracking params from metadata if present
+    const ref = providedMetadata.ref || providedMetadata.referralCode || referralCode;
+    const src = providedMetadata.src;
+    const v = providedMetadata.v;
+    const origin = providedMetadata.origin;
+    
+    if (ref) {
+      metadata.referralCode = ref;
+      metadata.ref = ref;
     }
+    if (src) metadata.src = src;
+    if (v) metadata.v = v;
+    if (origin) metadata.origin = origin;
 
     const res = await fetch('/api/create-checkout-session', {
       method: 'POST',
@@ -93,9 +112,14 @@ export async function startCheckout(opts: StartCheckoutOpts = {}) {
         'X-User-Email': email,
       },
       body: JSON.stringify({
+        product,
         qty,
         successPath,
         cancelPath,
+        ref,
+        src,
+        v,
+        origin,
         metadata,
       }),
     });

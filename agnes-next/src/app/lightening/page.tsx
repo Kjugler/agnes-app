@@ -2,9 +2,10 @@
 
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState, useMemo } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import HelpButton from "@/components/HelpButton";
+import { writeContestEmail } from "@/lib/identity";
 
 declare global {
   interface Window {
@@ -17,21 +18,140 @@ export default function LighteningPage() {
   const playerRef = useRef<HTMLDivElement>(null);
   const youtubePlayerRef = useRef<any>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [playerReady, setPlayerReady] = useState(false);
   const [useFallback, setUseFallback] = useState(false);
+  
+  // Determine base URL for navigation - dev-only, stateless (no localStorage)
+  const getBaseUrl = useMemo(() => {
+    if (typeof window === 'undefined') return '';
+    
+    // Only use ngrok logic in development
+    const isDev = process.env.NODE_ENV === 'development';
+    if (!isDev) {
+      // Production: use relative paths (normal Next.js behavior)
+      return '';
+    }
+    
+    // Check if NEXT_PUBLIC_SITE_URL is set and points to ngrok
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+    if (siteUrl && (siteUrl.includes('ngrok') || siteUrl.includes('ngrok-free.app'))) {
+      console.log('[Lightening] Dev mode: Using NEXT_PUBLIC_SITE_URL:', siteUrl);
+      return siteUrl;
+    }
+    
+    // Check if we're already on ngrok
+    const hostname = window.location.hostname;
+    if (hostname.includes('ngrok') || hostname.includes('ngrok-free.app')) {
+      const currentOrigin = `${window.location.protocol}//${window.location.host}`;
+      console.log('[Lightening] Dev mode: Detected ngrok hostname, using:', currentOrigin);
+      return currentOrigin;
+    }
+    
+    // Default: use current origin (will be localhost in dev)
+    const currentOrigin = `${window.location.protocol}//${window.location.host}`;
+    console.log('[Lightening] Dev mode: Using current origin:', currentOrigin);
+    return currentOrigin;
+  }, []);
+  
+  // Read and store email from query string (ngrok-side storage)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    const emailFromQuery = searchParams.get('email');
+    
+    if (emailFromQuery) {
+      const normalizedEmail = emailFromQuery.trim().toLowerCase();
+      console.log('[Lightening] Found email in query string, storing:', normalizedEmail);
+      
+      // Store email using the app's identity system
+      writeContestEmail(normalizedEmail);
+      
+      // Also call login API to set cookie (ensures cookie is set on ngrok domain)
+      fetch('/api/contest/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: normalizedEmail }),
+        credentials: 'include',
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.ok) {
+            console.log('[Lightening] Email stored and cookie set on ngrok domain');
+          } else {
+            console.warn('[Lightening] Failed to set cookie on ngrok domain:', data);
+          }
+        })
+        .catch((err) => {
+          console.warn('[Lightening] Error setting cookie on ngrok domain:', err);
+        });
+    }
+  }, [searchParams]);
+
+  // Skip redirect - EmailModal should already redirect to ngrok directly
+  // This prevents the reload loop where page loads then redirects
+  // Only redirect if we somehow ended up on localhost without ngrok configured
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    const isDev = process.env.NODE_ENV === 'development';
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+    const currentHostname = window.location.hostname;
+    const isOnNgrok = currentHostname.includes('ngrok') || currentHostname.includes('ngrok-free.app');
+    const isOnLocalhost = currentHostname === 'localhost' || currentHostname === '127.0.0.1';
+    
+    // Only redirect if we're on localhost AND ngrok is configured AND we're in dev
+    // This should rarely happen since EmailModal redirects to ngrok directly
+    if (isDev && isOnLocalhost && siteUrl && (siteUrl.includes('ngrok') || siteUrl.includes('ngrok-free.app')) && !isOnNgrok) {
+      const ngrokUrl = `${siteUrl}/lightening${window.location.search}`;
+      console.log('[Lightening] Redirecting from localhost to ngrok:', ngrokUrl);
+      window.location.replace(ngrokUrl); // Use replace instead of href to prevent back button issues
+      return;
+    }
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    // Load YouTube IFrame API
+    // On ngrok, use fallback iframe immediately for faster loading (no API wait)
+    const isOnNgrok = window.location.hostname.includes('ngrok') || window.location.hostname.includes('ngrok-free.app');
+    if (isOnNgrok) {
+      console.log('[Lightening] On ngrok - using direct iframe for faster loading');
+      setUseFallback(true);
+      // Still try to load API in background for better control, but don't wait
+      if (!window.YT) {
+        const existingScript = document.querySelector('script[src="https://www.youtube.com/iframe_api"]');
+        if (!existingScript) {
+          const tag = document.createElement("script");
+          tag.src = "https://www.youtube.com/iframe_api";
+          tag.async = true;
+          tag.defer = true;
+          const firstScriptTag = document.getElementsByTagName("script")[0];
+          if (firstScriptTag && firstScriptTag.parentNode) {
+            firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+          } else {
+            document.head.appendChild(tag);
+          }
+        }
+      }
+      return; // Exit early - fallback will handle everything
+    }
+
+    // Load YouTube IFrame API (for localhost or when not using fallback)
     if (!window.YT) {
       // Check if script is already being loaded
       const existingScript = document.querySelector('script[src="https://www.youtube.com/iframe_api"]');
       if (!existingScript) {
+        console.log('[Lightening] Loading YouTube IFrame API script');
         const tag = document.createElement("script");
         tag.src = "https://www.youtube.com/iframe_api";
         tag.async = true;
         tag.defer = true;
+        tag.onerror = () => {
+          console.error('[Lightening] Failed to load YouTube API script, using fallback');
+          setUseFallback(true);
+          setPlayerReady(true);
+        };
         const firstScriptTag = document.getElementsByTagName("script")[0];
         if (firstScriptTag && firstScriptTag.parentNode) {
           firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
@@ -153,10 +273,22 @@ export default function LighteningPage() {
                 const state = event.data;
                 console.log('[Lightening] State changed:', state);
                 
-                // When video ends, redirect to contest page immediately
+                // When video ends, redirect to contest page immediately (preserve query string)
                 if (state === window.YT.PlayerState.ENDED) {
                   console.log('[Lightening] Video ended, redirecting to contest page');
-                  router.push("/contest");
+                  const queryString = window.location.search;
+                  const contestUrl = getBaseUrl && !getBaseUrl.includes('localhost') 
+                    ? `${getBaseUrl}/contest${queryString}`
+                    : `/contest${queryString}`;
+                  
+                  if (getBaseUrl && !getBaseUrl.includes('localhost')) {
+                    // Use full URL redirect for ngrok
+                    console.log('[Lightening] Redirecting to ngrok URL:', contestUrl);
+                    window.location.href = contestUrl;
+                  } else {
+                    console.log('[Lightening] Redirecting to localhost');
+                    router.push(contestUrl);
+                  }
                 } else if (state === window.YT.PlayerState.PLAYING) {
                   // Video is playing - ensure it's unmuted for audio
                   try {
@@ -201,30 +333,45 @@ export default function LighteningPage() {
     if (window.YT && window.YT.Player) {
       setTimeout(initializePlayer, 100);
     } else {
+      // Set up API ready callback
+      const originalCallback = window.onYouTubeIframeAPIReady;
       window.onYouTubeIframeAPIReady = () => {
         console.log('[Lightening] YouTube API ready');
+        if (originalCallback) originalCallback();
         setTimeout(initializePlayer, 100);
       };
       
-      // Fallback: if API doesn't load within 3 seconds, use direct iframe
+      // More aggressive fallback: if API doesn't load within 800ms, use direct iframe (faster loading)
       const fallbackTimer = setTimeout(() => {
         if (!youtubePlayerRef.current && !useFallback) {
-          console.warn('[Lightening] YouTube API timeout, using fallback iframe');
+          console.warn('[Lightening] YouTube API timeout (800ms), using fallback iframe for faster loading');
           setUseFallback(true);
+          setPlayerReady(true); // Mark as ready so loading message disappears
         }
-      }, 3000);
+      }, 800);
       
-      // Clear timer if player initializes
+      // Also check periodically if API loaded (check more frequently for faster response)
       const checkTimer = setInterval(() => {
-        if (youtubePlayerRef.current) {
+        if (window.YT && window.YT.Player && !youtubePlayerRef.current) {
+          console.log('[Lightening] YouTube API detected, initializing player');
+          clearTimeout(fallbackTimer);
+          clearInterval(checkTimer);
+          setTimeout(initializePlayer, 50); // Reduced delay
+        } else if (youtubePlayerRef.current) {
           clearTimeout(fallbackTimer);
           clearInterval(checkTimer);
         }
-      }, 500);
+      }, 100); // Check every 100ms instead of 200ms
       
       return () => {
         clearTimeout(fallbackTimer);
         clearInterval(checkTimer);
+        // Restore original callback if it existed
+        if (originalCallback) {
+          window.onYouTubeIframeAPIReady = originalCallback;
+        } else {
+          delete window.onYouTubeIframeAPIReady;
+        }
         // Cleanup
         if (youtubePlayerRef.current) {
           try {
@@ -251,7 +398,19 @@ export default function LighteningPage() {
   }, [router]);
 
   const handleSkip = () => {
-    router.push("/contest");
+    const queryString = window.location.search;
+    const contestUrl = getBaseUrl && !getBaseUrl.includes('localhost')
+      ? `${getBaseUrl}/contest${queryString}`
+      : `/contest${queryString}`;
+    
+    if (getBaseUrl && !getBaseUrl.includes('localhost')) {
+      // Use full URL redirect for ngrok
+      console.log('[Lightening] Skip button - redirecting to ngrok URL:', contestUrl);
+      window.location.href = contestUrl;
+    } else {
+      console.log('[Lightening] Skip button - redirecting to localhost');
+      router.push(contestUrl);
+    }
   };
 
   // Handle page click to trigger playback if autoplay was blocked
@@ -285,7 +444,7 @@ export default function LighteningPage() {
       >
         {/* YouTube video player container */}
         {useFallback ? (
-          // Fallback: Direct iframe if API fails to load
+          // Fallback: Direct iframe for faster loading (no API wait)
           <iframe
             id="player-fallback"
             src="https://www.youtube.com/embed/ofr9MTgh2mM?autoplay=1&mute=0&controls=1&rel=0&modestbranding=1&enablejsapi=1&loop=0&playlist=ofr9MTgh2mM"
@@ -301,12 +460,47 @@ export default function LighteningPage() {
             allow="autoplay; encrypted-media"
             allowFullScreen
             onLoad={() => {
-              console.log('[Lightening] Fallback iframe loaded');
+              console.log('[Lightening] Fallback iframe loaded - video should start playing');
               setPlayerReady(true);
-            }}
-            onEnded={() => {
-              console.log('[Lightening] Fallback video ended, redirecting');
-              router.push("/contest");
+              
+              // Listen for postMessage from YouTube iframe to detect video end
+              const handleMessage = (event: MessageEvent) => {
+                // YouTube iframe sends messages when video ends
+                if (event.data === 'ended' || (event.data && event.data.event === 'onStateChange' && event.data.info === 0)) {
+                  console.log('[Lightening] Fallback video ended, redirecting');
+                  const queryString = window.location.search;
+                  const contestUrl = getBaseUrl && !getBaseUrl.includes('localhost')
+                    ? `${getBaseUrl}/contest${queryString}`
+                    : `/contest${queryString}`;
+                  
+                  if (getBaseUrl && !getBaseUrl.includes('localhost')) {
+                    console.log('[Lightening] Fallback - redirecting to ngrok URL:', contestUrl);
+                    window.location.href = contestUrl;
+                  } else {
+                    console.log('[Lightening] Fallback - redirecting to localhost');
+                    router.push(contestUrl);
+                  }
+                  window.removeEventListener('message', handleMessage);
+                }
+              };
+              window.addEventListener('message', handleMessage);
+              
+              // Fallback: redirect after video duration (approximately 2 minutes)
+              // User can also use skip button
+              setTimeout(() => {
+                const queryString = window.location.search;
+                const contestUrl = getBaseUrl && !getBaseUrl.includes('localhost')
+                  ? `${getBaseUrl}/contest${queryString}`
+                  : `/contest${queryString}`;
+                
+                if (getBaseUrl && !getBaseUrl.includes('localhost')) {
+                  console.log('[Lightening] Fallback timeout - redirecting to ngrok URL:', contestUrl);
+                  window.location.href = contestUrl;
+                } else {
+                  console.log('[Lightening] Fallback timeout - redirecting to localhost');
+                  router.push(contestUrl);
+                }
+              }, 120000); // 2 minutes fallback
             }}
           />
         ) : (
@@ -339,6 +533,21 @@ export default function LighteningPage() {
             textAlign: "center"
           }}>
             Loading video...
+            <div 
+              style={{
+                marginTop: "1rem",
+                fontSize: "14px",
+                color: "#00ff7f",
+                cursor: "pointer",
+                textDecoration: "underline"
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleSkip();
+              }}
+            >
+              (Click here if video doesn't load)
+            </div>
           </div>
         )}
         <button

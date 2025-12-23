@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
-import { upsertContact, addTags, sendEvent } from '@/lib/mailchimp';
 import { prisma } from '@/lib/db';
+import { proxyJson } from '@/lib/deepquillProxy';
 
 export const runtime = 'nodejs';
 
@@ -40,12 +40,9 @@ const EVENT_TAGS: Record<string, string[]> = {
 // Events allowed without an email (thank-you page only has session_id)
 const EVENTS_WITHOUT_EMAIL = new Set(['CHECKOUT_STARTED', 'PURCHASE_COMPLETED']);
 
-// Only talk to Mailchimp when env is present (fail-open otherwise)
-const MC_READY = Boolean(
-  process.env.MAILCHIMP_API_KEY &&
-  process.env.MAILCHIMP_SERVER_PREFIX &&
-  (process.env.MAILCHIMP_AUDIENCE_ID || process.env.MAILCHIMP_LIST_ID)
-);
+// Mailchimp operations are proxied to deepquill
+// Frontend should check backend readiness via: GET http://localhost:5055/api/debug/env
+const EMAIL_ENABLED = process.env.NEXT_PUBLIC_EMAIL_ENABLED === 'true';
 
 // ---- helpers --------------------------------------------------------------
 
@@ -126,8 +123,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'email required' }, { status: 400, headers });
     }
 
-    // 1) Mailchimp (skip if not configured or no email)
-    if (email && MC_READY) {
+    // 1) Mailchimp operations (proxied to deepquill)
+    if (email && EMAIL_ENABLED) {
       try {
         const merge: Record<string, any> = {
           FNAME: fname,
@@ -140,12 +137,28 @@ export async function POST(req: NextRequest) {
         if (type === 'CONTEST_ENTERED' || type === 'ASSOCIATE_JOINED') {
           merge.CODE = nanoid(6).toUpperCase();
         }
-        await upsertContact(email, merge);
-        const tags = EVENT_TAGS[type] ?? [];
-        if (tags.length) await addTags(email, tags);
-        await sendEvent(email, type, meta ?? {});
+        
+        // Proxy Mailchimp operations to deepquill
+        await proxyJson('/api/track', req, {
+          method: 'POST',
+          body: {
+            type,
+            email,
+            fname,
+            lname,
+            source,
+            ref,
+            meta: {
+              ...meta,
+              merge,
+              tags: EVENT_TAGS[type] ?? [],
+            },
+          },
+        }).catch((err) => {
+          console.warn('[track] Mailchimp proxy failed (non-blocking):', err?.message);
+        });
       } catch (mcErr: any) {
-        console.warn('MC_SKIP_ERR', mcErr?.message || mcErr);
+        console.warn('[track] Mailchimp proxy error (non-blocking):', mcErr?.message || mcErr);
       }
     }
 

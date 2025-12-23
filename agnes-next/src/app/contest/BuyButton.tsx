@@ -1,51 +1,25 @@
 'use client';
 
-import { readContestEmail } from '@/lib/identity';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 export default function BuyButton() {
-  async function onClick() {
-    try {
-      const email = readContestEmail();
-      if (!email) {
-        throw new Error('Please enter the contest first so we know who to credit.');
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  function onClick() {
+    // Preserve tracking params
+    const params = new URLSearchParams();
+    const keysToPreserve = ['ref', 'src', 'v', 'origin', 'code', 'utm_source', 'utm_medium', 'utm_campaign'];
+    
+    keysToPreserve.forEach(key => {
+      const value = searchParams.get(key);
+      if (value) {
+        params.set(key, value);
       }
-
-      const res = await fetch('/api/create-checkout-session', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Email': email,
-        },
-        body: JSON.stringify({
-          qty: 1,
-          metadata: { source: 'contest' },
-        }),
-      });
-
-      if (!res.ok) {
-        let errorMessage = `Checkout failed with status ${res.status}`;
-        try {
-          const errorData = await res.json();
-          if (errorData?.error && typeof errorData.error === 'string') {
-            errorMessage = errorData.error;
-          }
-        } catch {
-          // If response isn't JSON, use default message
-        }
-        throw new Error(errorMessage);
-      }
-
-      const data = await res.json();
-      if (!data?.url) {
-        throw new Error(data?.error || 'Checkout session created but no URL returned');
-      }
-
-      // go to Stripe Checkout
-      window.location.href = data.url;
-    } catch (e: any) {
-      console.error('[BuyButton] Checkout error', e);
-      alert(e?.message || 'Network error while starting checkout. Please try again.');
-    }
+    });
+    
+    // Route to catalog
+    router.push(`/catalog${params.toString() ? `?${params.toString()}` : ''}`);
   }
 
   return (

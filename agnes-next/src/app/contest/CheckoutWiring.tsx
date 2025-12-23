@@ -1,19 +1,19 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { bootstrapContestEmail } from '@/lib/identity';
-import { startCheckout } from '@/lib/checkout';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 export default function CheckoutWiring() {
-  // Prevent accidental double-clicks from spawning two sessions
-  const busyRef = useRef(false);
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     bootstrapContestEmail();
   }, []);
 
   useEffect(() => {
-    // Page-agnostic: wire ANY element with [data-checkout]
+    // Page-agnostic: wire ANY element with [data-checkout] to route to catalog
     // (also supports your existing [data-checkout="contest"])
     const nodes = Array.from(
       document.querySelectorAll<HTMLElement>('[data-checkout], [data-checkout="contest"]'),
@@ -26,26 +26,19 @@ export default function CheckoutWiring() {
       const handler = (e: Event) => {
         e.preventDefault();
 
-        if (busyRef.current) return;
-        busyRef.current = true;
+        // Preserve tracking params from current URL
+        const params = new URLSearchParams();
+        const keysToPreserve = ['ref', 'src', 'v', 'origin', 'code', 'utm_source', 'utm_medium', 'utm_campaign'];
+        
+        keysToPreserve.forEach(key => {
+          const value = searchParams.get(key);
+          if (value) {
+            params.set(key, value);
+          }
+        });
 
-        // Per-button overrides via data-*
-        const dataset = el.dataset || {};
-        const qty = Number(dataset.qty || '1');
-        const source =
-          dataset.source ||
-          el.getAttribute('data-checkout') || // e.g. "contest"
-          'contest';
-        const path =
-          dataset.path ||
-          (typeof window !== 'undefined' ? window.location.pathname : '/contest');
-
-        startCheckout({ qty, source, path })
-          .catch((err) => alert(err?.message || 'Could not start checkout.'))
-          .finally(() => {
-            // if we didn’t navigate (error), allow a retry
-            busyRef.current = false;
-          });
+        // Route to catalog with preserved params
+        router.push(`/catalog${params.toString() ? `?${params.toString()}` : ''}`);
       };
 
       el.addEventListener('click', handler);
@@ -53,7 +46,7 @@ export default function CheckoutWiring() {
     });
 
     return () => removers.forEach((fn) => fn());
-  }, []);
+  }, [router, searchParams]);
 
   return null; // invisible; zero DOM/animation impact
 }

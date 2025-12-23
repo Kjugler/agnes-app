@@ -48,6 +48,10 @@ model User {
   purchases             Purchase[]
   ledger                Ledger[]
   referralConversions   ReferralConversion[]
+  signals               Signal[]
+  signalReplies         SignalReply[]
+  signalAcknowledges    SignalAcknowledge[]
+  reviews               Review[]
 
   @@index([referralCode])
 }
@@ -231,4 +235,128 @@ model Order {
   @@index([status])
   @@index([labelPrintedById])
   @@index([shippedById])
+}
+
+enum SignalStatus {
+  APPROVED
+  HELD
+  REJECTED
+}
+
+enum SignalHeldReason {
+  PROFANITY
+  HARASSMENT
+  HATE
+  CLAIM
+  LINK
+  OTHER
+}
+
+model Signal {
+  id           String       @id @default(cuid())
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  // Author
+  userId       String?
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  isSystem     Boolean      @default(false)
+  isAnonymous  Boolean      @default(false)
+
+  // Content
+  text         String       // enforce 140 chars at app layer
+
+  // Moderation
+  status       SignalStatus @default(APPROVED)
+  heldReason   SignalHeldReason?
+  heldAt       DateTime?
+  approvedAt   DateTime?
+  rejectedAt   DateTime?
+
+  // Coarse geo at time of posting (no raw IP stored here)
+  countryCode  String?      // e.g. "US"
+  region       String?      // e.g. "UT" (state/region code)
+  
+  // Relationships
+  replies      SignalReply[]
+  acknowledges SignalAcknowledge[]
+
+  @@index([createdAt])
+  @@index([status, createdAt])
+  @@index([countryCode, region, createdAt])
+}
+
+model SignalReply {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+
+  signalId    String
+  signal      Signal   @relation(fields: [signalId], references: [id], onDelete: Cascade)
+
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  isAnonymous Boolean  @default(false)
+  text        String   // enforce 140 chars at app layer
+
+  @@index([signalId, createdAt])
+}
+
+model SignalAcknowledge {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  signalId  String
+  signal    Signal   @relation(fields: [signalId], references: [id], onDelete: Cascade)
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([signalId, userId])
+  @@index([signalId, createdAt])
+}
+
+enum ReviewStatus {
+  APPROVED
+  HELD
+  REJECTED
+}
+
+enum ReviewHeldReason {
+  PROFANITY
+  HARASSMENT
+  HATE
+  CLAIM
+  LINK
+  OTHER
+}
+
+model Review {
+  id           String         @id @default(cuid())
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  // Author
+  userId       String
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Content
+  rating       Int            // 1-5
+  text         String         // enforce 3-240 chars at app layer
+  tags         String?        // JSON array of tags (max 5), optional for v1
+
+  // Moderation
+  status       ReviewStatus   @default(APPROVED)
+  heldReason   ReviewHeldReason?
+  heldAt       DateTime?
+  approvedAt   DateTime?
+  rejectedAt   DateTime?
+
+  // Coarse geo at time of posting
+  countryCode  String?        // e.g. "US"
+  region       String?        // e.g. "UT" (state/region code)
+
+  @@unique([userId]) // One review per user (upsert)
+  @@index([status, createdAt])
+  @@index([createdAt])
 }

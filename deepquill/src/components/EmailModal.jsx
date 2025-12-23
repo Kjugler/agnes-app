@@ -32,23 +32,23 @@ const EmailModal = ({ isOpen, onClose, onEmailSubmitted }) => {
 
     // --- fire tracking event to Next (agnes-next) ---
     // Determine the correct base URL for agnes-next
-    // Priority: localhost detection > env var > ngrok fallback
+    // Priority: env var (ngrok) > ngrok fallback > localhost (only if no ngrok available)
     let NEXT_BASE = null;
     
-    // ALWAYS prefer localhost when running locally (even if env var is set)
-    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
-      NEXT_BASE = 'http://localhost:3002'; // Next.js default port
-      console.log('[deepquill] Using localhost:3002 (detected localhost)');
+    // Check env var first (should be ngrok URL in dev)
+    const envUrl = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_AGNES_BASE_URL : null;
+    if (envUrl) {
+      NEXT_BASE = envUrl;
+      console.log('[deepquill] Using env var (ngrok):', envUrl);
     } else {
-      // Check env vars only if not on localhost
-      const envUrl = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_AGNES_BASE_URL : null;
-      if (envUrl) {
-        NEXT_BASE = envUrl;
-        console.log('[deepquill] Using env var:', envUrl);
+      // Check if we're already on ngrok (use current origin)
+      if (typeof window !== 'undefined' && (window.location.hostname.includes('ngrok') || window.location.hostname.includes('ngrok-free.app'))) {
+        NEXT_BASE = `${window.location.protocol}//${window.location.host}`;
+        console.log('[deepquill] Using current ngrok origin:', NEXT_BASE);
       } else {
-        // Final fallback to ngrok (for production/ngrok scenarios)
+        // Fallback to hardcoded ngrok (for dev testing)
         NEXT_BASE = 'https://agnes-dev.ngrok-free.app';
-        console.log('[deepquill] Using ngrok fallback');
+        console.log('[deepquill] Using ngrok fallback:', NEXT_BASE);
       }
     }
     
@@ -110,9 +110,23 @@ const EmailModal = ({ isOpen, onClose, onEmailSubmitted }) => {
         }
         
         // Redirect to /lightening first (correct sequence: Terminal 1 → Terminal 2 → Lightning → Contest)
-        setTimeout(() => {
-          window.location.href = `${NEXT_BASE}/lightening`;
-        }, 500);
+        // Preserve existing query params and add email
+        const currentParams = new URLSearchParams(window.location.search);
+        currentParams.set('email', normalizedEmail);
+        
+        // Preserve tracking params if present
+        const trackingParams = ['ref', 'src', 'v', 'origin', 'code', 'utm_source', 'utm_medium', 'utm_campaign'];
+        trackingParams.forEach(key => {
+          const value = currentParams.get(key);
+          if (value) {
+            currentParams.set(key, value);
+          }
+        });
+        
+        const lighteningUrl = `${NEXT_BASE}/lightening?${currentParams.toString()}`;
+        console.log('[EmailModal] Redirecting to lightening with email:', lighteningUrl);
+        // Redirect immediately - no delay needed
+        window.location.href = lighteningUrl;
       } else {
         let errorMessage = `Failed to log in (status ${loginRes.status})`;
         try {

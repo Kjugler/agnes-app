@@ -5,12 +5,62 @@ const path = require('path');
 const express = require('express');
 const cors = require('cors');
 
-// load env
+// Load env FIRST (before any other imports that might use env vars)
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env'), quiet: true });
+
+// Load and validate env config (will throw if STRIPE_SECRET_KEY is missing/invalid)
+let envConfig;
+try {
+  envConfig = require('../src/config/env.cjs');
+} catch (err) {
+  console.error('❌ [BOOT] Environment configuration failed:', err.message);
+  process.exit(1);
+}
+
+// Log Stripe configuration (safe - only shows last 6 chars)
+console.log(`[BOOT] Stripe mode=${envConfig.STRIPE_MODE} key=***${envConfig.STRIPE_KEY_FINGERPRINT} NODE_ENV=${envConfig.NODE_ENV}`);
+if (envConfig.STRIPE_WEBHOOK_SECRET) {
+  console.log(`[BOOT] Stripe webhook secret configured (${envConfig.STRIPE_WEBHOOK_SECRET.substring(0, 10)}...)`);
+} else {
+  console.warn('[BOOT] ⚠️  STRIPE_WEBHOOK_SECRET not configured - webhook signature verification will fail');
+}
+
+// Validate price IDs exist in current Stripe mode (dev only, non-blocking)
+if (envConfig.DEBUG && envConfig.STRIPE_MODE === 'test') {
+  const { stripe } = require('../src/lib/stripe.cjs');
+  const pricesToCheck = [
+    { name: 'paperback', id: envConfig.STRIPE_PRICE_PAPERBACK },
+    { name: 'ebook', id: envConfig.STRIPE_PRICE_EBOOK },
+    { name: 'audio_preorder', id: envConfig.STRIPE_PRICE_AUDIO_PREORDER },
+  ];
+
+  Promise.all(
+    pricesToCheck
+      .filter((p) => p.id)
+      .map(async (p) => {
+        try {
+          await stripe.prices.retrieve(p.id);
+          console.log(`[BOOT] ✅ Price ${p.name} (${p.id}) exists in ${envConfig.STRIPE_MODE} mode`);
+        } catch (err) {
+          console.error(`[BOOT] ❌ Price ${p.name} (${p.id}) not found in ${envConfig.STRIPE_MODE} mode:`, err.message);
+        }
+      })
+  ).catch(() => {
+    // Non-blocking - don't fail startup if price check fails
+  });
+}
 
 
 const app = express();
 app.use(cors({ origin: true }));
+
+// IMPORTANT: Stripe webhook route MUST be mounted before express.json()
+// because it needs raw body bytes for signature verification
+const stripeWebhookRouter = require('../api/stripe-webhook.cjs');
+app.use('/api', stripeWebhookRouter);
+console.log('✅ Mounted /api/stripe/webhook (raw body handler)');
+
+// JSON middleware for all other routes
 app.use(express.json());
 
 // health check
@@ -68,6 +118,29 @@ console.log('✅ Mounted /api/orders');
 const adminOrdersRouter = require('./routes/adminOrders.cjs');
 app.use(adminOrdersRouter);
 console.log('✅ Mounted /api/admin/orders');
+
+// eBook download endpoint (secure token-based)
+const ebookDownloadRouter = require('../api/ebook-download.cjs');
+app.use('/api', ebookDownloadRouter);
+console.log('✅ Mounted /api/ebook/download');
+
+// Debug endpoint (dev only)
+if (envConfig.DEBUG) {
+  app.get('/api/debug/env', (req, res) => {
+    res.json({
+      stripeMode: envConfig.STRIPE_MODE,
+      stripeKeyLast6: envConfig.STRIPE_KEY_FINGERPRINT,
+      nodeEnv: envConfig.NODE_ENV,
+      hasPaperbackPrice: !!envConfig.STRIPE_PRICE_PAPERBACK,
+      hasEbookPrice: !!envConfig.STRIPE_PRICE_EBOOK,
+      hasAudioPreorderPrice: !!envConfig.STRIPE_PRICE_AUDIO_PREORDER,
+      hasAssociateCoupon: !!envConfig.STRIPE_ASSOCIATE_15_COUPON_ID,
+      associateAllowlistCount: envConfig.ASSOCIATE_REF_ALLOWLIST.length,
+      associateAllowlistMode: envConfig.ASSOCIATE_REF_ALLOWLIST_MODE,
+    });
+  });
+  console.log('✅ Mounted /api/debug/env (dev only)');
+}
 
 const PORT = 5055;
 app.listen(PORT, () => {

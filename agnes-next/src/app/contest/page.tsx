@@ -41,41 +41,81 @@ export default function ContestPage() {
   const videoRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
 
-  // Handle email query param from IBM Terminal redirect
+  // Inject ticker animation CSS as fallback (ensures animation works)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    const styleId = 'contest-ticker-animation';
+    if (document.getElementById(styleId)) return; // Already injected
+    
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = `
+      @keyframes ticker {
+        0% { transform: translateX(0); }
+        100% { transform: translateX(-100%); }
+      }
+      .ticker-text {
+        animation: ticker 20s linear infinite !important;
+      }
+    `;
+    document.head.appendChild(style);
+    
+    return () => {
+      const existing = document.getElementById(styleId);
+      if (existing) existing.remove();
+    };
+  }, []);
+
+  // Handle email query param from IBM Terminal redirect - PRIORITY: set immediately
   useEffect(() => {
     if (typeof window === 'undefined') return;
     
     const emailFromQuery = qp.get('email');
     if (emailFromQuery) {
       const normalizedEmail = emailFromQuery.trim().toLowerCase();
+      console.log('[contest] Found email in query param, setting immediately:', normalizedEmail);
       
-      // Call login API to set cookie and create/load user
+      // Set email IMMEDIATELY (optimistic update) so UI updates right away - this prevents "No contest email detected"
+      writeContestEmail(normalizedEmail);
+      setContestEmail(normalizedEmail);
+      
+      // Remove query param from URL immediately (clean URL) - don't wait for API
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete('email');
+      window.history.replaceState({}, '', newUrl.toString());
+      
+      // Call login API to set cookie and create/load user (non-blocking, fire-and-forget)
+      // Don't await or block on this - let it happen in background
       fetch('/api/contest/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: normalizedEmail }),
         credentials: 'include',
       })
-        .then((res) => res.json())
+        .then((res) => {
+          if (!res.ok) {
+            console.error('[contest] Login API returned non-OK status:', res.status, res.statusText);
+            return res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` }));
+          }
+          return res.json();
+        })
         .then((data) => {
           if (data?.ok) {
-            // Set localStorage for client-side access
-            writeContestEmail(normalizedEmail);
-            
-            // Remove query param from URL (clean URL)
-            const newUrl = new URL(window.location.href);
-            newUrl.searchParams.delete('email');
-            window.history.replaceState({}, '', newUrl.toString());
-            
-            // Trigger sync to update state
+            console.log('[contest] Login successful, cookie set');
+            // Sync email from cookie (which is now set) to ensure consistency
             const email = readContestEmail();
-            setContestEmail(email);
+            if (email) {
+              setContestEmail(email);
+            }
           } else {
             console.error('[contest] Login failed', data);
+            // Keep the email set even if login API fails (user can still proceed)
           }
         })
         .catch((err) => {
           console.error('[contest] Login error', err);
+          // Keep the email set even if login API fails (user can still proceed)
         });
     }
   }, [qp]);
@@ -83,9 +123,57 @@ export default function ContestPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     
-    // Initial sync - read email from cookie immediately
+    // Only sync if we don't already have an email set (from query param handler above)
+    // This prevents race conditions and unnecessary re-renders
+    if (contestEmail) {
+      // Email already set from query param, just sync associate
+      const stored = readAssociate();
+      if (stored && stored.email !== contestEmail) {
+        // Email mismatch - clear associate cache but keep contest email
+        clearAssociateCaches({ keepContestEmail: true });
+        setAssociate(null);
+      } else {
+        setAssociate(stored);
+      }
+      return;
+    }
+    
+    // Initial sync - read email from cookie/storage (only if not already set from query param)
     const sync = () => {
-      const email = readContestEmail(); // This now reads from cookie first
+      let email = readContestEmail(); // This now reads from cookie first
+      
+      // Fallback: if no email in storage, check query string (safety net)
+      if (!email) {
+        const emailFromQuery = qp.get('email');
+        if (emailFromQuery) {
+          const normalizedEmail = emailFromQuery.trim().toLowerCase();
+          console.log('[contest] Sync fallback: Found email in query string, storing:', normalizedEmail);
+          writeContestEmail(normalizedEmail);
+          email = normalizedEmail;
+          setContestEmail(email);
+          
+          // Call login API to set cookie (non-blocking)
+          fetch('/api/contest/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: normalizedEmail }),
+            credentials: 'include',
+          })
+            .then((res) => res.json())
+            .then((data) => {
+              if (data?.ok) {
+                console.log('[contest] Sync fallback: Email stored and cookie set');
+              } else {
+                console.warn('[contest] Sync fallback: Login API returned error:', data);
+              }
+            })
+            .catch((err) => {
+              console.warn('[contest] Sync fallback: Error setting cookie:', err);
+            });
+          return; // Exit early since we set email above
+        }
+      }
+      
       const stored = readAssociate();
       
       console.log('[contest] Sync called', { email, hasStored: !!stored, storedEmail: stored?.email });
@@ -105,24 +193,27 @@ export default function ContestPage() {
         return;
       }
       // Set email and associate
-      setContestEmail(email);
+      if (email) {
+        setContestEmail(email);
+      }
       setAssociate(stored);
     };
     
-    // Sync immediately
+    // Sync immediately (but only once, not multiple times)
     sync();
     
-    // Also sync after a short delay to catch cookies that might be set asynchronously
-    const delayedSync = setTimeout(sync, 100);
-    
-    // Listen for storage changes (localStorage)
-    window.addEventListener('storage', sync);
+    // Listen for storage changes (localStorage) - but only if email not already set
+    const handleStorageChange = () => {
+      if (!contestEmail) {
+        sync();
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
     
     return () => {
-      clearTimeout(delayedSync);
-      window.removeEventListener('storage', sync);
+      window.removeEventListener('storage', handleStorageChange);
     };
-  }, []);
+  }, [qp, contestEmail]); // Include contestEmail to prevent unnecessary syncs
 
   useEffect(() => {
     let cancelled = false;
@@ -140,10 +231,17 @@ export default function ContestPage() {
       setStatusLoaded(false);
 
       try {
+        // Add timeout to prevent hanging - 5 second max wait
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        
         const res = await fetch('/api/associate/status', {
           method: 'GET',
           cache: 'no-store',
+          signal: controller.signal,
         });
+        clearTimeout(timeoutId);
+        
         if (!res.ok) {
           throw new Error(`status_failed_${res.status}`);
         }
@@ -174,12 +272,22 @@ export default function ContestPage() {
         } else if (!nextHasProfile) {
           setAssociate(null);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.warn('[contest] status load failed', err);
+        // Don't fail silently - if it's a timeout or network error, mark as loaded anyway
+        // so UI doesn't hang waiting
+        if (err?.name === 'AbortError') {
+          console.warn('[contest] Status load timed out after 5s, continuing anyway');
+        }
         if (!cancelled) {
           setHasProfile(false);
           setProfileFirstName(null);
-          setAssociate(null);
+          // Keep existing associate if we have one (don't clear on error)
+          // Only clear if we don't have one already
+          const existingAssociate = readAssociate();
+          if (!existingAssociate) {
+            setAssociate(null);
+          }
         }
       } finally {
         if (!cancelled) {
@@ -188,9 +296,15 @@ export default function ContestPage() {
         }
       }
     };
-    loadStatus();
+    
+    // Small delay to let email query param handler run first
+    const timer = setTimeout(() => {
+      loadStatus();
+    }, 100);
+    
     return () => {
       cancelled = true;
+      clearTimeout(timer);
       setStatusLoading(false);
     };
   }, [contestEmail]);
@@ -410,9 +524,9 @@ export default function ContestPage() {
       },
       {
         id: 'pointsBtn',
-        label: 'Earn Points',
+        label: 'Send Signal',
         text: 'Tap here to win points.',
-        href: '/contest/ascension',
+        href: '/signal-room',
         type: 'link' as const,
       },
       {
@@ -717,6 +831,7 @@ export default function ContestPage() {
         }}
       >
         <span
+          className="ticker-text"
           style={{
             display: 'inline-block',
             paddingLeft: '100%',
@@ -732,8 +847,16 @@ export default function ContestPage() {
       {/* ANIMATIONS */}
       <style jsx global>{`
         @keyframes ticker {
-          0% { transform: translateX(0%); }
-          100% { transform: translateX(-100%); }
+          0% {
+            transform: translateX(0);
+          }
+          100% {
+            transform: translateX(-100%);
+          }
+        }
+        
+        .ticker-text {
+          animation: ticker 20s linear infinite !important;
         }
         @keyframes pulse {
           0% { box-shadow: 0 0 5px lime; }

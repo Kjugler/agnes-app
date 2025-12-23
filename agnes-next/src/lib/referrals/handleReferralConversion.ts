@@ -1,8 +1,20 @@
-import type Stripe from 'stripe';
+/**
+ * Referral conversion handler
+ * 
+ * NOTE: This function is no longer used in agnes-next since webhook handling
+ * is now proxied to deepquill. Kept for reference but will be removed in future cleanup.
+ */
+
 import { awardReferralCommission } from './awardReferralCommission';
 
+interface SessionData {
+  id: string;
+  customer_details?: { email?: string | null } | null;
+  customer_email?: string | null;
+}
+
 interface HandleReferralConversionParams {
-  session: Stripe.Checkout.Session;
+  session: SessionData;
   referralCode: string;
 }
 
@@ -38,4 +50,3 @@ export async function handleReferralConversion({
     commissionCents,
   });
 }
-

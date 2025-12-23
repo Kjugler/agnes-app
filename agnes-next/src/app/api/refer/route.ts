@@ -4,21 +4,7 @@ import { sendReferralEmail } from '@/lib/email/referralEmail';
 import { logReferralInvite } from '@/lib/referrals/logReferralInvite';
 import { prisma } from '@/lib/db';
 import { startOfToday } from '@/lib/dailySharePoints';
-
-// SITE_URL: Use process.env.SITE_URL for referral email links
-// In dev, set SITE_URL to your public ngrok URL so emails link correctly:
-//   SITE_URL=https://agnes-dev.ngrok-free.app
-// In production, set it to your real domain.
-const SITE_URL = process.env.SITE_URL || '';
-
-// Helper to build absolute URLs for referral emails (never use localhost)
-function withBase(path: string): string {
-  if (!SITE_URL) {
-    throw new Error('SITE_URL environment variable is required for referral emails');
-  }
-  const url = `${SITE_URL.replace(/\/+$/, '')}${path}`;
-  return url;
-}
+import { getSiteUrl } from '@/lib/getSiteUrl';
 
 type ReferRequestBody = {
   friendEmails: string[]; // REQUIRED, non-empty
@@ -28,6 +14,13 @@ type ReferRequestBody = {
 };
 
 export async function POST(req: NextRequest) {
+  // Dev-only diagnostic logging to verify env values inside the running Next process
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[ENV CHECK] EMAIL_CONTEST_BANNER =', process.env.EMAIL_CONTEST_BANNER);
+    console.log('[ENV CHECK] SITE_URL =', process.env.SITE_URL);
+    console.log('[ENV CHECK] NEXT_PUBLIC_SITE_URL =', process.env.NEXT_PUBLIC_SITE_URL);
+  }
+
   try {
     const body = await req.json();
 
@@ -82,18 +75,24 @@ export async function POST(req: NextRequest) {
     const videoConfig =
       REFER_VIDEOS.find((v) => v.id === videoId) ?? REFER_VIDEOS[0];
 
-    // Build referral URL using SITE_URL (never localhost)
-    const referralUrl = withBase(
-      `/refer?code=${encodeURIComponent(referralCode)}&v=${encodeURIComponent(videoConfig.id)}&src=email`
-    );
+    // Build referral URL using canonical getSiteUrl() helper
+    const siteUrl = getSiteUrl();
+    const referralUrlObj = new URL('/refer', siteUrl);
+    referralUrlObj.searchParams.set('code', referralCode);
+    referralUrlObj.searchParams.set('v', videoConfig.id);
+    referralUrlObj.searchParams.set('src', 'email');
+    const referralUrl = referralUrlObj.toString();
 
-    // Build thumbnail URL using SITE_URL
-    const thumbnailUrl = withBase(videoConfig.thumbnailSrc);
+    // Build thumbnail URL using siteUrl
+    const thumbnailUrlObj = new URL(videoConfig.thumbnailSrc, siteUrl);
+    const thumbnailUrl = thumbnailUrlObj.toString();
 
     // Log for debugging
     console.log('[Refer] Built referralUrl', {
       referralUrl,
-      SITE_URL: process.env.SITE_URL,
+      thumbnailUrl,
+      siteUrl,
+      source: process.env.SITE_URL ? 'SITE_URL' : process.env.NEXT_PUBLIC_SITE_URL ? 'NEXT_PUBLIC_SITE_URL' : 'localhost (dev)',
     });
 
     // Get referrer email (optional, for Reply-To)

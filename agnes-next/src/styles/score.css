@@ -158,6 +158,9 @@
   padding: 16px 32px 32px;
   margin-top: 2.5rem;
   background: transparent;
+  max-height: calc(100vh - 260px);
+  overflow-y: auto;
+  padding-bottom: 120px;
 }
 
 @media (min-width: 768px) {
