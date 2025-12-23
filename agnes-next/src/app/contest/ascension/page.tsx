@@ -1,9 +1,9 @@
 'use client';
 
 import styles from './page.module.css';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { clearAssociateCaches, readAssociate, readContestEmail, type AssociateCache } from '@/lib/identity';
+import { readAssociate, readContestEmail } from '@/lib/identity';
 import { JodyAssistant } from '@/components/JodyAssistant';
 
 export default function AscensionPage() {
@@ -12,207 +12,142 @@ export default function AscensionPage() {
   const [reduced, setReduced] = useState(false);
   const [doorsVisible, setDoorsVisible] = useState(false);
   const [audioPlayed, setAudioPlayed] = useState(false);
-  const [contestEmail, setContestEmail] = useState<string | null>(null);
-  const [associate, setAssociate] = useState<AssociateCache | null>(null);
-  const [joinModal, setJoinModal] = useState<{ name: string; code: string } | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [isPageVisible, setIsPageVisible] = useState(true);
+  const [associate, setAssociate] = useState<{ name: string; email: string } | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const flashRef = useRef<HTMLDivElement | null>(null);
-  const [awardingPurchase, setAwardingPurchase] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  // Load associate info on mount
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = readAssociate();
+    const email = readContestEmail();
+    if (stored) {
+      setAssociate({ name: stored.name, email: stored.email });
+    } else if (email) {
+      setAssociate({ name: email.split('@')[0], email });
+    }
+  }, []);
 
   const name = useMemo(() => {
+    if (typeof window === 'undefined') return 'Explorer';
+    
+    // Priority 1: First name from associate cache (contest entry form)
     if (associate?.name) {
       const parts = associate.name.trim().split(' ');
-      if (parts.length) return parts[0];
-      return associate.name;
+      if (parts.length > 0 && parts[0]) {
+        return parts[0];
+      }
     }
-    if (typeof window === 'undefined') return 'Explorer';
-    return localStorage.getItem('first_name') || 'Explorer';
-  }, [associate?.name]);
+    
+    // Priority 2: Email address (extract name part before @)
+    if (associate?.email) {
+      const emailName = associate.email.split('@')[0];
+      if (emailName) {
+        // Capitalize first letter
+        return emailName.charAt(0).toUpperCase() + emailName.slice(1);
+      }
+    }
+    
+    // Fallback
+    return 'Explorer';
+  }, [associate]);
 
   useEffect(() => {
     setReduced(window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     
-    // Show doors after 2 seconds with dramatic entrance
+    // Show doors immediately (or after very short delay)
     const timer = setTimeout(() => {
       setDoorsVisible(true);
-    }, 2000);
+    }, 100);
     
-    return () => clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const syncIdentity = () => {
-      const email = readContestEmail();
-      const stored = readAssociate();
-      if (stored && email && stored.email !== email) {
-        clearAssociateCaches({ keepContestEmail: true });
-        setAssociate(null);
-        setContestEmail(email);
-        return;
+    // Track page visibility for animation pause (but keep elements visible)
+    const handleVisibilityChange = () => {
+      const isVisible = !document.hidden;
+      setIsPageVisible(isVisible);
+      
+      // Pause/resume animations via CSS when page is hidden/visible
+      if (rootRef.current) {
+        if (isVisible) {
+          rootRef.current.style.setProperty('--animation-play-state', 'running');
+        } else {
+          rootRef.current.style.setProperty('--animation-play-state', 'paused');
+        }
       }
-      if (stored && !email) {
-        clearAssociateCaches();
-        setAssociate(null);
-        setContestEmail(null);
-        return;
-      }
-      setAssociate(stored);
-      setContestEmail(email);
     };
-    syncIdentity();
-    window.addEventListener('storage', syncIdentity);
-    return () => window.removeEventListener('storage', syncIdentity);
+    
+    // Set initial state
+    setIsPageVisible(!document.hidden);
+    if (rootRef.current) {
+      rootRef.current.style.setProperty('--animation-play-state', 'running');
+    }
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
+  // Setup audio to loop continuously (runs once, doesn't remount)
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (qp.get('purchase') !== 'success') return;
-    if (!contestEmail) return;
-    if (awardingPurchase) return;
-
-    const storageKey = `purchase_bonus_${contestEmail}`;
-    let alreadyAwarded = false;
-    try {
-      alreadyAwarded = window.localStorage.getItem(storageKey) === '1';
-    } catch {
-      alreadyAwarded = false;
-    }
-    if (alreadyAwarded) {
-      const url = new URL(window.location.href);
-      url.searchParams.delete('purchase');
-      url.searchParams.delete('session_id');
-      router.replace(`${url.pathname}${url.search}${url.hash}`);
-      return;
-    }
-
-    setAwardingPurchase(true);
-
-    const email = contestEmail;
-
-    (async () => {
+    if (reduced) return;
+    
+    const audio = audioRef.current;
+    if (!audio) return;
+    
+    // Set audio properties once
+    audio.volume = 0.5;
+    audio.loop = true;
+    
+    // Try to play on mount
+    const tryPlay = async () => {
       try {
-        await fetch('/api/points/award', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-User-Email': email,
-          },
-          body: JSON.stringify({
-            kind: 'book_purchase',
-          }),
-        });
-      } catch (err) {
-        console.warn('[ascension] book purchase award failed', err);
-      } finally {
-        try {
-          window.localStorage.setItem(storageKey, '1');
-        } catch {}
-        const url = new URL(window.location.href);
-        url.searchParams.delete('purchase');
-        router.replace(`${url.pathname}${url.search}${url.hash}`);
-        setAwardingPurchase(false);
+        await audio.play();
+        console.log('🎵 Audio started and looping');
+        setAudioPlayed(true);
+      } catch (error) {
+        console.log('🔇 Audio blocked, waiting for interaction:', error);
       }
-    })();
-  }, [qp, awardingPurchase, router, contestEmail]);
- 
-  useEffect(() => {
-    if (qp.get('joined') !== '1') return;
-    if (associate?.code) {
-      setJoinModal({
-        name: associate.name || 'Explorer',
-        code: associate.code,
+    };
+    
+    // Try immediately if already loaded, otherwise wait for load
+    if (audio.readyState >= 2) {
+      tryPlay();
+    } else {
+      audio.addEventListener('loadeddata', tryPlay, { once: true });
+    }
+    
+    // Fallback: listen for ANY interaction to start playback
+    const handleInteraction = async () => {
+      if (!audioPlayed) {
+        try {
+          await audio.play();
+          setAudioPlayed(true);
+        } catch (err) {
+          // Ignore - will retry on next interaction
+        }
+      }
+    };
+
+    const events = ['click', 'touchstart', 'mousemove', 'keydown'];
+    events.forEach(event => {
+      window.addEventListener(event, handleInteraction, { once: true });
+    });
+
+    return () => {
+      audio.removeEventListener('loadeddata', tryPlay);
+      events.forEach(event => {
+        window.removeEventListener(event, handleInteraction);
       });
-    }
-  }, [qp, associate]);
+    };
+  }, [reduced]); // Only depend on reduced, not audioPlayed
 
-  const closeJoinModal = () => {
-    setJoinModal(null);
-    setCopied(false);
-    if (typeof window !== 'undefined') {
-      const url = new URL(window.location.href);
-      url.searchParams.delete('joined');
-      router.replace(`${url.pathname}${url.search}${url.hash}`);
-    }
-  };
-
-  const copyCode = async () => {
-    if (!joinModal) return;
-    try {
-      await navigator.clipboard.writeText(joinModal.code);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    } catch (err) {
-      console.warn('copy failed', err);
-    }
-  };
-
-  const downloadCard = () => {
-    if (typeof window === 'undefined' || !joinModal) return;
-    const canvas = document.createElement('canvas');
-    const width = 1200;
-    const height = 630;
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    ctx.fillStyle = '#0f172a';
-    ctx.fillRect(0, 0, width, height);
-
-    const gradient = ctx.createLinearGradient(0, 0, width, height);
-    gradient.addColorStop(0, '#312e81');
-    gradient.addColorStop(1, '#0ea5e9');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(40, 40, width - 80, height - 80);
-
-    ctx.fillStyle = 'rgba(255,255,255,0.15)';
-    ctx.fillRect(60, 200, width - 120, 300);
-
-    ctx.font = 'bold 72px "Segoe UI", sans-serif';
-    ctx.fillStyle = '#e0f2fe';
-    ctx.fillText('Associate Access', 80, 160);
-
-    ctx.font = '48px "Segoe UI", sans-serif';
-    ctx.fillStyle = '#f8fafc';
-    const nameText = joinModal.name.toUpperCase();
-    ctx.fillText(nameText, 110, 320);
-
-    ctx.font = '40px "Segoe UI", sans-serif';
-    ctx.fillStyle = '#facc15';
-    ctx.fillText(`CODE: ${joinModal.code}`, 110, 400);
-
-    ctx.font = '28px "Segoe UI", sans-serif';
-    ctx.fillStyle = '#bfdbfe';
-    ctx.fillText('agnesprotocol.com/contest', 110, 470);
-
-    const url = canvas.toDataURL('image/png');
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `agnes-code-${joinModal.code}.png`;
-    link.click();
-  };
-
-  // Play Jody's voice on mount (for ascension page)
-  useEffect(() => {
-    // Small cinematic delay so the page can settle
-    const timer = setTimeout(() => {
-      audioRef.current?.play().catch((err) => {
-        console.warn('Ascension audio playback failed (maybe autoplay blocked):', err);
-      });
-    }, 600);
-
-    return () => clearTimeout(timer);
-  }, []);
-
-
-  const handleSelect = (dest: 'score' | 'badges') => {
+  const handleSelect = (dest: 'score' | 'signal') => {
     try { localStorage.setItem('hasAscended', 'true'); } catch {}
-    // Optional query override wins
-    const qpDest = qp.get('dest') as 'score' | 'badges' | null;
-    const finalDest = qpDest ?? dest;
-
+    
     // Flash + route
     if (flashRef.current) {
       flashRef.current.classList.remove(styles.active);
@@ -221,50 +156,16 @@ export default function AscensionPage() {
       void flashRef.current.offsetWidth;
       flashRef.current.classList.add(styles.active);
     }
-    setTimeout(() => router.push(`/contest/${finalDest}`), 300);
+    
+    const route = dest === 'score' ? '/contest/score' : '/signal-room';
+    setTimeout(() => router.push(route), 300);
   };
 
-  const handleChangeAccount = useCallback(() => {
-    clearAssociateCaches();
-    router.replace('/contest');
-  }, [router]);
-
   return (
-    <div className={styles.root}>
-      <button
-        type="button"
-        onClick={handleChangeAccount}
-        style={{
-          position: 'absolute',
-          top: 18,
-          right: 18,
-          padding: '6px 14px',
-          borderRadius: 999,
-          border: '1px solid rgba(148, 163, 184, 0.6)',
-          background: 'rgba(15, 23, 42, 0.55)',
-          color: '#e2e8f0',
-          fontWeight: 600,
-          letterSpacing: '0.04em',
-          cursor: 'pointer',
-          zIndex: 110,
-        }}
-      >
-        Change account{contestEmail ? ` (${contestEmail})` : ''}
-      </button>
-      {/* gradient clouds behind everything */}
-      <div className={styles.cloudGrain} />
-
-      {/* photographic cloud layer */}
+    <div ref={rootRef} className={styles.root}>
+      {/* Single composite background image (clouds + silhouettes together) */}
       <img
-        className={styles.cloudImage}
-        src="/images/ascension/clouds.png"
-        alt=""
-        aria-hidden="true"
-      />
-
-      {/* silhouettes layer (women left, men right) - NOW MUCH MORE VISIBLE */}
-      <img
-        className={styles.silhouettesImg}
+        className={styles.backgroundImage}
         src="/images/ascension/silhouettes.png"
         alt=""
         aria-hidden="true"
@@ -282,26 +183,25 @@ export default function AscensionPage() {
         </div>
       )}
 
-      {/* DOORS */}
-      <div className={styles.doors}>
+      {/* DOORS - Always rendered, fade in smoothly */}
+      <div className={styles.doors} style={{ opacity: doorsVisible ? 1 : 0.01, transition: 'opacity 1s ease-in' }}>
         {/* Door 1 */}
         <div className={styles.doorWrap}>
           <div className={styles.door} role="img" aria-label="Door to See My Score">
             <div className={styles.doorPanels} />
-            {/* optional overlay image to lock the texture/look */}
-            <img className={styles.doorImg} src="/images/ascension/door-red.png" alt="" />
+            {/* Door image overlay removed to prevent red bleedover */}
             <span className={styles.knob} aria-hidden="true" />
             <div className={styles.doorLabel}>
               See My<br />Score
             </div>
-            <button
-              type="button"
+            <a
               className={styles.doorLink}
+              href="/contest/score"
               aria-label="See My Score"
               onClick={(e) => {
                 e.preventDefault();
                 try { localStorage.setItem('hasAscended','true'); } catch {}
-                (e.currentTarget as HTMLButtonElement).blur();
+                e.currentTarget.blur();
                 handleSelect('score');
               }}
             />
@@ -310,22 +210,22 @@ export default function AscensionPage() {
 
         {/* Door 2 */}
         <div className={styles.doorWrap}>
-          <div className={styles.door} role="img" aria-label="Door to Explore Badges">
+          <div className={styles.door} role="img" aria-label="Door to Signal Room">
             <div className={styles.doorPanels} />
-            <img className={styles.doorImg} src="/images/ascension/door-red.png" alt="" />
+            {/* Door image overlay removed to prevent red bleedover */}
             <span className={styles.knob} aria-hidden="true" />
             <div className={styles.doorLabel}>
-              Explore<br />Badges
+              Send<br />Signal
             </div>
-            <button
-              type="button"
+            <a
               className={styles.doorLink}
-              aria-label="Explore Badges"
+              href="/signal-room"
+              aria-label="Go to Signal Room"
               onClick={(e) => {
                 e.preventDefault();
                 try { localStorage.setItem('hasAscended','true'); } catch {}
-                (e.currentTarget as HTMLButtonElement).blur();
-                handleSelect('badges');
+                e.currentTarget.blur();
+                handleSelect('signal');
               }}
             />
           </div>
@@ -334,43 +234,28 @@ export default function AscensionPage() {
 
       {/* Flash overlay */}
       <div ref={flashRef} className={styles.flash} />
-      {joinModal && (
-        <div className={styles.joinOverlay}>
-          <div className={styles.joinCard}>
-            <h2>Welcome aboard!</h2>
-            <p>
-              Your code: <strong>{joinModal.code}</strong>
-            </p>
-            <p style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>
-              Share for 15% off • Earn $2 for every purchase
-            </p>
-            <div className={styles.joinActions}>
-              <button type="button" onClick={copyCode}>
-                {copied ? 'Copied!' : 'Copy Code'}
-              </button>
-              <button type="button" onClick={downloadCard}>
-                Download Card
-              </button>
-            </div>
-            <button type="button" className={styles.joinClose} onClick={closeJoinModal}>
-              Continue
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Jody Assistant */}
       <JodyAssistant
         variant="ascension"
-        autoShowDelayMs={4000} // still fine to pass; will be ignored when disableBubble is true
+        autoShowDelayMs={4000}
         disableBubble={true}
       />
 
-      {/* Jody's voice audio */}
+      {/* Jody's voice audio - loops continuously */}
       <audio
         ref={audioRef}
         src="/audio/jody-ascend-init.mp3"
         preload="auto"
+        loop
+        onLoadedData={() => {
+          // Auto-play when loaded (if allowed)
+          if (audioRef.current && !audioPlayed && !reduced) {
+            audioRef.current.play().catch(() => {
+              // Autoplay blocked, will play on interaction
+            });
+          }
+        }}
       />
     </div>
   );
