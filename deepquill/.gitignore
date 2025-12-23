@@ -25,3 +25,12 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
+
+# Fulfillment logs (append-only audit trail)
+data/fulfillments.jsonl
+data/fulfillments.lock
+
+# eBook files (should not be committed)
+assets/ebook/*.epub
+assets/ebook/*.pdf
+assets/ebook/*.mobi

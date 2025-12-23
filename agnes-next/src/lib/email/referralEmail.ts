@@ -2,6 +2,7 @@
 
 import mailchimp from '@mailchimp/mailchimp_transactional';
 import { type ReferVideoId } from '@/config/referVideos';
+import { applyGlobalEmailBanner } from '@/lib/emailBanner';
 
 type SendReferralEmailParams = {
   toEmail: string;
@@ -58,7 +59,7 @@ export async function sendReferralEmail(
 
   const fromName = `${baseName} via The Agnes Protocol`;
 
-  const subject = "You've Got to Read This Book!";
+  const baseSubject = "You've Got to Read This Book!";
 
   const htmlBody = `
     <!DOCTYPE html>
@@ -121,6 +122,13 @@ Either way, thanks for checking it out.
 
 — ${baseName}`;
 
+  // Apply global email banner if enabled (includes subject modification)
+  const { html: finalHtml, text: finalText, subject: finalSubject } = applyGlobalEmailBanner({
+    html: htmlBody,
+    text: textBody,
+    subject: baseSubject,
+  });
+
   const toList: { email: string; type: 'to' | 'bcc'; name?: string }[] = [
     { email: toEmail, type: 'to' },
   ];
@@ -141,10 +149,10 @@ Either way, thanks for checking it out.
       message: {
         from_email: fromEmail,
         from_name: fromName,
-        subject,
+        subject: finalSubject || baseSubject,
         to: toList,
-        text: textBody,
-        html: htmlBody,
+        text: finalText || textBody,
+        html: finalHtml || htmlBody,
         ...(referrerEmail
           ? {
               headers: {

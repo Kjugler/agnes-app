@@ -1,0 +1,3 @@
+# This directory stores fulfillment logs and other data files
+# fulfillments.jsonl is append-only and should not be committed
+

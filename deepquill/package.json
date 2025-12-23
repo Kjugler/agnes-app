@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist",
-    "start-server": "node server/index.cjs"
+    "start-server": "node server/index.cjs",
+    "fulfill:ebooks": "node scripts/process-fulfillments.cjs"
   },
   "dependencies": {
     "@mailchimp/mailchimp_marketing": "^3.0.80",

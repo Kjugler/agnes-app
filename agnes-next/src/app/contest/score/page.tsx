@@ -16,7 +16,6 @@ import { buildScoreCaption, type PlayerState } from '@/lib/scoreCaption';
 import { ScoreCaptionRotator } from '@/components/ScoreCaptionRotator';
 import { BuyBookButton } from '@/components/BuyBookButton';
 import { ContestEntryForm } from '@/components/ContestEntryForm';
-import { startCheckout } from '@/lib/checkout';
 import ReferFriendButton from '@/components/refer/ReferFriendButton';
 import SocialHandleModal from './SocialHandleModal';
 import HelpButton from '@/components/HelpButton';
@@ -453,32 +452,55 @@ export default function ScorePage() {
     }, 100);
   }, []);
 
-  const handleContestEntryCompletedFromBuy = useCallback(async () => {
-    try {
-      const path = typeof window !== 'undefined' ? window.location.pathname : '/contest/score';
-      await startCheckout({
-        source: 'score',
-        path,
-        successPath: '/contest/thank-you',
-        cancelPath: '/contest/score',
-      });
-    } catch (err: any) {
-      alert(err?.message || 'Could not start checkout.');
-    }
-  }, []);
-
-  // Compute firstName after data is available
-  const firstName = useMemo(() => {
-    if (associate?.name) {
-      const chunk = associate.name.trim().split(' ')[0];
-      if (chunk) return chunk;
-    }
+  const handleContestEntryCompletedFromBuy = useCallback(() => {
+    // Preserve tracking params and route to catalog
+    const params = new URLSearchParams();
+    const keysToPreserve = ['ref', 'src', 'v', 'origin', 'code', 'utm_source', 'utm_medium', 'utm_campaign'];
+    
     if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('first_name');
-      if (stored) return stored;
+      const urlParams = new URLSearchParams(window.location.search);
+      keysToPreserve.forEach(key => {
+        const value = urlParams.get(key);
+        if (value) {
+          params.set(key, value);
+        }
+      });
     }
-    return data?.firstName || 'Friend';
-  }, [associate?.name, data?.firstName]);
+
+    router.push(`/catalog${params.toString() ? `?${params.toString()}` : ''}`);
+  }, [router]);
+
+  // Compute firstName with correct precedence:
+  // 1. Name from contest entry form (associate.name)
+  // 2. Email address (extract name part before @)
+  // 3. Fallback to 'Friend'
+  const firstName = useMemo(() => {
+    // Priority 1: First name from associate cache (contest entry form)
+    if (associate?.name) {
+      const parts = associate.name.trim().split(' ');
+      if (parts.length > 0 && parts[0]) {
+        return parts[0];
+      }
+    }
+    
+    // Priority 2: Email address (extract name part before @)
+    const email = associate?.email || contestEmail;
+    if (email) {
+      const emailName = email.split('@')[0];
+      if (emailName) {
+        // Capitalize first letter and handle dots/underscores
+        const cleaned = emailName.replace(/[._]/g, ' ');
+        const parts = cleaned.split(' ');
+        const firstPart = parts[0];
+        if (firstPart) {
+          return firstPart.charAt(0).toUpperCase() + firstPart.slice(1);
+        }
+      }
+    }
+    
+    // Fallback
+    return 'Friend';
+  }, [associate?.name, associate?.email, contestEmail]);
 
   // Derive PlayerState and build score caption
   const playerState: PlayerState = useMemo(() => {
@@ -1270,12 +1292,15 @@ export default function ScorePage() {
             onFocus={() => onButtonEnter('refer')}
             onBlur={onButtonLeave}
           >
-            <ReferFriendButton
-              referralCode={associate?.code || ''}
-              referrerEmail={associate?.email || contestEmail || undefined}
-              className=""
-              onReferralSent={refreshPoints}
-            />
+            {/* Show ReferFriendButton if we have email (code will be fetched if missing) */}
+            {contestEmail && (
+              <ReferFriendButton
+                referralCode={associate?.code || ''}
+                referrerEmail={associate?.email || contestEmail || undefined}
+                className=""
+                onReferralSent={refreshPoints}
+              />
+            )}
           </div>
           <ActionButton
             label="Weekly Digest"
@@ -1296,6 +1321,14 @@ export default function ScorePage() {
             }}
             colorBase="#1a1a1a"
             colorHover="#2d2d2d"
+          />
+          <ActionButton
+            label="Send Signal"
+            sub=""
+            href="/signal-room"
+            hoverKey="signal"
+            colorBase="#00ffe0"
+            colorHover="#00ccb3"
           />
         </div>
       </section>

@@ -168,13 +168,20 @@ export async function sendAssociateCommissionEmail(
       totalFriendsConverted,
     });
 
+    // Apply global test contest banner
+    const { applyGlobalEmailBanner } = await import('@/lib/emailBanner');
+    const { html: htmlWithBanner, text: textWithBanner } = applyGlobalEmailBanner({
+      html: htmlBody,
+      text: textBody,
+    });
+
     await client.messages.send({
       message: {
         from_email: fromEmail,
         subject,
         to: toList,
-        text: textBody,
-        html: htmlBody,
+        text: textWithBanner,
+        html: htmlWithBanner,
         headers: {
           'Reply-To': process.env.MAILCHIMP_FROM_EMAIL || 'hello@theagnesprotocol.com',
         },
