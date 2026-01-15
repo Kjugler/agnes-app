@@ -1,0 +1,22 @@
+# -----------------------------
+# Local development databases
+# -----------------------------
+**/*.db
+**/*.db-journal
+**/dev.db
+**/dev.backup*.db
+
+# -----------------------------
+# Node / build artifacts
+# -----------------------------
+node_modules/
+.next/
+dist/
+
+# -----------------------------
+# OS / editor noise
+# -----------------------------
+.DS_Store
+Thumbs.db
+.env.local
+.env.*
