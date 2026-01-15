@@ -14,65 +14,60 @@ async function getPlayerScoreBySessionId(sessionId: string) {
     throw new Error('Database client not initialized. Please restart the dev server after running: npx prisma generate');
   }
   
-  // Check if Order model is available (might need Prisma client regeneration)
-  if (!prisma.order) {
-    console.error('[contest/score] Prisma Order model not available. Available models:', {
+  // Check if Purchase model is available (we use Purchase, not Order)
+  if (!prisma.purchase) {
+    console.error('[contest/score] Prisma Purchase model not available. Available models:', {
       hasUser: !!prisma.user,
       hasPurchase: !!prisma.purchase,
-      hasOrder: !!prisma.order,
-      hasCustomer: !!prisma.customer,
     });
-    throw new Error('Order model not found. Please run: npx prisma generate && npx prisma migrate dev');
+    throw new Error('Purchase model not found. Please run: npx prisma generate && npx prisma migrate dev');
   }
 
-  // 1. Find Order by stripeSessionId
-  let order;
+  // 1. Find Purchase by stripeSessionId (this is what the webhook creates)
+  let purchase;
   try {
-    order = await prisma.order.findUnique({
+    purchase = await prisma.purchase.findUnique({
       where: { stripeSessionId: sessionId },
       include: {
-        customer: {
+        user: {
           select: {
+            id: true,
             email: true,
+            points: true,
           },
         },
       },
     });
   } catch (err: any) {
-    console.error('[contest/score] Error finding order', {
+    console.error('[contest/score] Error finding purchase', {
       error: err?.message,
       sessionId,
     });
     throw err;
   }
 
-  if (!order) {
-    // Order not found - try to get player by email from session if possible
-    // For now, return null to indicate no order found
+  if (!purchase) {
+    // Purchase not found - return null to indicate no purchase found
+    // This could mean the webhook hasn't processed it yet, or it failed
     return null;
   }
 
-  // 2. Get related ContestPlayer (User)
-  // Try contestPlayerId first, then fall back to customer email
+  // 2. Get related User (already included in purchase.user)
   let player: { id: string; points: number } | null = null;
 
-  if (order.contestPlayerId) {
+  if (purchase.user) {
+    player = {
+      id: purchase.user.id,
+      points: purchase.user.points,
+    };
+  } else if (purchase.userId) {
+    // Fallback: fetch user if not included
     const userById = await prisma.user.findUnique({
-      where: { id: order.contestPlayerId },
+      where: { id: purchase.userId },
       select: { id: true, points: true },
     });
     if (userById) {
       player = userById;
-    }
-  }
-
-  if (!player && order.customer?.email) {
-    const userByEmail = await prisma.user.findUnique({
-      where: { email: order.customer.email },
-      select: { id: true, points: true },
-    });
-    if (userByEmail) {
-      player = userByEmail;
     }
   }
 
@@ -85,34 +80,46 @@ async function getPlayerScoreBySessionId(sessionId: string) {
   let purchases: Array<{ amount: number | null; currency: string | null }> = [];
   let ledgerEntries: Array<{ type: string; points: number }> = [];
   let purchaseEvents: Array<{ id: string }> = [];
+  let purchasePointsFromPurchases = 0; // Declare at function scope
 
   try {
     // Fetch all purchases for this user to calculate purchase points
     purchases = await prisma.purchase.findMany({
       where: { userId: player.id },
       select: {
-        amount: true,
-        currency: true,
+        amountPaidCents: true,
+        product: true,
+        pointsAwarded: true,
       },
-    });
+    }).catch(() => []); // Return empty array if query fails
+    
+    // Calculate purchase points from Purchase records (more reliable than ledger)
+    purchasePointsFromPurchases = purchases.reduce((sum, p) => sum + (p.pointsAwarded || 0), 0);
 
-    // Fetch ledger entries to calculate different point types
-    ledgerEntries = await prisma.ledger.findMany({
-      where: { userId: player.id },
-      select: {
-        type: true,
-        points: true,
-      },
-    });
+    // Ledger removed - using Purchase records only
+    ledgerEntries = [];
 
-    // Also check events for purchase completions (for backward compatibility)
-    purchaseEvents = await prisma.event.findMany({
-      where: {
-        userId: player.id,
-        type: 'PURCHASE_COMPLETED',
-      },
-      select: { id: true },
-    });
+    // Also check events for purchase completions (for backward compatibility, if Event table exists)
+    try {
+      purchaseEvents = await prisma.event.findMany({
+        where: {
+          userId: player.id,
+          type: 'PURCHASE_COMPLETED',
+        },
+        select: { id: true },
+      });
+    } catch (eventErr: any) {
+      // Event table might not exist - that's okay, we'll use Purchase records instead
+      if (eventErr?.code === 'P2021' || eventErr?.message?.includes('Event')) {
+        console.warn('[contest/score] Event table not available, using Purchase records only', {
+          error: eventErr?.message,
+        });
+        purchaseEvents = [];
+      } else {
+        // Re-throw if it's a different error
+        throw eventErr;
+      }
+    }
   } catch (err: any) {
     console.error('[contest/score] Error fetching player data', {
       error: err?.message,
@@ -126,22 +133,17 @@ async function getPlayerScoreBySessionId(sessionId: string) {
   let referralPoints = 0;
   let basePoints = 0;
 
-  // Count purchase points from ledger
-  for (const entry of ledgerEntries) {
-    if (entry.type === 'PURCHASE_BOOK') {
-      purchasePoints += entry.points;
-    } else if (entry.type === 'REFER_FRIEND_PAYOUT') {
-      referralPoints += entry.points;
-    } else {
-      // All other types count as base points
-      basePoints += entry.points;
-    }
-  }
+  // Purchase points calculated from Purchase records (Ledger removed)
+  // purchasePoints already set from purchases above
+  // Referral points and base points are calculated from User.points - purchasePoints
+  // (Ledger removed, so we can't break down referral vs base points separately)
 
-  // If we have purchase events but no purchase points in ledger, add them
-  // (This handles legacy data)
-  if (purchaseEvents.length > 0 && purchasePoints === 0) {
-    // Use a default purchase bonus if ledger doesn't have it
+  // Use purchase points from Purchase records if available (most reliable)
+  if (purchasePointsFromPurchases > 0) {
+    purchasePoints = purchasePointsFromPurchases;
+  } else if (purchaseEvents.length > 0 && purchasePoints === 0) {
+    // Fallback: If we have purchase events but no Purchase records, estimate from events
+    // (This handles legacy data or webhook failures)
     purchasePoints = purchaseEvents.length * 500; // Default purchase bonus
   }
 
@@ -153,7 +155,7 @@ async function getPlayerScoreBySessionId(sessionId: string) {
     purchasePoints,
     referralPoints,
     playerId: player.id,
-    orderId: order.id,
+    purchaseId: purchase.id,
   };
 }
 
@@ -175,16 +177,16 @@ export async function GET(req: NextRequest) {
     const score = await getPlayerScoreBySessionId(trimmedSessionId);
 
     if (!score) {
-      // Order not found yet - return a graceful default response
-      // Try to get player by email if we can extract it from the session
-      // For now, return zeros with a message
-      console.log('[contest/score] No order found for session_id', trimmedSessionId);
+      // Purchase not found yet - return a graceful default response
+      // The webhook may still be processing, or the purchase wasn't recorded
+      console.log('[contest/score] No purchase found for session_id', trimmedSessionId);
       return NextResponse.json({
         totalPoints: 0,
         basePoints: 0,
         purchasePoints: 0,
         referralPoints: 0,
-        message: 'Order not found yet. The webhook may still be processing.',
+        purchaseFound: false,
+        message: 'Purchase not found yet. The webhook may still be processing.',
       });
     }
 
@@ -198,6 +200,8 @@ export async function GET(req: NextRequest) {
       basePoints: score.basePoints,
       purchasePoints: score.purchasePoints,
       referralPoints: score.referralPoints,
+      purchaseFound: true,
+      earnedPurchaseBook: true, // Purchase exists, so book was earned
     });
   } catch (err: any) {
     console.error('[contest/score] Error fetching score', {

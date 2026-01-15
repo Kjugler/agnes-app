@@ -6,15 +6,8 @@
 const express = require('express');
 const router = express.Router();
 
-// Try to use Prisma if available, otherwise fall back to raw SQL
-let prisma = null;
-try {
-  const { PrismaClient } = require('@prisma/client');
-  prisma = new PrismaClient();
-} catch (err) {
-  console.warn('[REFERRALS] Prisma not available, will need raw SQL implementation');
-  // TODO: Implement raw SQL fallback if Prisma is not available
-}
+// Use single Prisma singleton with explicit datasourceUrl
+const { prisma } = require('../server/prisma.cjs');
 
 // Auth middleware: verify API token
 function authApiToken(req, res, next) {

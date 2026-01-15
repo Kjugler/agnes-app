@@ -66,15 +66,7 @@ export async function POST(req: NextRequest) {
     const nextRankThreshold = calcNextRankThreshold(nextPoints);
     const nextTarget = calcInitialRabbitTarget(nextPoints);
 
-    await tx.ledger.create({
-      data: {
-        userId: fresh.id,
-        type: 'RABBIT_BONUS',
-        points: BONUS_POINTS,
-        note: `rabbit seq ${fresh.rabbitSeq}`,
-      },
-    });
-
+    // Ledger removed - just update user points
     const updated = await tx.user.update({
       where: { id: fresh.id },
       data: {

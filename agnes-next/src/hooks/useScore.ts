@@ -33,9 +33,24 @@ export function useScore(email?: string | null) {
     setNextRankThreshold(data.nextRankThreshold ?? null);
   }, []);
 
+  // Retry limiter to prevent retry storms
+  const retryLimiterRef = useRef<ReturnType<typeof import('@/lib/retryWithBackoff').createRetryLimiter> | null>(null);
+  if (!retryLimiterRef.current) {
+    retryLimiterRef.current = require('@/lib/retryWithBackoff').createRetryLimiter(10000); // 10s cooldown
+  }
+
   const load = useCallback(async (overrideEmail?: string | null) => {
     const targetEmail = overrideEmail ?? emailRef.current;
     if (!targetEmail) return;
+    
+    const limiterKey = `/api/rabbit/state:${targetEmail}`;
+    
+    // Check if we're in cooldown period
+    if (!retryLimiterRef.current?.canRetry(limiterKey)) {
+      console.log('[useScore] Skipping retry - still in cooldown period');
+      return;
+    }
+    
     try {
       const res = await fetch('/api/rabbit/state', {
         cache: 'no-store',
@@ -43,10 +58,20 @@ export function useScore(email?: string | null) {
           'X-User-Email': targetEmail,
         },
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        // Record failure for retry limiting
+        if (res.status >= 500) {
+          retryLimiterRef.current?.recordFailure(limiterKey);
+        }
+        return;
+      }
       const data: ScorePayload = await res.json().catch(() => ({}));
       apply(data);
-    } catch {
+      // Record success to clear cooldown
+      retryLimiterRef.current?.recordSuccess(limiterKey);
+    } catch (err) {
+      // Record failure for retry limiting
+      retryLimiterRef.current?.recordFailure(limiterKey);
       /* ignore errors */
     }
   }, [apply]);

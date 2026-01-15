@@ -1,44 +1,45 @@
 // agnes-next/src/app/api/fulfillment/to-ship/route.ts
+// Proxies to deepquill fulfillment queue endpoint
 
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { proxyJson } from '@/lib/deepquillProxy';
 
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const fulfillmentUserId = searchParams.get('fulfillmentUserId');
+    const limit = searchParams.get('limit') || '5';
 
-    if (!fulfillmentUserId) {
+    // Proxy to deepquill fulfillment queue endpoint
+    const queueUrl = `/api/admin/fulfillment/queue?limit=${limit}`;
+    const { data, status } = await proxyJson(queueUrl, request, {
+      method: 'GET',
+    });
+
+    if (status !== 200) {
       return NextResponse.json(
-        { error: 'fulfillmentUserId is required' },
-        { status: 400 }
+        { error: data?.error || 'Failed to fetch orders to ship' },
+        { status }
       );
     }
 
-    // Find all orders where labelPrintedById = fulfillmentUserId and shippedAt IS NULL
-    const orders = await prisma.order.findMany({
-      where: {
-        labelPrintedById: fulfillmentUserId,
-        shippedAt: null,
-      },
-      orderBy: {
-        labelPrintedAt: 'asc',
-      },
-    });
+    // Map deepquill response to match UI expectations
+    const orders = (data || []).map((order: any) => ({
+      id: order.id || order.purchaseId,
+      purchaseId: order.purchaseId || order.id,
+      createdAt: order.createdAt,
+      labelPrintedAt: order.labelPrintedAt || null,
+      shippingName: order.shippingName,
+      shippingAddressLine1: order.shippingAddressLine1,
+      shippingCity: order.shippingCity,
+      shippingState: order.shippingState,
+      shippingPostalCode: order.shippingPostalCode,
+      shippingCountry: order.shippingCountry,
+      shippingPhone: order.shippingPhone || null,
+      customerEmail: order.customerEmail || null,
+    }));
 
-    return NextResponse.json(
-      orders.map((order) => ({
-        id: order.id,
-        createdAt: order.createdAt.toISOString(),
-        labelPrintedAt: order.labelPrintedAt?.toISOString() || null,
-        shippingName: order.shippingName,
-        shippingAddressLine1: order.shippingAddressLine1,
-        shippingCity: order.shippingCity,
-        shippingState: order.shippingState,
-        shippingPostalCode: order.shippingPostalCode,
-        shippingCountry: order.shippingCountry,
-      }))
-    );
+    return NextResponse.json(orders);
   } catch (error) {
     console.error('[fulfillment/to-ship] Error:', error);
     return NextResponse.json(

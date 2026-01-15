@@ -168,7 +168,64 @@ export default function ScorePage() {
   const [sessionScoreError, setSessionScoreError] = useState<string | null>(null);
 
   // Store session_id in localStorage and fetch score if present
+  // IMPORTANT: Only use session_id score if it belongs to the logged-in user
   useEffect(() => {
+    // Only fetch session score if we have a logged-in user email to validate against
+    if (!contestEmail) {
+      // Clear any stale session score if user logs out
+      setSessionScore(null);
+      return;
+    }
+
+    const fetchSessionScore = async (sid: string, source: 'url' | 'localStorage') => {
+      setSessionScoreLoading(true);
+      setSessionScoreError(null);
+      try {
+        const res = await fetch(`/api/contest/score?session_id=${encodeURIComponent(sid)}`);
+        const data = await res.json();
+        
+        if (!res.ok) {
+          // Even if not ok, check if it's a graceful "not found" response
+          if (res.status === 404 || (data.message && data.message.includes('not found'))) {
+            // This is expected - order might not be processed yet
+            console.log(`[score] Order not found yet (webhook may still be processing) [${source}]`, sid);
+            // Don't set sessionScore for "not found" - let the regular score show
+            return;
+          }
+          throw new Error(data.error || data.message || `HTTP ${res.status}`);
+        }
+
+        // CRITICAL: Only use session_id from URL (recent purchase) - ignore localStorage
+        // to avoid cross-user contamination. localStorage session_id might belong to
+        // a different user (e.g., Bugs Bunny vs kris.k.jugler@gmail.com)
+        if (source === 'localStorage') {
+          console.log(`[score] Ignoring stored session_id to avoid cross-user contamination`, sid);
+          // Clear the stale session_id from localStorage
+          try {
+            localStorage.removeItem('last_session_id');
+          } catch (err) {
+            console.warn('[score] Failed to clear stale session_id from localStorage', err);
+          }
+          return;
+        }
+
+        // Success response - session belongs to this user
+        setSessionScore({
+          totalPoints: data.totalPoints || 0,
+          basePoints: data.basePoints || 0,
+          purchasePoints: data.purchasePoints || 0,
+          referralPoints: data.referralPoints || 0,
+        });
+      } catch (err: any) {
+        console.error(`[score] Failed to fetch session score [${source}]`, err);
+        // Don't show error for network issues - just log it
+        // The page will show the regular score instead
+        setSessionScoreError(null); // Clear error to show regular score
+      } finally {
+        setSessionScoreLoading(false);
+      }
+    };
+
     if (sessionId && typeof window !== 'undefined') {
       // Store in localStorage
       try {
@@ -177,85 +234,21 @@ export default function ScorePage() {
         console.warn('[score] Failed to store session_id in localStorage', err);
       }
 
-      // Fetch score from API
-      setSessionScoreLoading(true);
-      setSessionScoreError(null);
-      fetch(`/api/contest/score?session_id=${encodeURIComponent(sessionId)}`)
-        .then(async (res) => {
-          const data = await res.json();
-          if (!res.ok) {
-            // Even if not ok, check if it's a graceful "not found" response
-            if (res.status === 404 || (data.message && data.message.includes('not found'))) {
-              // This is expected - order might not be processed yet
-              console.log('[score] Order not found yet (webhook may still be processing)', sessionId);
-              setSessionScore({
-                totalPoints: data.totalPoints || 0,
-                basePoints: data.basePoints || 0,
-                purchasePoints: data.purchasePoints || 0,
-                referralPoints: data.referralPoints || 0,
-              });
-              return;
-            }
-            throw new Error(data.error || data.message || `HTTP ${res.status}`);
-          }
-          // Success response
-          setSessionScore({
-            totalPoints: data.totalPoints || 0,
-            basePoints: data.basePoints || 0,
-            purchasePoints: data.purchasePoints || 0,
-            referralPoints: data.referralPoints || 0,
-          });
-        })
-        .catch((err) => {
-          console.error('[score] Failed to fetch session score', err);
-          // Don't show error for network issues - just log it
-          // The page will show the regular score instead
-          setSessionScoreError(null); // Clear error to show regular score
-        })
-        .finally(() => {
-          setSessionScoreLoading(false);
-        });
+      // Fetch score from API (from URL - recent purchase, so trust it)
+      fetchSessionScore(sessionId, 'url');
     } else if (!sessionId && typeof window !== 'undefined') {
       // Try to load from localStorage if no session_id in URL
       try {
         const storedSessionId = localStorage.getItem('last_session_id');
         if (storedSessionId) {
-          setSessionScoreLoading(true);
-          fetch(`/api/contest/score?session_id=${encodeURIComponent(storedSessionId)}`)
-            .then(async (res) => {
-              if (!res.ok) {
-                const errorData = await res.json().catch(() => ({}));
-                throw new Error(errorData.error || `HTTP ${res.status}`);
-              }
-              return res.json();
-            })
-            .then(async (res) => {
-              const data = await res.json();
-              if (res.ok) {
-                setSessionScore({
-                  totalPoints: data.totalPoints || 0,
-                  basePoints: data.basePoints || 0,
-                  purchasePoints: data.purchasePoints || 0,
-                  referralPoints: data.referralPoints || 0,
-                });
-              } else {
-                // Order not found - that's okay, webhook may not have processed yet
-                console.log('[score] Stored session_id order not found yet', storedSessionId);
-              }
-            })
-            .catch((err) => {
-              console.warn('[score] Failed to fetch stored session score', err);
-              // Don't show error for stored session_id failures
-            })
-            .finally(() => {
-              setSessionScoreLoading(false);
-            });
+          // Validate this stored session_id belongs to current user before using it
+          fetchSessionScore(storedSessionId, 'localStorage');
         }
       } catch (err) {
         console.warn('[score] Failed to read localStorage', err);
       }
     }
-  }, [sessionId]);
+  }, [sessionId, contestEmail]);
 
   const {
     totalPoints,
@@ -266,6 +259,12 @@ export default function ScorePage() {
     apply: applyScore,
   } = useScore(contestEmail);
 
+  // Retry limiter to prevent retry storms
+  const retryLimiterRef = useRef<ReturnType<typeof import('@/lib/retryWithBackoff').createRetryLimiter> | null>(null);
+  if (!retryLimiterRef.current) {
+    retryLimiterRef.current = require('@/lib/retryWithBackoff').createRetryLimiter(10000); // 10s cooldown
+  }
+
   // points fetch
   const [data, setData] = useState<PointsPayload | null>(null);
   const refreshPoints = useCallback(async () => {
@@ -273,6 +272,15 @@ export default function ScorePage() {
       setData({ totalPoints: 0 });
       return;
     }
+    
+    const limiterKey = `/api/points/me:${contestEmail}`;
+    
+    // Check if we're in cooldown period
+    if (!retryLimiterRef.current?.canRetry(limiterKey)) {
+      console.log('[score] Skipping refreshPoints retry - still in cooldown period');
+      return;
+    }
+    
     try {
       const res = await fetch('/api/points/me', {
         method: 'GET',
@@ -280,7 +288,13 @@ export default function ScorePage() {
           'X-User-Email': contestEmail,
         },
       });
-      if (!res.ok) throw new Error('points_fetch_failed');
+      if (!res.ok) {
+        // Record failure for retry limiting
+        if (res.status >= 500) {
+          retryLimiterRef.current?.recordFailure(limiterKey);
+        }
+        throw new Error('points_fetch_failed');
+      }
       const j: any = await res.json();
       const newTotal = j.total || 0;
       console.log('[Score] Refreshed after refer, new total:', newTotal);
@@ -305,7 +319,11 @@ export default function ScorePage() {
         rabbit1Completed: j.rabbit1Completed ?? false,
         lastEvent: j.lastEvent ?? null,
       });
+      // Record success to clear cooldown
+      retryLimiterRef.current?.recordSuccess(limiterKey);
     } catch (err) {
+      // Record failure for retry limiting
+      retryLimiterRef.current?.recordFailure(limiterKey);
       console.warn('[score] refreshPoints failed', err);
       setData({ totalPoints: 0 });
     }
@@ -313,11 +331,25 @@ export default function ScorePage() {
 
   useEffect(() => {
     refreshPoints();
-  }, [refreshPoints]);
+    // Also refresh useScore to ensure totalPoints is up to date
+    refreshScore();
+  }, [refreshPoints, refreshScore]);
 
-  // Fetch associate handles for social share checks
+  // Fetch associate handles for social share checks (non-blocking, uses cached associate if API fails)
   useEffect(() => {
     if (!contestEmail) return;
+    
+    const limiterKey = `/api/associate/status:${contestEmail}`;
+    
+    // Check if we're in cooldown period
+    if (!retryLimiterRef.current?.canRetry(limiterKey)) {
+      console.log('[score] Skipping associate/status retry - still in cooldown period');
+      // Use cached associate data if available
+      if (associate?.code) {
+        // Associate already loaded from cache - that's fine
+      }
+      return;
+    }
     
     const fetchHandles = async () => {
       try {
@@ -329,14 +361,29 @@ export default function ScorePage() {
           if (data.handles) {
             setAssociateHandles(data.handles);
           }
+          // Update associate cache if code is available
+          if (data.code && !associate?.code) {
+            // Associate code fetched - update local state
+            setAssociate(prev => prev ? { ...prev, code: data.code } : { email: contestEmail, code: data.code });
+          }
+          // Record success to clear cooldown
+          retryLimiterRef.current?.recordSuccess(limiterKey);
+        } else {
+          // Record failure for retry limiting
+          if (res.status >= 500) {
+            retryLimiterRef.current?.recordFailure(limiterKey);
+          }
         }
       } catch (err) {
-        console.warn('[score] failed to fetch handles', err);
+        // Record failure for retry limiting
+        retryLimiterRef.current?.recordFailure(limiterKey);
+        console.warn('[score] failed to fetch handles (non-blocking)', err);
+        // Continue with cached associate data if available
       }
     };
     
     fetchHandles();
-  }, [contestEmail]);
+  }, [contestEmail, associate]);
 
   // Reset greeting when data loads to ensure correct first-time vs returning message
   useEffect(() => {
@@ -525,9 +572,13 @@ export default function ScorePage() {
 
     const lastEvent = data?.lastEvent ?? null;
 
+    // Prioritize data?.totalPoints (from /api/points/me) over useScore's totalPoints
+    // data?.totalPoints is more reliable and updates immediately after purchases
+    const currentScore = data?.totalPoints ?? totalPoints;
+    
     return {
       name: firstName !== 'Friend' ? firstName : null,
-      score: totalPoints,
+      score: currentScore,
       actions: {
         facebookShare: hasFacebookShare,
         xShare: hasXShare,
@@ -538,9 +589,26 @@ export default function ScorePage() {
       rabbits,
       lastEvent,
     };
-  }, [firstName, totalPoints, data?.recent, data?.earned?.purchase_book, data?.dailyShares, data?.rabbit1Completed, data?.lastEvent]);
+  }, [firstName, totalPoints, data?.totalPoints, data?.recent, data?.earned?.purchase_book, data?.dailyShares, data?.rabbit1Completed, data?.lastEvent]);
 
   const captionLines = useMemo(() => buildScoreCaption(playerState), [playerState]);
+
+  // Update stage text when score changes (if in idle state) to show updated score
+  useEffect(() => {
+    if (stageSequence === 'idle' && captionLines.length > 0) {
+      // Find the score line in captionLines ("Your current score is X")
+      const scoreLine = captionLines.find(line => typeof line === 'string' && line.includes('Your current score is'));
+      if (scoreLine) {
+        setStageText(scoreLine);
+        setStageVisible(true);
+        // Auto-hide after 3 seconds
+        const timeout = setTimeout(() => {
+          setStageVisible(false);
+        }, 3000);
+        return () => clearTimeout(timeout);
+      }
+    }
+  }, [totalPoints, captionLines, stageSequence]);
 
   // Dynamic greeting based on first-time vs returning visitor
   const greetingLines = useMemo(() => {
@@ -1089,7 +1157,7 @@ export default function ScorePage() {
       <section className="buttons-grid">
         <div className="points-pill">
           Total Points{' '}
-          <span>{sessionScore ? sessionScore.totalPoints : (data?.totalPoints ?? totalPoints)}</span>
+          <span>{data?.totalPoints ?? totalPoints}</span>
         </div>
         {sessionScore && (
           <div
@@ -1292,7 +1360,8 @@ export default function ScorePage() {
             onFocus={() => onButtonEnter('refer')}
             onBlur={onButtonLeave}
           >
-            {/* Show ReferFriendButton if we have email (code will be fetched if missing) */}
+            {/* Show ReferFriendButton if we have email (resilient: works even if APIs fail) */}
+            {/* Button will be disabled until code loads, but always visible if email exists */}
             {contestEmail && (
               <ReferFriendButton
                 referralCode={associate?.code || ''}

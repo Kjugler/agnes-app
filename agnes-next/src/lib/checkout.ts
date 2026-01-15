@@ -35,6 +35,7 @@ export type StartCheckoutOpts = {
   successPath?: string;
   cancelPath?: string;
   metadata?: Record<string, string>;
+  checkoutEmail?: string; // Email captured from referral checkout form
 };
 
 export async function startCheckout(opts: StartCheckoutOpts = {}) {
@@ -52,7 +53,10 @@ export async function startCheckout(opts: StartCheckoutOpts = {}) {
   trackCheckoutStarted(source, path);
 
   const email = readContestEmail();
-  if (!email) {
+  const checkoutEmail = opts.checkoutEmail;
+  
+  // For referral traffic, checkoutEmail is provided instead of contest email
+  if (!email && !checkoutEmail) {
     throw new Error('Please enter the contest first so we know who to credit.');
   }
 
@@ -109,7 +113,7 @@ export async function startCheckout(opts: StartCheckoutOpts = {}) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-User-Email': email,
+        ...(email ? { 'X-User-Email': email } : {}),
       },
       body: JSON.stringify({
         product,
@@ -120,6 +124,7 @@ export async function startCheckout(opts: StartCheckoutOpts = {}) {
         src,
         v,
         origin,
+        checkoutEmail, // Pass checkoutEmail in body for referral traffic
         metadata,
       }),
     });

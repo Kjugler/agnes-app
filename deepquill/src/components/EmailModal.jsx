@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { subscribeEmail } from '../api/subscribeEmail';
 import JodyAssistant from './JodyAssistant';
+import './TerminalEmulator.css';
 
 const EmailModal = ({ isOpen, onClose, onEmailSubmitted }) => {
   const [email, setEmail] = useState('');
@@ -32,24 +33,32 @@ const EmailModal = ({ isOpen, onClose, onEmailSubmitted }) => {
 
     // --- fire tracking event to Next (agnes-next) ---
     // Determine the correct base URL for agnes-next
-    // Priority: env var (ngrok) > ngrok fallback > localhost (only if no ngrok available)
+    // Priority: env var > current origin (if ngrok) > localhost (if local) > ngrok fallback
     let NEXT_BASE = null;
     
     // Check env var first (should be ngrok URL in dev)
     const envUrl = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_AGNES_BASE_URL : null;
     if (envUrl) {
       NEXT_BASE = envUrl;
-      console.log('[deepquill] Using env var (ngrok):', envUrl);
-    } else {
+      console.log('[deepquill] Using env var:', envUrl);
+    } else if (typeof window !== 'undefined') {
       // Check if we're already on ngrok (use current origin)
-      if (typeof window !== 'undefined' && (window.location.hostname.includes('ngrok') || window.location.hostname.includes('ngrok-free.app'))) {
+      if (window.location.hostname.includes('ngrok') || window.location.hostname.includes('ngrok-free.app')) {
         NEXT_BASE = `${window.location.protocol}//${window.location.host}`;
         console.log('[deepquill] Using current ngrok origin:', NEXT_BASE);
+      } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        // Running locally - use localhost with agnes-next port (3002, not 5173)
+        NEXT_BASE = 'http://localhost:3002';
+        console.log('[deepquill] Using localhost (local dev):', NEXT_BASE);
       } else {
         // Fallback to hardcoded ngrok (for dev testing)
         NEXT_BASE = 'https://agnes-dev.ngrok-free.app';
         console.log('[deepquill] Using ngrok fallback:', NEXT_BASE);
       }
+    } else {
+      // Server-side fallback
+      NEXT_BASE = 'http://localhost:3002';
+      console.log('[deepquill] Using localhost fallback (server-side):', NEXT_BASE);
     }
     
     // Debug: log what URL we're using
@@ -69,7 +78,7 @@ const EmailModal = ({ isOpen, onClose, onEmailSubmitted }) => {
           email,
           source: 'contest',
           ref: new URLSearchParams(location.search).get('ref') || undefined,
-          meta: { path: '/lightening' },
+          meta: { path: '/' }, // Root entry point - split will determine final route
         }),
       }).catch(() => {});
     } catch {}
@@ -109,7 +118,7 @@ const EmailModal = ({ isOpen, onClose, onEmailSubmitted }) => {
           console.warn('[EmailModal] Could not clear localStorage', e);
         }
         
-        // Redirect to /lightening first (correct sequence: Terminal 1 → Terminal 2 → Lightning → Contest)
+        // Redirect to Lightning page (Terminal 2 → Lightning → Contest flow)
         // Preserve existing query params and add email
         const currentParams = new URLSearchParams(window.location.search);
         currentParams.set('email', normalizedEmail);
@@ -124,7 +133,7 @@ const EmailModal = ({ isOpen, onClose, onEmailSubmitted }) => {
         });
         
         const lighteningUrl = `${NEXT_BASE}/lightening?${currentParams.toString()}`;
-        console.log('[EmailModal] Redirecting to lightening with email:', lighteningUrl);
+        console.log('[EmailModal] Redirecting to Lightning (Terminal 2 → Lightning → Contest):', lighteningUrl);
         // Redirect immediately - no delay needed
         window.location.href = lighteningUrl;
       } else {
@@ -173,63 +182,170 @@ const EmailModal = ({ isOpen, onClose, onEmailSubmitted }) => {
 
   console.log('[EmailModal] Rendering modal');
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-[#1e1e1e] p-8 rounded-lg shadow-xl max-w-md w-full">
-        <h2 className="text-green-500 text-2xl font-mono mb-4">Access Granted</h2>
+    <div className="terminal-container" style={{ position: 'fixed', inset: 0, zIndex: 50, backgroundColor: 'var(--terminal-background)', color: 'var(--terminal-text)' }}>
+      <div style={{ 
+        width: '100%', 
+        height: '100%', 
+        display: 'flex', 
+        flexDirection: 'column', 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        padding: '2rem',
+        backgroundColor: 'var(--terminal-background)', 
+        color: 'var(--terminal-text)',
+        position: 'relative',
+        overflow: 'auto'
+      }}>
+        {/* Main Content Container - Centered */}
+        <div style={{
+          maxWidth: '1200px',
+          width: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '2rem'
+        }}>
+          <h2 style={{ 
+            fontSize: '1.5rem', 
+            fontFamily: 'monospace', 
+            marginBottom: '1rem', 
+            color: 'var(--terminal-text)',
+            textAlign: 'center'
+          }}>
+            Access Granted
+          </h2>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label className="block text-green-500 font-mono mb-2">
-              Request access to the redacted chapter
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Enter your email"
-              className="w-full px-4 py-2 bg-black text-green-500 border border-green-500 rounded focus:outline-none focus:border-green-400 placeholder-green-500/50 font-mono"
-              required
-            />
+          {/* Two Column Layout */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+            gap: '3rem',
+            width: '100%',
+            maxWidth: '1000px',
+            alignItems: 'start'
+          }}>
+            {/* Left Column - Email Form */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                <div>
+                  <label style={{ 
+                    display: 'block', 
+                    fontFamily: 'monospace', 
+                    marginBottom: '0.5rem', 
+                    color: 'var(--terminal-text)',
+                    fontSize: '1rem'
+                  }}>
+                    Request access to the redacted chapter
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Enter your email"
+                    required
+                    style={{ 
+                      width: '100%', 
+                      padding: '0.75rem 1rem', 
+                      fontFamily: 'monospace',
+                      fontSize: '1rem',
+                      backgroundColor: '#000', 
+                      color: 'var(--terminal-text)', 
+                      border: '1px solid var(--terminal-text)',
+                      outline: 'none',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+
+                {message && (
+                  <p style={{ 
+                    fontSize: '0.875rem', 
+                    fontFamily: 'monospace',
+                    color: message.startsWith('✅') ? 'var(--terminal-text)' : '#ef4444',
+                    margin: 0
+                  }}>
+                    {message}
+                  </p>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  style={{ 
+                    width: '100%', 
+                    padding: '0.75rem 1rem', 
+                    fontFamily: 'monospace', 
+                    fontSize: '1rem', 
+                    fontWeight: 'bold',
+                    backgroundColor: 'var(--terminal-text)', 
+                    color: '#000',
+                    border: 'none',
+                    cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                    opacity: isSubmitting ? 0.5 : 1
+                  }}
+                >
+                  {isSubmitting ? 'REQUESTING...' : 'REQUEST ACCESS'}
+                </button>
+              </form>
+            </div>
+
+            {/* Right Column - Access Report */}
+            <div style={{ 
+              padding: '1.5rem', 
+              display: 'flex', 
+              flexDirection: 'column', 
+              gap: '1rem'
+            }}>
+              <h3 style={{ 
+                fontFamily: 'monospace', 
+                fontSize: '1.125rem', 
+                marginBottom: '1rem', 
+                color: 'var(--terminal-text)',
+                margin: 0
+              }}>
+                ACCESS REPORT
+              </h3>
+              <div style={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                gap: '0.5rem', 
+                fontFamily: 'monospace', 
+                color: 'var(--terminal-text)', 
+                opacity: 0.8 
+              }}>
+                <p style={{ margin: 0 }}>Protocol Visitors: 413,128</p>
+                <p style={{ margin: 0 }}>Redacted Chapter Requests: 171,927</p>
+                <p style={{ margin: 0 }}>Clearance Rate: 41.6%</p>
+              </div>
+              <p style={{ 
+                marginTop: '1rem', 
+                fontFamily: 'monospace', 
+                fontStyle: 'italic', 
+                color: 'var(--terminal-text)', 
+                opacity: 0.6,
+                margin: 0
+              }}>
+                "Only the discerning make it through."
+              </p>
+            </div>
           </div>
-
-          {message && (
-            <p
-              className={`text-sm font-mono ${
-                message.startsWith('✅') ? 'text-green-500' : 'text-red-500'
-              }`}
-            >
-              {message}
-            </p>
-          )}
 
           <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full bg-green-500 text-black py-3 px-4 rounded hover:bg-green-600 transition-colors font-mono text-lg font-bold disabled:opacity-50"
+            onClick={onClose}
+            style={{ 
+              marginTop: '1rem', 
+              fontSize: '0.875rem', 
+              fontFamily: 'monospace',
+              color: 'var(--terminal-text)',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              textDecoration: 'underline'
+            }}
           >
-            {isSubmitting ? 'REQUESTING...' : 'REQUEST ACCESS'}
+            Close
           </button>
-        </form>
-
-        {/* Access Report Block */}
-        <div className="mt-8 p-4 border border-green-500/30 rounded bg-black/50">
-          <h3 className="text-green-500 font-mono text-lg mb-4">ACCESS REPORT</h3>
-          <div className="space-y-2 text-green-500/80 font-mono">
-            <p>Protocol Visitors: 413,128</p>
-            <p>Redacted Chapter Requests: 171,927</p>
-            <p>Clearance Rate: 41.6%</p>
-          </div>
-          <p className="mt-4 text-green-500/60 font-mono italic">
-            "Only the discerning make it through."
-          </p>
         </div>
-
-        <button
-          onClick={onClose}
-          className="mt-6 text-green-500 hover:text-green-400 text-sm font-mono"
-        >
-          Close
-        </button>
       </div>
 
       {/* Jody Assistant - Second IBM Terminal (Email) */}

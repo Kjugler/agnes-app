@@ -17,6 +17,7 @@ import {
   writeContestEmail,
   type AssociateCache,
 } from '@/lib/identity';
+import { clearIdentityStorage } from '@/lib/identity/clearIdentity';
 
 declare global {
   interface Window {
@@ -38,8 +39,52 @@ export default function ContestPage() {
   const [statusLoading, setStatusLoading] = useState(false);
   const [statusLoaded, setStatusLoaded] = useState(false);
   const [showEntryFormForCheckout, setShowEntryFormForCheckout] = useState(false);
+  const [showIdentityBanner, setShowIdentityBanner] = useState(false);
+  const [showYouTubeOverlay, setShowYouTubeOverlay] = useState(true);
   const videoRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
+
+  // Handle fresh=1 param: clear identity storage before rendering
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('fresh') === '1') {
+      console.log('[contest] fresh=1 detected, clearing identity storage');
+      clearIdentityStorage();
+      
+      // Clear state to ensure clean start
+      setContestEmail(null);
+      setAssociate(null);
+      setShowIdentityBanner(false);
+      
+      // DO NOT force entry form - let user see video and buttons naturally
+      // They can click "Enter the Contest" when ready
+      
+      // Remove fresh=1 from URL so refresh doesn't keep nuking state
+      params.delete('fresh');
+      const newQs = params.toString();
+      const newUrl = `${window.location.pathname}${newQs ? `?${newQs}` : ''}`;
+      window.history.replaceState({}, '', newUrl);
+      return; // Don't show identity banner if fresh=1 was used
+    }
+    
+    // Optional UX: Show banner if there's existing identity but no explicit identity provided
+    // Check if there's no explicit identity (no toEmail, no mockEmail, no email param)
+    const hasExplicitIdentity = 
+      params.get('toEmail') || 
+      params.get('to_email') || 
+      params.get('mockEmail') || 
+      params.get('email');
+    
+    if (!hasExplicitIdentity) {
+      const existingEmail = readContestEmail();
+      if (existingEmail) {
+        // Show banner offering to continue or start fresh
+        setShowIdentityBanner(true);
+      }
+    }
+  }, [qp]);
 
   // Inject ticker animation CSS as fallback (ensures animation works)
   useEffect(() => {
@@ -68,10 +113,23 @@ export default function ContestPage() {
   }, []);
 
   // Handle email query param from IBM Terminal redirect - PRIORITY: set immediately
+  // Use both useSearchParams() AND direct URL reading for reliability
   useEffect(() => {
     if (typeof window === 'undefined') return;
     
-    const emailFromQuery = qp.get('email');
+    // Try useSearchParams first (preferred)
+    let emailFromQuery = qp.get('email');
+    
+    // Fallback: read directly from URL if useSearchParams isn't ready yet
+    if (!emailFromQuery) {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        emailFromQuery = urlParams.get('email');
+      } catch (err) {
+        console.warn('[contest] Failed to parse URL search params', err);
+      }
+    }
+    
     if (emailFromQuery) {
       const normalizedEmail = emailFromQuery.trim().toLowerCase();
       console.log('[contest] Found email in query param, setting immediately:', normalizedEmail);
@@ -81,16 +139,21 @@ export default function ContestPage() {
       setContestEmail(normalizedEmail);
       
       // Remove query param from URL immediately (clean URL) - don't wait for API
-      const newUrl = new URL(window.location.href);
-      newUrl.searchParams.delete('email');
-      window.history.replaceState({}, '', newUrl.toString());
+      try {
+        const newUrl = new URL(window.location.href);
+        newUrl.searchParams.delete('email');
+        window.history.replaceState({}, '', newUrl.toString());
+      } catch (err) {
+        console.warn('[contest] Failed to clean URL', err);
+      }
       
       // Call login API to set cookie and create/load user (non-blocking, fire-and-forget)
+      // Skip heavy attribution for performance
       // Don't await or block on this - let it happen in background
       fetch('/api/contest/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: normalizedEmail }),
+        body: JSON.stringify({ email: normalizedEmail, skipAttribution: true }),
         credentials: 'include',
       })
         .then((res) => {
@@ -143,8 +206,20 @@ export default function ContestPage() {
       let email = readContestEmail(); // This now reads from cookie first
       
       // Fallback: if no email in storage, check query string (safety net)
+      // Use both useSearchParams() AND direct URL reading for reliability
       if (!email) {
-        const emailFromQuery = qp.get('email');
+        let emailFromQuery = qp.get('email');
+        
+        // Fallback: read directly from URL if useSearchParams isn't ready yet
+        if (!emailFromQuery) {
+          try {
+            const urlParams = new URLSearchParams(window.location.search);
+            emailFromQuery = urlParams.get('email');
+          } catch (err) {
+            console.warn('[contest] Sync fallback: Failed to parse URL search params', err);
+          }
+        }
+        
         if (emailFromQuery) {
           const normalizedEmail = emailFromQuery.trim().toLowerCase();
           console.log('[contest] Sync fallback: Found email in query string, storing:', normalizedEmail);
@@ -153,10 +228,11 @@ export default function ContestPage() {
           setContestEmail(email);
           
           // Call login API to set cookie (non-blocking)
+          // Skip heavy attribution for performance
           fetch('/api/contest/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: normalizedEmail }),
+            body: JSON.stringify({ email: normalizedEmail, skipAttribution: true }),
             credentials: 'include',
           })
             .then((res) => res.json())
@@ -375,20 +451,13 @@ export default function ContestPage() {
                       console.log('[Contest Video] Player state:', state);
                       
                       if (state === window.YT.PlayerState.PLAYING) {
-                        // Video is playing - unmute it
+                        // Video is playing - attempt to unmute (no overlay on contest page)
                         try {
                           player.unMute();
-                          console.log('[Contest Video] Video playing, unmuted successfully');
+                          console.log('[Contest Video] Video playing, unmute attempted');
                         } catch (e) {
                           console.log('[Contest Video] Could not unmute:', e);
-                          // Try again after a bit
-                          setTimeout(() => {
-                            try {
-                              player.unMute();
-                            } catch (e2) {
-                              console.log('[Contest Video] Second unmute attempt failed:', e2);
-                            }
-                          }, 1000);
+                          // No overlay - just log
                         }
                       } else {
                         // Not playing yet, try again
@@ -437,11 +506,13 @@ export default function ContestPage() {
                     }
                   }, 500);
                 } else if (state === window.YT.PlayerState.PLAYING) {
-                  // Video is playing - ensure it's unmuted
+                  // Video is playing - attempt to unmute (no overlay on contest page)
                   try {
                     event.target.unMute();
+                    console.log('[Contest Video] Video playing, unmute attempted');
                   } catch (e) {
                     console.log('[Contest Video] Could not unmute during playback:', e);
+                    // No overlay - just log
                   }
                 } else if (state === window.YT.PlayerState.PAUSED) {
                   // If paused, try to resume (shouldn't happen with autoplay, but just in case)
@@ -578,13 +649,41 @@ export default function ContestPage() {
   }, [router]);
 
   const handleContestEntry = (href: string) => {
-    if (!contestEmail) return;
-    if (!statusLoaded) return;
-    if (hasAssociate) {
+    // Check for identity using multiple sources
+    const storedEmail = readContestEmail();
+    const storedUserId = typeof window !== 'undefined' ? localStorage.getItem('contest_user_id') : null;
+    const storedUserCode = typeof window !== 'undefined' ? localStorage.getItem('contest_user_code') : null;
+    const hasIdentity = !!(contestEmail || storedEmail || storedUserId || storedUserCode);
+    
+    console.log('[contest] EnterContest click', { 
+      hasIdentity, 
+      contestEmail, 
+      storedEmail, 
+      storedUserId, 
+      storedUserCode 
+    });
+    
+    // If user has identity and associate profile, go to score page
+    if (hasIdentity && statusLoaded && hasAssociate) {
       router.push('/contest/score');
-    } else {
-      router.push(href);
+      return;
     }
+    
+    // If user has identity but no associate profile yet, route normally
+    if (hasIdentity && statusLoaded) {
+      router.push(href);
+      return;
+    }
+    
+    // New user → show entry form
+    setShowEntryFormForCheckout(true);
+    // Scroll form into view
+    setTimeout(() => {
+      const formElement = document.querySelector('[data-contest-entry-form]');
+      if (formElement) {
+        formElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 100);
   };
 
   const handleRequireContestEntry = useCallback(() => {
@@ -641,7 +740,107 @@ export default function ContestPage() {
             left: 0,
           }}
         />
+        {/* YouTube overlay blur for bottom-left channel name/avatar */}
+        {showYouTubeOverlay && (
+          <div
+            style={{
+              position: 'absolute',
+              bottom: '60px', // Above YouTube controls
+              left: '0',
+              width: '200px',
+              height: '60px',
+              pointerEvents: 'none',
+              background: 'rgba(0, 0, 0, 0.3)',
+              backdropFilter: 'blur(8px)',
+              WebkitBackdropFilter: 'blur(8px)',
+              borderRadius: '0 8px 0 0',
+              zIndex: 10,
+              transition: 'opacity 0.5s ease-out',
+            }}
+          />
+        )}
       </div>
+
+      {/* Identity Banner (optional UX) */}
+      {showIdentityBanner && contestEmail && (
+        <div
+          style={{
+            marginTop: '1rem',
+            padding: '1rem',
+            backgroundColor: '#fef3c7',
+            border: '1px solid #fbbf24',
+            borderRadius: '0.5rem',
+            textAlign: 'center',
+            maxWidth: '600px',
+            marginLeft: 'auto',
+            marginRight: 'auto',
+          }}
+        >
+          <p style={{ fontSize: '0.875rem', color: '#92400e', marginBottom: '0.75rem' }}>
+            Continue as <strong>{contestEmail}</strong>?
+          </p>
+          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => {
+                setShowIdentityBanner(false);
+                // User chose to continue, banner dismissed
+              }}
+              style={{
+                padding: '0.5rem 1rem',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                backgroundColor: '#9333ea',
+                color: 'white',
+                border: 'none',
+                borderRadius: '0.375rem',
+                cursor: 'pointer',
+              }}
+            >
+              Continue
+            </button>
+            <button
+              onClick={() => {
+                // Clear identity storage
+                clearIdentityStorage();
+                
+                // Build URL with fresh=1 and preserve tracking params
+                const params = new URLSearchParams(window.location.search);
+                params.set('fresh', '1');
+                
+                // Preserve tracking params (they're already in URL, but ensure they stay)
+                const trackingParams = ['code', 'v', 'src', 'ref', 'toEmail', 'to_email', 'utm_source', 'utm_medium', 'utm_campaign'];
+                trackingParams.forEach(key => {
+                  const value = params.get(key);
+                  if (value) {
+                    params.set(key, value);
+                  }
+                });
+                
+                // Navigate to /contest?fresh=1 with tracking params
+                const destination = `/contest${params.toString() ? `?${params.toString()}` : ''}`;
+                
+                if (process.env.NODE_ENV === 'development') {
+                  console.log('[contest] Start Fresh clicked, navigating to:', destination);
+                }
+                
+                router.replace(destination);
+              }}
+              style={{
+                padding: '0.5rem 1rem',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                backgroundColor: '#e5e7eb',
+                color: '#374151',
+                border: 'none',
+                borderRadius: '0.375rem',
+                cursor: 'pointer',
+              }}
+            >
+              Start Fresh
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Tapsy COMMENT */}
       <div style={{ textAlign: 'center', marginTop: '2rem', fontSize: '1.2rem' }}>{tapsyText}</div>
@@ -686,8 +885,38 @@ export default function ContestPage() {
           </button>
         </div>
       ) : (
-        <div style={{ marginTop: '0.75rem', color: '#f87171', fontSize: '0.95rem' }}>
-          No contest email detected. Restart the flow to enter with your address.
+        <div 
+          style={{ 
+            marginTop: '1rem', 
+            padding: '1rem 1.5rem',
+            color: '#00ffe0',
+            fontSize: '1rem',
+            textAlign: 'center',
+            backgroundColor: 'rgba(0, 255, 224, 0.05)',
+            border: '1px solid rgba(0, 255, 224, 0.2)',
+            borderRadius: '0.5rem',
+            maxWidth: '600px',
+            marginLeft: 'auto',
+            marginRight: 'auto',
+            transition: 'all 0.3s ease',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = 'rgba(0, 255, 224, 0.1)';
+            e.currentTarget.style.borderColor = 'rgba(0, 255, 224, 0.4)';
+            e.currentTarget.style.boxShadow = '0 0 12px rgba(0, 255, 224, 0.3)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'rgba(0, 255, 224, 0.05)';
+            e.currentTarget.style.borderColor = 'rgba(0, 255, 224, 0.2)';
+            e.currentTarget.style.boxShadow = 'none';
+          }}
+        >
+          <div style={{ fontSize: '1.2rem', fontWeight: 600, marginBottom: '0.5rem', color: '#00ffe0', textShadow: '0 0 8px rgba(0, 255, 224, 0.5)' }}>
+            Welcome, friend.
+          </div>
+          <div style={{ fontSize: '0.9rem', color: '#d1d5db', lineHeight: '1.5' }}>
+            You&apos;re new here — enjoy your stay. When you&apos;re ready, you can enter the contest anytime.
+          </div>
         </div>
       )}
 
@@ -723,7 +952,7 @@ export default function ContestPage() {
             {btn.id === 'contestBtn' ? (
               <button
                 type="button"
-                disabled={statusLoading || !contestEmail}
+                disabled={statusLoading}
                 onClick={() => handleContestEntry(btn.href)}
                 style={{
                   padding: '1rem',
@@ -731,11 +960,11 @@ export default function ContestPage() {
                   border: '2px solid green',
                   color: index === current ? 'black' : 'white',
                   fontSize: '1rem',
-                  cursor: statusLoading || !contestEmail ? 'not-allowed' : 'pointer',
+                  cursor: statusLoading ? 'not-allowed' : 'pointer',
                   animation: index === current ? 'pulse 1s infinite' : 'none',
                   transition: 'all 0.3s',
                   minWidth: '200px',
-                  opacity: statusLoading || !contestEmail ? 0.6 : 1,
+                  opacity: statusLoading ? 0.6 : 1,
                 }}
               >
                 {statusLoading

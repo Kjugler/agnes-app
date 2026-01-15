@@ -87,6 +87,7 @@ export default function ReferFriendModal({
     try {
       const res = await fetch('/api/refer', {
         method: 'POST',
+        credentials: 'include', // REQUIRED: ensures cookies are sent with ngrok
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           friendEmails: emails,
@@ -96,23 +97,51 @@ export default function ReferFriendModal({
         }),
       });
 
-      const data = await res.json();
-
+      // Harden error handling: don't parse JSON if response is not OK
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to send referral');
+        const text = await res.text();
+        // Try to parse as JSON if possible, otherwise use text
+        let errorMessage = 'Failed to send referral';
+        try {
+          const errorData = JSON.parse(text);
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          // Not JSON - might be HTML error page (e.g., ngrok 403)
+          errorMessage = `Request failed with status ${res.status}`;
+        }
+        throw new Error(errorMessage);
       }
 
-      setSuccess(true);
-      setPointsInfo({
-        pointsAwarded: data.pointsAwarded || 0,
-        daily: data.daily || {
-          emailsSentToday: emails.length,
-          pointsFromEmailsToday: data.pointsAwarded || 0,
-          maxEmailsPerDay: 20,
-          maxPointsPerDay: 100,
-        },
-      });
-      setFriendEmailsRaw('');
+      const data = await res.json();
+
+      // Handle partial success (some emails sent, some failed)
+      if (data.success || (data.emailsSent && data.emailsSent > 0)) {
+        setSuccess(true);
+        setPointsInfo({
+          pointsAwarded: data.pointsAwarded || 0,
+          daily: data.daily || {
+            emailsSentToday: data.emailsSent || emails.length,
+            pointsFromEmailsToday: data.pointsAwarded || 0,
+            maxEmailsPerDay: 20,
+            maxPointsPerDay: 100,
+          },
+        });
+        setFriendEmailsRaw('');
+        
+        // Show warning if some emails failed
+        if (data.emailsFailed && data.emailsFailed > 0) {
+          const failedEmails = data.results?.filter((r: any) => !r.sent).map((r: any) => r.email).join(', ') || '';
+          console.warn('[ReferFriendModal] Some emails failed to send', {
+            failedCount: data.emailsFailed,
+            failedEmails,
+          });
+          // Optionally show a warning message to user
+          // For now, we'll just log it - the success state still shows
+        }
+      } else {
+        // All emails failed
+        throw new Error(data.error || 'Failed to send referral emails');
+      }
 
       // Refresh score after successful referral send
       if (onReferralSent) {

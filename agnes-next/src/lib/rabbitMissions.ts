@@ -19,15 +19,8 @@ async function hasSharedEver(userId: string, platform: 'facebook' | 'x' | 'insta
 
   const ledgerType = ledgerTypeMap[platform];
 
-  const exists = await prisma.ledger.findFirst({
-    where: {
-      userId,
-      type: ledgerType,
-    },
-    select: { id: true },
-  });
-
-  return Boolean(exists);
+  // Ledger removed - always return false (share tracking disabled)
+  return false;
 }
 
 /**
@@ -103,26 +96,16 @@ export async function checkAndAwardRabbit1(userId: string, actions?: ActionsSnap
     return false;
   }
 
-  // Award the rabbit bonus (500 points)
+  // Award the rabbit bonus (500 points) - Ledger removed
   const rabbitBonus = 500;
 
-  await prisma.$transaction([
-    prisma.ledger.create({
-      data: {
-        userId,
-        type: 'RABBIT_BONUS',
-        points: rabbitBonus,
-        note: 'Rabbit 1 bonus - Social + Book',
-      },
-    }),
-    prisma.user.update({
-      where: { id: userId },
-      data: {
-        points: { increment: rabbitBonus },
-        rabbit1Completed: true,
-      },
-    }),
-  ]);
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      points: { increment: rabbitBonus },
+      rabbit1Completed: true,
+    },
+  });
 
   return true;
 }

@@ -34,3 +34,4 @@ data/fulfillments.lock
 assets/ebook/*.epub
 assets/ebook/*.pdf
 assets/ebook/*.mobi
+/src/generated/prisma

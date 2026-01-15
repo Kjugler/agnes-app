@@ -1,0 +1,5 @@
+# Local dev DBs / backups
+**/dev.db
+**/*.db
+**/*.db-journal
+**/dev.backup*.db

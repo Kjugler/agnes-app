@@ -68,15 +68,8 @@ router.post('/send-daily-digests', authApiToken, async (req, res) => {
   try {
     console.log('[DAILY_DIGEST] Starting daily digest job');
 
-    // Get Prisma client (same as award-referral-commission.cjs)
-    let prisma = null;
-    try {
-      const { PrismaClient } = require('@prisma/client');
-      prisma = new PrismaClient();
-    } catch (err) {
-      console.error('[DAILY_DIGEST] Prisma not available:', err.message);
-      return res.status(500).json({ error: 'Database client not available' });
-    }
+    // Use single Prisma singleton with explicit datasourceUrl
+    const { prisma } = require('../server/prisma.cjs');
 
     // Determine date window (yesterday in America/Denver)
     const { digestDate, dayStart, dayEnd } = getYesterdayInDenver();

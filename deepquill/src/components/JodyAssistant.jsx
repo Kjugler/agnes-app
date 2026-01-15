@@ -16,6 +16,7 @@ export default function JodyAssistant({
   message,
   autoShowDelayMs = 4000,
   defaultOpen = false,
+  onRender,
 }) {
   // Variant flags
   const isEm1 = variant === 'em1';
@@ -25,6 +26,13 @@ export default function JodyAssistant({
   useEffect(() => {
     console.log('[JodyAssistant] Mounted with variant:', variant, 'isEm1:', isEm1, 'isEm2:', isEm2);
   }, [variant, isEm1, isEm2]);
+
+  // Notify parent when Jody is rendered
+  useEffect(() => {
+    if (onRender) {
+      onRender();
+    }
+  }, [onRender]);
 
   // em1 state: phase-based system
   const [phase, setPhase] = useState(0); // 0 = icon only, 1 = bubble1, 2 = bubble2, 3 = DeepQuill image
@@ -451,6 +459,7 @@ export default function JodyAssistant({
       )}
 
       <div 
+        data-jody-widget="true"
         style={containerStyle}
         onMouseDown={(e) => {
           // Prevent Jody widget from stealing focus from terminal

@@ -21,6 +21,7 @@ export default function ReferFriendButton({
   const [resolvedCode, setResolvedCode] = useState(referralCode);
 
   // Fetch referral code if missing but we have email
+  // Resilient: works even if API fails, uses cached code if available
   useEffect(() => {
     if (resolvedCode || !referrerEmail || loadingCode) return;
     
@@ -28,21 +29,31 @@ export default function ReferFriendButton({
     fetch('/api/associate/status', {
       headers: { 'X-User-Email': referrerEmail },
     })
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) {
+          // API failed - button will still show but disabled
+          console.warn('[ReferFriendButton] API returned non-OK status:', res.status);
+          return null;
+        }
+        return res.json();
+      })
       .then(data => {
-        if (data.code) {
+        if (data?.code) {
           setResolvedCode(data.code);
         }
       })
       .catch(err => {
-        console.warn('[ReferFriendButton] Failed to fetch referral code', err);
+        // API failed - button will still show but disabled
+        // This is OK - user can still see the button, just can't use it until API recovers
+        console.warn('[ReferFriendButton] Failed to fetch referral code (non-blocking):', err);
       })
       .finally(() => {
         setLoadingCode(false);
       });
   }, [referrerEmail, resolvedCode, loadingCode]);
 
-  // Show button even if code is loading (will be disabled until code loads)
+  // Show button if we have email (even if code is loading or API failed)
+  // Button will be disabled until code is available, but visible
   if (!referrerEmail) {
     return null; // Don't show button if no email
   }

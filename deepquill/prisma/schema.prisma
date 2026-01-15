@@ -1,0 +1,166 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id                    String               @id @default(cuid())
+  email                 String               @unique
+  fname                 String?
+  lname                 String?
+  firstName             String?
+  code                  String              @unique
+  referralCode          String              @unique
+  referredBy            String?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  points                Int                 @default(0)
+  earnedPurchaseBook    Boolean             @default(false)
+  rabbit1Completed      Boolean             @default(false)
+  rabbitStep            Int                 @default(500)
+  rabbitTarget          Int?
+  rabbitCatches         Int                 @default(0)
+  lastRabbitBonusIntent String?
+  rabbitSeq             Int                 @default(1)
+  lastRabbitCatchAt     DateTime?
+  phone                 String?
+  handleX               String?
+  handleInstagram       String?
+  handleTiktok          String?
+  handleTruth           String?
+  referralEarningsCents Int                 @default(0)
+  associateBalanceCents Int                 @default(0)
+  associateLifetimeEarnedCents Int          @default(0)
+  associateFriendsSavedCents Int            @default(0)
+  noPurchaseEmailSentAt        DateTime?
+  contestJoinedAt             DateTime?
+  nonParticipantEmailSentAt   DateTime?
+  missionaryEmailSentAt       DateTime?
+  engagedEmailSentAt          DateTime?
+  
+  conversions ReferralConversion[]
+  purchases   Purchase[]
+  payouts     Payout[]
+  pointAwards PointAward[]
+  
+  @@index([referralCode])
+}
+
+model Customer {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  name              String?
+  phone             String?
+  shippingStreet    String?
+  shippingCity      String?
+  shippingState     String?
+  shippingPostalCode String?
+  shippingCountry   String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  purchases         Purchase[]
+  
+  @@index([email])
+}
+
+model Purchase {
+  id             String   @id @default(cuid())
+  stripeSessionId String  @unique
+  paymentIntentId String? // Optional: payment intent ID from Stripe
+  createdAt      DateTime @default(now())
+
+  userId         String?  // Buyer user ID (contest_user_id from metadata)
+  userCode       String?  // Buyer user code (fallback)
+  customerId     String?  // Customer shipping/contact info
+  product        String?  // ebook, paperback, audio_preorder
+  amountPaidCents Int?    // Amount buyer actually paid (after discount)
+  pointsAwarded   Int      @default(0) // Points awarded for this purchase
+  
+  user User? @relation(fields: [userId], references: [id])
+  customer Customer? @relation(fields: [customerId], references: [id])
+  fulfillment Fulfillment?
+  
+  @@index([userId])
+  @@index([stripeSessionId])
+  @@index([customerId])
+  @@index([paymentIntentId])
+}
+
+model Fulfillment {
+  id              String    @id @default(cuid())
+  purchaseId      String    @unique
+  purchase        Purchase  @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  status          String    @default("PENDING") // PENDING, SHIPPED, DELIVERED, CANCELLED
+  carrier         String?
+  trackingNumber  String?
+  shippedAt       DateTime?
+  deliveredAt     DateTime?
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@index([status])
+  @@index([purchaseId])
+}
+
+model Payout {
+  id                  String    @id @default(cuid())
+  userId              String    // Associate Publisher user ID
+  user                User      @relation(fields: [userId], references: [id])
+  referralConversionId String? // Optional link to referral conversion
+  amountCents         Int       // Payout amount in cents
+  status              String    @default("PENDING") // PENDING, PAID, FAILED, CANCELLED
+  method              String?   // Zelle, Venmo, PayPal, etc.
+  externalRef         String?   // External reference/transaction ID
+  paidAt              DateTime?
+  createdAt           DateTime  @default(now())
+  
+  @@index([userId])
+  @@index([status])
+  @@index([referralConversionId])
+}
+
+model ReferralConversion {
+  id             String   @id @default(cuid())
+  stripeSessionId String  @unique
+  createdAt      DateTime @default(now())
+
+  referrerUserId String?
+  referrerCode   String?
+  referrerEmail  String?
+  buyerEmail     String?
+  product        String?
+  commissionCents Int?
+  amountPaidCents Int?    // Amount buyer actually paid (after discount)
+  listPriceCents  Int?    // Original list price (before discount)
+  savingsCents    Int?    // Money saved by buyer (listPrice - amountPaid)
+  
+  referrer User? @relation(fields: [referrerUserId], references: [id])
+}
+
+model PointAward {
+  id              String   @id @default(cuid())
+  userId          String   // Person receiving points
+  kind            String   // PURCHASE_DAILY_500, REFERRAL_ITEM_500
+  awardDay        String   // YYYY-MM-DD format (UTC consistent)
+  sku             String?  // Catalog item identifier: book, ebook, audio (or actual SKU IDs)
+  referrerId      String?  // For referral awards
+  referredUserId  String?  // For referral awards
+  purchaseId      String?  // Link to Purchase if available
+  createdAt       DateTime @default(now())
+  
+  user            User     @relation(fields: [userId], references: [id])
+  
+  // Unique constraint for purchase daily cap: one award per user per day
+  @@unique([userId, kind, awardDay], name: "purchase_daily_unique")
+  // Unique constraint for referral: one award per referrer-referred-SKU combination
+  @@unique([referrerId, referredUserId, sku, kind], name: "referral_item_unique")
+  @@index([userId])
+  @@index([kind])
+  @@index([awardDay])
+  @@index([referrerId, referredUserId])
+}

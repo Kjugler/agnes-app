@@ -53,12 +53,14 @@ function mapProfileToUpdate(data?: AssociateProfile) {
 
 export async function ensureAssociateMinimal(emailRaw: string) {
   const email = normalizeEmail(emailRaw);
+  // Now that the database schema matches, we can fetch the full user
   let user = await prisma.user.findUnique({
     where: { email },
   });
 
   if (!user) {
     const code = await generateUniqueCode();
+    const now = new Date();
     user = await prisma.user.create({
       data: {
         email,
@@ -66,6 +68,8 @@ export async function ensureAssociateMinimal(emailRaw: string) {
         referralCode: code,
         rabbitSeq: 1,
         rabbitTarget: calcInitialRabbitTarget(0),
+        createdAt: now,
+        updatedAt: now, // updatedAt is required, set it explicitly
       },
     });
     return user;

@@ -3,6 +3,7 @@ const router = express.Router();
 const mailchimp = require('@mailchimp/mailchimp_marketing');
 const crypto = require('crypto');
 const dotenv = require('dotenv');
+const { normalizeEmail } = require('../src/lib/normalize.cjs');
 dotenv.config();
 
 mailchimp.setConfig({
@@ -17,11 +18,12 @@ router.post('/', async (req, res) => {
   console.log('✅ Received POST to /api/subscribe');
 
   const { email } = req.body || {};
-  if (!email) {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) {
     return res.status(400).json({ ok: false, error: 'Email is required.' });
   }
 
-  const subscriberHash = crypto.createHash('md5').update(email.toLowerCase()).digest('hex');
+  const subscriberHash = crypto.createHash('md5').update(normalizedEmail).digest('hex');
 
   try {
     // Check if already exists
@@ -41,7 +43,7 @@ router.post('/', async (req, res) => {
           process.env.MAILCHIMP_LIST_ID,
           subscriberHash,
           {
-            email_address: email,
+            email_address: normalizedEmail,
             status_if_new: 'subscribed',
             tags: ['deepquill-access'],
           }

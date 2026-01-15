@@ -1,59 +1,48 @@
 // agnes-next/src/app/api/fulfillment/mark-shipped/route.ts
+// Proxies to deepquill fulfillment mark-shipped endpoint
 
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
-import { sendShippingConfirmationEmail } from '@/lib/email/shippingConfirmation';
+import { proxyJson } from '@/lib/deepquillProxy';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { orderId, fulfillmentUserId } = body;
+    const { orderId, purchaseId, fulfillmentUserId, carrier, trackingNumber, notes } = body;
 
-    if (!orderId || !fulfillmentUserId) {
+    // Use purchaseId if provided, otherwise orderId (for backward compatibility)
+    const actualPurchaseId = purchaseId || orderId;
+
+    if (!actualPurchaseId || !fulfillmentUserId) {
       return NextResponse.json(
-        { error: 'orderId and fulfillmentUserId are required' },
+        { error: 'purchaseId (or orderId) and fulfillmentUserId are required' },
         { status: 400 }
       );
     }
 
-    // Find the order with customer info
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
-      include: {
-        customer: true,
+    // Proxy to deepquill fulfillment mark-shipped endpoint
+    const { data, status } = await proxyJson('/api/admin/fulfillment/mark-shipped', request, {
+      method: 'POST',
+      body: {
+        purchaseId: actualPurchaseId,
+        fulfillmentUserId,
+        carrier: carrier || null,
+        trackingNumber: trackingNumber || null,
+        notes: notes || null,
       },
     });
 
-    if (!order) {
-      return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+    if (status !== 200) {
+      return NextResponse.json(
+        { error: data?.error || 'Failed to mark purchase as shipped' },
+        { status }
+      );
     }
 
-    // Update order: mark as shipped
-    await prisma.order.update({
-      where: { id: orderId },
-      data: {
-        shippedAt: new Date(),
-        shippedById: fulfillmentUserId,
-        status: 'shipped',
-      },
-    });
-
-    // Send shipping confirmation email
-    const customerEmail = order.customer.email;
-    const shippingName =
-      order.shippingName || order.customer.name || 'there';
-
-    await sendShippingConfirmationEmail({
-      toEmail: customerEmail,
-      shippingName,
-      orderId: order.id,
-    });
-
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, ...data });
   } catch (error) {
     console.error('[fulfillment/mark-shipped] Error:', error);
     return NextResponse.json(
-      { error: 'Failed to mark order as shipped' },
+      { error: 'Failed to mark purchase as shipped' },
       { status: 500 }
     );
   }

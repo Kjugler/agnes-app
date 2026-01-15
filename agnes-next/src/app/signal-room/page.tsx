@@ -30,30 +30,33 @@ export default async function SignalRoomPage() {
     }
   }
 
-  const signals = await prisma.signal.findMany({
-    where: {
-      status: SignalStatus.APPROVED,
-    },
-    orderBy: {
-      createdAt: 'desc',
-    },
-    take: 50,
-    include: {
-      user: {
-        select: {
-          email: true,
-          firstName: true,
-        },
+  // Fetch signals (if Signal table exists)
+  let signals: any[] = [];
+  try {
+    signals = await prisma.signal.findMany({
+      where: {
+        status: SignalStatus.APPROVED,
       },
-      replies: {
-        take: 3,
-        orderBy: {
-          createdAt: 'desc',
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: 50,
+      include: {
+        user: {
+          select: {
+            email: true,
+            firstName: true,
+          },
         },
-        include: {
-          user: {
-            select: {
-              email: true,
+        replies: {
+          take: 3,
+          orderBy: {
+            createdAt: 'desc',
+          },
+          include: {
+            user: {
+              select: {
+                email: true,
               firstName: true,
             },
           },
@@ -82,6 +85,18 @@ export default async function SignalRoomPage() {
       },
     },
   });
+  } catch (signalErr: any) {
+    // Signal table might not exist - that's okay, we'll show empty list
+    if (signalErr?.code === 'P2021' || signalErr?.message?.includes('Signal')) {
+      console.warn('[signal-room] Signal table not available, showing empty list', {
+        error: signalErr?.message,
+      });
+      signals = [];
+    } else {
+      // Re-throw if it's a different error
+      throw signalErr;
+    }
+  }
 
   // Map Prisma results to simple array for client component
   const signalsData = signals.map((signal) => ({

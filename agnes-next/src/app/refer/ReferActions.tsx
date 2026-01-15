@@ -1,8 +1,10 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import type { ReferVideoId } from '@/config/referVideos';
+import { readContestEmail } from '@/lib/identity';
+import { clearIdentityStorage } from '@/lib/identity/clearIdentity';
 
 interface ReferActionsProps {
   referralCode: string;
@@ -12,24 +14,103 @@ interface ReferActionsProps {
 export default function ReferActions({ referralCode, videoId }: ReferActionsProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [showIdentityMismatch, setShowIdentityMismatch] = useState(false);
+  const [storedEmail, setStoredEmail] = useState<string | null>(null);
+  const [referralEmail, setReferralEmail] = useState<string | null>(null);
+
+  // Detect identity mismatch: stored email vs referral email from URL
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    const stored = readContestEmail();
+    const toEmailFromUrl = searchParams.get('toEmail') || searchParams.get('to_email');
+    
+    setStoredEmail(stored);
+    setReferralEmail(toEmailFromUrl);
+    
+    // Show mismatch banner if emails differ
+    if (stored && toEmailFromUrl && stored.toLowerCase() !== toEmailFromUrl.toLowerCase()) {
+      setShowIdentityMismatch(true);
+    } else {
+      setShowIdentityMismatch(false);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (!referralCode) return;
 
     try {
-      // LocalStorage for easy access in other client components
+      // LocalStorage for easy access in other client components (backward compatibility)
       window.localStorage.setItem('referral_code', referralCode);
 
-      // Simple cookie so API routes / server-side logic can read it later if needed
-      document.cookie = `referral_code=${encodeURIComponent(
-        referralCode
-      )}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=Lax`;
+      // Set new referral cookies (ap_ref_*) for checkout session
+      const maxAge = 7 * 24 * 60 * 60; // 7 days
+      const cookieOptions = `path=/; max-age=${maxAge}; SameSite=Lax`;
+      
+      // ap_ref_code (primary referral code cookie)
+      document.cookie = `ap_ref_code=${encodeURIComponent(referralCode)}; ${cookieOptions}`;
+      
+      // ap_ref_src (source - from query params)
+      const src = searchParams.get('src');
+      if (src) {
+        document.cookie = `ap_ref_src=${encodeURIComponent(src)}; ${cookieOptions}`;
+      }
+      
+      // ap_ref_v (video variant)
+      if (videoId) {
+        document.cookie = `ap_ref_v=${encodeURIComponent(videoId)}; ${cookieOptions}`;
+      }
+
+      // Legacy cookie for backward compatibility
+      document.cookie = `referral_code=${encodeURIComponent(referralCode)}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=Lax`;
     } catch {
       // fail silently
     }
-  }, [referralCode]);
+  }, [referralCode, videoId, searchParams]);
 
-  // Build query string preserving referral code and video params
+  const handleContinueAsDifferentEmail = () => {
+    if (typeof window === 'undefined') return;
+    // Clear all identity storage using shared helper
+    clearIdentityStorage();
+    // Hard reload to ensure cookies are cleared
+    window.location.reload();
+  };
+
+  // Helper to build URL with tracking params preserved
+  const buildUrlWithTracking = (path: string, logLabel?: string): string => {
+    const params = new URLSearchParams();
+    
+    // Preserve referral code
+    if (referralCode) params.set('code', referralCode);
+    
+    // Preserve video variant
+    params.set('v', videoId);
+    
+    // Preserve source
+    params.set('src', 'email');
+    
+    // Preserve toEmail if present (for identity mismatch detection)
+    const toEmail = searchParams.get('toEmail') || searchParams.get('to_email');
+    if (toEmail) params.set('toEmail', toEmail);
+    
+    // Preserve any other tracking params from URL
+    const preserveKeys = ['ref', 'origin', 'utm_source', 'utm_medium', 'utm_campaign'];
+    preserveKeys.forEach(key => {
+      const value = searchParams.get(key);
+      if (value) params.set(key, value);
+    });
+    
+    const qs = params.toString();
+    const finalUrl = qs ? `${path}?${qs}` : path;
+    
+    if (process.env.NODE_ENV === 'development' && logLabel) {
+      console.log(`[refer] ${logLabel} ->`, finalUrl);
+    }
+    
+    return finalUrl;
+  };
+
+  // Legacy helper for backward compatibility (used by Sample the Book)
   const buildCodeQuery = () => {
     const params = new URLSearchParams();
     if (referralCode) params.set('code', referralCode);
@@ -39,9 +120,10 @@ export default function ReferActions({ referralCode, videoId }: ReferActionsProp
   };
 
   // 1. Get the Book – Save $3.90
+  // Fixed: Now routes to Catalog instead of sample-chapters
   const handleGetTheBook = () => {
-    const q = buildCodeQuery();
-    router.push(`/sample-chapters?${q}`);
+    const url = buildUrlWithTracking('/catalog', 'GetBook');
+    router.push(url);
   };
 
   // 2. Sample the Book
@@ -65,8 +147,8 @@ export default function ReferActions({ referralCode, videoId }: ReferActionsProp
   // 4. Win the Contest
   const handleWinContest = () => {
     // Jump straight to The Protocol Challenge page
-    const q = buildCodeQuery();
-    router.push(`/the-protocol-challenge?${q}`);
+    const url = buildUrlWithTracking('/the-protocol-challenge', 'WinContest');
+    router.push(url);
   };
 
   const buttonBaseStyle: React.CSSProperties = {
@@ -94,6 +176,90 @@ export default function ReferActions({ referralCode, videoId }: ReferActionsProp
         }
       `}</style>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        {/* Dev-only badge: show active user */}
+        {process.env.NODE_ENV === 'development' && storedEmail && (
+          <div
+            style={{
+              padding: '0.5rem 0.75rem',
+              backgroundColor: '#fef3c7',
+              border: '1px solid #fbbf24',
+              borderRadius: '0.375rem',
+              fontSize: '0.75rem',
+              color: '#92400e',
+              textAlign: 'center',
+            }}
+          >
+            🔧 <strong>Dev:</strong> Active user: {storedEmail}
+          </div>
+        )}
+
+        {/* Identity mismatch banner */}
+        {showIdentityMismatch && storedEmail && referralEmail && (
+          <div
+            style={{
+              padding: '1rem',
+              backgroundColor: '#fef2f2',
+              border: '1px solid #fca5a5',
+              borderRadius: '0.5rem',
+              marginBottom: '1rem',
+            }}
+          >
+            <p style={{ fontSize: '0.875rem', fontWeight: 600, color: '#991b1b', marginBottom: '0.5rem' }}>
+              Email Mismatch Detected
+            </p>
+            <p style={{ fontSize: '0.75rem', color: '#7f1d1d', marginBottom: '0.75rem' }}>
+              You&apos;re currently signed in as: <strong>{storedEmail}</strong>
+            </p>
+            <p style={{ fontSize: '0.75rem', color: '#7f1d1d', marginBottom: '1rem' }}>
+              This invite was sent to a different email: <strong>{referralEmail}</strong>
+            </p>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <button
+                onClick={handleContinueAsDifferentEmail}
+                style={{
+                  padding: '0.5rem 1rem',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  backgroundColor: '#9333ea',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '0.375rem',
+                  cursor: 'pointer',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#7e22ce';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#9333ea';
+                }}
+              >
+                🔁 Continue as different email
+              </button>
+              <button
+                onClick={() => setShowIdentityMismatch(false)}
+                style={{
+                  padding: '0.5rem 1rem',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  backgroundColor: '#e5e7eb',
+                  color: '#374151',
+                  border: 'none',
+                  borderRadius: '0.375rem',
+                  cursor: 'pointer',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#d1d5db';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#e5e7eb';
+                }}
+              >
+                ➡️ Stay as {storedEmail.split('@')[0]}
+              </button>
+            </div>
+          </div>
+        )}
+
         {referralCode ? (
           <p style={{ fontSize: '0.75rem', color: '#666' }}>
             Referral code <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{referralCode}</span> is

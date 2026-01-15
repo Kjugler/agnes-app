@@ -19,75 +19,26 @@ export function startOfToday(): Date {
 
 /**
  * Check if user has already earned daily share points for a platform today
+ * Always returns false (Ledger removed - daily share checks disabled)
  */
 export async function hasDailySharePoints(
   userId: string,
   platform: 'facebook' | 'x' | 'instagram'
 ): Promise<boolean> {
-  const ledgerTypeMap: Record<'facebook' | 'x' | 'instagram', 'SHARE_FB' | 'SHARE_X' | 'SHARE_IG'> = {
-    facebook: 'SHARE_FB',
-    x: 'SHARE_X',
-    instagram: 'SHARE_IG',
-  };
-
-  const ledgerType = ledgerTypeMap[platform];
-  const todayStart = startOfToday();
-
-  const exists = await prisma.ledger.findFirst({
-    where: {
-      userId,
-      type: ledgerType,
-      createdAt: { gte: todayStart },
-    },
-    select: { id: true },
-  });
-
-  return Boolean(exists);
+  // Ledger removed - daily share checks disabled
+  return false;
 }
 
 /**
  * Award daily share points (100 pts per platform per day)
- * Returns the points awarded (100 if first time today, 0 if already awarded)
+ * Returns the points awarded (always 0 - Ledger removed, daily share checks disabled)
  */
 export async function awardDailySharePoints(
   userId: string,
   platform: 'facebook' | 'x' | 'instagram'
 ): Promise<number> {
-  const ledgerTypeMap: Record<'facebook' | 'x' | 'instagram', 'SHARE_FB' | 'SHARE_X' | 'SHARE_IG'> = {
-    facebook: 'SHARE_FB',
-    x: 'SHARE_X',
-    instagram: 'SHARE_IG',
-  };
-
-  const ledgerType = ledgerTypeMap[platform];
-  const todayStart = startOfToday();
-
-  // Check if already awarded today
-  const alreadyAwarded = await hasDailySharePoints(userId, platform);
-
-  if (alreadyAwarded) {
-    // No new points; share event still counts for tracking/achievements
-    return 0;
-  }
-
-  // Award 100 points and record in ledger
-  const points = 100;
-
-  await prisma.$transaction([
-    prisma.ledger.create({
-      data: {
-        userId,
-        type: ledgerType,
-        points,
-        note: `Daily share ${platform} - ${getDateKey()}`,
-      },
-    }),
-    prisma.user.update({
-      where: { id: userId },
-      data: { points: { increment: points } },
-    }),
-  ]);
-
-  return points;
+  // Ledger removed - daily share checks disabled
+  // Share events still count for tracking/achievements, but no points awarded
+  return 0;
 }
 

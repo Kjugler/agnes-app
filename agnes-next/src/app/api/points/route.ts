@@ -71,7 +71,7 @@ async function handlePoints(req: NextRequest) {
 
     if (sessionId) {
       const purchase = await prisma.purchase.findUnique({
-        where: { sessionId },
+        where: { stripeSessionId: sessionId },
         select: { userId: true },
       });
 
@@ -115,17 +115,31 @@ async function handlePoints(req: NextRequest) {
       });
     }
 
-    // Fetch recent events for this user
-    const recentEvents = await prisma.event.findMany({
-      where: { userId: user.id },
-      orderBy: { createdAt: 'desc' },
-      take: 25,
-      select: {
-        id: true,
-        type: true,
-        createdAt: true,
-      },
-    });
+    // Fetch recent events for this user (if Event table exists)
+    let recentEvents: Array<{ id: string; type: string; createdAt: Date }> = [];
+    try {
+      recentEvents = await prisma.event.findMany({
+        where: { userId: user.id },
+        orderBy: { createdAt: 'desc' },
+        take: 25,
+        select: {
+          id: true,
+          type: true,
+          createdAt: true,
+        },
+      });
+    } catch (eventErr: any) {
+      // Event table might not exist - that's okay, we'll use empty array
+      if (eventErr?.code === 'P2021' || eventErr?.message?.includes('Event')) {
+        console.warn('[points] Event table not available, using empty events array', {
+          error: eventErr?.message,
+        });
+        recentEvents = [];
+      } else {
+        // Re-throw if it's a different error
+        throw eventErr;
+      }
+    }
 
     // Fetch purchases for this user
     const purchases = await prisma.purchase.findMany({
@@ -133,9 +147,8 @@ async function handlePoints(req: NextRequest) {
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
-        sessionId: true,
-        amount: true,   // cents
-        currency: true, // 'usd' | null
+        stripeSessionId: true,
+        amountPaidCents: true,   // Amount in cents
         createdAt: true,
       },
     });
@@ -148,8 +161,8 @@ async function handlePoints(req: NextRequest) {
 
     let amountUsdFloor = 0;
     for (const p of purchases) {
-      if ((p.currency || '').toLowerCase() === 'usd' && typeof p.amount === 'number') {
-        amountUsdFloor += Math.floor(p.amount / 100); // cents → dollars, floor
+      if (typeof p.amountPaidCents === 'number' && p.amountPaidCents > 0) {
+        amountUsdFloor += Math.floor(p.amountPaidCents / 100); // cents → dollars, floor
       }
     }
 

@@ -17,6 +17,7 @@ const TerminalEmulator = () => {
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [attemptCount, setAttemptCount] = useState(0);
   const [isSecondAttempt, setIsSecondAttempt] = useState(false);
+  const [entryVariant, setEntryVariant] = useState(null); // 'terminal' | 'protocol' | null
 
   // new: state for email submit UX
   const [emailSubmitting, setEmailSubmitting] = useState(false);
@@ -26,6 +27,8 @@ const TerminalEmulator = () => {
   const terminalContainerRef = useRef(null);
   const downloadIntervalRef = useRef(null);
   const phaseRef = useRef(phase);
+  const inputRef = useRef(null); // Hard ref to the typing target
+  const jodyRenderedRef = useRef(false); // Track when Jody is rendered
 
   const introMessages = [
     'VERIFYING SECURITY ID...',
@@ -125,6 +128,105 @@ const TerminalEmulator = () => {
     };
   }, [phase, isDownloading]);
 
+  // Choose variant function (sticky via localStorage)
+  const chooseVariant = () => {
+    if (typeof window === 'undefined') return 'terminal';
+    
+    const stored = localStorage.getItem('dq_entry_variant');
+    if (stored === 'terminal' || stored === 'protocol') {
+      return stored;
+    }
+    
+    // No variant exists - assign randomly 50/50
+    const v = Math.random() < 0.5 ? 'terminal' : 'protocol';
+    localStorage.setItem('dq_entry_variant', v);
+    
+    // Also set cookie for consistency
+    const isNgrok = window.location.hostname.includes('ngrok-free.dev') || 
+                    window.location.hostname.includes('ngrok.io');
+    const needsSecureCookies = isNgrok || import.meta.env?.MODE === 'production';
+    const sameSite = needsSecureCookies ? 'None' : 'Lax';
+    const secure = needsSecureCookies ? '; Secure' : '';
+    
+    document.cookie = `dq_entry_variant=${v}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=${sameSite}${secure}`;
+    
+    return v;
+  };
+
+  // Choose variant early (on mount) - before intro completes
+  useEffect(() => {
+    const variant = chooseVariant();
+    setEntryVariant(variant);
+    console.log('[intro] variant chosen early:', variant);
+  }, []);
+
+  // Handle split redirect immediately after intro completes
+  useEffect(() => {
+    if (!isIntroComplete || phase !== 'intro' || !entryVariant) return;
+    
+    console.log('[intro] intro complete, variant:', entryVariant);
+    
+    // Determine agnes-next base URL (needed for both protocol redirect and debug logging)
+    let NEXT_BASE = null;
+    const envUrl = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_AGNES_BASE_URL : null;
+    if (envUrl) {
+      NEXT_BASE = envUrl;
+    } else if (typeof window !== 'undefined') {
+      if (window.location.hostname.includes('ngrok') || window.location.hostname.includes('ngrok-free.app')) {
+        NEXT_BASE = `${window.location.protocol}//${window.location.host}`;
+      } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        NEXT_BASE = 'http://localhost:3002';
+      } else {
+        NEXT_BASE = 'https://agnes-dev.ngrok-free.app';
+      }
+    } else {
+      NEXT_BASE = 'http://localhost:3002';
+    }
+    
+    // Log variant selection to server (for measurement)
+    const debugApiUrl = typeof window !== 'undefined' && window.location.hostname === 'localhost' 
+      ? 'http://localhost:5055/api/debug/variant'
+      : '/api/debug/variant';
+    
+    fetch(debugApiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        variant: entryVariant,
+        next: entryVariant === 'protocol' ? `${NEXT_BASE}/the-protocol-challenge` : 'terminal-flow',
+        ts: Date.now(),
+      }),
+    }).catch(() => {
+      // Silently fail - debug logging is non-critical
+    });
+    
+    // If protocol variant, redirect to agnes-next protocol challenge page
+    if (entryVariant === 'protocol') {
+      // Preserve all query params
+      const currentParams = new URLSearchParams(window.location.search);
+      const trackingParams = ['ref', 'src', 'v', 'origin', 'code', 'utm_source', 'utm_medium', 'utm_campaign'];
+      trackingParams.forEach(key => {
+        const value = currentParams.get(key);
+        if (value) {
+          currentParams.set(key, value);
+        }
+      });
+      
+      const protocolUrl = `${NEXT_BASE}/the-protocol-challenge?${currentParams.toString()}`;
+      console.log('[intro] redirect ->', protocolUrl);
+      
+      // Small delay to ensure overlay paints before navigation (makes transition smoother)
+      setTimeout(() => {
+        window.location.replace(protocolUrl);
+      }, 50);
+      return;
+    }
+    
+    // Terminal variant: stay in TerminalEmulator (continue to Terminal 1)
+    console.log('[intro] redirect -> terminal experience (staying in TerminalEmulator)');
+    // No redirect needed - component will continue showing Terminal 1 hints
+  }, [isIntroComplete, phase, entryVariant]);
+
   // intro run once when phase is 'intro'
   useEffect(() => {
     if (phase === 'intro') {
@@ -135,54 +237,132 @@ const TerminalEmulator = () => {
     };
   }, [phase]);
 
-  // Auto-focus terminal input on mount
-  useEffect(() => {
-    // Find the terminal input element and focus it
-    const focusTerminalInput = () => {
-      // react-terminal-ui creates an input with class 'react-terminal-input'
-      const input = document.querySelector('.react-terminal-input');
-      if (input && input instanceof HTMLElement) {
-        input.focus();
-        return true;
+  // snapCursor helper function - deterministic cursor snapping
+  const snapCursor = (reason) => {
+    // Try inputRef first
+    let input = inputRef.current;
+    
+    // Fallback: query selector
+    if (!input) {
+      input = document.querySelector('.react-terminal-input');
+      if (input) {
+        inputRef.current = input; // Cache for next time
       }
-      return false;
-    };
-
-    // Try immediately, then retry with delays to ensure DOM is ready
-    let attempts = 0;
-    const maxAttempts = 5;
-    const tryFocus = () => {
-      if (focusTerminalInput() || attempts >= maxAttempts) {
-        return;
-      }
-      attempts++;
-      setTimeout(tryFocus, 200);
-    };
-
-    // Start focus attempts
-    tryFocus();
-
-    // Also refocus when clicking anywhere on the terminal container (except Jody widget)
-    const handleContainerClick = (e) => {
-      // Don't refocus if clicking on Jody widget (z-index 9999 elements)
-      const jodyElement = e.target.closest('[style*="z-index: 9999"]');
-      if (!jodyElement) {
-        setTimeout(focusTerminalInput, 50);
-      }
-    };
-
-    const container = terminalContainerRef.current;
-    if (container) {
-      container.addEventListener('click', handleContainerClick);
     }
     
-    // Cleanup
+    if (!input || !(input instanceof HTMLElement)) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[terminal] snapCursor', { reason, success: false, error: 'input not found' });
+      }
+      return false;
+    }
+    
+    try {
+      // Focus the input
+      input.focus();
+      
+      // Set cursor to end
+      if (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement) {
+        const length = input.value ? input.value.length : 0;
+        input.setSelectionRange(length, length);
+      } else if (input.contentEditable === 'true') {
+        // Handle contentEditable
+        const range = document.createRange();
+        const selection = window.getSelection();
+        range.selectNodeContents(input);
+        range.collapse(false); // Collapse to end
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[terminal] snapCursor', { reason, success: true });
+      }
+      return true;
+    } catch (e) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[terminal] snapCursor', { reason, success: false, error: e.message });
+      }
+      return false;
+    }
+  };
+
+  // Focus loop after Jody renders
+  useEffect(() => {
+    if (!jodyRenderedRef.current) return;
+    
+    let attempts = 0;
+    const maxAttempts = 20; // 2 seconds at 100ms intervals
+    const focusInterval = setInterval(() => {
+      const success = snapCursor('jody-ready');
+      attempts++;
+      if (success || attempts >= maxAttempts) {
+        clearInterval(focusInterval);
+      }
+    }, 100);
+    
+    return () => clearInterval(focusInterval);
+  }, [jodyRenderedRef.current]);
+
+  // Global interaction listeners (capture mode)
+  useEffect(() => {
+    // Throttle mousemove to 100ms
+    let mousemoveTimeout = null;
+    const handleMouseMove = (e) => {
+      // Check if target is inside Jody widget
+      if (e.target) {
+        const jodyWidget = e.target.closest('[data-jody-widget]');
+        if (jodyWidget) return; // Skip if inside Jody widget
+      }
+      
+      if (mousemoveTimeout) return;
+      mousemoveTimeout = setTimeout(() => {
+        snapCursor('mousemove');
+        mousemoveTimeout = null;
+      }, 100);
+    };
+
+    const handleInteraction = (e) => {
+      // Check if target is inside Jody widget
+      if (e.target) {
+        const jodyWidget = e.target.closest('[data-jody-widget]');
+        if (jodyWidget) return; // Skip if inside Jody widget
+      }
+      
+      const reason = e.type === 'keydown' ? 'keydown' :
+                     e.type === 'mousedown' ? 'mousedown' :
+                     e.type === 'touchstart' ? 'touchstart' : 'click';
+      snapCursor(reason);
+    };
+
+    // Attach listeners with capture mode
+    window.addEventListener('keydown', handleInteraction, { capture: true });
+    window.addEventListener('mousedown', handleInteraction, { capture: true });
+    window.addEventListener('touchstart', handleInteraction, { capture: true });
+    window.addEventListener('mousemove', handleMouseMove, { capture: true });
+
     return () => {
-      if (container) {
-        container.removeEventListener('click', handleContainerClick);
+      window.removeEventListener('keydown', handleInteraction, { capture: true });
+      window.removeEventListener('mousedown', handleInteraction, { capture: true });
+      window.removeEventListener('touchstart', handleInteraction, { capture: true });
+      window.removeEventListener('mousemove', handleMouseMove, { capture: true });
+      if (mousemoveTimeout) {
+        clearTimeout(mousemoveTimeout);
       }
     };
   }, []);
+
+  // Initial focus attempt on mount
+  useEffect(() => {
+    const tryFocus = () => {
+      snapCursor('mount');
+    };
+    
+    // Try immediately and after a short delay
+    tryFocus();
+    setTimeout(tryFocus, 100);
+    setTimeout(tryFocus, 500);
+  }, [phase]);
 
   // Note: EmailModal now handles redirect directly, so this callback is no longer needed
   // Keeping it as a no-op in case EmailModal still calls it
@@ -227,6 +407,11 @@ const TerminalEmulator = () => {
       console.log('[TerminalEmulator] Setting isAccessGranted to true, phase to terminal1');
       return; // Exit early after successful code entry to prevent further processing
     }
+    
+    // NOTE: Auto-advance is DISABLED by default
+    // Terminal 1 must wait for user to enter the secret code
+    // Only demo mode (?demo=1) would allow auto-advance, but that's not implemented
+    // to prevent accidental auto-jumps
     
     // Only process other inputs if intro is complete or access is granted
     if (!isIntroComplete && !isAccessGranted) return;
@@ -335,26 +520,58 @@ const TerminalEmulator = () => {
     );
   }
 
+  // Protocol variant transition overlay (shown when intro completes and variant is protocol)
+  if (isIntroComplete && entryVariant === 'protocol') {
+    return (
+      <div
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          backgroundColor: '#000',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+        }}
+      >
+        {/* Optional: Add "Routing..." text if desired */}
+        {/* <div style={{ color: '#ff0000', fontFamily: 'monospace', fontSize: '1.5rem' }}>
+          Routing...
+        </div> */}
+      </div>
+    );
+  }
+
+  // Gate Terminal UI rendering - only show if variant is 'terminal'
+  // If variant is 'protocol', never show Terminal UI (even during intro, to prevent flash)
+  // If variant is null (not yet determined), show Terminal UI during intro
+  const shouldShowTerminal = entryVariant === 'terminal' || (entryVariant === null && phase === 'intro');
+
   return (
     <>
-      <div 
-        ref={terminalContainerRef}
-        className="terminal-container" 
-        style={{ width: '100%', height: '100vh', display: phase === 'lightning' ? 'none' : 'block' }}
-      >
-        <Terminal
-          name="THE CONTROL ROOM"
-          colorMode={ColorMode.Dark}
-          onInput={handleInput}
-          prompt="$"
-          height="100vh"
+      {shouldShowTerminal && (
+        <div 
+          ref={terminalContainerRef}
+          className="terminal-container" 
+          style={{ width: '100%', height: '100vh', display: phase === 'lightning' ? 'none' : 'block' }}
         >
-          {lineData}
-        </Terminal>
-      </div>
+          <Terminal
+            name="THE CONTROL ROOM"
+            colorMode={ColorMode.Dark}
+            onInput={handleInput}
+            prompt="$"
+            height="100vh"
+          >
+            {lineData}
+          </Terminal>
+        </div>
+      )}
 
       {(() => {
-        console.log('[TerminalEmulator] Render - showEmailModal:', showEmailModal, 'phase:', phase);
+        console.log('[TerminalEmulator] Render - showEmailModal:', showEmailModal, 'phase:', phase, 'entryVariant:', entryVariant);
         return null;
       })()}
       <EmailModal
@@ -366,8 +583,16 @@ const TerminalEmulator = () => {
         onEmailSubmitted={handleEmailSubmitted}
       />
       
-      {/* Jody Assistant - First IBM Terminal - Hide when email modal is open */}
-      {!showEmailModal && phase !== 'lightning' && <JodyAssistant variant="em1" autoShowDelayMs={4000} />}
+      {/* Jody Assistant - First IBM Terminal - Hide when email modal is open or protocol variant */}
+      {shouldShowTerminal && !showEmailModal && phase !== 'lightning' && (
+        <JodyAssistant 
+          variant="em1" 
+          autoShowDelayMs={4000}
+          onRender={() => {
+            jodyRenderedRef.current = true;
+          }}
+        />
+      )}
       
       {/* debug badge: shows which app and API base are in use */}
 <div style={{

@@ -39,14 +39,9 @@ export async function GET(req: NextRequest) {
 
     await ensureAssociateMinimal(email);
 
+    // Fetch user (no Ledger dependency)
     const user = await prisma.user.findUnique({
       where: { email },
-      include: {
-        ledger: {
-          orderBy: { createdAt: 'desc' },
-          take: 3,
-        },
-      },
     });
 
     console.log('[points/me] User lookup', { 
@@ -106,78 +101,32 @@ export async function GET(req: NextRequest) {
     `;
     const friendsPurchasedCount = Number(friendsPurchasedCountResult[0]?.count || 0);
 
-    // Format recent ledger entries
-    const recent = user.ledger.map((entry) => ({
-      ts: entry.createdAt.toISOString(),
-      label: entry.note || `${entry.type} - ${entry.points > 0 ? `+${entry.points} pts` : ''} ${Number(entry.usd) > 0 ? `+$${Number(entry.usd).toFixed(2)}` : ''}`,
-      deltaPts: entry.points,
-      deltaUsd: Number(entry.usd),
-    }));
+    // Recent activity (empty array - Ledger removed)
+    const recent: Array<{ ts: string; label: string; deltaPts: number; deltaUsd: number }> = [];
 
     // Determine if this is a first-time visitor (created within last hour)
     // Users created more than 1 hour ago are considered returning visitors
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
     const createdNow = user.createdAt > oneHourAgo;
 
-    // Check daily share status for each platform
-    const facebookEarnedToday = await hasDailySharePoints(user.id, 'facebook');
-    const xEarnedToday = await hasDailySharePoints(user.id, 'x');
-    const instagramEarnedToday = await hasDailySharePoints(user.id, 'instagram');
+    // Daily share checks disabled (Ledger removed)
+    const facebookEarnedToday = false;
+    const xEarnedToday = false;
+    const instagramEarnedToday = false;
 
-    // Get most recent ledger entry to determine lastEvent
-    const mostRecentLedger = user.ledger.length > 0 ? user.ledger[0] : null;
+    // Determine lastEvent from most recent purchase (Ledger removed)
     let lastEvent: { type: string; referrerName?: string | null } | null = null;
-
-    if (mostRecentLedger) {
-      let eventType: string | null = null;
-      let referrerName: string | null = null;
-
-      if (mostRecentLedger.type === 'PURCHASE_BOOK') {
-        eventType = 'purchase_book';
-        // Try to find referrer from Purchase source or associate code
-        const purchase = await prisma.purchase.findFirst({
-          where: { userId: user.id },
-          orderBy: { createdAt: 'desc' },
-          select: { source: true },
-        });
-        
-        if (purchase?.source) {
-          // Source might be an associate code - try to resolve to name
-          const associate = await prisma.user.findFirst({
-            where: {
-              OR: [
-                { code: purchase.source.toLowerCase() },
-                { referralCode: purchase.source.toLowerCase() },
-              ],
-            },
-            select: { firstName: true, fname: true },
-          });
-          
-          if (associate) {
-            referrerName = associate.firstName || associate.fname || null;
-          } else {
-            // If not found, use source as-is (might be a name)
-            referrerName = purchase.source;
-          }
-        }
-      } else if (mostRecentLedger.type === 'SHARE_FB') {
-        eventType = 'share_fb';
-      } else if (mostRecentLedger.type === 'SHARE_X') {
-        eventType = 'share_x';
-      } else if (mostRecentLedger.type === 'SHARE_IG') {
-        eventType = 'share_ig';
-      } else if (mostRecentLedger.type === 'REFER_FRIEND_PAYOUT') {
-        eventType = 'invite_friend';
-      } else if (mostRecentLedger.type === 'REFER_EMAIL') {
-        eventType = 'invite_friend';
-      }
-
-      if (eventType) {
-        lastEvent = {
-          type: eventType,
-          referrerName: referrerName || null,
-        };
-      }
+    const mostRecentPurchase = await prisma.purchase.findFirst({
+      where: { userId: user.id },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+    
+    if (mostRecentPurchase) {
+      lastEvent = {
+        type: 'purchase_book',
+        referrerName: null,
+      };
     }
 
     console.log('[points/me] Returning data', {

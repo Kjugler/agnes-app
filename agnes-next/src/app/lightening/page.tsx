@@ -68,10 +68,11 @@ export default function LighteningPage() {
       writeContestEmail(normalizedEmail);
       
       // Also call login API to set cookie (ensures cookie is set on ngrok domain)
+      // Skip heavy retroactive attribution for performance
       fetch('/api/contest/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: normalizedEmail }),
+        body: JSON.stringify({ email: normalizedEmail, skipAttribution: true }),
         credentials: 'include',
       })
         .then((res) => res.json())

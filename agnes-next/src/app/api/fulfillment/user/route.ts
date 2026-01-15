@@ -1,4 +1,5 @@
 // agnes-next/src/app/api/fulfillment/user/route.ts
+// Uses User model (fulfillment workers are just users)
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
@@ -15,23 +16,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Upsert fulfillment user by email
-    const fulfillmentUser = await prisma.fulfillmentUser.upsert({
+    // Upsert user by email (fulfillment workers are users)
+    // If user doesn't exist, create with a referral code
+    const user = await prisma.user.upsert({
       where: { email },
       update: {
-        name,
-        // email stays the same
+        fname: name.split(' ')[0] || name,
+        lname: name.split(' ').slice(1).join(' ') || null,
+        firstName: name.split(' ')[0] || name,
       },
       create: {
-        name,
         email,
+        fname: name.split(' ')[0] || name,
+        lname: name.split(' ').slice(1).join(' ') || null,
+        firstName: name.split(' ')[0] || name,
+        code: `FULF${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
+        referralCode: `FULF${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
       },
     });
 
     return NextResponse.json({
-      id: fulfillmentUser.id,
-      name: fulfillmentUser.name,
-      email: fulfillmentUser.email,
+      id: user.id,
+      name: name,
+      email: user.email,
     });
   } catch (error) {
     console.error('[fulfillment/user] Error:', error);

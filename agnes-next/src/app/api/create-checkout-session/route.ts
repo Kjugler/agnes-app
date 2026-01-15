@@ -39,49 +39,97 @@ export async function POST(req: NextRequest) {
       v?: string;
       origin?: string;
       email?: string;
+      checkoutEmail?: string; // Email from referral checkout form
       contestPlayerId?: string;
     };
 
-    // Read email from header first, then fall back to cookie
-    const headerEmail = req.headers.get('x-user-email');
+    // Read referral cookies (ap_ref_*) for referral traffic
+    const cookieHeader = req.headers.get('cookie') || '';
+    const apRefCodeMatch = cookieHeader.match(/ap_ref_code=([^;]+)/);
+    const apRefSrcMatch = cookieHeader.match(/ap_ref_src=([^;]+)/);
+    const apRefVMatch = cookieHeader.match(/ap_ref_v=([^;]+)/);
+    const apCheckoutEmailMatch = cookieHeader.match(/ap_checkout_email=([^;]+)/);
+    
+    const apRefCode = apRefCodeMatch ? decodeURIComponent(apRefCodeMatch[1]) : null;
+    const apRefSrc = apRefSrcMatch ? decodeURIComponent(apRefSrcMatch[1]) : null;
+    const apRefV = apRefVMatch ? decodeURIComponent(apRefVMatch[1]) : null;
+    
+    // Read checkoutEmail: prefer body, fallback to cookie
+    const checkoutEmail = body?.checkoutEmail || (apCheckoutEmailMatch ? decodeURIComponent(apCheckoutEmailMatch[1]) : null);
+    const checkoutEmailSource = body?.checkoutEmail ? 'body' : (apCheckoutEmailMatch ? 'cookie' : 'none');
+    
+    // Determine if this is referral traffic (has ap_ref_code cookie)
+    const isReferralTraffic = !!apRefCode;
+    
+    // Declare contest user identifiers at top level so they're always in scope
+    let contestUserId: string | null = null;
+    let contestUserCode: string | null = null;
+    
+    // CRITICAL: Always try to get buyer's email and contestUserId, even for referral traffic
+    // The referral code (ref) is for the DISCOUNT and REFERRER commission, not buyer attribution
+    // Buyer attribution should use the BUYER's email/contestUserId, not the referrer's
+    
+    // Try to get email from multiple sources (prioritize checkoutEmail from form)
     let email: string | null = null;
     
-    if (headerEmail) {
-      email = normalizeEmail(headerEmail);
-      console.log('[create-checkout-session] Email from header', { email, headerEmail });
+    if (checkoutEmail) {
+      email = normalizeEmail(checkoutEmail);
+      console.log('[create-checkout-session] Email from checkout form', { email, checkoutEmail });
     } else {
-      // Fallback to cookie (source of truth for contest session)
-      const cookieHeader = req.headers.get('cookie') || '';
-      const contestEmailMatch = cookieHeader.match(/contest_email=([^;]+)/);
-      const userEmailMatch = cookieHeader.match(/user_email=([^;]+)/);
-      const cookieEmail = contestEmailMatch?.[1] || userEmailMatch?.[1];
-      
-      if (cookieEmail) {
-        try {
-          email = normalizeEmail(decodeURIComponent(cookieEmail));
-          console.log('[create-checkout-session] Email from cookie', { email, cookieEmail });
-        } catch (err) {
-          console.warn('[create-checkout-session] Failed to decode cookie email', err);
+      // Try header (X-User-Email)
+      const headerEmail = req.headers.get('x-user-email');
+      if (headerEmail) {
+        email = normalizeEmail(headerEmail);
+        console.log('[create-checkout-session] Email from header', { email, headerEmail });
+      } else {
+        // Try cookies (contest_email or user_email)
+        const contestEmailMatch = cookieHeader.match(/contest_email=([^;]+)/);
+        const userEmailMatch = cookieHeader.match(/user_email=([^;]+)/);
+        const cookieEmail = contestEmailMatch?.[1] || userEmailMatch?.[1];
+        
+        if (cookieEmail) {
+          try {
+            email = normalizeEmail(decodeURIComponent(cookieEmail));
+            console.log('[create-checkout-session] Email from cookie', { email, cookieEmail });
+          } catch (err) {
+            console.warn('[create-checkout-session] Failed to decode cookie email', err);
+          }
         }
       }
     }
     
-    // Ensure associate exists (local DB operation, no secrets needed)
+    // CRITICAL: Always ensure associate exists if we have an email (even for referral traffic)
+    // This ensures the buyer's contestUserId is set correctly for attribution
     if (email) {
       try {
-        console.log('[create-checkout-session] Ensuring associate exists for', email);
+        console.log('[create-checkout-session] Ensuring associate exists for buyer', { 
+          email, 
+          isReferralTraffic,
+          refCode: apRefCode || 'none'
+        });
         const associate = await ensureAssociateMinimal(email);
-        console.log('[create-checkout-session] Associate ensured', { 
+        contestUserId = associate.id;
+        contestUserCode = associate.code || associate.referralCode || null;
+        console.log('[create-checkout-session] Buyer associate ensured', { 
           id: associate.id, 
           code: associate.code,
-          email: associate.email 
+          email: associate.email,
+          contestUserId,
+          contestUserCode
         });
       } catch (associateErr: any) {
         console.error('[create-checkout-session] Associate ensure failed', {
           error: associateErr?.message,
+          email,
         });
         // Don't block checkout - continue with fallback
       }
+    } else {
+      console.log('[create-checkout-session] No email found - buyer attribution will rely on Stripe customer email', {
+        isReferralTraffic,
+        hasCheckoutEmail: !!checkoutEmail,
+        hasHeaderEmail: !!req.headers.get('x-user-email'),
+      });
     }
 
     // Use provided paths or fall back to defaults
@@ -96,26 +144,62 @@ export async function POST(req: NextRequest) {
 
     // Default to paperback if no product specified (for "Buy the Book" buttons)
     const product = body?.product || 'paperback';
+    
+    console.log('[create-checkout-session] Product selection', {
+      bodyProduct: body?.product,
+      finalProduct: product,
+      bodyKeys: Object.keys(body || {}),
+    });
 
+    // Use referral cookies if present (preferred over body params for referral traffic)
+    const refCode = apRefCode || body?.ref || body?.referralCode || body?.metadata?.referralCode;
+    const refSrc = apRefSrc || body?.src || body?.metadata?.src;
+    const refV = apRefV || body?.v || body?.metadata?.v;
+    
+    // For referral traffic: don't lock email (allow user to enter their own)
+    // For logged-in contest users: can prefill email
+    const lockEmail = !isReferralTraffic && !!email;
+    
     // Prepare request body for deepquill
     const proxyBody = {
       product,
       qty: body?.qty || 1,
-      ref: body?.ref || body?.referralCode || body?.metadata?.referralCode,
-      src: body?.src || body?.metadata?.src,
-      v: body?.v || body?.metadata?.v,
+      ref: refCode,
+      refCode: refCode, // Explicit field for deepquill
+      refSource: refSrc,
+      refVariant: refV,
+      src: refSrc,
+      v: refV,
       origin: body?.origin || body?.metadata?.origin,
-      email: body?.email || email || undefined,
+      email: lockEmail ? (body?.email || email || undefined) : undefined, // Only send email if locking
+      checkoutEmail: checkoutEmail || undefined, // Email captured from referral checkout form
+      lockEmail, // Flag to tell deepquill whether to lock email field
       metadata: {
         ...body?.metadata,
         action: 'buy_book',
-        source: body?.source || 'contest',
+        source: isReferralTraffic ? 'referral' : (body?.source || 'contest'),
         contest_email: email || 'unknown',
         contestPlayerId: body?.contestPlayerId,
       },
+      contestUserId: contestUserId || undefined, // Primary identifier for attribution
+      contestUserCode: contestUserCode || undefined, // Fallback identifier
+      contestEmail: email || undefined, // For email sending only
       success_url: successUrl,
       cancel_url: cancelUrl,
     };
+    
+    if (isReferralTraffic) {
+      console.log('[create-checkout-session] Referral traffic detected', {
+        refCode,
+        refSrc,
+        refV,
+        lockEmail,
+        hasEmail: !!email,
+        checkoutEmail: checkoutEmail || 'none',
+        checkoutEmailSource,
+      });
+      console.log(`[create-checkout-session] referral checkoutEmail source: ${checkoutEmailSource}`);
+    }
 
     // Proxy to deepquill
     const { data, status } = await proxyJson('/api/create-checkout-session', req, {

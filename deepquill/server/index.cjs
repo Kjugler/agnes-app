@@ -1,12 +1,42 @@
 // deepquill/server/index.cjs
+const path = require('path');
+const fs = require('fs');
+const dotenv = require('dotenv');
+
+// Load .env first (at the very top, before any other requires)
+// Use __dirname to always resolve relative to this file's location (cannot be confused)
+const ROOT = path.resolve(__dirname, '..'); // deepquill/
+const ENV_PATH = path.join(ROOT, '.env');
+const ENV_LOCAL_PATH = path.join(ROOT, '.env.local');
+
+console.log('[BOOT-ENV] cwd =', process.cwd());
+console.log('[BOOT-ENV] root =', ROOT);
+console.log('[BOOT-ENV] .env =', ENV_PATH, 'exists?', fs.existsSync(ENV_PATH));
+console.log('[BOOT-ENV] .env.local =', ENV_LOCAL_PATH, 'exists?', fs.existsSync(ENV_LOCAL_PATH));
+
+const r1 = dotenv.config({ path: ENV_PATH });
+console.log('[BOOT-ENV] dotenv .env loaded?', !r1.error, 'keys:', r1.parsed ? Object.keys(r1.parsed).length : 0);
+
+const r2 = dotenv.config({ path: ENV_LOCAL_PATH, override: true });
+console.log('[BOOT-ENV] dotenv .env.local loaded?', !r2.error, 'keys:', r2.parsed ? Object.keys(r2.parsed).length : 0);
+
+// Ensure DATABASE_URL is set for Prisma (even if not in .env)
+// This prevents the adapter from trying to read undefined
+if (!process.env.DATABASE_URL) {
+  const dbPath = path.join(ROOT, 'dev.db');
+  process.env.DATABASE_URL = `file:${dbPath}`;
+  console.log('[BOOT-ENV] Set DATABASE_URL fallback:', process.env.DATABASE_URL);
+} else {
+  console.log('[BOOT-ENV] DATABASE_URL already set:', process.env.DATABASE_URL.substring(0, 30) + '...');
+}
+
+console.log('[BOOT-ENV] STRIPE_SECRET_KEY present?', !!process.env.STRIPE_SECRET_KEY);
+console.log('[BOOT-ENV] STRIPE_WEBHOOK_SECRET present?', !!process.env.STRIPE_WEBHOOK_SECRET);
+
 console.log('🟢 Booting deepquill API…');
 
-const path = require('path');
 const express = require('express');
 const cors = require('cors');
-
-// Load env FIRST (before any other imports that might use env vars)
-require('dotenv').config({ path: require('path').join(__dirname, '..', '.env'), quiet: true });
 
 // Load and validate env config (will throw if STRIPE_SECRET_KEY is missing/invalid)
 let envConfig;
@@ -63,6 +93,23 @@ console.log('✅ Mounted /api/stripe/webhook (raw body handler)');
 // JSON middleware for all other routes
 app.use(express.json());
 
+// Fulfillment admin routes
+const fulfillmentQueueRouter = require('../api/fulfillment-queue.cjs');
+app.use('/api', fulfillmentQueueRouter);
+console.log('✅ Mounted /api/admin/fulfillment/queue');
+
+const fulfillmentMarkShippedRouter = require('../api/fulfillment-mark-shipped.cjs');
+app.use('/api', fulfillmentMarkShippedRouter);
+console.log('✅ Mounted /api/admin/fulfillment/mark-shipped');
+
+const fulfillmentNextLabelRouter = require('../api/fulfillment-next-label.cjs');
+app.use('/api', fulfillmentNextLabelRouter);
+console.log('✅ Mounted /api/admin/fulfillment/next-label');
+
+const fulfillmentPrintLabelRouter = require('../api/fulfillment-print-label.cjs');
+app.use('/api', fulfillmentPrintLabelRouter);
+console.log('✅ Mounted /api/admin/fulfillment/print-label');
+
 // health check
 app.get('/ping', (req, res) => res.send('pong'));
 
@@ -94,15 +141,44 @@ console.log("MAILCHIMP_FROM_EMAIL:", process.env.MAILCHIMP_FROM_EMAIL ? "loaded"
 const checkoutHandler = require('../api/create-checkout-session.cjs');
 app.post('/api/create-checkout-session', checkoutHandler);
 
+// Stripe session retrieval (for agnes-next finalize route)
+const stripeSessionHandler = require('../api/stripe-session.cjs');
+app.post('/api/stripe/session', stripeSessionHandler);
+console.log('✅ Mounted /api/stripe/session');
+
+// eBook download endpoint
+const ebookDownloadRouter = require('../api/ebook-download.cjs');
+app.use('/api/ebook', ebookDownloadRouter);
+console.log('✅ Mounted /api/ebook/download');
+
+// Debug endpoints (dev only)
+const debugLastCheckoutRouter = require('../api/debug-last-checkout.cjs');
+app.use('/api', debugLastCheckoutRouter);
+console.log('✅ Mounted /api/debug/last-checkout (dev only)');
+
+const prismaHealthRouter = require('../api/debug/prisma-health.cjs');
+app.use('/api/debug', prismaHealthRouter);
+console.log('✅ Mounted /api/debug/prisma-health (dev only)');
+
 // Referrals API
 const referralsRouter = require('../api/award-referral-commission.cjs');
 app.use('/api/referrals', referralsRouter);
 console.log('✅ Mounted /api/referrals');
 
+// Referral email endpoint (proxied from agnes-next)
+const referralEmailRouter = require('../api/referral-email.cjs');
+app.use('/api/referral-email', referralEmailRouter);
+console.log('✅ Mounted /api/referral-email');
+
 // Admin API (daily digests)
 const adminDigestsRouter = require('../api/send-daily-digests.cjs');
 app.use('/admin/referrals', adminDigestsRouter);
 console.log('✅ Mounted /admin/referrals');
+
+// Debug variant logging route
+const debugVariantRouter = require('./routes/debugVariant.cjs');
+app.post('/api/debug/variant', debugVariantRouter);
+console.log('✅ Mounted /api/debug/variant');
 
 // Refer-friend API
 const referFriendRouter = require('./routes/referFriend.cjs');
@@ -118,11 +194,6 @@ console.log('✅ Mounted /api/orders');
 const adminOrdersRouter = require('./routes/adminOrders.cjs');
 app.use(adminOrdersRouter);
 console.log('✅ Mounted /api/admin/orders');
-
-// eBook download endpoint (secure token-based)
-const ebookDownloadRouter = require('../api/ebook-download.cjs');
-app.use('/api', ebookDownloadRouter);
-console.log('✅ Mounted /api/ebook/download');
 
 // Debug endpoint (dev only)
 if (envConfig.DEBUG) {

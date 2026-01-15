@@ -2,16 +2,32 @@ import { REFER_VIDEOS, ReferVideoId } from '@/config/referVideos';
 import ReferActions from './ReferActions';
 
 interface ReferPageProps {
-  searchParams: {
+  searchParams: Promise<{
+    code?: string;
+    v?: string;
+    src?: string;
+  }> | {
     code?: string;
     v?: string;
     src?: string;
   };
 }
 
-export default function ReferPage({ searchParams }: ReferPageProps) {
-  const referralCode = (searchParams.code || '').trim();
-  const videoIdParam = (searchParams.v || 'fb1').trim() as ReferVideoId;
+export default async function ReferPage({ searchParams }: ReferPageProps) {
+  // Handle Next.js dynamic searchParams (may be Promise in newer versions)
+  const params = searchParams instanceof Promise ? await searchParams : searchParams;
+  
+  // Dev-only logging to confirm agnes-next handles the /refer route
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[REFER HIT] handled by agnes-next', {
+      code: params.code,
+      v: params.v,
+      src: params.src,
+    });
+  }
+
+  const referralCode = (params.code || '').trim();
+  const videoIdParam = (params.v || 'fb1').trim() as ReferVideoId;
 
   const videoConfig =
     REFER_VIDEOS.find((v) => v.id === videoIdParam) ?? REFER_VIDEOS[0];

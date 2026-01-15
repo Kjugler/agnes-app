@@ -39,24 +39,14 @@ async function handleBookPurchase(email: string) {
     return NextResponse.json({ ok: true, awarded: false, total: user.points });
   }
 
-  const updated = await prisma.$transaction(async (tx) => {
-    await tx.ledger.create({
-      data: {
-        userId: user.id,
-        type: 'PURCHASE_BOOK',
-        points: BOOK_POINTS,
-        note: 'checkout bonus',
-      },
-    });
-
-    return tx.user.update({
-      where: { id: user.id },
-      data: {
-        points: { increment: BOOK_POINTS },
-        earnedPurchaseBook: true,
-      },
-      select: { points: true },
-    });
+  // Award points (Ledger removed)
+  const updated = await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      points: { increment: BOOK_POINTS },
+      earnedPurchaseBook: true,
+    },
+    select: { points: true },
   });
 
   // Check and award Rabbit 1 after purchase
@@ -114,58 +104,13 @@ export async function POST(req: NextRequest) {
     } else if (map.type === 'SHARE_IG') {
       pointsAwarded = await awardDailySharePoints(user.id, 'instagram');
       alreadyAwarded = pointsAwarded === 0;
-    } else if (
-      map.points &&
-      (map.type === 'SHARE_TRUTH' ||
-        map.type === 'SHARE_TT' ||
-        map.type === 'SIGNUP_BONUS')
-    ) {
-      // Other share types and signup bonus still use the old logic
-      const exists = await prisma.ledger.findFirst({
-        where: {
-          userId: user.id,
-          type: map.type,
-          ...(map.type === 'SIGNUP_BONUS'
-            ? {}
-            : { createdAt: { gte: startOfToday() } }),
-        },
-        select: { id: true },
-      });
-      alreadyAwarded = Boolean(exists);
-
-      if (!alreadyAwarded && map.points) {
-        await prisma.$transaction([
-          prisma.ledger.create({
-            data: {
-              userId: user.id,
-              type: map.type,
-              points: map.points,
-              note: `Auto award ${action}`,
-            },
-          }),
-          prisma.user.update({
-            where: { id: user.id },
-            data: { points: { increment: map.points } },
-          }),
-        ]);
-        pointsAwarded = map.points;
-      }
     } else if (map.points) {
-      // Non-share actions (contest_join, subscribe_digest, etc.)
-      await prisma.$transaction([
-        prisma.ledger.create({
-          data: {
-            userId: user.id,
-            type: map.type,
-            points: map.points,
-            note: `Auto award ${action}`,
-          },
-        }),
-        prisma.user.update({
-          where: { id: user.id },
-          data: { points: { increment: map.points } },
-        }),
-      ]);
+      // All other actions (contest_join, subscribe_digest, signup_bonus, etc.)
+      // Ledger removed - just update user points
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { points: { increment: map.points } },
+      });
       pointsAwarded = map.points;
     }
 

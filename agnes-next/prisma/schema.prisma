@@ -19,6 +19,7 @@ model User {
   referralCode          String               @unique
   referredBy            String?
   createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
   points                Int                  @default(0)
   earnedPurchaseBook    Boolean              @default(false)
   rabbit1Completed      Boolean              @default(false)
@@ -46,7 +47,6 @@ model User {
   badges                UserBadge[]
   posts                 Post[]
   purchases             Purchase[]
-  ledger                Ledger[]
   referralConversions   ReferralConversion[]
   signals               Signal[]
   signalReplies         SignalReply[]
@@ -54,38 +54,6 @@ model User {
   reviews               Review[]
 
   @@index([referralCode])
-}
-
-model Ledger {
-  id        String     @id @default(cuid())
-  userId    String
-  type      LedgerType
-  points    Int        @default(0)
-  usd       Decimal    @default(0)
-  note      String?
-  createdAt DateTime   @default(now())
-  user      User       @relation(fields: [userId], references: [id])
-
-  @@index([userId, createdAt])
-}
-
-enum LedgerType {
-  PURCHASE_BOOK
-  REFER_FRIEND_PAYOUT
-  REFER_EMAIL
-  REFER_PURCHASE
-  ASSOCIATE_PAYOUT
-  MANUAL_ADJUST
-  SHARE_X
-  SHARE_IG
-  SHARE_FB
-  SHARE_TRUTH
-  SHARE_TT
-  CONTEST_JOIN
-  SUBSCRIBE_DIGEST
-  TRIVIA
-  RABBIT_BONUS
-  SIGNUP_BONUS
 }
 
 model Event {
@@ -136,16 +104,20 @@ model Post {
 }
 
 model Purchase {
-  id        String   @id @default(cuid())
-  user      User     @relation(fields: [userId], references: [id])
-  userId    String
-  sessionId String   @unique
-  amount    Int?
-  currency  String?
-  source    String?
-  createdAt DateTime @default(now())
+  id             String   @id @default(cuid())
+  stripeSessionId String  @unique  // Changed from sessionId to match deepquill schema
+  createdAt      DateTime @default(now())
 
-  @@index([userId, createdAt])
+  userId         String?  // Buyer user ID (contest_user_id from metadata)
+  userCode       String?  // Buyer user code (fallback)
+  product        String?  // ebook, paperback, audio_preorder
+  amountPaidCents Int?    // Amount buyer actually paid (after discount)
+  pointsAwarded   Int      @default(0) // Points awarded for this purchase
+  
+  user User? @relation(fields: [userId], references: [id])
+  
+  @@index([userId])
+  @@index([stripeSessionId])
 }
 
 model ReferralConversion {
