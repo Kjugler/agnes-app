@@ -1,17 +1,21 @@
 import { REFER_VIDEOS, ReferVideoId } from '@/config/referVideos';
 import ReferActions from './ReferActions';
 
-interface ReferPageProps {
-  searchParams: {
-    code?: string;
-    v?: string;
-    src?: string;
-  };
-}
+type SearchParams = Promise<{
+  code?: string;
+  v?: string;
+  src?: string;
+}>;
 
-export default function ReferPage({ searchParams }: ReferPageProps) {
-  const referralCode = (searchParams.code || '').trim();
-  const videoIdParam = (searchParams.v || 'fb1').trim() as ReferVideoId;
+export default async function ReferPage({
+  searchParams,
+}: {
+  searchParams?: SearchParams;
+}) {
+  // Next.js 15: searchParams is always a Promise
+  const sp = (await searchParams) ?? {};
+  const referralCode = (sp.code || '').trim();
+  const videoIdParam = (sp.v || 'fb1').trim() as ReferVideoId;
 
   const videoConfig =
     REFER_VIDEOS.find((v) => v.id === videoIdParam) ?? REFER_VIDEOS[0];

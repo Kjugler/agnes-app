@@ -179,7 +179,7 @@ async function handlePoints(req: NextRequest) {
       actor: { id: user.id, displayName },
       totalPoints,
       breakdown,
-      recent: recentEvents.map((e) => ({
+      recent: recentEvents.map((e: { id: string; type: string; createdAt: Date }) => ({
         id: e.id,
         type: e.type,
         at: e.createdAt,

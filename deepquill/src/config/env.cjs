@@ -52,8 +52,41 @@ if (!exports.EBOOK_FILE_PATH) {
 // eBook link TTL (days)
 exports.EBOOK_LINK_TTL_DAYS = parseInt(process.env.EBOOK_LINK_TTL_DAYS || '7', 10);
 
-// Site URL (for download links)
-exports.SITE_URL = process.env.SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://agnes-dev.ngrok-free.app';
+// Site URL resolution with validation
+function resolveSiteUrl() {
+  const raw = process.env.SITE_URL || process.env.NEXT_PUBLIC_SITE_URL;
+  
+  if (!raw) {
+    const isDev = (process.env.NODE_ENV || 'development') === 'development';
+    if (isDev) {
+      return 'http://localhost:3002';
+    }
+    return null;
+  }
+  
+  // Trim whitespace and remove trailing slash
+  let url = raw.trim();
+  if (url.endsWith('/')) {
+    url = url.slice(0, -1);
+  }
+  
+  // Validate it starts with http
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    throw new Error(`[ENV] SITE_URL must start with http:// or https://, got: ${url}`);
+  }
+  
+  return url;
+}
+
+const resolvedSiteUrl = resolveSiteUrl();
+exports.SITE_URL = resolvedSiteUrl;
+
+// Log resolved SITE_URL at module load (will be printed during boot)
+if (resolvedSiteUrl) {
+  console.log(`[ENV] Resolved SITE_URL=${resolvedSiteUrl}`);
+} else {
+  console.warn('[ENV] SITE_URL not configured');
+}
 
 // Other env vars
 exports.NODE_ENV = process.env.NODE_ENV || 'development';

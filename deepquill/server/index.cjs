@@ -4,9 +4,59 @@ console.log('🟢 Booting deepquill API…');
 const path = require('path');
 const express = require('express');
 const cors = require('cors');
+const fs = require('fs');
 
 // Load env FIRST (before any other imports that might use env vars)
-require('dotenv').config({ path: require('path').join(__dirname, '..', '.env'), quiet: true });
+// Priority: .env.local (highest) > .env > process.env
+const envLocalPath = path.join(__dirname, '..', '.env.local');
+const envPath = path.join(__dirname, '..', '.env');
+
+// Load .env.local first (highest priority)
+if (fs.existsSync(envLocalPath)) {
+  require('dotenv').config({ path: envLocalPath, override: false });
+}
+
+// Then load .env (lower priority, won't override .env.local)
+if (fs.existsSync(envPath)) {
+  require('dotenv').config({ path: envPath, override: false });
+}
+
+// Check for SITE_URL conflicts between .env.local and .env
+function checkSiteUrlConflict() {
+  let envLocalSiteUrl = null;
+  let envSiteUrl = null;
+  
+  if (fs.existsSync(envLocalPath)) {
+    const envLocalContent = fs.readFileSync(envLocalPath, 'utf8');
+    const match = envLocalContent.match(/^SITE_URL\s*=\s*(.+)$/m);
+    if (match) {
+      envLocalSiteUrl = match[1].trim().replace(/^["']|["']$/g, '');
+    }
+  }
+  
+  if (fs.existsSync(envPath)) {
+    const envContent = fs.readFileSync(envPath, 'utf8');
+    const match = envContent.match(/^SITE_URL\s*=\s*(.+)$/m);
+    if (match) {
+      envSiteUrl = match[1].trim().replace(/^["']|["']$/g, '');
+    }
+  }
+  
+  if (envLocalSiteUrl && envSiteUrl && envLocalSiteUrl !== envSiteUrl) {
+    console.warn('');
+    console.warn('⚠️  [ENV WARNING] .env.local SITE_URL differs from .env SITE_URL');
+    console.warn(`   .env.local SITE_URL: ${envLocalSiteUrl}`);
+    console.warn(`   .env SITE_URL: ${envSiteUrl}`);
+    console.warn('   Using .env.local value (highest priority)');
+    console.warn('');
+  }
+}
+
+checkSiteUrlConflict();
+
+// Log DATABASE_URL truth (DO NO HARM - just logging)
+console.log('[BOOT] cwd=', process.cwd());
+console.log('[BOOT] DATABASE_URL=', process.env.DATABASE_URL);
 
 // Load and validate env config (will throw if STRIPE_SECRET_KEY is missing/invalid)
 let envConfig;
@@ -17,8 +67,16 @@ try {
   process.exit(1);
 }
 
+// Log environment configuration
+console.log(`[ENV] NODE_ENV=${envConfig.NODE_ENV}`);
+if (envConfig.SITE_URL) {
+  console.log(`[ENV] Resolved SITE_URL=${envConfig.SITE_URL}`);
+} else {
+  console.warn('[ENV] SITE_URL not configured');
+}
+
 // Log Stripe configuration (safe - only shows last 6 chars)
-console.log(`[BOOT] Stripe mode=${envConfig.STRIPE_MODE} key=***${envConfig.STRIPE_KEY_FINGERPRINT} NODE_ENV=${envConfig.NODE_ENV}`);
+console.log(`[BOOT] Stripe mode=${envConfig.STRIPE_MODE} key=***${envConfig.STRIPE_KEY_FINGERPRINT}`);
 if (envConfig.STRIPE_WEBHOOK_SECRET) {
   console.log(`[BOOT] Stripe webhook secret configured (${envConfig.STRIPE_WEBHOOK_SECRET.substring(0, 10)}...)`);
 } else {
@@ -94,6 +152,11 @@ console.log("MAILCHIMP_FROM_EMAIL:", process.env.MAILCHIMP_FROM_EMAIL ? "loaded"
 const checkoutHandler = require('../api/create-checkout-session.cjs');
 app.post('/api/create-checkout-session', checkoutHandler);
 
+// Checkout session verification
+const verifySessionHandler = require('../api/checkout/verify-session.cjs');
+app.get('/api/checkout/verify-session', verifySessionHandler);
+console.log('✅ Mounted /api/checkout/verify-session');
+
 // Referrals API
 const referralsRouter = require('../api/award-referral-commission.cjs');
 app.use('/api/referrals', referralsRouter);
@@ -109,6 +172,11 @@ const referFriendRouter = require('./routes/referFriend.cjs');
 app.use('/api/refer-friend', referFriendRouter);
 console.log('✅ Mounted /api/refer-friend');
 
+// Referrals invite API (new endpoint for agnes-next)
+const referralsInviteRouter = require('../api/referrals/invite.cjs');
+app.use('/api/referrals', referralsInviteRouter);
+console.log('✅ Mounted /api/referrals/invite');
+
 // Orders API (create orders from Stripe)
 const ordersRouter = require('./routes/orders.cjs');
 app.use(ordersRouter);
@@ -123,6 +191,18 @@ console.log('✅ Mounted /api/admin/orders');
 const ebookDownloadRouter = require('../api/ebook-download.cjs');
 app.use('/api', ebookDownloadRouter);
 console.log('✅ Mounted /api/ebook/download');
+
+// Points award endpoint (for moderation approval)
+const pointsAwardHandler = require('../api/points/award.cjs');
+app.post('/api/points/award', async (req, res) => {
+  await pointsAwardHandler(req, res);
+});
+console.log('✅ Mounted /api/points/award');
+
+// Contest login endpoint (DB owner)
+const contestLoginHandler = require('../api/contest/login.cjs');
+app.post('/api/contest/login', contestLoginHandler);
+console.log('✅ Mounted /api/contest/login');
 
 // Debug endpoint (dev only)
 if (envConfig.DEBUG) {
@@ -140,6 +220,11 @@ if (envConfig.DEBUG) {
     });
   });
   console.log('✅ Mounted /api/debug/env (dev only)');
+  
+  // Debug Prisma endpoint (dev only)
+  const debugPrisma = require('../api/debug/prisma.cjs');
+  app.get('/api/debug/prisma', debugPrisma);
+  console.log('✅ Mounted /api/debug/prisma (dev only)');
 }
 
 const PORT = 5055;

@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { SignalStatus } from '@prisma/client';
 
-const SYSTEM_SIGNALS = [
+type SeedSignal = {
+  text: string;
+  isSystem: boolean;
+  status: SignalStatus;
+};
+
+const SYSTEM_SIGNALS: SeedSignal[] = [
   {
     text: 'Protocol Challenge is live. New signals are being monitored.',
     isSystem: true,

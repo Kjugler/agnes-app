@@ -229,9 +229,11 @@ export function ContestEntryForm({
         throw new Error(errorMessage);
       }
 
-      const data = (await res.json()) as { ok: boolean; id: string; email: string; name: string; code: string };
+      const data = (await res.json()) as
+        | { ok: true; id: string; email: string; name: string; code: string }
+        | { ok: false; error?: string };
       if (!data.ok) {
-        throw new Error(data?.['error'] || 'Could not save. Please try again.');
+        throw new Error(data.error || 'Could not save. Please try again.');
       }
 
       const associatePayload: AssociateCache = {

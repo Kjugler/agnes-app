@@ -10,14 +10,27 @@ import { normalizeEmail } from '@/lib/email';
 import { ensureAssociateMinimal } from '@/lib/associate';
 import { getEntryVariant, logEntryVariant } from '@/lib/entryVariant';
 import { proxyJson } from '@/lib/deepquillProxy';
-
-const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL ??
-  'https://agnes-dev.ngrok-free.app'; // safe default for dev
+import { getSiteUrl } from '@/lib/getSiteUrl';
 
 // Helper to build absolute URLs for Stripe redirects (Stripe requires absolute URLs)
-function withBase(path: string): string {
-  const url = `${SITE_URL.replace(/\/+$/, '')}${path}`;
+// GUARDRAIL: Use request origin, not env vars (prevents stale ngrok URLs)
+function buildAbsoluteUrl(req: NextRequest, path: string): string {
+  // Priority 1: Use request origin (most reliable, works with ngrok swaps)
+  const origin = req.headers.get('origin') || 
+                 req.headers.get('x-forwarded-host') ? 
+                   `${req.headers.get('x-forwarded-proto') || 'https'}://${req.headers.get('x-forwarded-host')}` :
+                   null;
+  
+  if (origin) {
+    const url = `${origin.replace(/\/+$/, '')}${path}`;
+    console.log('[create-checkout-session] Using request origin:', url);
+    return url;
+  }
+  
+  // Priority 2: Fallback to env var (only if origin unavailable)
+  const siteUrl = getSiteUrl();
+  const url = `${siteUrl.replace(/\/+$/, '')}${path}`;
+  console.warn('[create-checkout-session] Using env var fallback (origin unavailable):', url);
   return url;
 }
 
@@ -89,13 +102,22 @@ export async function POST(req: NextRequest) {
     const cancelPath = body?.cancelPath || '/contest';
     
     // Build absolute URLs for Stripe (Stripe requires absolute URLs)
+    // GUARDRAIL: Use request origin, not env vars (prevents stale ngrok URLs)
     const normalizedSuccessPath = successPath.startsWith('/') ? successPath : `/${successPath}`;
     const normalizedCancelPath = cancelPath.startsWith('/') ? cancelPath : `/${cancelPath}`;
-    const successUrl = withBase(`${normalizedSuccessPath}?session_id={CHECKOUT_SESSION_ID}`);
-    const cancelUrl = withBase(normalizedCancelPath);
+    const successUrl = buildAbsoluteUrl(req, `${normalizedSuccessPath}?session_id={CHECKOUT_SESSION_ID}`);
+    const cancelUrl = buildAbsoluteUrl(req, normalizedCancelPath);
 
     // Default to paperback if no product specified (for "Buy the Book" buttons)
     const product = body?.product || 'paperback';
+
+    // Determine origin from request (for deepquill to use)
+    // GUARDRAIL: Always pass origin so deepquill doesn't use stale env vars
+    const requestOrigin = req.headers.get('origin') || 
+                         (req.headers.get('x-forwarded-host') ? 
+                           `${req.headers.get('x-forwarded-proto') || 'https'}://${req.headers.get('x-forwarded-host')}` :
+                           null) ||
+                         getSiteUrl(); // Fallback to env var if headers unavailable
 
     // Prepare request body for deepquill
     const proxyBody = {
@@ -104,7 +126,7 @@ export async function POST(req: NextRequest) {
       ref: body?.ref || body?.referralCode || body?.metadata?.referralCode,
       src: body?.src || body?.metadata?.src,
       v: body?.v || body?.metadata?.v,
-      origin: body?.origin || body?.metadata?.origin,
+      origin: body?.origin || body?.metadata?.origin || requestOrigin, // Always pass origin
       email: body?.email || email || undefined,
       metadata: {
         ...body?.metadata,

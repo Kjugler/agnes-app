@@ -32,23 +32,23 @@ const EmailModal = ({ isOpen, onClose, onEmailSubmitted }) => {
 
     // --- fire tracking event to Next (agnes-next) ---
     // Determine the correct base URL for agnes-next
-    // Priority: env var (ngrok) > ngrok fallback > localhost (only if no ngrok available)
+    // Priority: env var > current origin (if ngrok) > localhost fallback
     let NEXT_BASE = null;
     
     // Check env var first (should be ngrok URL in dev)
     const envUrl = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_AGNES_BASE_URL : null;
     if (envUrl) {
       NEXT_BASE = envUrl;
-      console.log('[deepquill] Using env var (ngrok):', envUrl);
-    } else {
+      console.log('[deepquill] Using env var:', envUrl);
+    } else if (typeof window !== 'undefined') {
       // Check if we're already on ngrok (use current origin)
-      if (typeof window !== 'undefined' && (window.location.hostname.includes('ngrok') || window.location.hostname.includes('ngrok-free.app'))) {
+      if (window.location.hostname.includes('ngrok') || window.location.hostname.includes('ngrok-free.app')) {
         NEXT_BASE = `${window.location.protocol}//${window.location.host}`;
-        console.log('[deepquill] Using current ngrok origin:', NEXT_BASE);
+        console.log('[deepquill] Using current origin:', NEXT_BASE);
       } else {
-        // Fallback to hardcoded ngrok (for dev testing)
-        NEXT_BASE = 'https://agnes-dev.ngrok-free.app';
-        console.log('[deepquill] Using ngrok fallback:', NEXT_BASE);
+        // Fallback to localhost for local dev
+        NEXT_BASE = 'http://localhost:3002';
+        console.log('[deepquill] Using localhost fallback:', NEXT_BASE);
       }
     }
     
@@ -122,6 +122,12 @@ const EmailModal = ({ isOpen, onClose, onEmailSubmitted }) => {
             currentParams.set(key, value);
           }
         });
+        
+        // Gesture handoff: Set flag to allow audio on Lightning page
+        if (typeof window !== 'undefined' && window.sessionStorage) {
+          sessionStorage.setItem('allow_lightening_audio', '1');
+          console.log('[EmailModal] Set allow_lightening_audio flag for gesture handoff');
+        }
         
         const lighteningUrl = `${NEXT_BASE}/lightening?${currentParams.toString()}`;
         console.log('[EmailModal] Redirecting to lightening with email:', lighteningUrl);

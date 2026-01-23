@@ -2,42 +2,35 @@ import type { Metadata } from 'next';
 import type { SharePlatform } from '@/lib/shareAssets';
 import { shareAssets } from '@/lib/shareAssets';
 
-type Params = { platform?: string; variant?: string };
-type Search = { ref?: string; target?: string };
+type Params = {
+  platform: string;
+  variant: string;
+};
 
-// TEMP: hard-wire the current public base URL so Facebook always
-// gets a real, https, non-localhost URL.
-const BASE_URL = 'https://agnes-dev.ngrok-free.app';
+// Use configured site URL (must be set for Facebook sharing)
+const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || (() => {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('NEXT_PUBLIC_SITE_URL or SITE_URL must be set for Facebook sharing');
+  }
+  return 'http://localhost:3002';
+})();
 
 export async function generateMetadata(
-  props: {
-    params: Promise<Params> | Params;
-    searchParams: Promise<Search> | Search | undefined;
-  }
+  { params }: { params: Promise<Params> }
 ): Promise<Metadata> {
-  const p = await props.params;
-  const sp = props.searchParams ? await props.searchParams : undefined;
+  const { platform: platformRaw, variant: variantRaw } = await params;
 
-  const platform = (p?.platform as SharePlatform) || 'fb';
-  const variantRaw = Number(p?.variant ?? '1') || 1;
-  const variant = (variantRaw >= 1 && variantRaw <= 3 ? variantRaw : 1) as 1 | 2 | 3;
-
-  const refCode = typeof sp?.ref === 'string' ? sp.ref : '';
-  const target = typeof sp?.target === 'string' ? sp.target : 'challenge';
+  const platform = (platformRaw as SharePlatform) || 'fb';
+  const variantNum = Number(variantRaw) || 1;
+  const variant = (variantNum >= 1 && variantNum <= 3 ? variantNum : 1) as 1 | 2 | 3;
 
   // Get image path from shareAssets (X and IG platforms use FB thumbnails)
   const assets = shareAssets[platform]?.variants[variant];
   const thumbnailPath = assets?.thumbnail || `/images/fb/fb${variant}.jpg`;
   const imageUrl = `${BASE_URL}${thumbnailPath}`;
 
-  const query = [
-    refCode ? `ref=${encodeURIComponent(refCode)}` : '',
-    target ? `target=${encodeURIComponent(target)}` : '',
-  ]
-    .filter(Boolean)
-    .join('&');
-
-  const shareUrl = `${BASE_URL}/share/${platform}/${variant}${query ? `?${query}` : ''}`;
+  // Build share URL without query params (query params handled at page level)
+  const shareUrl = `${BASE_URL}/share/${platform}/${variant}`;
 
   const title = 'The Agnes Protocol—Exclusive Preview';
   const description =
@@ -73,6 +66,16 @@ export async function generateMetadata(
   };
 }
 
-export default function ShareLayout({ children }: { children: React.ReactNode }) {
-  return children;
+type LayoutParams = { platform: string; variant: string };
+type LayoutParamsPromise = Promise<LayoutParams>;
+
+export default async function ShareLayout({
+  children,
+  params,
+}: {
+  children: React.ReactNode;
+  params: LayoutParamsPromise;
+}) {
+  const p = await params;
+  return <>{children}</>;
 }

@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { SignalStatus, SignalHeldReason } from '@prisma/client';
 import { normalizeEmail } from '@/lib/email';
 import { ensureAssociateMinimal } from '@/lib/associate';
+
+type SignalStatusLocal = 'APPROVED' | 'HELD' | 'REJECTED';
+type SignalHeldReasonLocal = 'PROFANITY' | 'HARASSMENT' | 'HATE' | 'LINK' | null;
 
 const PROFANITY_WORDS = ['fuck', 'shit', 'bitch', 'cunt', 'asshole', 'nigger', 'faggot'];
 
@@ -106,21 +108,21 @@ export async function POST(req: NextRequest) {
     const hasProfanity = containsProfanity(text);
 
     // Determine status
-    let status: SignalStatus = SignalStatus.HELD;
-    let heldReason: SignalHeldReason | null = null;
+    let status: SignalStatusLocal = 'HELD';
+    let heldReason: SignalHeldReasonLocal = null;
 
     // Default status based on purchase/official status
     if (hasPurchase || isContestOfficial) {
-      status = SignalStatus.APPROVED;
+      status = 'APPROVED';
     }
 
     // Force hold for links or profanity
     if (hasLink) {
-      status = SignalStatus.HELD;
-      heldReason = SignalHeldReason.LINK;
+      status = 'HELD';
+      heldReason = 'LINK';
     } else if (hasProfanity) {
-      status = SignalStatus.HELD;
-      heldReason = SignalHeldReason.PROFANITY;
+      status = 'HELD';
+      heldReason = 'PROFANITY';
     }
 
     // Create reply (note: schema doesn't have status field, so we return status but don't store it)

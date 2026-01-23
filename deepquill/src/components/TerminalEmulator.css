@@ -1,9 +1,90 @@
 /* src/components/TerminalEmulator.css */
+/* DO NOT MODIFY TERMINAL 2 THEME WITHOUT EXPLICIT INSTRUCTION */
+
 .terminal-container {
   --terminal-background: #1e1e1e;
   --terminal-text: #22c55e; /* green-500 */
   --terminal-prompt: #22c55e;
   --terminal-cursor: #ffffff; /* White IBM-style block cursor */
+}
+
+/* Terminal 2: IBM green-on-black classic look */
+/* High specificity to prevent override by global styles */
+.terminal2-root,
+.terminal2-root * {
+  background: #000 !important;
+  color: #00ff66 !important;
+}
+
+.terminal2-root {
+  background: #000 !important; /* Pure black background */
+  color: #00ff66 !important; /* Terminal green */
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace !important;
+  /* No rounded corners, gradients, shadows, or modern UI panels */
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Enforce green-on-black for all child elements */
+.terminal2-root * {
+  background: transparent !important;
+  color: #00ff66 !important;
+  border-color: rgba(0, 255, 102, 0.35) !important;
+}
+
+.terminal2-root .terminal,
+.terminal2-root .react-terminal-ui,
+.terminal2-root [class*="react-terminal"] {
+  background-color: #000 !important;
+  color: #00ff66 !important;
+}
+
+.terminal2-root .terminal-output {
+  color: #00ff66 !important;
+}
+
+.terminal2-root .terminal-input {
+  color: #00ff66 !important;
+}
+
+.terminal2-root .react-terminal-input {
+  color: #00ff66 !important;
+  background: transparent !important;
+}
+
+.terminal2-root .react-terminal-input:before {
+  color: #00ff66 !important;
+}
+
+.terminal2-root .react-terminal-wrapper {
+  color: #00ff66 !important;
+  background: transparent !important;
+}
+
+.terminal2-root .terminal-prompt {
+  color: #00ff66 !important;
+}
+
+/* Override any white text that might leak through */
+.terminal2-root .text-white,
+.terminal2-root [class*="text-white"],
+.terminal2-root [style*="color: white"],
+.terminal2-root [style*="color: #fff"],
+.terminal2-root [style*="color: #ffffff"] {
+  color: #00ff66 !important;
+}
+
+/* Override Tailwind text color classes in Terminal 2 */
+.terminal2-root .text-green-500,
+.terminal2-root [class*="text-green"],
+.terminal2-root [class*="text-"] {
+  color: #00ff66 !important;
+}
+
+/* Ensure TerminalOutput components use IBM green in Terminal 2 */
+.terminal2-root .terminal-output,
+.terminal2-root .react-terminal-output {
+  color: #00ff66 !important;
 }
 
 .terminal-container .terminal {

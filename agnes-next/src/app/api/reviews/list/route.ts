@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { ReviewStatus } from '@prisma/client';
 
 export async function GET(req: NextRequest) {
   try {
@@ -9,7 +8,7 @@ export async function GET(req: NextRequest) {
 
     const reviews = await prisma.review.findMany({
       where: {
-        status: ReviewStatus.APPROVED,
+        status: 'APPROVED',
       },
       orderBy: {
         createdAt: 'desc',
@@ -25,7 +24,14 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    const reviewsData = reviews.map((review) => ({
+    const reviewsData = reviews.map((review: {
+      id: string;
+      rating: number;
+      text: string;
+      tags: string | null;
+      createdAt: Date;
+      user: { email: string | null; firstName: string | null };
+    }) => ({
       id: review.id,
       rating: review.rating,
       text: review.text,

@@ -1,0 +1,59 @@
+/* agnes-next/src/styles/terminal.css */
+/* IBM Terminal 2 — DO NOT MODIFY WITHOUT EXPLICIT INSTRUCTION */
+
+/* Terminal 2: IBM green-on-black classic look */
+.terminal2-root {
+  background: #000 !important; /* Pure black background */
+  color: #00ff66 !important; /* Terminal green */
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace !important;
+  /* No rounded corners, gradients, shadows, or modern UI panels */
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Enforce green-on-black for all child elements */
+.terminal2-root * {
+  color: #00ff66 !important;
+  background: transparent !important;
+  border-color: rgba(0, 255, 102, 0.35) !important;
+}
+
+.terminal2-root .terminal {
+  background-color: #000 !important;
+  color: #00ff66 !important;
+}
+
+.terminal2-root .terminal-output {
+  color: #00ff66 !important;
+}
+
+.terminal2-root .terminal-input {
+  color: #00ff66 !important;
+}
+
+.terminal2-root .react-terminal-input {
+  color: #00ff66 !important;
+  background: transparent !important;
+}
+
+.terminal2-root .react-terminal-input:before {
+  color: #00ff66 !important;
+}
+
+.terminal2-root .react-terminal-wrapper {
+  color: #00ff66 !important;
+  background: transparent !important;
+}
+
+.terminal2-root .terminal-prompt {
+  color: #00ff66 !important;
+}
+
+/* Override any white text that might leak through */
+.terminal2-root .text-white,
+.terminal2-root [class*="text-white"],
+.terminal2-root [style*="color: white"],
+.terminal2-root [style*="color: #fff"],
+.terminal2-root [style*="color: #ffffff"] {
+  color: #00ff66 !important;
+}

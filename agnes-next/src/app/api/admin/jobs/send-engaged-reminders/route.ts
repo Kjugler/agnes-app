@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { buildEngagedReminderEmail } from '@/lib/email/engagedReminder';
 import mailchimp from '@mailchimp/mailchimp_transactional';
+import { getSiteUrl } from '@/lib/getSiteUrl';
 
-const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || 'https://agnes-dev.ngrok-free.app';
+const BASE_URL = getSiteUrl();
 const MAX_EMAILS_PER_RUN = 100;
 const TEST_MODE = false; // Group B: Production mode (2 days)
 const CUTOFF_DELAY = TEST_MODE
@@ -50,8 +51,8 @@ export async function GET(req: NextRequest) {
     const buyerEmails = Array.from(
       new Set(
         conversions
-          .map((c) => c.buyerEmail)
-          .filter((email): email is string => !!email)
+          .map((c: { buyerEmail: string | null }) => c.buyerEmail)
+          .filter((email: string | null): email is string => !!email)
       )
     );
 
@@ -97,7 +98,7 @@ export async function GET(req: NextRequest) {
 
     console.log(
       '[engaged-reminder candidates]',
-      users.map((u) => ({ email: u.email }))
+      users.map((u: { email: string | null }) => ({ email: u.email }))
     );
     console.log(`[engaged-reminder] Found ${users.length} users to send emails to`);
 

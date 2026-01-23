@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, caught: false });
   }
 
-  const result = await prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx: any) => {
     const fresh = await tx.user.findUnique({
       where: { id: ensured.id },
       select: {

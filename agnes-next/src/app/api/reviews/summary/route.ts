@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { ReviewStatus } from '@prisma/client';
 
 export async function GET(req: NextRequest) {
   try {
-    const reviews = await prisma.review.findMany({
+    const reviews: Array<{ rating: number }> = await prisma.review.findMany({
       where: {
-        status: ReviewStatus.APPROVED,
+        status: 'APPROVED',
       },
       select: {
         rating: true,
@@ -32,15 +31,18 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const sum = reviews.reduce((acc, r) => acc + r.rating, 0);
+    const sum = reviews.reduce(
+      (acc: number, r: { rating: number }) => acc + r.rating,
+      0
+    );
     const average = isStable ? sum / count : null;
 
     const distribution = {
-      1: reviews.filter((r) => r.rating === 1).length,
-      2: reviews.filter((r) => r.rating === 2).length,
-      3: reviews.filter((r) => r.rating === 3).length,
-      4: reviews.filter((r) => r.rating === 4).length,
-      5: reviews.filter((r) => r.rating === 5).length,
+      1: reviews.filter((r: { rating: number }) => r.rating === 1).length,
+      2: reviews.filter((r: { rating: number }) => r.rating === 2).length,
+      3: reviews.filter((r: { rating: number }) => r.rating === 3).length,
+      4: reviews.filter((r: { rating: number }) => r.rating === 4).length,
+      5: reviews.filter((r: { rating: number }) => r.rating === 5).length,
     };
 
     return NextResponse.json({
