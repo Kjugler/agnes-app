@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { ReviewStatus, ReviewHeldReason } from '@prisma/client';
 import { normalizeEmail } from '@/lib/email';
 import { ensureAssociateMinimal } from '@/lib/associate';
 import { getEntryVariant, logEntryVariant } from '@/lib/entryVariant';
@@ -112,21 +111,30 @@ export async function POST(req: NextRequest) {
     const hasProfanity = containsProfanity(text);
 
     // Determine status
-    let status: ReviewStatus = ReviewStatus.HELD;
-    let heldReason: ReviewHeldReason | null = null;
+    let status: 'APPROVED' | 'HELD' | 'REJECTED' = 'HELD';
+    let heldReason: 'PROFANITY' | 'HARASSMENT' | 'HATE' | 'LINK' | null = null;
 
     // Default status based on purchase/official status
     if (hasPurchase || isContestOfficial) {
-      status = ReviewStatus.APPROVED;
+      status = 'APPROVED';
     }
 
     // Force hold for links or profanity
     if (hasLink) {
-      status = ReviewStatus.HELD;
-      heldReason = ReviewHeldReason.LINK;
+      status = 'HELD';
+      heldReason = 'LINK';
     } else if (hasProfanity) {
-      status = ReviewStatus.HELD;
-      heldReason = ReviewHeldReason.PROFANITY;
+      status = 'HELD';
+      heldReason = 'PROFANITY';
+    }
+
+    // 1.1: AUTO_APPROVE in dev mode (DEV ONLY)
+    const AUTO_APPROVE = process.env.NODE_ENV === 'development' && process.env.AUTO_APPROVE_USER_CONTENT === 'true';
+    if (AUTO_APPROVE && status === 'HELD') {
+      // Override held status to approved in dev mode
+      status = 'APPROVED';
+      heldReason = null;
+      console.log('[reviews/create] AUTO_APPROVE enabled - approving review in dev mode');
     }
 
     // Get geo from headers (Vercel provides these)
@@ -144,8 +152,8 @@ export async function POST(req: NextRequest) {
         heldReason,
         countryCode,
         region,
-        approvedAt: status === ReviewStatus.APPROVED ? new Date() : null,
-        heldAt: status === ReviewStatus.HELD ? new Date() : null,
+        approvedAt: status === 'APPROVED' ? new Date() : null,
+        heldAt: status === 'HELD' ? new Date() : null,
       },
       create: {
         userId: user.id,
@@ -156,8 +164,8 @@ export async function POST(req: NextRequest) {
         heldReason,
         countryCode,
         region,
-        approvedAt: status === ReviewStatus.APPROVED ? new Date() : null,
-        heldAt: status === ReviewStatus.HELD ? new Date() : null,
+        approvedAt: status === 'APPROVED' ? new Date() : null,
+        heldAt: status === 'HELD' ? new Date() : null,
       },
     });
 
@@ -180,6 +188,43 @@ export async function POST(req: NextRequest) {
       rating,
       userId: user.id,
     });
+
+    // 1.2: Auto-award points if approved (DEV ONLY with AUTO_APPROVE)
+    if (AUTO_APPROVE && status === 'APPROVED' && review.userId) {
+      try {
+        const deepquillUrl = process.env.DEEPQUILL_URL || 'http://localhost:5055';
+        const awardResponse = await fetch(`${deepquillUrl}/api/points/award`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            type: 'review_approved',
+            userId: review.userId,
+            reviewId: review.id,
+          }),
+        });
+
+        if (awardResponse.ok) {
+          const awardData = await awardResponse.json();
+          console.log('[reviews/create] ✅ Points auto-awarded (AUTO_APPROVE)', {
+            reviewId: review.id,
+            awarded: awardData.awarded,
+          });
+        } else {
+          console.warn('[reviews/create] Failed to auto-award points', {
+            reviewId: review.id,
+            status: awardResponse.status,
+          });
+        }
+      } catch (err: any) {
+        console.error('[reviews/create] Error auto-awarding points', {
+          reviewId: review.id,
+          error: err.message,
+        });
+        // Don't fail review creation if points fail
+      }
+    }
 
     return NextResponse.json({
       ok: true,

@@ -39,7 +39,7 @@ async function handleBookPurchase(email: string) {
     return NextResponse.json({ ok: true, awarded: false, total: user.points });
   }
 
-  const updated = await prisma.$transaction(async (tx) => {
+  const updated = await prisma.$transaction(async (tx: any) => {
     await tx.ledger.create({
       data: {
         userId: user.id,
@@ -170,7 +170,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Check and award Rabbit 1 if conditions are met
-    if (pointsAwarded > 0 || map.type === 'PURCHASE_BOOK') {
+    // Check incoming event type (action) for purchase, not mapped type
+    // Note: kind === 'book_purchase' causes early return, so we only check action here
+    if (pointsAwarded > 0 || action === 'book_purchase' || action === 'PURCHASE_BOOK') {
       // Get updated actions snapshot after this event
       const actionsSnapshot = await getActionsSnapshot(user.id);
       await checkAndAwardRabbit1(user.id, actionsSnapshot);

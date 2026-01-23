@@ -168,7 +168,9 @@ export function readContestEmail() {
         clearAssociateCaches({ keepContestEmail: false });
       }
       // Update localStorage to match cookie
-      writeContestEmail(normalizedCookieEmail);
+      if (normalizedCookieEmail) {
+        writeContestEmail(normalizedCookieEmail);
+      }
     }
     return normalizedCookieEmail;
   }
@@ -178,4 +180,39 @@ export function readContestEmail() {
   const updated = bootstrapContestEmail();
   if (updated) return updated;
   return safeGet(CONTEST_EMAIL_KEY);
+}
+
+/**
+ * Clear all identity-related storage (localStorage and cookies)
+ * Used when user wants to start fresh (e.g., fresh=1 param)
+ */
+export function clearIdentityStorage() {
+  if (typeof window === 'undefined') return;
+  
+  // Clear all localStorage keys
+  clearAssociateCaches({ keepContestEmail: false });
+  
+  // Clear cookies
+  const cookiesToClear = [
+    'contest_email',
+    'user_email',
+    'associate_email',
+    'mockEmail',
+    'ap_code',
+    'discount_code',
+    'ref',
+  ];
+  
+  cookiesToClear.forEach((key) => {
+    // Clear cookie by setting it to expire in the past
+    document.cookie = `${key}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+    // Also try with domain variations
+    document.cookie = `${key}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${window.location.hostname};`;
+    if (window.location.hostname.includes('ngrok')) {
+      // For ngrok, try clearing with .ngrok-free.app domain
+      document.cookie = `${key}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.ngrok-free.app;`;
+    }
+  });
+  
+  console.log('[identity] Cleared all identity storage');
 }

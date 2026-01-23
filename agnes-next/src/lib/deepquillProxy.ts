@@ -64,6 +64,11 @@ export async function proxyJson(
     }
   });
 
+  // Add internal proxy secret if provided in options (for agnes-next → deepquill calls)
+  if (options.headers?.['x-internal-proxy']) {
+    headers['x-internal-proxy'] = options.headers['x-internal-proxy'];
+  }
+
   try {
     const response = await fetch(url, {
       method,

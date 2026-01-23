@@ -1,10 +1,30 @@
 import React from 'react';
 import { prisma } from '@/lib/db';
-import { SignalStatus } from '@prisma/client';
 import { cookies } from 'next/headers';
 import { normalizeEmail } from '@/lib/email';
 import SignalRoomClient from './SignalRoomClient';
 import SignalRoomHeader from './SignalRoomHeader';
+
+type SignalRow = {
+  id: string;
+  createdAt: Date;
+  text: string;
+  status: 'APPROVED' | 'HELD' | 'REJECTED';
+  isSystem: boolean;
+  isAnonymous: boolean;
+  user: { email: string | null; firstName: string | null } | null;
+  replies: Array<{
+    id: string;
+    createdAt: Date;
+    text: string;
+    user: { email: string | null; firstName: string | null } | null;
+  }>;
+  acknowledges: Array<{ id: string }>;
+  _count: {
+    replies: number;
+    acknowledges: number;
+  };
+};
 
 export default async function SignalRoomPage() {
   // Get current user email for acknowledge status
@@ -30,60 +50,92 @@ export default async function SignalRoomPage() {
     }
   }
 
-  const signals = await prisma.signal.findMany({
-    where: {
-      status: SignalStatus.APPROVED,
-    },
-    orderBy: {
-      createdAt: 'desc',
-    },
-    take: 50,
-    include: {
-      user: {
-        select: {
-          email: true,
-          firstName: true,
-        },
+  // Query signals with error handling for missing table
+  let signals: SignalRow[] = [];
+  try {
+    signals = await prisma.signal.findMany({
+      where: {
+        status: 'APPROVED',
       },
-      replies: {
-        take: 3,
-        orderBy: {
-          createdAt: 'desc',
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: 50,
+      include: {
+        user: {
+          select: {
+            email: true,
+            firstName: true,
+          },
         },
-        include: {
-          user: {
-            select: {
-              email: true,
-              firstName: true,
+        replies: {
+          take: 3,
+          orderBy: {
+            createdAt: 'desc',
+          },
+          include: {
+            user: {
+              select: {
+                email: true,
+                firstName: true,
+              },
             },
           },
         },
-      },
-      acknowledges: currentUserId
-        ? {
-            where: {
-              userId: currentUserId,
+        acknowledges: currentUserId
+          ? {
+              where: {
+                userId: currentUserId,
+              },
+              select: {
+                id: true,
+              },
+            }
+          : {
+              select: {
+                id: true,
+              },
+              take: 0,
             },
-            select: {
-              id: true,
-            },
-          }
-        : {
-            select: {
-              id: true,
-            },
-            take: 0,
+        _count: {
+          select: {
+            replies: true,
+            acknowledges: true,
           },
-      _count: {
-        select: {
-          replies: true,
-          acknowledges: true,
         },
       },
-    },
-  });
+    });
+  } catch (err: any) {
+    // Handle missing table or other Prisma errors gracefully
+    const errorMessage = err?.message || String(err);
+    const errorCode = err?.code || '';
+    
+    // Check if it's a table missing error (only show "initializing" for this)
+    const isTableMissing = 
+      errorMessage.includes('no such table: Signal') ||
+      errorMessage.includes('does not exist') && errorMessage.includes('Signal');
+    
+    if (isTableMissing) {
+      console.error('[SignalRoom] Signal table does not exist:', errorMessage);
+      console.error('[SignalRoom] Error code:', errorCode);
+      console.error('[SignalRoom] DATABASE_URL:', process.env.DATABASE_URL);
+      // Return empty array and render fallback UI
+      signals = [];
+    } else {
+      // Other errors: log and show real error (not "initializing")
+      console.error('[SignalRoom] Prisma error (not table missing):', {
+        message: errorMessage,
+        code: errorCode,
+        stack: process.env.NODE_ENV === 'development' ? err?.stack : undefined,
+      });
+      
+      // Re-throw to show actual error (not "initializing" fallback)
+      throw err;
+    }
+  }
 
   // Map Prisma results to simple array for client component
+  // If signals is empty due to missing table, signalsData will be empty array
   const signalsData = signals.map((signal) => ({
     id: signal.id,
     text: signal.text,
@@ -103,6 +155,9 @@ export default async function SignalRoomPage() {
     })),
   }));
 
+  // Render fallback UI if table is missing (signalsData will be empty)
+  const isInitializing = signalsData.length === 0 && signals.length === 0;
+
   return (
     <div
       style={{
@@ -117,7 +172,29 @@ export default async function SignalRoomPage() {
       }}
     >
       <SignalRoomHeader />
-      <SignalRoomClient signals={signalsData} />
+      {isInitializing ? (
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '2rem',
+            textAlign: 'center',
+          }}
+        >
+          <div>
+            <p style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>
+              Signal Room is initializing.
+            </p>
+            <p style={{ fontSize: '0.9rem', opacity: 0.7 }}>
+              Please refresh in a moment.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <SignalRoomClient signals={signalsData} />
+      )}
     </div>
   );
 }

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { SignalStatus, SignalHeldReason } from '@prisma/client';
 import { normalizeEmail } from '@/lib/email';
 import { ensureAssociateMinimal } from '@/lib/associate';
 import { getEntryVariant, logEntryVariant } from '@/lib/entryVariant';
@@ -95,21 +94,32 @@ export async function POST(req: NextRequest) {
     const hasProfanity = containsProfanity(text);
 
     // Determine status
-    let status: SignalStatus = SignalStatus.HELD;
-    let heldReason: SignalHeldReason | null = null;
+    type SignalStatusLocal = 'APPROVED' | 'HELD' | 'REJECTED';
+    type SignalHeldReasonLocal = 'PROFANITY' | 'HARASSMENT' | 'HATE' | 'LINK' | null;
+    let status: SignalStatusLocal = 'HELD';
+    let heldReason: SignalHeldReasonLocal = null;
 
     // Default status based on purchase/official status
     if (hasPurchase || isContestOfficial) {
-      status = SignalStatus.APPROVED;
+      status = 'APPROVED';
     }
 
     // Force hold for links or profanity
     if (hasLink) {
-      status = SignalStatus.HELD;
-      heldReason = SignalHeldReason.LINK;
+      status = 'HELD';
+      heldReason = 'LINK';
     } else if (hasProfanity) {
-      status = SignalStatus.HELD;
-      heldReason = SignalHeldReason.PROFANITY;
+      status = 'HELD';
+      heldReason = 'PROFANITY';
+    }
+
+    // 1.1: AUTO_APPROVE in dev mode (DEV ONLY)
+    const AUTO_APPROVE = process.env.NODE_ENV === 'development' && process.env.AUTO_APPROVE_USER_CONTENT === 'true';
+    if (AUTO_APPROVE && status === 'HELD') {
+      // Override held status to approved in dev mode
+      status = 'APPROVED';
+      heldReason = null;
+      console.log('[signal/create] AUTO_APPROVE enabled - approving signal in dev mode');
     }
 
     // Get geo from headers (Vercel provides these)
@@ -126,8 +136,8 @@ export async function POST(req: NextRequest) {
         userId: user.id,
         countryCode,
         region,
-        approvedAt: status === SignalStatus.APPROVED ? new Date() : null,
-        heldAt: status === SignalStatus.HELD ? new Date() : null,
+        approvedAt: status === 'APPROVED' ? new Date() : null,
+        heldAt: status === 'HELD' ? new Date() : null,
       },
     });
 
@@ -138,6 +148,43 @@ export async function POST(req: NextRequest) {
       status,
       userId: user.id,
     });
+
+    // 1.2: Auto-award points if approved (DEV ONLY with AUTO_APPROVE)
+    if (AUTO_APPROVE && status === 'APPROVED' && signal.userId) {
+      try {
+        const deepquillUrl = process.env.DEEPQUILL_URL || 'http://localhost:5055';
+        const awardResponse = await fetch(`${deepquillUrl}/api/points/award`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            type: 'signal_approved',
+            userId: signal.userId,
+            signalId: signal.id,
+          }),
+        });
+
+        if (awardResponse.ok) {
+          const awardData = await awardResponse.json();
+          console.log('[signal/create] ✅ Points auto-awarded (AUTO_APPROVE)', {
+            signalId: signal.id,
+            awarded: awardData.awarded,
+          });
+        } else {
+          console.warn('[signal/create] Failed to auto-award points', {
+            signalId: signal.id,
+            status: awardResponse.status,
+          });
+        }
+      } catch (err: any) {
+        console.error('[signal/create] Error auto-awarding points', {
+          signalId: signal.id,
+          error: err.message,
+        });
+        // Don't fail signal creation if points fail
+      }
+    }
 
     return NextResponse.json({
       ok: true,

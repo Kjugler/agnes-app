@@ -3,6 +3,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 
+type OrderRow = {
+  id: string;
+  createdAt: Date;
+  labelPrintedAt: Date | null;
+  shippingName: string | null;
+  shippingAddressLine1: string | null;
+  shippingCity: string | null;
+  shippingState: string | null;
+  shippingPostalCode: string | null;
+  shippingCountry: string | null;
+};
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -16,7 +28,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Find all orders where labelPrintedById = fulfillmentUserId and shippedAt IS NULL
-    const orders = await prisma.order.findMany({
+    const orders: OrderRow[] = await prisma.order.findMany({
       where: {
         labelPrintedById: fulfillmentUserId,
         shippedAt: null,

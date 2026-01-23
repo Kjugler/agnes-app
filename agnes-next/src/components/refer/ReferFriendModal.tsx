@@ -96,11 +96,24 @@ export default function ReferFriendModal({
         }),
       });
 
-      const data = await res.json();
-
+      // Handle non-200 responses gracefully
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to send referral');
+        let errorMessage = 'Referral couldn\'t be sent. Please try again.';
+        try {
+          const data = await res.json();
+          // Use server error message if available, but fallback to friendly message
+          if (data.error && typeof data.error === 'string') {
+            errorMessage = data.error;
+          }
+        } catch {
+          // If JSON parsing fails, use default friendly message
+        }
+        setError(errorMessage);
+        setIsSubmitting(false);
+        return; // Exit early, don't throw - prevents route-level errors
       }
+
+      const data = await res.json();
 
       setSuccess(true);
       setPointsInfo({
@@ -120,6 +133,7 @@ export default function ReferFriendModal({
           await onReferralSent();
         } catch (err) {
           console.error('[ReferFriendModal] Error refreshing score:', err);
+          // Don't show error to user - score refresh failure is non-critical
         }
       }
 
@@ -128,9 +142,11 @@ export default function ReferFriendModal({
         onClose();
       }, 5000);
     } catch (err: any) {
-      setError(err.message || 'Something went wrong. Please try again.');
-    } finally {
+      // Network errors or other unexpected errors - show friendly message
+      console.error('[ReferFriendModal] Error sending referral:', err);
+      setError('Referral couldn\'t be sent. Please try again.');
       setIsSubmitting(false);
+      // Don't throw - prevents route-level error overlay
     }
   };
 

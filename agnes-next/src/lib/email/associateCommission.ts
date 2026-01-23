@@ -63,7 +63,12 @@ export async function sendAssociateCommissionEmail(
   // Subject line options (using first one)
   const subject = 'Another sale. Another payday. 💰';
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || 'https://agnes-dev.ngrok-free.app';
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || (() => {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('NEXT_PUBLIC_SITE_URL or SITE_URL must be set');
+    }
+    return 'http://localhost:3002';
+  })();
   const payoutPreferencesUrl = `${siteUrl}/earnings/preferences`;
 
   const textBody = [

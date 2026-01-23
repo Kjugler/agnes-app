@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { normalizeEmail } from '@/lib/email';
-import { ensureAssociateMinimal } from '@/lib/associate';
-import { prisma } from '@/lib/db';
+import { proxyJson } from '@/lib/deepquillProxy';
+import { rateLimitByIP } from '@/lib/rateLimit';
 
 // CORS helper for cross-origin requests
 function corsHeaders(origin: string | null) {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3002';
   const allowedOrigins = [
     'http://localhost:5173',
     'http://localhost:5174', // Vite might use different port if 5173 is busy
     'http://localhost:3000',
     'http://localhost:3002',
-    'https://agnes-dev.ngrok-free.app',
+    siteUrl, // Use configured site URL
   ];
   
   // Allow any localhost port for development
@@ -45,18 +45,33 @@ export async function OPTIONS(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  // Track 2.4: Rate limiting
+  const rateLimit = rateLimitByIP(req, { maxRequests: 10, windowMs: 60000 });
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: 'Too many requests. Please try again later.' },
+      { 
+        status: 429,
+        headers: {
+          ...corsHeaders(req.headers.get('origin')),
+          'Retry-After': String(Math.ceil((rateLimit.resetAt - Date.now()) / 1000)),
+        },
+      }
+    );
+  }
+  
   try {
     const body = await req.json().catch(() => ({}));
     const emailRaw = body?.email;
+    const origin = req.headers.get('origin');
 
-    console.log('[contest/login] Received request', {
+    console.log('[contest/login] Received request (proxying to deepquill)', {
       emailRaw,
-      bodyKeys: Object.keys(body || {}),
+      origin,
     });
 
     if (!emailRaw || typeof emailRaw !== 'string') {
       console.error('[contest/login] Missing or invalid email in request');
-      const origin = req.headers.get('origin');
       return NextResponse.json(
         { ok: false, error: 'email required' },
         {
@@ -66,24 +81,36 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Normalize email (trim, lowercase)
-    const email = normalizeEmail(emailRaw);
-    console.log('[contest/login] Normalized email:', email);
+    // Proxy to deepquill (DB owner)
+    // Add internal proxy header for security (optional hardening)
+    const internalProxySecret = process.env.INTERNAL_PROXY_SECRET || 'dev-only-secret';
+    const { data, status } = await proxyJson('/api/contest/login', req, {
+      method: 'POST',
+      headers: {
+        'x-internal-proxy': internalProxySecret,
+      },
+      body: {
+        email: emailRaw,
+        origin: origin || undefined,
+      },
+    });
 
-    // Upsert contest player (User record) - always use the email from request
-    const user = await ensureAssociateMinimal(email);
-
-    // Mark that user has joined the contest (if not already set)
-    if (!user.contestJoinedAt) {
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { contestJoinedAt: new Date() },
-      });
+    if (status !== 200 || !data?.ok) {
+      console.error('[contest/login] Deepquill proxy failed', { status, data });
+      return NextResponse.json(
+        { ok: false, error: data?.error || 'server_error' },
+        {
+          status: status >= 400 && status < 600 ? status : 500,
+          headers: corsHeaders(origin),
+        }
+      );
     }
+
+    // Extract email from deepquill response (normalized)
+    const email = data.user?.email || emailRaw;
 
     // Set HTTP-only cookie for contest session - ALWAYS overwrite any previous value
     const cookieStore = await cookies();
-    const origin = req.headers.get('origin');
     const isLocalhost = origin?.includes('localhost') || origin?.includes('127.0.0.1');
     
     // For cross-origin requests (like from localhost:5173), we need to be more permissive
@@ -111,25 +138,28 @@ export async function POST(req: NextRequest) {
       secure: process.env.NODE_ENV === 'production' && !isLocalhost,
     });
 
-    console.log('[contest/login] User logged in successfully', {
+    console.log('[contest/login] User logged in successfully (via deepquill)', {
       email,
-      userId: user.id,
-      contestJoinedAt: user.contestJoinedAt,
-      previousContestJoinedAt: user.contestJoinedAt ? 'already set' : 'now set',
+      userId: data.user?.id,
+      greetingName: data.greetingName,
+      isReturning: data.isReturning,
     });
 
+    // Return deepquill's response (with cookies set)
     return NextResponse.json(
       {
         ok: true,
         email,
-        userId: user.id,
+        userId: data.user?.id,
+        greetingName: data.greetingName,
+        isReturning: data.isReturning,
       },
       {
         headers: corsHeaders(origin),
       }
     );
   } catch (err: any) {
-    console.error('[contest/login] Error', {
+    console.error('[contest/login] Error proxying to deepquill', {
       error: err?.message,
       stack: err?.stack,
     });

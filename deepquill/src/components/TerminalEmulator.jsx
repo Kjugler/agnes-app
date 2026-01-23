@@ -339,7 +339,7 @@ const TerminalEmulator = () => {
     <>
       <div 
         ref={terminalContainerRef}
-        className="terminal-container" 
+        className={`terminal-container ${phase === 'terminal2' ? 'terminal2-root' : ''}`}
         style={{ width: '100%', height: '100vh', display: phase === 'lightning' ? 'none' : 'block' }}
       >
         <Terminal

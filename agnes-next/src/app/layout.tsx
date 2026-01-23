@@ -1,4 +1,5 @@
 import "../styles/globals.css";
+import "../styles/terminal.css";
 
 export const metadata = {
   title: "Agnes App",

@@ -67,6 +67,37 @@ export default function SignalRoomClient({ signals: initialSignals }: SignalRoom
   const [signals, setSignals] = useState(initialSignals);
   const [replyModalSignalId, setReplyModalSignalId] = useState<string | null>(null);
   const [expandedReplies, setExpandedReplies] = useState<Set<string>>(new Set());
+  const [approving, setApproving] = useState(false);
+  
+  // Dev-only: Approve all pending signals and reviews
+  const handleApproveAll = async () => {
+    if (process.env.NODE_ENV !== 'development') return;
+    
+    setApproving(true);
+    try {
+      const response = await fetch('/api/admin/moderation/approve-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok && data.ok) {
+        console.log('[SignalRoom] ✅ Approved all pending items:', data);
+        alert(`Approved ${data.approved?.signals || 0} signals and ${data.approved?.reviews || 0} reviews`);
+        // Refresh page to show newly approved signals
+        router.refresh();
+      } else {
+        console.error('[SignalRoom] Failed to approve all:', data);
+        alert(`Failed: ${data.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error('[SignalRoom] Error approving all:', err);
+      alert(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setApproving(false);
+    }
+  };
 
   const handleAcknowledge = async (signalId: string) => {
     const signal = signals.find((s) => s.id === signalId);
@@ -150,6 +181,34 @@ export default function SignalRoomClient({ signals: initialSignals }: SignalRoom
 
   return (
     <>
+      {/* Dev-only: Approve all pending button */}
+      {process.env.NODE_ENV === 'development' && (
+        <div style={{
+          position: 'fixed',
+          top: 80,
+          right: 20,
+          zIndex: 1000,
+        }}>
+          <button
+            onClick={handleApproveAll}
+            disabled={approving}
+            style={{
+              padding: '8px 16px',
+              fontSize: '12px',
+              backgroundColor: '#9333ea',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: approving ? 'not-allowed' : 'pointer',
+              opacity: approving ? 0.6 : 1,
+              fontWeight: 600,
+            }}
+          >
+            {approving ? 'Approving...' : 'Approve All (dev)'}
+          </button>
+        </div>
+      )}
+      
       {/* Center column with Signal Cards */}
       <main
         style={{

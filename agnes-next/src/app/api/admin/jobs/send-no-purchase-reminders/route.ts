@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { buildNoPurchaseReminderEmail } from '@/lib/email/noPurchaseReminder';
 import mailchimp from '@mailchimp/mailchimp_transactional';
+import { getSiteUrl } from '@/lib/getSiteUrl';
 
-const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || 'https://agnes-dev.ngrok-free.app';
+const BASE_URL = getSiteUrl();
 const MAX_EMAILS_PER_RUN = 100;
 
 function getEmailClient() {

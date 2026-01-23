@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
 import { prisma } from '@/lib/db';
 import { proxyJson } from '@/lib/deepquillProxy';
+import { rateLimitByIP } from '@/lib/rateLimit';
 
 export const runtime = 'nodejs';
 
@@ -13,10 +14,11 @@ const trackerDisabled =
 const ALLOW_ORIGINS = new Set([
   'http://localhost:3002',
   'http://localhost:5181',
-  'https://agnes-dev.ngrok-free.app',
-]);
+  process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3002',
+].filter(Boolean));
 function cors(origin?: string | null) {
-  const o = origin && ALLOW_ORIGINS.has(origin) ? origin : 'https://agnes-dev.ngrok-free.app';
+  const defaultOrigin = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3002';
+  const o = origin && ALLOW_ORIGINS.has(origin) ? origin : defaultOrigin;
   return {
     'Access-Control-Allow-Origin': o,
     'Access-Control-Allow-Methods': 'POST,OPTIONS',
@@ -54,14 +56,13 @@ async function getOrCreateUserId(email?: string, merge?: Record<string, any>) {
     update: {
       fname: merge?.FNAME ?? undefined,
       lname: merge?.LNAME ?? undefined,
-      lastUrl: merge?.LASTURL ?? undefined,
     },
     create: {
       email,
       code,
+      referralCode: code, // ✅ add this
       fname: merge?.FNAME ?? undefined,
       lname: merge?.LNAME ?? undefined,
-      lastUrl: merge?.LASTURL ?? undefined,
     },
     select: { id: true },
   });

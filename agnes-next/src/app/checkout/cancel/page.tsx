@@ -1,9 +1,10 @@
-'use client';
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense } from 'react';
+import CancelClient from './CancelClient';
 
-export default function CheckoutCancelRedirect() {
-  const router = useRouter();
-  useEffect(() => { router.replace('/contest'); }, [router]);
-  return <p style={{padding:16}}>Taking you back…</p>;
+export default function CheckoutCancelPage() {
+  return (
+    <Suspense fallback={<div />}>
+      <CancelClient />
+    </Suspense>
+  );
 }

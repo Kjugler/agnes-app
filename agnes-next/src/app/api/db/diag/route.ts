@@ -8,9 +8,9 @@ const prisma = new PrismaClient();
 
 export async function GET() {
   try {
-    const tables = await prisma.$queryRawUnsafe<{ name: string }[]>(
+    const tables = (await prisma.$queryRawUnsafe(
       `SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`
-    );
+    )) as { name: string }[];
     return NextResponse.json({
       ok: true,
       db_url: process.env.DATABASE_URL || null,

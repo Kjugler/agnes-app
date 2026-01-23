@@ -1,7 +1,19 @@
 // deepquill/api/create-checkout-session.cjs
 // Use centralized Stripe client and env config
-const { stripe } = require('../src/lib/stripe.cjs');
+
+// Part 1: Import envConfig FIRST and validate required vars
 const envConfig = require('../src/config/env.cjs');
+
+// Guard: Ensure required env vars exist
+if (!envConfig?.SITE_URL) {
+  throw new Error('[CHECKOUT] SITE_URL missing in deepquill env');
+}
+if (!envConfig?.STRIPE_SECRET_KEY) {
+  throw new Error('[CHECKOUT] STRIPE_SECRET_KEY missing in deepquill env');
+}
+
+// Import Stripe client (uses envConfig.STRIPE_SECRET_KEY)
+const { stripe } = require('../src/lib/stripe.cjs');
 
 // Strict product-to-price mapping (no fallbacks)
 const PRICE_BY_PRODUCT = {
@@ -10,58 +22,42 @@ const PRICE_BY_PRODUCT = {
   audio_preorder: envConfig.STRIPE_PRICE_AUDIO_PREORDER,
 };
 
-// Try to load Prisma for ref validation
-let prisma = null;
-try {
-  const { PrismaClient } = require('@prisma/client');
-  prisma = new PrismaClient();
-} catch (err) {
-  console.warn('[CHECKOUT] Prisma not available, ref validation will be skipped:', err.message);
-}
+// Part 2: Do NOT use Prisma for ref validation - it's optional and non-blocking
+// Ref validation is now allowlist-only (no DB dependency)
 
 /**
- * Validate associate publisher ref using Prisma (with allowlist fallback)
- * Returns { valid: boolean, method: 'prisma' | 'allowlist' | 'any' | null }
+ * Part 2: Validate associate publisher ref (non-blocking, allowlist-only)
+ * Returns { valid: boolean, method: 'allowlist' | 'format' | null }
+ * 
+ * Key rules:
+ * - Ref is optional (checkout proceeds even if missing/invalid)
+ * - No Prisma dependency (deepquill doesn't have User table)
+ * - Format validation: 4-12 alphanumeric characters
+ * - Allowlist validation: if provided, check against allowlist
  */
-async function isValidAssociatePublisherRef(ref) {
+function isValidAssociatePublisherRef(ref) {
+  // A) Safe parsing: ref is optional
   if (!ref || typeof ref !== 'string' || ref.trim().length === 0) {
     return { valid: false, method: null };
   }
 
+  // Sanitize: uppercase and trim
   const normalizedRef = ref.trim().toUpperCase();
 
-  // Try Prisma first (if available)
-  if (prisma) {
-    try {
-      const user = await prisma.user.findUnique({
-        where: {
-          referralCode: normalizedRef,
-        },
-        select: {
-          id: true,
-        },
-      });
-
-      if (user !== null) {
-        return { valid: true, method: 'prisma' };
-      }
-    } catch (error) {
-      console.error('[CHECKOUT] Prisma validation error, falling back to allowlist', {
-        ref: normalizedRef,
-        error: error.message,
-      });
-      // Fall through to allowlist fallback
-    }
+  // Format validation: allow only [A-Z0-9]{4,12}
+  const formatRegex = /^[A-Z0-9]{4,12}$/;
+  if (!formatRegex.test(normalizedRef)) {
+    console.log('[CHECKOUT_REF] Invalid format, rejecting:', normalizedRef);
+    return { valid: false, method: null };
   }
 
-  // Fallback to allowlist when Prisma unavailable or ref not found in DB
-  const allowlistMode = envConfig.ASSOCIATE_REF_ALLOWLIST_MODE;
+  // B) Validation strategy: allowlist-only (no Prisma)
+  const allowlistMode = envConfig.ASSOCIATE_REF_ALLOWLIST_MODE || 'allowlist';
   const allowlist = envConfig.ASSOCIATE_REF_ALLOWLIST || [];
 
   if (allowlistMode === 'any') {
-    // In "any" mode, accept any ref that's at least 4 characters
-    const valid = normalizedRef.length >= 4;
-    return { valid, method: valid ? 'any' : null };
+    // In "any" mode, accept any ref that passes format validation
+    return { valid: true, method: 'format' };
   } else {
     // Default: allowlist mode - check if ref is in allowlist
     const valid = allowlist.includes(normalizedRef);
@@ -102,21 +98,21 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    // Get referral code
+    // Get referral code (optional, non-blocking)
     const refRaw = req.body?.ref || req.body?.referralCode || '';
     const ref = refRaw ? refRaw.trim() : '';
     
-    // Validate ref if present
+    // Validate ref if present (non-blocking - checkout proceeds even if invalid)
     let appliedDiscount = false;
     let refValidationResult = { valid: false, method: null };
     if (ref) {
-      refValidationResult = await isValidAssociatePublisherRef(ref);
+      // Synchronous validation (no Prisma/async needed)
+      refValidationResult = isValidAssociatePublisherRef(ref);
       appliedDiscount = refValidationResult.valid;
       
       console.log('[CHECKOUT_REF]', {
         ref: ref.toUpperCase(),
         valid: refValidationResult.valid,
-        prisma: !!prisma,
         method: refValidationResult.method,
         allowlistHit: refValidationResult.method === 'allowlist',
         allowlistMode: envConfig.ASSOCIATE_REF_ALLOWLIST_MODE,
@@ -148,9 +144,33 @@ module.exports = async function handler(req, res) {
     if (req.body?.v) metadata.v = req.body.v;
     if (req.body?.origin) metadata.origin = req.body.origin;
 
-    // We want users to land back on Next (via ngrok dev domain)
-    // Still allow overriding via body if you want different pages per flow.
-    const origin = process.env.SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://agnes-dev.ngrok-free.app';
+    // GUARDRAIL: Use request origin, not env vars (prevents stale ngrok URLs)
+    // Priority 1: Use origin from request body (passed from agnes-next)
+    // Priority 2: Use x-forwarded-host headers (if proxied)
+    // Priority 3: Fallback to env var (only if origin unavailable)
+    let origin = req.body?.origin || null;
+    
+    if (!origin) {
+      // Try x-forwarded-host headers (common with ngrok/proxies)
+      const forwardedHost = req.headers['x-forwarded-host'];
+      const forwardedProto = req.headers['x-forwarded-proto'] || 'https';
+      if (forwardedHost) {
+        origin = `${forwardedProto}://${forwardedHost}`;
+        console.log('[CHECKOUT] Using x-forwarded-host origin:', origin);
+      }
+    }
+    
+    if (!origin) {
+      // Fallback to env var (warn - this can be stale)
+      origin = envConfig.SITE_URL;
+      if (origin) {
+        console.warn('[CHECKOUT] Using env var origin (request origin unavailable):', origin);
+      } else {
+        throw new Error('SITE_URL or request origin must be configured for checkout redirects');
+      }
+    } else {
+      console.log('[CHECKOUT] Using request origin:', origin);
+    }
 
     const success_url = `${origin}${successPath}?session_id={CHECKOUT_SESSION_ID}`;
     const cancel_url  = `${origin}${cancelPath}`;
@@ -201,20 +221,23 @@ module.exports = async function handler(req, res) {
   } catch (err) {
     console.error('[CHECKOUT_ERR]', {
       message: err.message,
+      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
       stripeErrorCode: err.code || err.type || null,
       product: req.body?.product || 'unknown',
       priceId: PRICE_BY_PRODUCT[req.body?.product] || 'unknown',
       ref: req.body?.ref || req.body?.referralCode || 'none',
     });
 
-    // Return structured error with safe diagnostics
+    // Part 3: Return structured error with visible diagnostics
     const errorResponse = {
       error: 'Failed to create checkout session',
-      stripeMode: envConfig.STRIPE_MODE,
-      stripeKeyLast6: envConfig.STRIPE_KEY_FINGERPRINT,
+      detail: err.message || String(err),
+      stripeMode: envConfig?.STRIPE_MODE || 'unknown',
+      stripeKeyLast6: envConfig?.STRIPE_KEY_FINGERPRINT || 'unknown',
       product: req.body?.product || null,
       priceId: PRICE_BY_PRODUCT[req.body?.product] || null,
       ref: req.body?.ref || req.body?.referralCode || null,
+      siteUrl: envConfig?.SITE_URL || null,
     };
 
     // Add Stripe error code if present

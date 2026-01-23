@@ -202,7 +202,7 @@ router.post(
             allMetadata: metadata, // Full metadata dump for debugging
           });
 
-            // Only process if payment succeeded
+          // Only process if payment succeeded
           if (paymentStatus === 'paid') {
             const paymentIntentId = typeof session.payment_intent === 'string' 
               ? session.payment_intent 
@@ -1107,8 +1107,12 @@ router.post(
             // Build download URL for eBook purchases (ebook) and free ebook for paperback purchases
             let downloadUrl = null;
             if (product === 'ebook' || product === 'paperback') {
-              const siteUrl = envConfig.SITE_URL || 'https://agnes-dev.ngrok-free.app';
-              downloadUrl = `${siteUrl}/ebook/download?session_id=${encodeURIComponent(session.id)}`;
+              const siteUrl = envConfig.SITE_URL;
+              if (siteUrl) {
+                downloadUrl = `${siteUrl}/ebook/download?session_id=${encodeURIComponent(session.id)}`;
+              } else {
+                console.warn('[WEBHOOK] SITE_URL not configured - cannot generate download URL');
+              }
             }
 
             // Send purchase confirmation email
@@ -1314,7 +1318,7 @@ router.post(
               });
             }
           }
-
+          
           break;
         }
 
@@ -1348,7 +1352,7 @@ router.post(
         timestamp: new Date().toISOString(),
       });
       console.log('='.repeat(80));
-      
+
       // Return 200 quickly to acknowledge receipt
       return res.status(200).json({ received: true, eventType: event.type });
     } catch (err) {
@@ -1369,7 +1373,7 @@ router.post(
 
 // ===== STEP 5: LOG WEBHOOK ENDPOINT INFO =====
 const webhookPath = '/api/stripe/webhook';
-const siteUrl = process.env.SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://agnes-dev.ngrok-free.app';
+const siteUrl = envConfig.SITE_URL;
 console.log('[WEBHOOK_CONFIG] Webhook endpoint configured:', {
   path: webhookPath,
   fullPath: `${siteUrl}${webhookPath}`,
@@ -1701,13 +1705,10 @@ async function processReferralCommission({ referrerCode, buyerEmail, buyerUserId
       } else {
         throw err; // Re-throw other errors
       }
-    } else {
-      // No Prisma - set default award result
-      referralAwardResult = { awarded: 0, reason: 'no_prisma' };
     }
   } else {
     // No Prisma or allowlist fallback - set default award result
-    referralAwardResult = { awarded: 0, reason: 'no_referrer' };
+    referralAwardResult = { awarded: 0, reason: 'no_prisma_or_allowlist' };
   }
 
   // Send referrer commission email (ALWAYS send if referrerEmail exists, regardless of points)

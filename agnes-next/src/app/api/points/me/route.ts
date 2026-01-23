@@ -107,7 +107,13 @@ export async function GET(req: NextRequest) {
     const friendsPurchasedCount = Number(friendsPurchasedCountResult[0]?.count || 0);
 
     // Format recent ledger entries
-    const recent = user.ledger.map((entry) => ({
+    const recent = user.ledger.map((entry: {
+      createdAt: Date;
+      note: string | null;
+      type: string;
+      points: number;
+      usd: any;
+    }) => ({
       ts: entry.createdAt.toISOString(),
       label: entry.note || `${entry.type} - ${entry.points > 0 ? `+${entry.points} pts` : ''} ${Number(entry.usd) > 0 ? `+$${Number(entry.usd).toFixed(2)}` : ''}`,
       deltaPts: entry.points,
