@@ -6,6 +6,7 @@ export const metadata = {
   description: "Welcome to the Agnes Protocol App",
 };
 
+import { Suspense } from 'react';
 import CheckoutWiring from "./contest/CheckoutWiring";
 
 export default function RootLayout({
@@ -23,7 +24,9 @@ export default function RootLayout({
       <body suppressHydrationWarning={true}>
         {children}
         {/* Global, invisible, zero animation/layout impact */}
-        <CheckoutWiring />
+        <Suspense fallback={null}>
+          <CheckoutWiring />
+        </Suspense>
       </body>
     </html>
   );

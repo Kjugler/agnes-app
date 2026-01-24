@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ContestEntryForm } from '@/components/ContestEntryForm';
 
-export default function ContestSignupPage() {
+export default function ContestSignupClient() {
   const router = useRouter();
   const qp = useSearchParams();
   const from = qp.get('from') || '/contest';

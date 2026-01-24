@@ -9,7 +9,7 @@ import { JodyAssistant } from '@/components/JodyAssistant';
 import { JodyTrainingModal } from '@/components/JodyTrainingModal';
 import HelpButton from '@/components/HelpButton';
 
-export default function TruthSharePage() {
+export default function TruthShareClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [hasCopied, setHasCopied] = useState(false);

@@ -44,7 +44,7 @@ type PointsPayload = {
   } | null;
 };
 
-export default function ScorePage() {
+export default function ScoreClient() {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const qp = useSearchParams();
   const router = useRouter();

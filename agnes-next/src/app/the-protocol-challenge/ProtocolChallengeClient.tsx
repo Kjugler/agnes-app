@@ -12,7 +12,7 @@ declare global {
   }
 }
 
-export default function ProtocolChallengePage() {
+export default function ProtocolChallengeClient() {
   const playerRef = useRef<any>(null);
   const searchParams = useSearchParams();
   const router = useRouter();
