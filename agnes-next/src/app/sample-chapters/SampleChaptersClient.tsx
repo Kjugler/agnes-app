@@ -14,7 +14,7 @@ declare global {
   }
 }
 
-export default function SampleChaptersPage() {
+export default function SampleChaptersClient() {
   const searchParams = useSearchParams();
   const [current, setCurrent] = useState(0);
   const [activeVideo, setActiveVideo] = useState<'left' | 'right'>('left');

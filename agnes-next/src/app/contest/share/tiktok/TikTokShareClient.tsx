@@ -9,7 +9,7 @@ import HelpButton from '@/components/HelpButton';
 import { buildShareCaption } from '@/lib/shareCaption';
 import { getNextVariant, shareAssets } from '@/lib/shareAssets';
 
-export default function TikTokSharePage() {
+export default function TikTokShareClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [hasCopied, setHasCopied] = useState(false);

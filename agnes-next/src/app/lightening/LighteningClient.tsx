@@ -18,7 +18,7 @@ declare global {
 const LIGHTNING_VIDEO_ID = "ofr9MTgh2mM";
 const VIDEO_DURATION_SECONDS = 9; // Approximate duration for failsafe timer
 
-export default function LighteningPage() {
+export default function LighteningClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [showContinue, setShowContinue] = useState(false);
