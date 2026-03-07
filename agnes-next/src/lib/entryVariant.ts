@@ -14,7 +14,7 @@ export function getEntryVariant(req: NextRequest): EntryVariant {
   }
 
   // Check cookie
-  const cookieVariant = req.cookies.get('dq_entry_variant')?.value;
+  const cookieVariant = req.cookies.get('entry_variant')?.value;
   if (cookieVariant === 'terminal' || cookieVariant === 'protocol') {
     return cookieVariant;
   }

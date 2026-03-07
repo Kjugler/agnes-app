@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import ReferFriendModal from './ReferFriendModal';
+import '@/styles/button-glow.css';
 
 interface ReferFriendButtonProps {
   referralCode: string; // personal code for the current user
@@ -20,27 +21,46 @@ export default function ReferFriendButton({
   const [loadingCode, setLoadingCode] = useState(false);
   const [resolvedCode, setResolvedCode] = useState(referralCode);
 
-  // Fetch referral code if missing but we have email
+  // Fetch current referral code from deepquill once when email is available
+  // Only depend on referrerEmail to avoid infinite loops
   useEffect(() => {
-    if (resolvedCode || !referrerEmail || loadingCode) return;
+    if (!referrerEmail) return;
     
+    // If we already have a code from props and it's not empty, use it initially
+    // but still fetch fresh code in background
+    if (referralCode) {
+      setResolvedCode(referralCode);
+    }
+    
+    let cancelled = false;
     setLoadingCode(true);
+    
     fetch('/api/associate/status', {
       headers: { 'X-User-Email': referrerEmail },
     })
       .then(res => res.json())
       .then(data => {
+        if (cancelled) return;
         if (data.code) {
+          // Always use the code from deepquill (canonical source)
           setResolvedCode(data.code);
         }
       })
       .catch(err => {
+        if (cancelled) return;
         console.warn('[ReferFriendButton] Failed to fetch referral code', err);
+        // Keep existing resolvedCode on error
       })
       .finally(() => {
-        setLoadingCode(false);
+        if (!cancelled) {
+          setLoadingCode(false);
+        }
       });
-  }, [referrerEmail, resolvedCode, loadingCode]);
+    
+    return () => {
+      cancelled = true;
+    };
+  }, [referrerEmail]); // Only depend on referrerEmail to prevent loops
 
   // Show button even if code is loading (will be disabled until code loads)
   if (!referrerEmail) {
@@ -58,6 +78,7 @@ export default function ReferFriendButton({
             }
           }}
           disabled={!resolvedCode || loadingCode}
+          className={`button-glow button-glow--orange ${className}`}
           style={{
             display: 'inline-flex',
             flexDirection: 'column',
@@ -68,9 +89,6 @@ export default function ReferFriendButton({
             padding: '0 24px',
             color: '#fff',
             background: resolvedCode ? '#ea580c' : '#666666',
-            boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
-            transition: 'all 0.2s ease',
-            transform: 'scale(1)',
             outline: 'none',
             border: 'none',
             textDecoration: 'none',
@@ -80,18 +98,13 @@ export default function ReferFriendButton({
           onMouseEnter={(e) => {
             if (resolvedCode) {
               e.currentTarget.style.background = '#c2410c';
-              e.currentTarget.style.transform = 'scale(1.02)';
-              e.currentTarget.style.boxShadow = '0 12px 30px rgba(0,0,0,0.3)';
             }
           }}
           onMouseLeave={(e) => {
             if (resolvedCode) {
               e.currentTarget.style.background = '#ea580c';
-              e.currentTarget.style.transform = 'scale(1)';
-              e.currentTarget.style.boxShadow = '0 10px 25px rgba(0,0,0,0.2)';
             }
           }}
-          className={className}
         >
           <div style={{
             display: 'flex',

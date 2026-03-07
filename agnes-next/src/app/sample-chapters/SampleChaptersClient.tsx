@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useSafeBack } from '@/lib/nav';
 import { readContestEmail } from '@/lib/identity';
@@ -50,25 +51,25 @@ export default function SampleChaptersClient() {
       id: 'btn1',
       label: 'Read Chapter 1',
       text: 'Starts off running.',
-      link: '/chapters/chapter1.pdf',
+      link: '/sample-chapters/read/1',
     },
     {
       id: 'btn2',
       label: 'Read Chapter 2',
       text: 'Fred enters the scene – Agnes already doesn’t like him.',
-      link: '/chapters/chapter2.pdf',
+      link: '/sample-chapters/read/2',
     },
     {
       id: 'btn3',
       label: 'Read Chapter 9',
       text: 'Meet Matt and Reese – straight from the orphanage.',
-      link: '/chapters/chapter9.pdf',
+      link: '/sample-chapters/read/9',
     },
     {
       id: 'btn4',
       label: 'Read Chapter 45',
       text: 'Fred and Jody – always two steps ahead.',
-      link: '/chapters/chapter45.pdf',
+      link: '/sample-chapters/read/45',
     },
     {
       id: 'btn5',
@@ -376,10 +377,8 @@ export default function SampleChaptersClient() {
               justifyContent: 'center',
             }}
           >
-            <a
-              href={btn.link}
-              target="_blank"
-              rel="noopener noreferrer"
+            <Link
+              href={btn.link ?? '#'}
               style={{
                 padding: '12px 24px',
                 border: '2px solid #00ff00',
@@ -393,7 +392,7 @@ export default function SampleChaptersClient() {
               {current === index && (
                 <span style={{ marginLeft: '12px', fontSize: '1.2em' }}>👉</span>
               )}
-            </a>
+            </Link>
             {current === index && (
               <span
                 style={{

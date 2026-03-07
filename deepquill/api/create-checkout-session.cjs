@@ -15,6 +15,21 @@ if (!envConfig?.STRIPE_SECRET_KEY) {
 // Import Stripe client (uses envConfig.STRIPE_SECRET_KEY)
 const { stripe } = require('../src/lib/stripe.cjs');
 
+// Import Prisma for user lookup and discount code persistence
+const { prisma, ensureDatabaseUrl } = require('../server/prisma.cjs');
+const { normalizeEmail, normalizeReferralCode } = require('../src/lib/normalize.cjs');
+
+// Part B1: Referral attribution window (30 days)
+const REFERRAL_ATTRIBUTION_WINDOW_DAYS = 30;
+const REFERRAL_ATTRIBUTION_WINDOW_MS = REFERRAL_ATTRIBUTION_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+
+// Log allowlist configuration at startup
+console.log('[CHECKOUT_CONFIG] Discount code allowlist configuration:', {
+  mode: envConfig.ASSOCIATE_REF_ALLOWLIST_MODE,
+  allowlistLength: envConfig.ASSOCIATE_REF_ALLOWLIST.length,
+  note: 'Allowlist codes are not logged for security',
+});
+
 // Strict product-to-price mapping (no fallbacks)
 const PRICE_BY_PRODUCT = {
   paperback: envConfig.STRIPE_PRICE_PAPERBACK,
@@ -22,20 +37,18 @@ const PRICE_BY_PRODUCT = {
   audio_preorder: envConfig.STRIPE_PRICE_AUDIO_PREORDER,
 };
 
-// Part 2: Do NOT use Prisma for ref validation - it's optional and non-blocking
-// Ref validation is now allowlist-only (no DB dependency)
-
 /**
- * Part 2: Validate associate publisher ref (non-blocking, allowlist-only)
- * Returns { valid: boolean, method: 'allowlist' | 'format' | null }
+ * Validate associate publisher ref (canonical: check User table first)
+ * Returns { valid: boolean, method: 'database' | 'allowlist' | 'format' | null, referrerUserId?: string }
  * 
  * Key rules:
  * - Ref is optional (checkout proceeds even if missing/invalid)
- * - No Prisma dependency (deepquill doesn't have User table)
+ * - Canonical rule: Any existing User.code is always valid
  * - Format validation: 4-12 alphanumeric characters
- * - Allowlist validation: if provided, check against allowlist
+ * - Database check: Look up User by code or referralCode
+ * - Allowlist fallback: For backward compatibility
  */
-function isValidAssociatePublisherRef(ref) {
+async function isValidAssociatePublisherRef(ref) {
   // A) Safe parsing: ref is optional
   if (!ref || typeof ref !== 'string' || ref.trim().length === 0) {
     return { valid: false, method: null };
@@ -51,7 +64,48 @@ function isValidAssociatePublisherRef(ref) {
     return { valid: false, method: null };
   }
 
-  // B) Validation strategy: allowlist-only (no Prisma)
+  // B) Canonical validation: Check if code exists in User table
+  // This is the primary validation - any User.code is valid by default
+  if (prisma) {
+    try {
+      ensureDatabaseUrl();
+      const refUser = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { code: normalizedRef },
+            { referralCode: normalizedRef },
+          ],
+        },
+        select: {
+          id: true,
+          code: true,
+          referralCode: true,
+        },
+      });
+
+      if (refUser) {
+        console.log('[CHECKOUT_REF] Code found in database', {
+          code: normalizedRef,
+          userId: refUser.id,
+          userCode: refUser.code,
+          userReferralCode: refUser.referralCode,
+        });
+        return {
+          valid: true,
+          method: 'database',
+          referrerUserId: refUser.id,
+        };
+      }
+    } catch (dbErr) {
+      console.warn('[CHECKOUT_REF] Database lookup failed, falling back to allowlist', {
+        error: dbErr.message,
+        code: normalizedRef,
+      });
+      // Fall through to allowlist check
+    }
+  }
+
+  // C) Fallback: Allowlist validation (for backward compatibility)
   const allowlistMode = envConfig.ASSOCIATE_REF_ALLOWLIST_MODE || 'allowlist';
   const allowlist = envConfig.ASSOCIATE_REF_ALLOWLIST || [];
 
@@ -82,11 +136,28 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    // Validate product parameter (required)
+    // Part G3: Validate product parameter (REQUIRED - no defaults)
     const product = req.body?.product;
-    if (!product || !(product in PRICE_BY_PRODUCT)) {
+    if (!product || typeof product !== 'string') {
+      console.error('[CHECKOUT] ❌ Missing product identifier', {
+        userId: req.body?.userId || 'unknown',
+        email: req.body?.email || req.body?.metadata?.contest_email || 'unknown',
+        product: product || 'missing',
+        bodyKeys: Object.keys(req.body || {}),
+      });
       return res.status(400).json({ 
-        error: `Invalid product: ${product}. Must be one of: paperback, ebook, audio_preorder` 
+        error: 'Missing product identifier. Product must be explicitly specified.',
+        details: 'Product is required and cannot be inferred or defaulted.'
+      });
+    }
+    
+    if (!(product in PRICE_BY_PRODUCT)) {
+      console.error('[CHECKOUT] ❌ Invalid product identifier', {
+        product,
+        validProducts: Object.keys(PRICE_BY_PRODUCT),
+      });
+      return res.status(400).json({ 
+        error: `Invalid product: ${product}. Must be one of: ${Object.keys(PRICE_BY_PRODUCT).join(', ')}` 
       });
     }
 
@@ -98,47 +169,285 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    // Get referral code (optional, non-blocking)
-    const refRaw = req.body?.ref || req.body?.referralCode || '';
-    const ref = refRaw ? refRaw.trim() : '';
+    // ===== DISCOUNT CODE RESOLUTION (Priority: request > stored > none) =====
+    const metadata = (req.body && req.body.metadata) || {};
+    const customerEmail = req.body?.email || metadata?.contest_email || null;
     
-    // Validate ref if present (non-blocking - checkout proceeds even if invalid)
+    // [PRINCIPAL] Identify canonical User principal for checkout
+    let user = null;
+    let discountCodeSource = 'none';
+    let discountCodeToUse = null;
+    let principalResolutionMethod = 'none';
+    
+    if (prisma) {
+      try {
+        ensureDatabaseUrl();
+        
+        // Priority 1: Try to identify user by contest_user_id (canonical - from cookie)
+        const contestUserId = metadata?.contest_user_id;
+        if (contestUserId && typeof contestUserId === 'string' && contestUserId.trim()) {
+          user = await prisma.user.findUnique({
+            where: { id: contestUserId.trim() },
+            select: { 
+              id: true, 
+              email: true, 
+              code: true, 
+              preferredDiscountCode: true,
+              lastReferredByUserId: true,
+              lastReferralCode: true,
+              lastReferralAt: true,
+              lastReferralSource: true,
+            },
+          });
+          if (user) {
+            discountCodeSource = 'contest_user_id';
+            principalResolutionMethod = 'contest_user_id';
+            console.log('[PRINCIPAL] Principal resolved by contest_user_id', { 
+              userId: user.id, 
+              email: user.email,
+              code: user.code,
+            });
+          } else {
+            console.warn('[PRINCIPAL] MISMATCH - contest_user_id provided but User not found', { 
+              contestUserId: contestUserId.trim() 
+            });
+          }
+        }
+        
+        // Priority 2: Fallback - Try by contest_user_code
+        if (!user && metadata?.contest_user_code) {
+          const contestUserCode = normalizeReferralCode(metadata.contest_user_code);
+          if (contestUserCode) {
+            user = await prisma.user.findUnique({
+              where: { code: contestUserCode },
+              select: { 
+                id: true, 
+                email: true, 
+                code: true, 
+                preferredDiscountCode: true,
+                lastReferredByUserId: true,
+                lastReferralCode: true,
+                lastReferralAt: true,
+                lastReferralSource: true,
+              },
+            });
+            if (user) {
+              discountCodeSource = 'contest_user_code';
+              principalResolutionMethod = 'contest_user_code';
+              console.log('[PRINCIPAL] Principal resolved by contest_user_code', { 
+                userId: user.id, 
+                email: user.email,
+                code: user.code,
+              });
+            }
+          }
+        }
+        
+        // Priority 3: Fallback - Try by email (non-canonical, but better than nothing)
+        if (!user && customerEmail) {
+          const normalizedEmail = normalizeEmail(customerEmail);
+          if (normalizedEmail) {
+            user = await prisma.user.findUnique({
+              where: { email: normalizedEmail },
+              select: { 
+                id: true, 
+                email: true, 
+                code: true, 
+                preferredDiscountCode: true,
+                lastReferredByUserId: true,
+                lastReferralCode: true,
+                lastReferralAt: true,
+                lastReferralSource: true,
+              },
+            });
+            if (user) {
+              discountCodeSource = 'email';
+              principalResolutionMethod = 'email_fallback';
+              console.warn('[PRINCIPAL] Principal resolved by email fallback (contest_user_id missing)', { 
+                userId: user.id, 
+                email: user.email,
+                code: user.code,
+                warning: 'contest_user_id should be provided in metadata',
+              });
+            }
+          }
+        }
+        
+        // [PRINCIPAL] Log final resolution
+        if (user) {
+          console.log('[PRINCIPAL] Principal resolved for checkout', {
+            userId: user.id,
+            email: user.email,
+            code: user.code,
+            method: principalResolutionMethod,
+            hasContestUserId: !!metadata?.contest_user_id,
+            hasContestUserCode: !!metadata?.contest_user_code,
+          });
+        } else {
+          console.warn('[PRINCIPAL] Principal NOT resolved - no User found', {
+            contestUserId: metadata?.contest_user_id || 'MISSING',
+            contestUserCode: metadata?.contest_user_code || 'MISSING',
+            customerEmail: customerEmail || 'MISSING',
+          });
+        }
+      } catch (userErr) {
+        console.error('[PRINCIPAL] Error resolving principal', { error: userErr.message, stack: userErr.stack });
+        // Continue without user - discount code persistence is non-blocking
+      }
+    }
+    
+    // Part B2: Determine discount code priority: explicit ref > latest active referral > stored preferredDiscountCode > none
+    const refRaw = req.body?.ref || req.body?.referralCode || '';
+    // Filter out placeholder values like '...' or empty strings
+    const requestCode = refRaw && refRaw.trim() && refRaw.trim() !== '...' ? refRaw.trim() : null;
+    
+    // Check if buyer has an active lastReferral (within attribution window)
+    let activeLastReferral = null;
+    if (user && user.lastReferralAt && user.lastReferralCode) {
+      const referralAgeMs = Date.now() - new Date(user.lastReferralAt).getTime();
+      if (referralAgeMs <= REFERRAL_ATTRIBUTION_WINDOW_MS) {
+        activeLastReferral = {
+          code: user.lastReferralCode,
+          userId: user.lastReferredByUserId,
+          source: user.lastReferralSource || 'unknown',
+          ageDays: Math.floor(referralAgeMs / (24 * 60 * 60 * 1000)),
+        };
+        console.log('[CHECKOUT_DISCOUNT] Found active lastReferral', {
+          code: activeLastReferral.code,
+          ageDays: activeLastReferral.ageDays,
+          source: activeLastReferral.source,
+          userId: user.id,
+        });
+      } else {
+        console.log('[CHECKOUT_DISCOUNT] lastReferral expired', {
+          code: user.lastReferralCode,
+          ageDays: Math.floor(referralAgeMs / (24 * 60 * 60 * 1000)),
+          windowDays: REFERRAL_ATTRIBUTION_WINDOW_DAYS,
+          userId: user.id,
+        });
+      }
+    }
+    
+    if (requestCode) {
+      // Priority 1: Code explicitly passed in request (user changed it)
+      discountCodeToUse = requestCode;
+      discountCodeSource = 'request';
+      console.log('[CHECKOUT_DISCOUNT] Using code from request', { code: discountCodeToUse });
+    } else if (activeLastReferral) {
+      // Priority 2: Latest active referral (within attribution window)
+      discountCodeToUse = activeLastReferral.code;
+      discountCodeSource = 'last_referral';
+      console.log('[CHECKOUT_DISCOUNT] Using active lastReferral', { 
+        code: discountCodeToUse,
+        source: activeLastReferral.source,
+        ageDays: activeLastReferral.ageDays,
+        userId: user.id,
+      });
+    } else if (user?.preferredDiscountCode) {
+      // Priority 3: Stored preferredDiscountCode on user
+      discountCodeToUse = user.preferredDiscountCode;
+      discountCodeSource = 'stored';
+      console.log('[CHECKOUT_DISCOUNT] Using stored preferredDiscountCode', { 
+        code: discountCodeToUse,
+        userId: user.id,
+      });
+    } else {
+      // Priority 4: None
+      discountCodeToUse = null;
+      discountCodeSource = 'none';
+      console.log('[CHECKOUT_DISCOUNT] No discount code available', { 
+        userId: user?.id || 'no_user',
+        hasStoredCode: !!user?.preferredDiscountCode,
+        hasActiveLastReferral: !!activeLastReferral,
+      });
+    }
+    
+    // Validate discount code if present
     let appliedDiscount = false;
-    let refValidationResult = { valid: false, method: null };
-    if (ref) {
-      // Synchronous validation (no Prisma/async needed)
-      refValidationResult = isValidAssociatePublisherRef(ref);
+    let refValidationResult = { valid: false, method: null, reason: 'no_code' };
+    
+    if (discountCodeToUse) {
+      refValidationResult = await isValidAssociatePublisherRef(discountCodeToUse);
       appliedDiscount = refValidationResult.valid;
       
-      console.log('[CHECKOUT_REF]', {
-        ref: ref.toUpperCase(),
+      if (appliedDiscount) {
+        refValidationResult.reason = `valid_${refValidationResult.method}`;
+      } else {
+        refValidationResult.reason = 'invalid_format_or_not_in_allowlist';
+      }
+      
+      console.log('[CHECKOUT_DISCOUNT] Validation result', {
+        code: discountCodeToUse.toUpperCase(),
+        source: discountCodeSource,
         valid: refValidationResult.valid,
         method: refValidationResult.method,
+        reason: refValidationResult.reason,
         allowlistHit: refValidationResult.method === 'allowlist',
         allowlistMode: envConfig.ASSOCIATE_REF_ALLOWLIST_MODE,
         allowlistCount: envConfig.ASSOCIATE_REF_ALLOWLIST.length,
+      });
+      
+      // Update user's preferredDiscountCode if code changed and is valid
+      if (user && requestCode && appliedDiscount && user.preferredDiscountCode !== requestCode.toUpperCase()) {
+        try {
+          ensureDatabaseUrl();
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { preferredDiscountCode: requestCode.toUpperCase() },
+          });
+          console.log('[CHECKOUT_DISCOUNT] Updated preferredDiscountCode', {
+            userId: user.id,
+            oldCode: user.preferredDiscountCode || 'none',
+            newCode: requestCode.toUpperCase(),
+          });
+        } catch (updateErr) {
+          console.warn('[CHECKOUT_DISCOUNT] Failed to update preferredDiscountCode', {
+            error: updateErr.message,
+            userId: user.id,
+          });
+          // Non-blocking - continue with checkout
+        }
+      }
+    } else {
+      console.log('[CHECKOUT_DISCOUNT] No discount code to validate', {
+        source: discountCodeSource,
+        userId: user?.id || 'no_user',
       });
     }
     
     console.log('[CHECKOUT_START_SERVER]', { 
       product, 
       priceId, 
-      ref: ref || 'none', 
+      discountCode: discountCodeToUse || 'none',
+      discountCodeSource,
       appliedDiscount,
+      appliedDiscountReason: refValidationResult.reason,
       refValid: refValidationResult.valid,
       refMethod: refValidationResult.method,
+      userId: user?.id || 'no_user',
     });
 
     const qty = Math.max(1, Number(req.body?.qty || 1));
     const successPath = req.body?.successPath || '/contest/thank-you';
     const cancelPath  = req.body?.cancelPath  || '/contest';
-    const metadata    = (req.body && req.body.metadata) || {};
 
     // Add product, ref, and tracking params to metadata
     metadata.product = product;
-    if (ref) {
-      metadata.ref = ref.toUpperCase();
+    if (discountCodeToUse) {
+      metadata.ref = discountCodeToUse.toUpperCase();
       metadata.ref_valid = appliedDiscount ? 'true' : 'false';
+    }
+    // Part B2: Add AP referral metadata for webhook attribution
+    if (activeLastReferral && appliedDiscount && activeLastReferral.userId) {
+      metadata.ap_referral_code = activeLastReferral.code;
+      metadata.ap_user_id = activeLastReferral.userId;
+      metadata.referral_at = user.lastReferralAt.toISOString();
+      metadata.referral_source = activeLastReferral.source;
+      console.log('[CHECKOUT_DISCOUNT] Added AP referral metadata', {
+        ap_referral_code: metadata.ap_referral_code,
+        ap_user_id: metadata.ap_user_id,
+        referral_source: metadata.referral_source,
+      });
     }
     if (req.body?.src) metadata.src = req.body.src;
     if (req.body?.v) metadata.v = req.body.v;
@@ -184,8 +493,7 @@ module.exports = async function handler(req, res) {
       discounts.push({ coupon: envConfig.STRIPE_ASSOCIATE_15_COUPON_ID });
     }
 
-    // Extract email for customer_email prefill (from body.email or metadata.contest_email)
-    const customerEmail = req.body?.email || metadata?.contest_email || null;
+    // customerEmail already extracted above for user lookup
     
     // Build session params - never use allow_promotion_codes with discounts
     const sessionParams = {
@@ -215,7 +523,16 @@ module.exports = async function handler(req, res) {
       sessionParams.allow_promotion_codes = false;
     }
 
+    // Root Cause C Fix: Checkout session must always be newly created (never reuse)
+    // stripe.checkout.sessions.create() always creates a new session - this is correct
     const session = await stripe.checkout.sessions.create(sessionParams);
+    
+    console.log('[CHECKOUT] New checkout session created', {
+      sessionId: session.id,
+      url: session.url,
+      product,
+      note: 'Session is always newly created (never reused)',
+    });
 
     return res.status(200).json({ url: session.url });
   } catch (err) {

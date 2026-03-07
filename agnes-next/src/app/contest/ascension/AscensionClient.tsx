@@ -156,8 +156,11 @@ export default function AscensionClient() {
       flashRef.current.classList.add(styles.active);
     }
     
-    const route = dest === 'score' ? '/contest/score' : '/signal-room';
-    setTimeout(() => router.push(route), 300);
+    // Part A: Redirect to Score page with deterministic handoff flag
+    const route = dest === 'score' 
+      ? `/contest/score?afterExplicitEntry=1&ts=${Date.now()}` 
+      : '/signal-room';
+    setTimeout(() => router.replace(route), 300);
   };
 
   return (
@@ -195,7 +198,7 @@ export default function AscensionClient() {
             </div>
             <a
               className={styles.doorLink}
-              href="/contest/score"
+              href="/contest/score?afterExplicitEntry=1"
               aria-label="See My Score"
               onClick={(e) => {
                 e.preventDefault();

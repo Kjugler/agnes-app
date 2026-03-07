@@ -1,180 +1,171 @@
 // deepquill/lib/points/awardPoints.cjs
 // Centralized point awarding logic with guardrails
 
-const { prisma } = require('../../server/prisma.cjs');
+const { prisma: defaultPrisma } = require('../../server/prisma.cjs');
 
 /**
- * Award purchase daily points with guardrails:
- * - Maximum 500 points per day per user
- * - Maximum 3 distinct days total (lifetime cap = 1,500 points)
+ * Award purchase points (Math Mode - deterministic):
+ * - Awards +500 points per purchase
+ * - No daily caps, no lifetime caps
+ * - Idempotency: one award per sessionId (prevents double-crediting on webhook retries)
  * - Returns { awarded: number, reason: string }
+ * @param {Object} prismaClient - Prisma client instance (required)
+ * @param {Object} params - { userId, sessionId }
  */
-async function awardPurchaseDailyPoints({ userId, purchaseId, now }) {
+async function awardPurchaseDailyPoints(prismaClient, { userId, sessionId }) {
   if (!userId) {
     console.log('[POINTS] purchase_points_skipped: missing userId');
     return { awarded: 0, reason: 'missing_user_id' };
   }
 
-  if (!prisma) {
-    console.log('[POINTS] purchase_points_skipped: prisma not available');
-    return { awarded: 0, reason: 'no_prisma' };
+  if (!sessionId) {
+    console.log('[POINTS] purchase_points_skipped: missing sessionId');
+    return { awarded: 0, reason: 'missing_session_id' };
+  }
+
+  if (!prismaClient) {
+    console.error('[POINTS] prismaClient missing - cannot award purchase points');
+    throw new Error('[POINTS] prismaClient is required but was not provided');
   }
 
   try {
-    // Get award day in YYYY-MM-DD format (UTC)
-    const awardDay = now ? new Date(now).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-
-    // Check if user already got points for this day
-    const existingAward = await prisma.pointAward.findUnique({
+    // Idempotency check: has this session already been awarded?
+    const existingAward = await prismaClient.ledger.findUnique({
       where: {
-        unique_purchase_daily_cap: {
+        uniq_ledger_type_session_user: {
+          sessionId,
+          type: 'POINTS_AWARDED_PURCHASE',
           userId,
-          kind: 'PURCHASE_DAILY_500',
-          awardDay,
         },
       },
     });
 
     if (existingAward) {
-      console.log('[POINTS] purchase_points_skipped_daily', { userId, awardDay });
-      return { awarded: 0, reason: 'daily_cap_reached' };
+      console.log('[POINTS] purchase_points_skipped_already_awarded', { userId, sessionId });
+      return { awarded: 0, reason: 'already_awarded_for_session' };
     }
 
-    // Check how many distinct days the user has been awarded
-    const distinctDays = await prisma.pointAward.findMany({
-      where: {
-        userId,
-        kind: 'PURCHASE_DAILY_500',
-      },
-      select: {
-        awardDay: true,
-      },
-      distinct: ['awardDay'],
-    });
-
-    if (distinctDays.length >= 3) {
-      console.log('[POINTS] purchase_points_skipped_lifetime_cap', { userId, distinctDaysCount: distinctDays.length });
-      return { awarded: 0, reason: 'lifetime_cap_reached' };
-    }
-
-    // Award points
-    await prisma.pointAward.create({
-      data: {
-        userId,
-        kind: 'PURCHASE_DAILY_500',
-        awardDay,
-        purchaseId: purchaseId || null,
-      },
-    });
-
-    // Update user points
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        points: {
-          increment: 500,
+    // A2: Award points - create ledger entry ONLY (no user.points increment)
+    // Totals are computed from ledger rollup (canonical source of truth)
+    await prismaClient.$transaction(async (tx) => {
+      // Record in Ledger (idempotent by sessionId+type+userId via unique constraint)
+      await tx.ledger.create({
+        data: {
+          sessionId,
+          userId,
+          type: 'POINTS_AWARDED_PURCHASE',
+          points: 500,
+          amount: 500,
+          currency: 'points',
+          note: 'Points awarded for purchase',
+          meta: {
+            reason: 'awarded',
+          },
         },
-      },
+      });
+      // A2: Do NOT increment user.points - ledger is canonical, totals come from rollup
     });
 
-    console.log('[POINTS] purchase_points_awarded', { userId, awardDay, points: 500 });
+    console.log('[POINTS] purchase_points_awarded', { userId, sessionId, points: 500 });
     return { awarded: 500, reason: 'awarded' };
   } catch (error) {
-    // Handle unique constraint violation (idempotency)
-    if (error.code === 'P2002') {
-      console.log('[POINTS] purchase_points_skipped: already awarded (idempotent)', { userId });
-      return { awarded: 0, reason: 'already_awarded' };
+    // Handle unique constraint violation (idempotency - another process already awarded)
+    if (error.code === 'P2002' || error.message?.includes('Unique constraint')) {
+      console.log('[POINTS] purchase_points_skipped_already_awarded_unique', { userId, sessionId });
+      return { awarded: 0, reason: 'already_awarded_for_session' };
     }
-
-    console.error('[POINTS] Error awarding purchase points', { userId, error: error.message });
+    console.error('[POINTS] Error awarding purchase points', { userId, sessionId, error: error.message, stack: error.stack });
     return { awarded: 0, reason: `error: ${error.message}` };
   }
 }
 
 /**
- * Award referral points with guardrails:
- * - Maximum 3 awards per referrer-referred pair
- * - Must be different SKUs on different calendar days
+ * Award referral sponsor points (Math Mode - deterministic):
+ * - Awards +5,000 points to sponsor per referred purchase
+ * - No caps, no limits
+ * - Idempotency: one award per sessionId (prevents double-crediting on webhook retries)
  * - Returns { awarded: number, reason: string }
+ * @param {Object} prismaClient - Prisma client instance (required)
+ * @param {Object} params - { referrerUserId, sessionId, buyerUserId, product }
  */
-async function awardReferralPoints({ referrerId, referredUserId, sku, purchaseDay, purchaseId }) {
-  if (!referrerId || !referredUserId || !sku) {
-    console.log('[POINTS] referral_skip: missing required params', { referrerId: !!referrerId, referredUserId: !!referredUserId, sku: !!sku });
-    return { awarded: 0, reason: 'missing_params' };
+async function awardReferralSponsorPoints(prismaClient, { referrerUserId, sessionId, buyerUserId, product }) {
+  if (!referrerUserId) {
+    console.log('[POINTS] referral_sponsor_skip: missing referrerUserId');
+    return { awarded: 0, reason: 'missing_referrer_user_id' };
   }
 
-  if (!prisma) {
-    console.log('[POINTS] referral_skip: prisma not available');
-    return { awarded: 0, reason: 'no_prisma' };
+  if (!sessionId) {
+    console.log('[POINTS] referral_sponsor_skip: missing sessionId');
+    return { awarded: 0, reason: 'missing_session_id' };
+  }
+
+  if (!prismaClient) {
+    console.error('[POINTS] prismaClient missing - cannot award referral sponsor points');
+    throw new Error('[POINTS] prismaClient is required but was not provided');
   }
 
   try {
-    // Get purchase day in YYYY-MM-DD format (UTC)
-    const awardDay = purchaseDay ? new Date(purchaseDay).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-
-    // Check if this referrer-referred pair already has 3 awards
-    const existingAwards = await prisma.pointAward.findMany({
+    // Idempotency check: has this session already been awarded to this sponsor?
+    const existingAward = await prismaClient.ledger.findUnique({
       where: {
-        referrerId,
-        referredUserId,
-        kind: 'REFERRAL_ITEM_500',
-      },
-    });
-
-    if (existingAwards.length >= 3) {
-      console.log('[POINTS] referral_skip_max3', { referrerId, referredUserId, count: existingAwards.length });
-      return { awarded: 0, reason: 'max_3_reached' };
-    }
-
-    // Check if this exact SKU was already awarded for this pair
-    const sameSkuAward = existingAwards.find(a => a.sku === sku);
-    if (sameSkuAward) {
-      console.log('[POINTS] referral_skip_same_sku', { referrerId, referredUserId, sku });
-      return { awarded: 0, reason: 'same_sku_already_awarded' };
-    }
-
-    // Check if there's an award on the same day (even if different SKU)
-    const sameDayAward = existingAwards.find(a => a.awardDay === awardDay);
-    if (sameDayAward) {
-      console.log('[POINTS] referral_skip_same_day', { referrerId, referredUserId, awardDay });
-      return { awarded: 0, reason: 'same_day_already_awarded' };
-    }
-
-    // Award points
-    await prisma.pointAward.create({
-      data: {
-        userId: referrerId, // Points go to referrer
-        kind: 'REFERRAL_ITEM_500',
-        awardDay,
-        sku,
-        referrerId,
-        referredUserId,
-        purchaseId: purchaseId || null,
-      },
-    });
-
-    // Update referrer's points
-    await prisma.user.update({
-      where: { id: referrerId },
-      data: {
-        points: {
-          increment: 500,
+        uniq_ledger_type_session_user: {
+          sessionId,
+          type: 'REFERRAL_POINTS_AWARDED',
+          userId: referrerUserId,
         },
       },
     });
 
-    console.log('[POINTS] referral_awarded', { referrerId, referredUserId, sku, awardDay, points: 500 });
-    return { awarded: 500, reason: 'awarded' };
-  } catch (error) {
-    // Handle unique constraint violation (idempotency)
-    if (error.code === 'P2002') {
-      console.log('[POINTS] referral_skip: already awarded (idempotent)', { referrerId, referredUserId, sku });
-      return { awarded: 0, reason: 'already_awarded' };
+    if (existingAward) {
+      console.log('[POINTS] referral_sponsor_skip_already_awarded', { referrerUserId, sessionId });
+      return { awarded: 0, reason: 'already_awarded_for_session' };
     }
 
-    console.error('[POINTS] Error awarding referral points', { referrerId, referredUserId, sku, error: error.message });
+    // A2: Award points - create ledger entry ONLY (no user.points increment)
+    // Totals are computed from ledger rollup (canonical source of truth)
+    await prismaClient.$transaction(async (tx) => {
+      // Record in Ledger (idempotent by sessionId+type+userId via unique constraint)
+      await tx.ledger.create({
+        data: {
+          sessionId,
+          userId: referrerUserId,
+          type: 'REFERRAL_POINTS_AWARDED',
+          points: 5000,
+          amount: 5000,
+          currency: 'points',
+          note: `Referral sponsor points awarded for purchase by referred buyer`,
+          meta: {
+            buyerUserId: buyerUserId || null,
+            product: product || null,
+            reason: 'awarded',
+          },
+        },
+      });
+      // A2: Do NOT increment user.points - ledger is canonical, totals come from rollup
+    });
+
+    console.log('[POINTS] referral_sponsor_awarded', { referrerUserId, sessionId, buyerUserId, points: 5000 });
+    return { awarded: 5000, reason: 'awarded' };
+  } catch (error) {
+    // Handle unique constraint violation (idempotency - another process already awarded)
+    if (error.code === 'P2002' || error.message?.includes('Unique constraint')) {
+      console.log('[POINTS] referral_sponsor_skip_already_awarded_unique', { referrerUserId, sessionId });
+      return { awarded: 0, reason: 'already_awarded_for_session' };
+    }
+    console.error('[POINTS] Error awarding referral sponsor points', { referrerUserId, sessionId, error: error.message, stack: error.stack });
     return { awarded: 0, reason: `error: ${error.message}` };
   }
+}
+
+/**
+ * Legacy referral points function (kept for backward compatibility)
+ * This is now replaced by awardReferralSponsorPoints for Math Mode
+ * @deprecated Use awardReferralSponsorPoints instead
+ */
+async function awardReferralPoints(prismaClient, { referrerId, referredUserId, sku, purchaseDay, purchaseId }) {
+  console.warn('[POINTS] awardReferralPoints is deprecated - use awardReferralSponsorPoints for Math Mode');
+  // Return 0 to prevent legacy code from awarding points
+  return { awarded: 0, reason: 'deprecated_use_awardReferralSponsorPoints' };
 }
 
 /**
@@ -216,12 +207,9 @@ async function awardForSignalApproved({ userId, signalId }) {
       throw createError; // Re-throw other errors
     }
 
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        points: { increment: pointsAmount },
-      },
-    });
+    // A2: Do NOT increment user.points - ledger is canonical, totals come from rollup
+    // Note: This function uses PointAward table (legacy), but we still shouldn't increment user.points
+    // TODO: Migrate to ledger-only approach for consistency
 
     console.log('[POINTS] signal_approved_awarded', { userId, signalId, points: pointsAmount });
     return { awarded: pointsAmount, reason: 'awarded' };
@@ -275,12 +263,9 @@ async function awardForReviewApproved({ userId, reviewId }) {
       throw createError; // Re-throw other errors
     }
 
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        points: { increment: pointsAmount },
-      },
-    });
+    // A2: Do NOT increment user.points - ledger is canonical, totals come from rollup
+    // Note: This function uses PointAward table (legacy), but we still shouldn't increment user.points
+    // TODO: Migrate to ledger-only approach for consistency
 
     console.log('[POINTS] review_approved_awarded', { userId, reviewId, points: pointsAmount });
     return { awarded: pointsAmount, reason: 'awarded' };
@@ -297,7 +282,8 @@ async function awardForReviewApproved({ userId, reviewId }) {
 
 module.exports = {
   awardPurchaseDailyPoints,
-  awardReferralPoints,
+  awardReferralSponsorPoints,
+  awardReferralPoints, // Legacy - kept for backward compatibility
   awardForSignalApproved,
   awardForReviewApproved,
 };

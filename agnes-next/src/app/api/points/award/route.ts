@@ -6,21 +6,29 @@ import { ensureAssociateMinimal } from '@/lib/associate';
 import { normalizeEmail } from '@/lib/email';
 import { awardDailySharePoints, startOfToday } from '@/lib/dailySharePoints';
 import { checkAndAwardRabbit1, getActionsSnapshot } from '@/lib/rabbitMissions';
+import { proxyJson } from '@/lib/deepquillProxy';
 
 const BOOK_POINTS = 500;
 
 function mapAction(a: string) {
   switch (a) {
     case 'share_x':
+    case 'share_twitter':
+    case 'share_xcom':
       return { type: 'SHARE_X' as const, points: 100 };
     case 'share_ig':
+    case 'share_instagram':
       return { type: 'SHARE_IG' as const, points: 100 };
     case 'share_fb':
       return { type: 'SHARE_FB' as const, points: 100 };
     case 'share_truth':
+    case 'share_truthsocial':
+    case 'share_truth_social':
       return { type: 'SHARE_TRUTH' as const, points: 100 };
     case 'share_tiktok':
       return { type: 'SHARE_TT' as const, points: 100 };
+    case 'share_x_back_to_score_bonus':
+      return { type: 'SHARE_X_BACK_BONUS' as const, points: 100 };
     case 'contest_join':
       return { type: 'CONTEST_JOIN' as const, points: 250 };
     case 'subscribe_digest':
@@ -114,6 +122,35 @@ export async function POST(req: NextRequest) {
     } else if (map.type === 'SHARE_IG') {
       pointsAwarded = await awardDailySharePoints(user.id, 'instagram');
       alreadyAwarded = pointsAwarded === 0;
+    } else if (map.type === 'SHARE_X_BACK_BONUS') {
+      // Back-to-score bonus: once per day per user
+      const exists = await prisma.ledger.findFirst({
+        where: {
+          userId: user.id,
+          type: map.type,
+          createdAt: { gte: startOfToday() },
+        },
+        select: { id: true },
+      });
+      alreadyAwarded = Boolean(exists);
+
+      if (!alreadyAwarded && map.points) {
+        await prisma.$transaction([
+          prisma.ledger.create({
+            data: {
+              userId: user.id,
+              type: map.type,
+              points: map.points,
+              note: `Auto award ${action}`,
+            },
+          }),
+          prisma.user.update({
+            where: { id: user.id },
+            data: { points: { increment: map.points } },
+          }),
+        ]);
+        pointsAwarded = map.points;
+      }
     } else if (
       map.points &&
       (map.type === 'SHARE_TRUTH' ||
@@ -152,21 +189,72 @@ export async function POST(req: NextRequest) {
       }
     } else if (map.points) {
       // Non-share actions (contest_join, subscribe_digest, etc.)
-      await prisma.$transaction([
-        prisma.ledger.create({
-          data: {
-            userId: user.id,
-            type: map.type,
-            points: map.points,
-            note: `Auto award ${action}`,
+      // Proxy to deepquill for canonical DB writes
+      try {
+        const { data, status } = await proxyJson('/api/points/award', req, {
+          method: 'POST',
+          body: {
+            kind: action,
+            email: normalizedEmail,
           },
-        }),
-        prisma.user.update({
-          where: { id: user.id },
-          data: { points: { increment: map.points } },
-        }),
-      ]);
-      pointsAwarded = map.points;
+          headers: {
+            'x-user-email': normalizedEmail,
+            'x-admin-key': process.env.ADMIN_KEY || '',
+          },
+        });
+
+        if (status === 200 && data?.ok) {
+          pointsAwarded = data.awarded || 0;
+          console.log('[points/award] Proxied to deepquill', {
+            action,
+            pointsAwarded,
+            reason: data.reason,
+          });
+        } else {
+          console.warn('[points/award] Deepquill proxy failed, falling back to local', {
+            action,
+            status,
+            data,
+          });
+          // Fallback to local DB write (for backward compatibility)
+          await prisma.$transaction([
+            prisma.ledger.create({
+              data: {
+                userId: user.id,
+                type: map.type,
+                points: map.points,
+                note: `Auto award ${action}`,
+              },
+            }),
+            prisma.user.update({
+              where: { id: user.id },
+              data: { points: { increment: map.points } },
+            }),
+          ]);
+          pointsAwarded = map.points;
+        }
+      } catch (proxyErr) {
+        console.error('[points/award] Proxy error, falling back to local', {
+          action,
+          error: proxyErr instanceof Error ? proxyErr.message : String(proxyErr),
+        });
+        // Fallback to local DB write
+        await prisma.$transaction([
+          prisma.ledger.create({
+            data: {
+              userId: user.id,
+              type: map.type,
+              points: map.points,
+              note: `Auto award ${action}`,
+            },
+          }),
+          prisma.user.update({
+            where: { id: user.id },
+            data: { points: { increment: map.points } },
+          }),
+        ]);
+        pointsAwarded = map.points;
+      }
     }
 
     // Check and award Rabbit 1 if conditions are met

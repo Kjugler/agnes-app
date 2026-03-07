@@ -1,6 +1,7 @@
 'use client';
 
 import '@/styles/score.css';
+import '@/styles/button-glow.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -67,10 +68,32 @@ export default function ScoreClient() {
     platformName: 'Facebook',
   });
   const [showEntryFormForCheckout, setShowEntryFormForCheckout] = useState(false);
+  const [explicitContestEntry, setExplicitContestEntry] = useState(false);
+  const [contestJoined, setContestJoined] = useState(false);
+  const [submittingExplicitEntry, setSubmittingExplicitEntry] = useState(false);
+  const [syncingExplicitEntry, setSyncingExplicitEntry] = useState(false);
   const [reducedMotion] = useState(
     typeof window !== 'undefined' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches
   );
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const check = () => setIsMobile(window.innerWidth <= 767);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
+  // Remove mobile-terminal body class on mount (prevents contamination from terminal iframe/parent)
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    document.body.classList.remove('mobile-terminal', 'simple-mode');
+    return () => {
+      document.body.classList.remove('mobile-terminal', 'simple-mode');
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -167,17 +190,18 @@ export default function ScoreClient() {
   const [sessionScoreLoading, setSessionScoreLoading] = useState(false);
   const [sessionScoreError, setSessionScoreError] = useState<string | null>(null);
 
-  // Store session_id in localStorage and fetch score if present
+  // ✅ Only use session_id from URL params (not localStorage)
+  // Principal-based score is fetched via regular score hook below
+  // 
+  // TESTING NOTES:
+  // - To test force_session=1 while logged in: use the same browser profile where you're logged in (not incognito), 
+  //   and use a known-valid session_id that maps to a purchase.
+  // - To test session recovery (no principal): use incognito, but only with a known-valid session_id.
   useEffect(() => {
     if (sessionId && typeof window !== 'undefined') {
-      // Store in localStorage
-      try {
-        localStorage.setItem('last_session_id', sessionId);
-      } catch (err) {
-        console.warn('[score] Failed to store session_id in localStorage', err);
-      }
-
-      // Fetch score from API
+      // ✅ Only fetch if session_id is explicitly in URL (from Stripe redirect)
+      console.log('[score] Fetching score for session_id from URL', sessionId);
+      
       setSessionScoreLoading(true);
       setSessionScoreError(null);
       fetch(`/api/contest/score?session_id=${encodeURIComponent(sessionId)}`)
@@ -205,6 +229,14 @@ export default function ScoreClient() {
             purchasePoints: data.purchasePoints || 0,
             referralPoints: data.referralPoints || 0,
           });
+          
+          // ✅ Clear stored session_id after successful load (prevents stale reuse)
+          try {
+            localStorage.removeItem('last_session_id');
+            console.log('[score] Cleared stored session_id after successful load');
+          } catch (err) {
+            // Ignore localStorage errors
+          }
         })
         .catch((err) => {
           console.error('[score] Failed to fetch session score', err);
@@ -215,46 +247,8 @@ export default function ScoreClient() {
         .finally(() => {
           setSessionScoreLoading(false);
         });
-    } else if (!sessionId && typeof window !== 'undefined') {
-      // Try to load from localStorage if no session_id in URL
-      try {
-        const storedSessionId = localStorage.getItem('last_session_id');
-        if (storedSessionId) {
-          setSessionScoreLoading(true);
-          fetch(`/api/contest/score?session_id=${encodeURIComponent(storedSessionId)}`)
-            .then(async (res) => {
-              if (!res.ok) {
-                const errorData = await res.json().catch(() => ({}));
-                throw new Error(errorData.error || `HTTP ${res.status}`);
-              }
-              return res.json();
-            })
-            .then(async (res) => {
-              const data = await res.json();
-              if (res.ok) {
-                setSessionScore({
-                  totalPoints: data.totalPoints || 0,
-                  basePoints: data.basePoints || 0,
-                  purchasePoints: data.purchasePoints || 0,
-                  referralPoints: data.referralPoints || 0,
-                });
-              } else {
-                // Order not found - that's okay, webhook may not have processed yet
-                console.log('[score] Stored session_id order not found yet', storedSessionId);
-              }
-            })
-            .catch((err) => {
-              console.warn('[score] Failed to fetch stored session score', err);
-              // Don't show error for stored session_id failures
-            })
-            .finally(() => {
-              setSessionScoreLoading(false);
-            });
-        }
-      } catch (err) {
-        console.warn('[score] Failed to read localStorage', err);
-      }
     }
+    // ✅ Removed localStorage fallback - principal-based score is used instead
   }, [sessionId]);
 
   const {
@@ -268,6 +262,30 @@ export default function ScoreClient() {
 
   // points fetch
   const [data, setData] = useState<PointsPayload | null>(null);
+  
+  // CANONICAL DISPLAY POINTS: Single source of truth for both headline and pill
+  // Priority: sessionScore.totalPoints > data?.totalPoints > totalPoints (from useScore) > 0
+  // This ensures headline and pill always match
+  // Format points with thousands separator
+  const formatPoints = (points: number) => {
+    if (typeof points !== 'number') return String(points || 0);
+    return points.toLocaleString('en-US');
+  };
+
+  const displayPoints = useMemo(() => {
+    let rawPoints = 0;
+    if (sessionScore) {
+      rawPoints = sessionScore.totalPoints;
+    } else if (data?.totalPoints !== undefined && data.totalPoints !== null) {
+      rawPoints = data.totalPoints;
+    } else {
+      rawPoints = totalPoints;
+    }
+    return formatPoints(rawPoints);
+  }, [sessionScore, data?.totalPoints, totalPoints]);
+  
+  // Loading state: true if we're waiting for score data
+  const isScoreLoading = sessionScoreLoading || (data === null && contestEmail !== null);
   const refreshPoints = useCallback(async () => {
     if (!contestEmail) {
       setData({ totalPoints: 0 });
@@ -279,6 +297,8 @@ export default function ScoreClient() {
         headers: {
           'X-User-Email': contestEmail,
         },
+        credentials: 'include', // Part C: Ensure cookies are included for origin stability
+        cache: 'no-store',
       });
       if (!res.ok) throw new Error('points_fetch_failed');
       const j: any = await res.json();
@@ -305,6 +325,9 @@ export default function ScoreClient() {
         rabbit1Completed: j.rabbit1Completed ?? false,
         lastEvent: j.lastEvent ?? null,
       });
+      // Update contest status flags
+      setContestJoined(Boolean(j.contestJoined));
+      setExplicitContestEntry(Boolean(j.explicitContestEntry));
     } catch (err) {
       console.warn('[score] refreshPoints failed', err);
       setData({ totalPoints: 0 });
@@ -315,27 +338,196 @@ export default function ScoreClient() {
     refreshPoints();
   }, [refreshPoints]);
 
-  // Fetch associate handles for social share checks
+  // Part D: Listen for explicit entry completion event (immediate UI update)
+  useEffect(() => {
+    const handleExplicitEntryComplete = (event: CustomEvent) => {
+      console.log('[Score] Explicit entry completion event received', event.detail);
+      // Part E: Immediately hide button (deterministic)
+      setExplicitContestEntry(true);
+      setContestJoined(true);
+      setShowEntryFormForCheckout(false);
+      
+      // Refresh points to show updated total
+      refreshPoints();
+    };
+
+    window.addEventListener('contest:explicit-entry-complete', handleExplicitEntryComplete as EventListener);
+    return () => {
+      window.removeEventListener('contest:explicit-entry-complete', handleExplicitEntryComplete as EventListener);
+    };
+  }, [refreshPoints]);
+
+  // Part B: Deterministic refresh loop when afterExplicitEntry=1
+  useEffect(() => {
+    const afterExplicitEntry = qp.get('afterExplicitEntry') === '1';
+    if (!afterExplicitEntry || !contestEmail) return;
+
+    let cancelled = false;
+    const delays = [0, 600, 1500, 3000]; // Attempt 0 immediately, then 600ms, 1.5s, 3s
+    const timers: NodeJS.Timeout[] = [];
+
+    const refreshFromSourceOfTruth = async (): Promise<boolean> => {
+      try {
+        // Part C: Use /api/points/me as single source of truth
+        const res = await fetch('/api/points/me', {
+          method: 'GET',
+          headers: {
+            'X-User-Email': contestEmail,
+          },
+          credentials: 'include',
+          cache: 'no-store',
+        });
+
+        if (!res.ok) {
+          console.warn('[Score] Refresh failed', { status: res.status });
+          return false;
+        }
+
+        const j: any = await res.json();
+        const nextExplicitEntry = Boolean(j.explicitContestEntry);
+        const nextContestJoined = Boolean(j.contestJoined);
+        const newTotal = j.total || 0;
+
+        console.log('[Score] Refresh attempt - explicitContestEntry:', nextExplicitEntry, {
+          contestJoined: nextContestJoined,
+          totalPoints: newTotal,
+        });
+
+        // Update all state from single source of truth
+        setExplicitContestEntry(nextExplicitEntry);
+        setContestJoined(nextContestJoined);
+        setData({
+          totalPoints: newTotal,
+          firstName: j.firstName || null,
+          createdNow: j.createdNow ?? true,
+          earned: {
+            purchase_book: j.earned?.purchase_book || false,
+          },
+          recent: j.recent?.map((r: any) => ({
+            type: r.label,
+            at: r.ts,
+          })) || [],
+          referrals: j.referrals?.friends_purchased_count || 0,
+          earnings_week_usd: j.referrals?.earnings_week_usd || 0,
+          dailyShares: j.dailyShares ?? {
+            facebookEarnedToday: false,
+            xEarnedToday: false,
+            instagramEarnedToday: false,
+          },
+          rabbit1Completed: j.rabbit1Completed ?? false,
+          lastEvent: j.lastEvent ?? null,
+        });
+
+        return nextExplicitEntry; // Return true if explicitly entered, false otherwise
+      } catch (err) {
+        console.warn('[Score] Refresh error', err);
+        return false;
+      }
+    };
+
+    const runRefreshLoop = async () => {
+      for (let i = 0; i < delays.length; i++) {
+        if (cancelled) return;
+
+        // Wait for the delay (cumulative from start, except first attempt)
+        if (i > 0) {
+          const delayMs = delays[i] - delays[i - 1];
+          await new Promise<void>((resolve) => {
+            const timer = setTimeout(() => {
+              resolve();
+            }, delayMs);
+            timers.push(timer);
+          });
+        }
+
+        if (cancelled) return;
+
+        // Attempt refresh
+        console.log('[Score] Refresh attempt', { attempt: i + 1, delay: delays[i] });
+        const isExplicitlyEntered = await refreshFromSourceOfTruth();
+
+        // Stop early if explicitContestEntry === true
+        if (isExplicitlyEntered) {
+          console.log('[Score] Refresh loop stopped early - explicitContestEntry is true', {
+            attempt: i + 1,
+            totalAttempts: delays.length,
+            elapsedMs: delays[i],
+          });
+          break;
+        }
+      }
+
+      // Clean up query params after loop completes (without navigation)
+      if (!cancelled) {
+        try {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('afterExplicitEntry');
+          url.searchParams.delete('ts');
+          window.history.replaceState({}, '', url.toString());
+          console.log('[Score] Cleaned up explicit entry query params');
+        } catch (err) {
+          console.warn('[Score] Failed to clean up query params', err);
+        }
+      }
+    };
+
+    console.log('[Score] Starting deterministic refresh loop after explicit entry', {
+      afterExplicitEntry,
+      contestEmail,
+    });
+
+    setSyncingExplicitEntry(true);
+    runRefreshLoop().finally(() => {
+      setSyncingExplicitEntry(false);
+    });
+
+    return () => {
+      cancelled = true;
+      timers.forEach((timer) => clearTimeout(timer));
+    };
+  }, [qp, contestEmail]);
+
+  // Fetch associate status (handles + code) from deepquill to ensure we have the current code
   useEffect(() => {
     if (!contestEmail) return;
     
-    const fetchHandles = async () => {
+    const fetchAssociateStatus = async () => {
       try {
         const res = await fetch('/api/associate/status', {
           headers: { 'X-User-Email': contestEmail },
         });
         if (res.ok) {
           const data = await res.json();
+          
+          // Update associate handles
           if (data.handles) {
             setAssociateHandles(data.handles);
           }
+          
+          // Update associate state with fresh code from deepquill (canonical source)
+          if (data.id && data.email && data.code) {
+            const freshAssociate: AssociateCache = {
+              id: data.id,
+              email: data.email,
+              name: data.name || data.email,
+              code: data.code, // Use current code from deepquill, not stale localStorage
+            };
+            setAssociate(freshAssociate);
+            // Also update localStorage to keep it in sync
+            try {
+              const { writeAssociate } = await import('@/lib/identity');
+              writeAssociate(freshAssociate);
+            } catch (err) {
+              console.warn('[score] Failed to update localStorage associate', err);
+            }
+          }
         }
       } catch (err) {
-        console.warn('[score] failed to fetch handles', err);
+        console.warn('[score] failed to fetch associate status', err);
       }
     };
     
-    fetchHandles();
+    fetchAssociateStatus();
   }, [contestEmail]);
 
   // Reset greeting when data loads to ensure correct first-time vs returning message
@@ -470,6 +662,69 @@ export default function ScoreClient() {
     router.push(`/catalog${params.toString() ? `?${params.toString()}` : ''}`);
   }, [router]);
 
+  const handleExplicitEntryClick = useCallback(() => {
+    setShowEntryFormForCheckout(true);
+    setTimeout(() => {
+      const formElement = document.querySelector('[data-contest-entry-form]');
+      if (formElement) {
+        formElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 100);
+  }, []);
+
+  const handleExplicitEntryCompleted = useCallback(async () => {
+    if (!contestEmail) return;
+    
+    setSubmittingExplicitEntry(true);
+    try {
+      const res = await fetch('/api/contest/explicit-enter', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-Email': contestEmail,
+        },
+        credentials: 'include',
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: 'Failed to process explicit entry' }));
+        throw new Error(errorData.error || 'Failed to process explicit entry');
+      }
+
+      const data = await res.json();
+      console.log('[Score] Explicit entry completed', {
+        alreadyEntered: data.alreadyEntered,
+        pointsAwarded: data.pointsAwarded,
+        newTotalPoints: data.newTotalPoints,
+      });
+
+      // Refresh points to show updated total
+      await refreshPoints();
+      
+      // Part E: Immediately update local state (deterministic UI update)
+      setExplicitContestEntry(true);
+      setContestJoined(true); // Should already be true, but ensure it
+      
+      // Hide form
+      setShowEntryFormForCheckout(false);
+      
+      // Trigger points update event
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('contest:points-updated'));
+      }
+      
+      // Redirect to ascension
+      setTimeout(() => {
+        router.push('/contest/ascension?explicit=1');
+      }, 600);
+    } catch (err: any) {
+      console.error('[Score] Explicit entry error', err);
+      alert(err?.message || 'Failed to process explicit entry. Please try again.');
+    } finally {
+      setSubmittingExplicitEntry(false);
+    }
+  }, [contestEmail, refreshPoints, router]);
+
   // Compute firstName with correct precedence:
   // 1. Name from contest entry form (associate.name)
   // 2. Email address (extract name part before @)
@@ -525,9 +780,12 @@ export default function ScoreClient() {
 
     const lastEvent = data?.lastEvent ?? null;
 
+    // Raw score (number) for PlayerState; displayPoints is formatted string for UI
+    const rawScore = sessionScore?.totalPoints ?? (data?.totalPoints ?? totalPoints);
+
     return {
       name: firstName !== 'Friend' ? firstName : null,
-      score: totalPoints,
+      score: typeof rawScore === 'number' ? rawScore : Number(rawScore) || 0,
       actions: {
         facebookShare: hasFacebookShare,
         xShare: hasXShare,
@@ -538,9 +796,33 @@ export default function ScoreClient() {
       rabbits,
       lastEvent,
     };
-  }, [firstName, totalPoints, data?.recent, data?.earned?.purchase_book, data?.dailyShares, data?.rabbit1Completed, data?.lastEvent]);
+  }, [firstName, sessionScore?.totalPoints, data?.totalPoints, totalPoints, data?.recent, data?.earned?.purchase_book, data?.dailyShares, data?.rabbit1Completed, data?.lastEvent]);
 
   const captionLines = useMemo(() => buildScoreCaption(playerState), [playerState]);
+  
+  // REGRESSION GUARD: Warn if headline and pill don't match (dev only)
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      // Extract score from caption lines (look for "Your current score is X")
+      const scoreLine = captionLines.find(line => 
+        typeof line === 'string' && line.includes('Your current score is')
+      );
+      if (scoreLine) {
+        const match = (scoreLine as string).match(/Your current score is (\d+)/);
+        const headlineScore = match ? parseInt(match[1], 10) : null;
+        const pillScore = sessionScore?.totalPoints ?? data?.totalPoints ?? totalPoints;
+        
+        if (headlineScore !== null && pillScore !== undefined && headlineScore !== pillScore) {
+          console.warn('[Score Mismatch] Headline shows', headlineScore, 'but pill shows', pillScore, {
+            sessionScore: sessionScore?.totalPoints,
+            dataTotalPoints: data?.totalPoints,
+            useScoreTotalPoints: totalPoints,
+            displayPoints,
+          });
+        }
+      }
+    }
+  }, [captionLines, displayPoints, sessionScore?.totalPoints, data?.totalPoints, totalPoints]);
 
   // Dynamic greeting based on first-time vs returning visitor
   const greetingLines = useMemo(() => {
@@ -780,7 +1062,11 @@ export default function ScoreClient() {
 
   const topFog = Math.min(mist, 0.85);
   const midFog = Math.max(mist - 0.35, 0);
-  const wrapClassName = hovered ? 'score-wrap is-hovered' : 'score-wrap';
+  const wrapClassName = [
+    'score-wrap',
+    hovered && 'is-hovered',
+    isMobile && 'score-mobile',
+  ].filter(Boolean).join(' ');
 
   const rankMeterRef = useRef<HTMLDivElement | null>(null);
   const rabbitMeterRef = useRef<HTMLDivElement | null>(null);
@@ -818,9 +1104,9 @@ export default function ScoreClient() {
         const rabbitCenterY = rabbitRect.top + rabbitRect.height / 2;
         const centerX = ((rankCenterX + rabbitCenterX) / 2) / window.innerWidth;
         const centerY = ((rankCenterY + rabbitCenterY) / 2) / window.innerHeight;
-        void confettiCelebrate({ center: { x: centerX, y: centerY } });
+        confettiCelebrate({ center: { x: centerX, y: centerY } });
       } else {
-        void confettiCelebrate();
+        confettiCelebrate();
       }
     }
 
@@ -895,6 +1181,7 @@ export default function ScoreClient() {
     colorBase,
     colorHover,
     onClick,
+    glowClass,
   }: {
     label: string;
     sub?: string;
@@ -904,8 +1191,20 @@ export default function ScoreClient() {
     colorBase: string;
     colorHover: string;
     onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void;
+    glowClass?: string;
   }) => {
     const isHovered = hovered === hoverKey;
+    // Determine glow class based on color if not provided
+    const getGlowClass = () => {
+      if (glowClass) return glowClass;
+      if (colorBase === '#059669' || colorBase === '#047857') return 'button-glow button-glow--emerald';
+      if (colorBase === '#c026d3' || colorBase === '#a21caf') return 'button-glow button-glow--purple';
+      if (colorBase === '#1877f2' || colorBase === '#1565c0') return 'button-glow button-glow--blue';
+      if (colorBase === '#6366f1' || colorBase === '#4f46e5') return 'button-glow button-glow--indigo';
+      if (colorBase === '#000000' || colorBase === '#262626') return 'button-glow button-glow--black';
+      return 'button-glow button-glow--neutral';
+    };
+    
     return (
       <a
         href={href}
@@ -914,6 +1213,7 @@ export default function ScoreClient() {
         onMouseLeave={onButtonLeave}
         onFocus={() => onButtonEnter(hoverKey)}
         onBlur={onButtonLeave}
+        className={getGlowClass()}
         style={{
           display: 'inline-flex',
           flexDirection: 'column',
@@ -925,8 +1225,6 @@ export default function ScoreClient() {
           color: '#fff',
           background: isHovered ? colorHover : colorBase,
           boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
-          transition: 'all 0.2s ease',
-          transform: isHovered ? (reducedMotion ? 'scale(1.005)' : 'scale(1.02)') : 'scale(1)',
           outline: 'none',
           textDecoration: 'none',
           cursor: 'pointer',
@@ -975,6 +1273,7 @@ export default function ScoreClient() {
     <div ref={rootRef} className={wrapClassName}>
       <div id="confetti-layer" className="score-confetti" />
 
+      <div className="score-content">
       <section className="score-stage">
         {/* Back to Contest button */}
         <Link
@@ -1064,6 +1363,7 @@ export default function ScoreClient() {
         )}
 
         {/* Dynamic Score Caption - Rotating Display */}
+        {/* Show caption when data is loaded - displayPoints will use best available value */}
         {data !== null && <ScoreCaptionRotator lines={captionLines} />}
 
         <div className="caption-wrap">
@@ -1089,7 +1389,7 @@ export default function ScoreClient() {
       <section className="buttons-grid">
         <div className="points-pill">
           Total Points{' '}
-          <span>{sessionScore ? sessionScore.totalPoints : (data?.totalPoints ?? totalPoints)}</span>
+          <span>{isScoreLoading ? '...' : displayPoints}</span>
         </div>
         {sessionScore && (
           <div
@@ -1158,7 +1458,7 @@ export default function ScoreClient() {
             }}
           >
             Referral Earnings{' '}
-            <span>${(data.earnings_week_usd / 100).toFixed(2)}</span>
+            <span>${data.earnings_week_usd.toFixed(2)}</span>
           </div>
         )}
         <div className="buttons-grid-inner">
@@ -1167,6 +1467,7 @@ export default function ScoreClient() {
             onMouseLeave={onButtonLeave}
             onFocus={() => onButtonEnter('buy')}
             onBlur={onButtonLeave}
+            className="button-glow button-glow--emerald"
             style={{
               display: 'inline-flex',
               flexDirection: 'column',
@@ -1177,11 +1478,7 @@ export default function ScoreClient() {
               padding: '0 24px',
               color: '#fff',
               background: hovered === 'buy' ? '#047857' : '#059669',
-              boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
-              transition: 'all 0.2s ease',
-              transform: hovered === 'buy' ? (reducedMotion ? 'scale(1.005)' : 'scale(1.02)') : 'scale(1)',
               outline: 'none',
-              cursor: 'pointer',
             }}
           >
             <BuyBookButton
@@ -1239,7 +1536,7 @@ export default function ScoreClient() {
           <ActionButton
             label="Share to X"
             sub="100 pts"
-            href="#"
+            href="/share/x/1"
             hoverKey="x"
             onClick={(e: any) => handleShareClick('x', e)}
             colorBase="#000000"
@@ -1257,7 +1554,7 @@ export default function ScoreClient() {
           <ActionButton
             label="Share to Facebook"
             sub="100 pts"
-            href="#"
+            href="/share/fb/3"
             hoverKey="fb"
             onClick={(e: any) => handleShareClick('fb', e)}
             colorBase="#1877f2"
@@ -1266,12 +1563,9 @@ export default function ScoreClient() {
           <ActionButton
             label="Share to Truth"
             sub="100 pts"
-            href="/contest/share/truth"
+            href="/share/truth/1"
             hoverKey="truth"
-            onClick={(e: any) => {
-              e.preventDefault();
-              router.push('/contest/share/truth');
-            }}
+            onClick={(e: any) => handleShareClick('truth', e)}
             colorBase="#6366f1"
             colorHover="#4f46e5"
           />
@@ -1313,12 +1607,9 @@ export default function ScoreClient() {
           <ActionButton
             label="Share to TikTok"
             sub="100 pts"
-            href="/contest/share/tiktok"
+            href="/share/tt/1"
             hoverKey="tt"
-            onClick={(e: any) => {
-              e.preventDefault();
-              router.push('/contest/share/tiktok');
-            }}
+            onClick={(e: any) => handleShareClick('tiktok', e)}
             colorBase="#1a1a1a"
             colorHover="#2d2d2d"
           />
@@ -1368,7 +1659,76 @@ export default function ScoreClient() {
         onCancel={() => setSocialHandleModal({ ...socialHandleModal, isOpen: false })}
       />
 
-      {/* Contest Entry Form (shown when Buy button requires entry) */}
+      {/* Sync status indicator (shown during refresh loop) */}
+      {syncingExplicitEntry && (
+        <div
+          style={{
+            marginTop: '1rem',
+            width: '100%',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '0 1.5rem',
+            fontSize: '0.875rem',
+            color: 'rgba(255, 255, 255, 0.7)',
+          }}
+        >
+          <span
+            style={{
+              display: 'inline-block',
+              width: '12px',
+              height: '12px',
+              border: '2px solid rgba(255, 255, 255, 0.3)',
+              borderTopColor: 'rgba(255, 255, 255, 0.8)',
+              borderRadius: '50%',
+              animation: 'spin 0.8s linear infinite',
+            }}
+          />
+          Syncing your entry…
+        </div>
+      )}
+
+      {/* Officially Enter Button (Part F: shown only when contestJoined && !explicitContestEntry) - hidden on mobile (use fixed action bar instead) */}
+      {contestJoined && !explicitContestEntry && !showEntryFormForCheckout && (
+        <div
+          style={{
+            marginTop: '2rem',
+            width: '100%',
+            display: isMobile ? 'none' : 'flex',
+            justifyContent: 'center',
+            padding: '0 1.5rem',
+            opacity: explicitContestEntry ? 0 : 1,
+            transition: 'opacity 0.3s ease',
+            pointerEvents: explicitContestEntry ? 'none' : 'auto',
+          }}
+        >
+          <button
+            type="button"
+            onClick={handleExplicitEntryClick}
+            disabled={submittingExplicitEntry || explicitContestEntry}
+            className="button-glow button-glow--green"
+            style={{
+              padding: '1rem 2rem',
+              borderRadius: 999,
+              fontWeight: 700,
+              fontSize: '1rem',
+              letterSpacing: '0.04em',
+              border: 'none',
+              color: 'black',
+              background: submittingExplicitEntry ? '#94a3b8' : '#38ef7d',
+              cursor: submittingExplicitEntry || explicitContestEntry ? 'not-allowed' : 'pointer',
+              transition: 'transform 0.2s ease, box-shadow 0.2s ease, opacity 0.3s ease',
+              boxShadow: submittingExplicitEntry ? 'none' : '0 15px 35px rgba(56, 239, 125, 0.35)',
+              opacity: submittingExplicitEntry ? 0.6 : 1,
+            }}
+          >
+            {submittingExplicitEntry ? 'Processing...' : 'Officially Enter Contest (+500 pts)'}
+          </button>
+        </div>
+      )}
+
+      {/* Contest Entry Form (shown when Buy button requires entry OR explicit entry clicked) */}
       {showEntryFormForCheckout && (
         <div
           data-contest-entry-form
@@ -1380,15 +1740,93 @@ export default function ScoreClient() {
             padding: '0 1.5rem',
             position: 'relative',
             zIndex: 10,
+            opacity: explicitContestEntry ? 0 : 1,
+            transition: 'opacity 0.3s ease',
           }}
         >
           <ContestEntryForm
             suppressAscensionRedirect={true}
-            onCompleted={handleContestEntryCompletedFromBuy}
+            onCompleted={contestJoined && !explicitContestEntry ? handleExplicitEntryCompleted : handleContestEntryCompletedFromBuy}
+            useExplicitEntry={contestJoined && !explicitContestEntry}
           />
         </div>
       )}
+      </div>
+      {/* End score-content - scrollable on mobile */}
+
       <HelpButton />
+
+      {/* Mobile: fixed bottom action bar (Back + key CTAs) */}
+      <div className="score-mobile-action-bar" aria-hidden={!isMobile}>
+        <Link
+          href="/contest"
+          style={{
+            flex: '1 1 auto',
+            minWidth: 100,
+            padding: '12px 16px',
+            borderRadius: 10,
+            fontSize: 14,
+            fontWeight: 600,
+            textDecoration: 'none',
+            textAlign: 'center',
+            border: '1px solid rgba(16, 185, 129, 0.5)',
+            background: 'rgba(16, 185, 129, 0.25)',
+            color: '#34d399',
+          }}
+        >
+          ← Back to Contest
+        </Link>
+        {contestJoined && !explicitContestEntry && (
+          <button
+            type="button"
+            onClick={handleExplicitEntryClick}
+            disabled={submittingExplicitEntry}
+            style={{
+              flex: '1 1 auto',
+              minWidth: 100,
+              padding: '12px 16px',
+              borderRadius: 10,
+              fontSize: 14,
+              fontWeight: 600,
+              border: '1px solid rgba(56, 239, 125, 0.5)',
+              background: submittingExplicitEntry ? 'rgba(148, 163, 184, 0.3)' : 'rgba(56, 239, 125, 0.3)',
+              color: submittingExplicitEntry ? '#94a3b8' : '#38ef7d',
+              cursor: submittingExplicitEntry ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {submittingExplicitEntry ? 'Processing...' : 'Officially Enter (+500 pts)'}
+          </button>
+        )}
+        {contestEmail && (
+          <Link
+            href="/refer"
+            style={{
+              flex: '1 1 auto',
+              minWidth: 100,
+              padding: '12px 16px',
+              borderRadius: 10,
+              fontSize: 14,
+              fontWeight: 600,
+              textDecoration: 'none',
+              textAlign: 'center',
+              border: '1px solid rgba(148, 163, 184, 0.4)',
+              background: 'rgba(15, 23, 42, 0.8)',
+              color: '#e2e8f0',
+            }}
+          >
+            Refer a Friend
+          </Link>
+        )}
+      </div>
+      
+      {/* CSS for sync spinner animation */}
+      <style jsx>{`
+        @keyframes spin {
+          to {
+            transform: rotate(360deg);
+          }
+        }
+      `}</style>
     </div>
   );
 }

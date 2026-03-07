@@ -37,15 +37,40 @@ async function handleVerifySession(req, res) {
     }
 
     // Support both GET (query param) and POST (body)
-    const sessionId = req.method === 'GET' 
+    let sessionId = req.method === 'GET' 
       ? (req.query?.session_id || req.query?.sessionId)
       : (req.body?.session_id || req.body?.sessionId);
 
-    if (!sessionId || typeof sessionId !== 'string') {
+    // Clean up malformed session_id (handle cases where query param is duplicated)
+    if (sessionId && typeof sessionId === 'string') {
+      // Remove any trailing query parameters (e.g., "cs_xxx?session_id=cs_xxx")
+      const match = sessionId.match(/^([^?&]+)/);
+      if (match) {
+        sessionId = match[1];
+      }
+      // Trim whitespace
+      sessionId = sessionId.trim();
+    }
+
+    if (!sessionId || typeof sessionId !== 'string' || sessionId.length === 0) {
       return res.status(400).json({
         ok: false,
         error: 'session_id required',
+        received: {
+          query: req.query,
+          url: req.url,
+          originalUrl: req.originalUrl,
+        },
       });
+    }
+
+    // Validate session_id format (Stripe session IDs are typically 66 chars or less)
+    if (sessionId.length > 66) {
+      console.warn('[verify-session] Session ID too long, truncating', {
+        originalLength: sessionId.length,
+        original: sessionId.substring(0, 80),
+      });
+      sessionId = sessionId.substring(0, 66);
     }
 
     console.log('[VERIFY_SESSION] hit', { session_id: sessionId });

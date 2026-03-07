@@ -1,0 +1,21 @@
+/* Launch button fade-in (TikTok luxury sequence) */
+@keyframes launchFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Share page: reliable tap targets on iPhone Safari */
+@media (max-width: 767px) {
+  .share-tap-target {
+    touch-action: manipulation;
+    cursor: pointer;
+  }
+
+  .share-tap-target:active:not(:disabled) {
+    opacity: 0.9;
+  }
+}

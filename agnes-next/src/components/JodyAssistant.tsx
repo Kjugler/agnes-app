@@ -17,9 +17,12 @@ interface JodyAssistantProps {
   autoShowDelayMs?: number;
   defaultOpen?: boolean;
   onShowTraining?: () => void; // Callback to open training modal
-  disableBubble?: boolean; // NEW: don't show any bubble if disabled
+  disableBubble?: boolean; // don't show any bubble if disabled
+  /** When true, use mobile share layout: bubble non-blocking, safe positioning. No auto-collapse. */
+  isSharePage?: boolean;
 }
 
+// ICON_MAP: All paths MUST start with leading slash for Vite/Next.js to resolve correctly
 const ICON_MAP: Record<JodyVariant, string> = {
   em1: '/jody-icons/jody-em1.png',
   em2: '/jody-icons/jody-em2.png',
@@ -37,21 +40,28 @@ export function JodyAssistant({
   defaultOpen = false,
   onShowTraining,
   disableBubble = false,
+  isSharePage = false,
 }: JodyAssistantProps) {
   const [showBubble, setShowBubble] = useState(defaultOpen);
   const [showTraining, setShowTraining] = useState(false);
   const [hasAutoShown, setHasAutoShown] = useState(false);
+  const [showXSteps, setShowXSteps] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
-  // Simple auto-show for the IG, TikTok, Truth, and Ascension variants
+  // Simple auto-show for the IG, TikTok, Truth, Ascension, and em2 (X) variants
+  // On share pages: never auto-show — localStorage controls open/collapsed (user preference)
   useEffect(() => {
     // Don't auto-show if bubble is disabled
     if (disableBubble) return;
+    // On share pages, localStorage + user controls state; no timer-based behavior
+    if (isSharePage) return;
 
     const shouldAutoShow =
       variant === 'ig' ||
       variant === 'tiktok' ||
       variant === 'truth' ||
-      variant === 'ascension';
+      variant === 'ascension' ||
+      variant === 'em2';
 
     if (shouldAutoShow) {
       const timer = setTimeout(() => {
@@ -69,16 +79,46 @@ export function JodyAssistant({
 
       return () => clearTimeout(timer);
     }
-  }, [variant, autoShowDelayMs, hasAutoShown, defaultOpen, disableBubble]);
+  }, [variant, autoShowDelayMs, hasAutoShown, defaultOpen, disableBubble, isSharePage, isMobile]);
 
-  const iconSrc = ICON_MAP[variant];
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth <= 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
 
-  const isMobile =
-    typeof window !== 'undefined' && window.innerWidth <= 768;
+  const useMobileShareLayout = isSharePage && isMobile;
+
+  // Mobile share: NO auto-collapse. User closes via X only. Persist collapsed state.
+  // First visit = OPEN. After user collapses once = COLLAPSED on future visits.
+  const storageKey = typeof window !== 'undefined' ? `dq_share_${variant}_help` : 'dq_share_help';
+  useEffect(() => {
+    if (!isSharePage || typeof window === 'undefined') return;
+    try {
+      const saved = localStorage.getItem(storageKey);
+      setShowBubble(saved !== 'collapsed'); // open on first visit, collapsed only if user chose that
+    } catch {}
+  }, [isSharePage, storageKey, variant]);
+
+  const handleCloseBubble = () => {
+    setShowBubble(false);
+    try {
+      localStorage.setItem(storageKey, 'collapsed');
+    } catch {}
+  };
+  const onBubbleClose = isSharePage ? handleCloseBubble : () => setShowBubble(false);
+
+  let iconSrc = ICON_MAP[variant];
+  // Ensure path always starts with leading slash (defensive check)
+  if (iconSrc && !iconSrc.startsWith('/')) {
+    iconSrc = '/' + iconSrc;
+  }
+
   const iconSize = isMobile ? 64 : 80;
 
   // IG-specific bubble content
-  const renderIgBubble = () => (
+  const renderIgBubble = (onClose: () => void = () => setShowBubble(false)) => (
     <div
       style={{
         background: 'linear-gradient(135deg, #ff3be0, #a100ff)',
@@ -98,7 +138,7 @@ export function JodyAssistant({
     >
       <button
         type="button"
-        onClick={() => setShowBubble(false)}
+        onClick={onClose}
         style={{
           position: 'absolute',
           top: 6,
@@ -132,7 +172,7 @@ export function JodyAssistant({
         type="button"
         onClick={() => {
           setShowTraining(true);
-          setShowBubble(false);
+          onClose();
         }}
         style={{
           borderRadius: 999,
@@ -175,7 +215,7 @@ export function JodyAssistant({
   );
 
   // Ascension-specific bubble content
-  const renderAscensionBubble = () => (
+  const renderAscensionBubble = (onClose: () => void = () => setShowBubble(false)) => (
     <div
       style={{
         background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
@@ -195,7 +235,7 @@ export function JodyAssistant({
     >
       <button
         type="button"
-        onClick={() => setShowBubble(false)}
+        onClick={onClose}
         style={{
           position: 'absolute',
           top: 6,
@@ -239,7 +279,7 @@ export function JodyAssistant({
 
       <button
         type="button"
-        onClick={() => setShowBubble(false)}
+        onClick={onClose}
         style={{
           borderRadius: 999,
           border: 'none',
@@ -281,7 +321,7 @@ export function JodyAssistant({
   );
 
   // Truth-specific bubble content
-  const renderTruthBubble = () => (
+  const renderTruthBubble = (onClose: () => void = () => setShowBubble(false)) => (
     <div
       style={{
         background: 'linear-gradient(135deg, #ff3be0, #a100ff)',
@@ -301,7 +341,7 @@ export function JodyAssistant({
     >
       <button
         type="button"
-        onClick={() => setShowBubble(false)}
+        onClick={onClose}
         style={{
           position: 'absolute',
           top: 6,
@@ -337,7 +377,7 @@ export function JodyAssistant({
           if (onShowTraining) {
             onShowTraining();
           }
-          setShowBubble(false);
+          onClose();
         }}
         style={{
           borderRadius: 999,
@@ -380,7 +420,7 @@ export function JodyAssistant({
   );
 
   // TikTok-specific bubble content (similar to IG)
-  const renderTikTokBubble = () => (
+  const renderTikTokBubble = (onClose: () => void = () => setShowBubble(false)) => (
     <div
       style={{
         background: 'linear-gradient(135deg, #ff3be0, #a100ff)',
@@ -400,7 +440,7 @@ export function JodyAssistant({
     >
       <button
         type="button"
-        onClick={() => setShowBubble(false)}
+        onClick={onClose}
         style={{
           position: 'absolute',
           top: 6,
@@ -426,7 +466,7 @@ export function JodyAssistant({
         TikTok can be a little tricky.
       </div>
       <div style={{ marginBottom: 10, lineHeight: 1.4 }}>
-        I'm Jody. I can walk you through downloading your video, posting it to TikTok, and making sure you get your points.
+        I'm Jody. Copy the caption, download the video (it saves to Photos or Files), open TikTok, upload, paste, and tap "I Shared" to get your points.
       </div>
 
       <button
@@ -435,7 +475,7 @@ export function JodyAssistant({
           if (onShowTraining) {
             onShowTraining();
           }
-          setShowBubble(false);
+          onClose();
         }}
         style={{
           borderRadius: 999,
@@ -477,25 +517,159 @@ export function JodyAssistant({
     </div>
   );
 
+  // X share-specific bubble content
+  const renderXShareBubble = (onClose: () => void = () => setShowBubble(false)) => {
+    return (
+      <div
+        style={{
+          background: 'linear-gradient(135deg, #000000, #262626)',
+          color: '#fff',
+          borderRadius: 16,
+          padding: '14px 16px 12px',
+          boxShadow: '0 10px 25px rgba(0,0,0,0.35)',
+          fontSize: 14,
+          maxWidth: 360,
+          width: '90vw',
+          position: 'relative',
+          opacity: showBubble ? 1 : 0,
+          transform: showBubble ? 'translateY(0)' : 'translateY(8px)',
+          transition: 'opacity 220ms ease-out, transform 220ms ease-out',
+          pointerEvents: 'auto',
+        }}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          style={{
+            position: 'absolute',
+            top: 6,
+            right: 8,
+            border: 'none',
+            background: 'transparent',
+            color: '#fff',
+            fontSize: 16,
+            cursor: 'pointer',
+            width: 20,
+            height: 20,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 0,
+          }}
+          aria-label="Close"
+        >
+          ×
+        </button>
+
+        {!showXSteps ? (
+          <>
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>
+              Hey — I'm Jody.
+            </div>
+            <div style={{ marginBottom: 10, lineHeight: 1.4 }}>
+              If you need help posting to X, click my icon.
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowXSteps(true)}
+              style={{
+                borderRadius: 999,
+                border: 'none',
+                padding: '8px 14px',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: 'pointer',
+                backgroundColor: '#ffffff',
+                color: '#000000',
+                boxShadow: '0 4px 10px rgba(0,0,0,0.25)',
+                transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'scale(1.05)';
+                e.currentTarget.style.boxShadow = '0 6px 15px rgba(0,0,0,0.35)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = '0 4px 10px rgba(0,0,0,0.25)';
+              }}
+            >
+              Show me how
+            </button>
+          </>
+        ) : (
+          <div style={{ paddingRight: '20px' }}>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>
+              How to post to X:
+            </div>
+            <ol style={{ margin: 0, paddingLeft: 18, lineHeight: 1.6 }}>
+              <li style={{ marginBottom: 6 }}>
+                <strong>Step 0:</strong> Open X in another tab or browser and make sure you're logged in.
+              </li>
+              <li style={{ marginBottom: 6 }}>
+                <strong>Step 1:</strong> Click "Copy caption" on this page.
+              </li>
+              <li style={{ marginBottom: 6 }}>
+                <strong>Step 2:</strong> Click "Download video" on this page (it saves the MP4 to your device).
+              </li>
+              <li style={{ marginBottom: 6 }}>
+                <strong>Step 3:</strong> Go to X → click Post (or open the composer).
+              </li>
+              <li style={{ marginBottom: 6 }}>
+                <strong>Step 4:</strong> Upload the video you just downloaded.
+              </li>
+              <li style={{ marginBottom: 6 }}>
+                <strong>Step 5:</strong> Paste the caption and publish.
+              </li>
+              <li style={{ marginBottom: 6 }}>
+                <strong>Step 6:</strong> Come back here and click "I posted to X" to record your post and get your 100 points.
+              </li>
+              <li style={{ marginBottom: 0 }}>
+                <strong>Step 7:</strong> Click "Back to Score" — you'll receive an additional 100 points.
+              </li>
+            </ol>
+          </div>
+        )}
+
+        {/* pointer triangle */}
+        <div
+          style={{
+            position: 'absolute',
+            bottom: -10,
+            right: 30,
+            width: 0,
+            height: 0,
+            borderLeft: '10px solid transparent',
+            borderRight: '10px solid transparent',
+            borderTop: '10px solid #262626',
+          }}
+        />
+      </div>
+    );
+  };
+
   const renderBubble = () => {
     // Don't show any bubble if disabled
     if (disableBubble) return null;
     if (!showBubble) return null;
 
     if (variant === 'ig') {
-      return renderIgBubble();
+      return renderIgBubble(onBubbleClose);
     }
 
     if (variant === 'tiktok') {
-      return renderTikTokBubble();
+      return renderTikTokBubble(onBubbleClose);
     }
 
     if (variant === 'truth') {
-      return renderTruthBubble();
+      return renderTruthBubble(onBubbleClose);
     }
 
     if (variant === 'ascension') {
-      return renderAscensionBubble();
+      return renderAscensionBubble(onBubbleClose);
+    }
+
+    if (variant === 'em2') {
+      return renderXShareBubble(onBubbleClose);
     }
 
     // For other variants, use existing message-based bubble
@@ -520,7 +694,7 @@ export function JodyAssistant({
         }}
       >
         <button
-          onClick={() => setShowBubble(false)}
+          onClick={onBubbleClose}
           style={{
             position: 'absolute',
             top: '8px',
@@ -577,29 +751,125 @@ export function JodyAssistant({
 
   return (
     <>
+      {/* Mobile share: bottom-sheet overlay when expanded */}
+      {useMobileShareLayout && showBubble && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9998,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'flex-end',
+            justifyContent: 'center',
+          }}
+          onClick={(e) => e.target === e.currentTarget && onBubbleClose()}
+          role="presentation"
+        >
+          <div
+            style={{
+              width: '100%',
+              maxHeight: '70vh',
+              borderTopLeftRadius: 20,
+              borderTopRightRadius: 20,
+              background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)',
+              boxShadow: '0 -8px 32px rgba(0,0,0,0.4)',
+              paddingBottom: 'max(16px, env(safe-area-inset-bottom))',
+              overflowY: 'auto',
+              position: 'relative',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '12px 16px' }}>
+              <button
+                type="button"
+                onClick={onBubbleClose}
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: '50%',
+                  border: '1px solid rgba(255,255,255,0.3)',
+                  background: 'rgba(255,255,255,0.1)',
+                  color: '#fff',
+                  fontSize: 18,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 0,
+                  touchAction: 'manipulation',
+                }}
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div style={{ padding: '0 16px 24px' }}>
+              {renderBubble()}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* fixed container in bottom-right */}
       <div
         style={{
           position: 'fixed',
-          bottom: 60,
-          right: 24,
-          zIndex: 9999,
+          bottom: useMobileShareLayout
+            ? 'calc(env(safe-area-inset-bottom) + 92px)'
+            : 60,
+          right: useMobileShareLayout ? 12 : 24,
+          left: useMobileShareLayout ? 12 : undefined,
+          zIndex: useMobileShareLayout ? 60 : 9999,
           display: 'flex',
           flexDirection: 'column',
-          alignItems: 'flex-end',
+          alignItems: useMobileShareLayout ? 'flex-start' : 'flex-end',
           gap: 10,
           pointerEvents: 'none',
         }}
       >
-        {/* bubble sits above icon */}
-        <div style={{ pointerEvents: 'auto' }}>{renderBubble()}</div>
+        {/* bubble: on mobile share, shown in bottom-sheet; on desktop, show here */}
+        {!useMobileShareLayout && (
+          <div style={{ maxWidth: undefined }}>{renderBubble()}</div>
+        )}
 
-        {/* icon */}
-        <button
+        {/* Collapsed chip on mobile share: "Need help? Tap Jody" */}
+        {useMobileShareLayout ? (
+          <button
+            type="button"
+            onClick={toggleBubble}
+            style={{
+              pointerEvents: 'auto',
+              touchAction: 'manipulation',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '10px 14px',
+              borderRadius: 999,
+              border: '1px solid rgba(148, 163, 184, 0.4)',
+              background: 'rgba(15, 23, 42, 0.9)',
+              color: '#94a3b8',
+              fontSize: '0.875rem',
+              cursor: 'pointer',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+            }}
+            aria-label="Need help? Tap Jody"
+          >
+            <img
+              src={iconSrc}
+              alt=""
+              style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' }}
+            />
+            Need help? Tap Jody
+          </button>
+        ) : (
+          /* icon - desktop */
+          <button
           type="button"
           onClick={toggleBubble}
           style={{
             pointerEvents: 'auto',
+            touchAction: 'manipulation',
             width: iconSize,
             height: iconSize,
             borderRadius: '50%',
@@ -652,6 +922,7 @@ export function JodyAssistant({
               loading="eager"
             />
         </button>
+        )}
       </div>
 
       {/* IG training modal */}

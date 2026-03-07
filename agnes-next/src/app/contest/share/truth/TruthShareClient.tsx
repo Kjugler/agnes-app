@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { readContestEmail, readAssociate } from '@/lib/identity';
 import { buildShareCaption } from '@/lib/shareCaption';
+import { buildTrackingLink } from '@/lib/shareHelpers';
 import { getNextVariant, shareAssets } from '@/lib/shareAssets';
 import { JodyAssistant } from '@/components/JodyAssistant';
 import { JodyTrainingModal } from '@/components/JodyTrainingModal';
@@ -20,11 +21,13 @@ export default function TruthShareClient() {
   const [firstName, setFirstName] = useState<string | null>(null);
   const [truthCaption, setTruthCaption] = useState('');
   const [truthVideoSrc, setTruthVideoSrc] = useState<string | null>(null);
+  const [truthVariant, setTruthVariant] = useState<1 | 2 | 3>(1);
   const [showTruthTraining, setShowTruthTraining] = useState(false);
 
   // Get rotating Truth video variant - lock it on mount
   useEffect(() => {
     const variant = getNextVariant('truth');
+    setTruthVariant(variant);
     setTruthVideoSrc(shareAssets.truth.variants[variant].video);
   }, []);
 
@@ -63,7 +66,7 @@ export default function TruthShareClient() {
         : process.env.NEXT_PUBLIC_SITE_URL || 'https://theagnesprotocol.com';
     
     // Build share URL pointing to IG variant 2 with terminal target (matching the pattern)
-    const shareUrl = `${baseUrl.replace(/\/$/, '')}/share/ig/2?ref=${encodeURIComponent(refCode)}&target=terminal`;
+    const shareUrl = buildTrackingLink('truth', truthVariant, refCode, 'terminal', baseUrl);
     
     const caption = buildShareCaption({
       firstName,
@@ -74,7 +77,7 @@ export default function TruthShareClient() {
     });
     
     setTruthCaption(caption);
-  }, [firstName, refCode]);
+  }, [firstName, refCode, truthVariant]);
 
   // Copy caption handler
   const handleCopyCaption = async () => {

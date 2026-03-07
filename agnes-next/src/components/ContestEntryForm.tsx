@@ -28,6 +28,7 @@ type FormState = typeof initialState;
 type ContestEntryFormProps = {
   onCompleted?: () => void | Promise<void>;
   suppressAscensionRedirect?: boolean;
+  useExplicitEntry?: boolean;
   className?: string;
   style?: React.CSSProperties;
 };
@@ -37,6 +38,7 @@ export function ContestEntryForm({
   suppressAscensionRedirect = false,
   className,
   style,
+  useExplicitEntry = false,
 }: ContestEntryFormProps) {
   const router = useRouter();
   const [form, setForm] = useState<FormState>(initialState);
@@ -247,20 +249,87 @@ export function ContestEntryForm({
       setContestEmail(data.email);
       setContestEmailOverride(null);
 
+      // Part B: Call /api/contest/join or /api/contest/explicit-enter to award 500 points (idempotent)
+      let pointsAwarded = 0;
+      let joinData: any = null; // Declare outside try block for event dispatch
       try {
-        await fetch('/api/points/award', {
+        const endpoint = useExplicitEntry ? '/api/contest/explicit-enter' : '/api/contest/join';
+        const joinRes = await fetch(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'X-User-Email': targetEmail,
           },
-          body: JSON.stringify({ kind: 'contest_join' }),
+          credentials: 'include',
+          body: JSON.stringify({
+            email: targetEmail,
+          }),
         });
-      } catch (awardErr) {
-        console.warn('contest_join award failed', awardErr);
+
+        if (joinRes.ok) {
+          joinData = await joinRes.json();
+          pointsAwarded = joinData.pointsAwarded || 0;
+          console.log(`[ContestEntryForm] ${useExplicitEntry ? 'Explicit entry' : 'Contest join'} result`, {
+            alreadyEntered: joinData.alreadyEntered,
+            joined: joinData.joined,
+            pointsAwarded,
+            reason: joinData.reason,
+            newTotalPoints: joinData.newTotalPoints,
+          });
+        } else {
+          const errorData = await joinRes.json().catch(() => ({ error: 'Unknown error' }));
+          console.warn(`[ContestEntryForm] ${useExplicitEntry ? 'Explicit entry' : 'Contest join'} failed`, {
+            status: joinRes.status,
+            error: errorData.error,
+          });
+          // If explicit entry fails with not_in_contest, fall back to regular join
+          if (useExplicitEntry && errorData.error === 'not_in_contest') {
+            console.log('[ContestEntryForm] Falling back to regular contest join');
+            const fallbackRes = await fetch('/api/contest/join', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-User-Email': targetEmail,
+              },
+              credentials: 'include',
+              body: JSON.stringify({
+                email: targetEmail,
+              }),
+            });
+            if (fallbackRes.ok) {
+              const fallbackData = await fallbackRes.json();
+              pointsAwarded = fallbackData.pointsAwarded || 0;
+            }
+          }
+        }
+      } catch (joinErr) {
+        console.warn(`[ContestEntryForm] ${useExplicitEntry ? 'Explicit entry' : 'Contest join'} error`, joinErr);
+        // Non-blocking - form submission succeeded even if points failed
       }
 
-      setSuccessMessage('You are in!');
+      // Show success message with points if awarded
+      if (pointsAwarded > 0) {
+        setSuccessMessage(`You're officially entered. +${pointsAwarded} points.`);
+      } else {
+        setSuccessMessage('You are in!');
+      }
+
+      // Part B: Refresh points/score after join
+      // Trigger a custom event that score/points components can listen to
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('contest:points-updated'));
+        
+        // Part D: Dispatch explicit entry completion event
+        if (useExplicitEntry && (pointsAwarded > 0 || joinData?.alreadyEntered)) {
+          window.dispatchEvent(new CustomEvent('contest:explicit-entry-complete', {
+            detail: {
+              pointsAwarded: pointsAwarded || 0,
+              newTotalPoints: joinData?.newTotalPoints,
+              alreadyEntered: joinData?.alreadyEntered || false,
+            },
+          }));
+        }
+      }
 
       // Call onCompleted callback if provided
       if (onCompleted) {
@@ -268,7 +337,8 @@ export function ContestEntryForm({
       }
 
       // Redirect to Ascension unless suppressed
-      if (!suppressAscensionRedirect) {
+      // If using explicit entry, onCompleted handler will handle redirect
+      if (!suppressAscensionRedirect && !useExplicitEntry) {
         setTimeout(() => {
           router.replace('/contest/ascension?joined=1');
         }, 600);
@@ -526,7 +596,7 @@ export function ContestEntryForm({
           boxShadow: canSubmit && !submitting ? '0 15px 35px rgba(56, 239, 125, 0.35)' : 'none',
         }}
       >
-        {submitting ? 'Saving…' : 'Enter the Contest'}
+        {submitting ? 'Saving…' : 'Officially Enter (500 pts)'}
       </button>
     </form>
   );

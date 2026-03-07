@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import '@/styles/button-glow.css';
 
 interface SessionData {
   paid?: boolean;
@@ -11,20 +13,33 @@ interface SessionData {
   currency?: string;
 }
 
+interface EmailDeliveryStatus {
+  deliveryStatus: 'sent' | 'queued' | 'rejected' | 'error' | 'unknown';
+  rejectReason?: string | null;
+  queuedReason?: string | null;
+  attemptedAt?: string | null;
+  email?: string | null;
+  providerMessageId?: string | null;
+}
+
 interface ThankYouClientProps {
   sessionId: string | null;
 }
 
 export default function ThankYouClient({ sessionId }: ThankYouClientProps) {
+  const router = useRouter();
   const [verifying, setVerifying] = useState(true);
   const [verified, setVerified] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sessionData, setSessionData] = useState<SessionData | null>(null);
   const [webhookProcessed, setWebhookProcessed] = useState(false);
   const [pollTimedOut, setPollTimedOut] = useState(false);
+  const [emailDelivery, setEmailDelivery] = useState<EmailDeliveryStatus | null>(null);
+  const [emailDeliveryLoading, setEmailDeliveryLoading] = useState(false);
   const hasVerifiedRef = useRef(false);
   const pollCountRef = useRef(0);
   const maxPolls = 10; // Poll up to 10 times (20 seconds total)
+  const hasRedirectedRef = useRef(false);
 
   // Helper to mask email
   function maskEmail(email: string): string {
@@ -109,6 +124,18 @@ export default function ThankYouClient({ sessionId }: ThankYouClientProps) {
 
           // Start polling for webhook processing (nice-to-have)
           pollForWebhookProcessing(currentSessionId);
+          // Note: Email delivery status fetch happens in useEffect hook (non-blocking)
+
+          // Part A: Redirect to Contest page with deterministic handoff params
+          // Delay redirect slightly to allow thank-you content to be visible
+          setTimeout(() => {
+            if (!hasRedirectedRef.current && currentSessionId) {
+              hasRedirectedRef.current = true;
+              const redirectUrl = `/contest?justPurchased=1&session_id=${encodeURIComponent(currentSessionId)}`;
+              console.log('[THANK_YOU] Redirecting to Contest with purchase flag', { redirectUrl });
+              router.replace(redirectUrl);
+            }
+          }, 3000); // 3 second delay to show thank-you message
         } else {
           setError(data.error || 'Session verification failed');
         }
@@ -122,6 +149,56 @@ export default function ThankYouClient({ sessionId }: ThankYouClientProps) {
 
     verifySession();
   }, [sessionId]);
+
+  // Fetch email delivery status (non-blocking, with retry and cleanup)
+  useEffect(() => {
+    if (!sessionId || !verified) return;
+    
+    let retryTimeoutId: NodeJS.Timeout | null = null;
+    let isMounted = true;
+    
+    const fetchEmailDeliveryStatus = async (retry = false) => {
+      if (!sessionId) return;
+      
+      setEmailDeliveryLoading(true);
+      try {
+        const statusUrl = `/api/email/purchase-confirmation/status?session_id=${encodeURIComponent(sessionId)}`;
+        const res = await fetch(statusUrl);
+        const data = await res.json();
+        
+        if (!isMounted) return; // Component unmounted, ignore result
+        
+        if (data.ok && data.delivery) {
+          setEmailDelivery(data.delivery);
+          setEmailDeliveryLoading(false);
+        } else if (data.ok && !data.delivery && !retry) {
+          // Not found yet - retry once after 1500-2000ms (race condition handling)
+          retryTimeoutId = setTimeout(() => {
+            if (isMounted) {
+              fetchEmailDeliveryStatus(true);
+            }
+          }, 1750); // 1.75s (middle of 1500-2000ms range)
+        } else {
+          setEmailDeliveryLoading(false);
+        }
+      } catch (err) {
+        if (!isMounted) return; // Component unmounted, ignore error
+        console.warn('[THANK_YOU] Failed to fetch email delivery status (non-critical):', err);
+        setEmailDeliveryLoading(false);
+        // Don't show error - email status is nice-to-have, purchase flow continues
+      }
+    };
+    
+    fetchEmailDeliveryStatus();
+    
+    // Cleanup: cancel retry on unmount
+    return () => {
+      isMounted = false;
+      if (retryTimeoutId) {
+        clearTimeout(retryTimeoutId);
+      }
+    };
+  }, [sessionId, verified]);
 
   // Poll for webhook processing (nice-to-have)
   const pollForWebhookProcessing = async (sessionIdParam: string) => {
@@ -207,6 +284,15 @@ export default function ThankYouClient({ sessionId }: ThankYouClientProps) {
         </div>
       )}
 
+      {/* Email delivery status banner */}
+      {emailDelivery && !emailDeliveryLoading && (
+        <EmailDeliveryBanner 
+          delivery={emailDelivery} 
+          sessionId={sessionId}
+          productType={sessionData?.productType}
+        />
+      )}
+
       {/* Verification status - calm UX */}
       {verifying && (
         <p style={{ marginTop: '16px', fontSize: '14px', color: 'rgba(245, 245, 245, 0.5)' }}>
@@ -269,4 +355,180 @@ export default function ThankYouClient({ sessionId }: ThankYouClientProps) {
       )}
     </div>
   );
+}
+
+// Email delivery status banner component
+function EmailDeliveryBanner({ 
+  delivery, 
+  sessionId,
+  productType 
+}: { 
+  delivery: EmailDeliveryStatus; 
+  sessionId: string | null;
+  productType?: string;
+}) {
+  const { deliveryStatus, rejectReason } = delivery;
+  
+  // Map rejectReason codes to friendly text (privacy: don't show raw codes like "global-block")
+  const getFriendlyRejectReason = (reason: string | null | undefined): string | null => {
+    if (!reason) return null;
+    const reasonLower = reason.toLowerCase();
+    if (reasonLower.includes('global') || reasonLower.includes('block')) {
+      return 'blocked';
+    }
+    if (reasonLower.includes('invalid') || reasonLower.includes('bounce')) {
+      return 'invalid address';
+    }
+    if (reasonLower.includes('spam') || reasonLower.includes('filter')) {
+      return 'filtered';
+    }
+    // Default: return generic "blocked" instead of raw code
+    return 'blocked';
+  };
+  
+  // Show banner for all statuses (sent/queued show positive feedback, rejected/error show fallback)
+  if (deliveryStatus === 'sent') {
+    return (
+      <div
+        style={{
+          marginBottom: '16px',
+          padding: '12px 16px',
+          background: 'rgba(0, 255, 127, 0.1)',
+          borderRadius: '8px',
+          border: '1px solid rgba(0, 255, 127, 0.2)',
+        }}
+      >
+        <p style={{ margin: 0, fontSize: '14px', color: 'rgba(0, 255, 127, 0.9)' }}>
+          Confirmation email accepted for delivery.
+        </p>
+      </div>
+    );
+  }
+  
+  // Queued status
+  if (deliveryStatus === 'queued') {
+    return (
+      <div
+        style={{
+          marginBottom: '16px',
+          padding: '12px 16px',
+          background: 'rgba(255, 255, 255, 0.05)',
+          borderRadius: '8px',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+        }}
+      >
+        <p style={{ margin: 0, fontSize: '14px', color: 'rgba(245, 245, 245, 0.8)' }}>
+          Your confirmation email is queued. It should arrive shortly.
+        </p>
+      </div>
+    );
+  }
+  
+  // Rejected status - show helpful fallback
+  if (deliveryStatus === 'rejected') {
+    const downloadUrl = sessionId 
+      ? `/ebook/download?session_id=${encodeURIComponent(sessionId)}`
+      : null;
+    
+    return (
+      <div
+        style={{
+          marginBottom: '16px',
+          padding: '16px',
+          background: 'rgba(255, 193, 7, 0.1)',
+          borderRadius: '8px',
+          border: '1px solid rgba(255, 193, 7, 0.3)',
+        }}
+      >
+        <p style={{ margin: 0, marginBottom: '8px', fontSize: '15px', fontWeight: '600', color: '#ffc107' }}>
+          Email not delivered
+        </p>
+        <p style={{ margin: 0, marginBottom: '12px', fontSize: '14px', color: 'rgba(245, 245, 245, 0.9)', lineHeight: '1.5' }}>
+          Your email provider blocked the confirmation email. Don't worry — your purchase is successful and your download is still available here.
+        </p>
+        {rejectReason && (
+          <p style={{ margin: 0, marginBottom: '12px', fontSize: '12px', color: 'rgba(245, 245, 245, 0.5)' }}>
+            Provider reason: {getFriendlyRejectReason(rejectReason) || 'blocked'}
+          </p>
+        )}
+        {downloadUrl && (productType === 'ebook' || productType === 'audio_preorder') && (
+          <a
+            href={downloadUrl}
+            className="button-glow button-glow--green"
+            style={{
+              display: 'inline-block',
+              marginTop: '8px',
+              padding: '10px 20px',
+              background: '#00ff7f',
+              color: '#000',
+              textDecoration: 'none',
+              borderRadius: '6px',
+              fontWeight: '600',
+              fontSize: '14px',
+            }}
+          >
+            Download Now
+          </a>
+        )}
+        {(!downloadUrl || productType === 'paperback') && (
+          <p style={{ margin: '8px 0 0 0', fontSize: '13px', color: 'rgba(245, 245, 245, 0.7)' }}>
+            Use the Download button below.
+          </p>
+        )}
+      </div>
+    );
+  }
+  
+  // Error status - similar fallback
+  if (deliveryStatus === 'error') {
+    const downloadUrl = sessionId 
+      ? `/ebook/download?session_id=${encodeURIComponent(sessionId)}`
+      : null;
+    
+    return (
+      <div
+        style={{
+          marginBottom: '16px',
+          padding: '16px',
+          background: 'rgba(255, 193, 7, 0.1)',
+          borderRadius: '8px',
+          border: '1px solid rgba(255, 193, 7, 0.3)',
+        }}
+      >
+        <p style={{ margin: 0, marginBottom: '8px', fontSize: '15px', fontWeight: '600', color: '#ffc107' }}>
+          Email unavailable
+        </p>
+        <p style={{ margin: 0, marginBottom: '12px', fontSize: '14px', color: 'rgba(245, 245, 245, 0.9)', lineHeight: '1.5' }}>
+          We couldn't send the confirmation email. Don't worry — your purchase is successful and your download is still available here.
+        </p>
+        {downloadUrl && (productType === 'ebook' || productType === 'audio_preorder') && (
+          <a
+            href={downloadUrl}
+            className="button-glow button-glow--green"
+            style={{
+              display: 'inline-block',
+              marginTop: '8px',
+              padding: '10px 20px',
+              background: '#00ff7f',
+              color: '#000',
+              textDecoration: 'none',
+              borderRadius: '6px',
+              fontWeight: '600',
+              fontSize: '14px',
+            }}
+          >
+            Download Now
+          </a>
+        )}
+        {(!downloadUrl || productType === 'paperback') && (
+          <p style={{ margin: '8px 0 0 0', fontSize: '13px', color: 'rgba(245, 245, 245, 0.7)' }}>
+            Use the Download button below.
+          </p>
+        )}
+      </div>
+    );
+  }
+  
+  // Unknown status - don't show anything
+  return null;
 }

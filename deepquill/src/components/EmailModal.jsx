@@ -32,66 +32,100 @@ const EmailModal = ({ isOpen, onClose, onEmailSubmitted }) => {
 
     // --- fire tracking event to Next (agnes-next) ---
     // Determine the correct base URL for agnes-next
-    // Priority: env var > current origin (if ngrok) > localhost fallback
+    // Priority: env var > current origin (always use when available) > localhost fallback
     let NEXT_BASE = null;
     
     // Check env var first (should be ngrok URL in dev)
     const envUrl = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_AGNES_BASE_URL : null;
     if (envUrl) {
       NEXT_BASE = envUrl;
-      console.log('[deepquill] Using env var:', envUrl);
-    } else if (typeof window !== 'undefined') {
-      // Check if we're already on ngrok (use current origin)
-      if (window.location.hostname.includes('ngrok') || window.location.hostname.includes('ngrok-free.app')) {
-        NEXT_BASE = `${window.location.protocol}//${window.location.host}`;
-        console.log('[deepquill] Using current origin:', NEXT_BASE);
-      } else {
-        // Fallback to localhost for local dev
-        NEXT_BASE = 'http://localhost:3002';
-        console.log('[deepquill] Using localhost fallback:', NEXT_BASE);
-      }
+      console.log('[EmailModal] Using env var:', envUrl);
+    } else if (typeof window !== 'undefined' && window.location) {
+      // Always use current origin when available (works for ngrok, localhost, etc.)
+      // This ensures we use the same origin that's serving the page
+      NEXT_BASE = `${window.location.protocol}//${window.location.host}`;
+      console.log('[EmailModal] Using current origin:', NEXT_BASE, {
+        hostname: window.location.hostname,
+        protocol: window.location.protocol,
+        host: window.location.host,
+      });
+    } else {
+      // Fallback to localhost for local dev (should rarely happen)
+      NEXT_BASE = 'http://localhost:3002';
+      console.log('[EmailModal] Using localhost fallback:', NEXT_BASE);
     }
     
     // Debug: log what URL we're using
-    console.log('[deepquill] NEXT_BASE determined:', {
+    console.log('[EmailModal] NEXT_BASE determined:', {
       hostname: typeof window !== 'undefined' ? window.location.hostname : 'unknown',
       port: typeof window !== 'undefined' ? window.location.port : 'unknown',
+      origin: typeof window !== 'undefined' ? window.location.origin : 'unknown',
       final: NEXT_BASE,
     });
 
-    // Fire tracking event (non-blocking)
+    // Fire tracking event (non-blocking) - F1: Use absolute path when in terminal-proxy
     try {
-      fetch(`${NEXT_BASE}/api/track`, {
+      const isTerminalProxy = typeof window !== 'undefined' && window.location.pathname.startsWith('/terminal-proxy');
+      const trackUrl = isTerminalProxy 
+        ? `${window.location.origin}/api/track`
+        : '/api/track';
+      fetch(trackUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'CONTEST_ENTERED',
           email,
           source: 'contest',
-          ref: new URLSearchParams(location.search).get('ref') || undefined,
+          ref: typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('ref') || undefined : undefined,
           meta: { path: '/lightening' },
         }),
       }).catch(() => {});
     } catch {}
 
-    // Call /api/contest/login to set session cookie, then redirect
+    // F1: Call /api/contest/login - use absolute path when in terminal-proxy to avoid 405
     const normalizedEmail = email.trim().toLowerCase();
-    const loginUrl = `${NEXT_BASE}/api/contest/login`;
+    // Detect if we're in terminal-proxy (path starts with /terminal-proxy)
+    const isTerminalProxy = typeof window !== 'undefined' && window.location.pathname.startsWith('/terminal-proxy');
+    // Use absolute path when in terminal-proxy to go to root /api/* routes
+    const loginUrl = isTerminalProxy 
+      ? `${window.location.origin}/api/contest/login`
+      : '/api/contest/login';
     console.log('[EmailModal] Calling /api/contest/login', {
       email: normalizedEmail,
       url: loginUrl,
-      NEXT_BASE,
+      origin: typeof window !== 'undefined' ? window.location.origin : 'unknown',
+      pathname: typeof window !== 'undefined' ? window.location.pathname : 'unknown',
+      isTerminalProxy,
+      note: isTerminalProxy ? 'Using absolute path for terminal-proxy (avoids 405)' : 'Using relative path',
     });
     
     try {
-      const loginRes = await fetch(loginUrl, {
+      console.log('[EmailModal] Making fetch request:', {
+        url: loginUrl,
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: normalizedEmail }),
+        email: normalizedEmail,
         credentials: 'include',
       });
+      
+      // F1: Use absolute path when in terminal-proxy, include credentials, match Next route expectations
+      const loginRes = await fetch(loginUrl, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          email: normalizedEmail,
+          origin: typeof window !== 'undefined' ? window.location.origin : undefined,
+        }),
+        credentials: 'include', // F1: Include cookies for CORS
+      });
 
-      console.log('[EmailModal] Login response status:', loginRes.status, loginRes.statusText);
+      console.log('[EmailModal] Login response received:', {
+        status: loginRes.status,
+        statusText: loginRes.statusText,
+        ok: loginRes.ok,
+        headers: Object.fromEntries(loginRes.headers.entries()),
+      });
 
       if (loginRes.ok) {
         const loginData = await loginRes.json();
@@ -129,7 +163,11 @@ const EmailModal = ({ isOpen, onClose, onEmailSubmitted }) => {
           console.log('[EmailModal] Set allow_lightening_audio flag for gesture handoff');
         }
         
-        const lighteningUrl = `${NEXT_BASE}/lightening?${currentParams.toString()}`;
+        // F1: Use absolute path for redirect when in terminal-proxy
+        const isTerminalProxy = typeof window !== 'undefined' && window.location.pathname.startsWith('/terminal-proxy');
+        const lighteningUrl = isTerminalProxy
+          ? `${window.location.origin}/lightening?${currentParams.toString()}`
+          : `/lightening?${currentParams.toString()}`;
         console.log('[EmailModal] Redirecting to lightening with email:', lighteningUrl);
         // Redirect immediately - no delay needed
         window.location.href = lighteningUrl;
@@ -195,6 +233,12 @@ const EmailModal = ({ isOpen, onClose, onEmailSubmitted }) => {
               placeholder="Enter your email"
               className="w-full px-4 py-2 bg-black text-green-500 border border-green-500 rounded focus:outline-none focus:border-green-400 placeholder-green-500/50 font-mono"
               required
+              autoComplete="email"
+              style={{
+                // Part E1: Prevent iOS zoom on focus (font-size >= 16px)
+                fontSize: '16px',
+                WebkitAppearance: 'none',
+              }}
             />
           </div>
 

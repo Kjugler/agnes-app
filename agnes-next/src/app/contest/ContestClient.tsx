@@ -18,6 +18,7 @@ import {
   clearIdentityStorage,
   type AssociateCache,
 } from '@/lib/identity';
+import RequestAccessModal from '@/components/auth/RequestAccessModal';
 
 declare global {
   interface Window {
@@ -29,21 +30,56 @@ declare global {
 export default function ContestClient() {
   const qp = useSearchParams();
   const router = useRouter();
+  
+  // Detect "just did something that earns points" signals:
+  // - return from Stripe: ?session_id=...
+  // - explicit flag: ?justPurchased=1
+  // IMPORTANT: Declare these IMMEDIATELY after useSearchParams() to avoid TDZ errors
+  // These must be declared before ANY other hooks (useState, useEffect, useMemo, useCallback) that reference them
+  const sessionId = qp.get('session_id');
+  const justPurchased = qp.get('justPurchased') === '1';
+  
   const [current, setCurrent] = useState(0);
   const [tapsyText, setTapsyText] = useState('Tap here to read a sample chapter!');
   const [showScoreButton, setShowScoreButton] = useState(false);
   const [contestEmail, setContestEmail] = useState<string | null>(null);
   const [associate, setAssociate] = useState<AssociateCache | null>(null);
   const [hasProfile, setHasProfile] = useState(false);
+  const [hasJoinedContest, setHasJoinedContest] = useState(false);
   const [profileFirstName, setProfileFirstName] = useState<string | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
   const [statusLoaded, setStatusLoaded] = useState(false);
   const [showEntryFormForCheckout, setShowEntryFormForCheckout] = useState(false);
   const [showIdentityBanner, setShowIdentityBanner] = useState(false);
   const [showYouTubeOverlay, setShowYouTubeOverlay] = useState(true);
+  const [showRequestAccessModal, setShowRequestAccessModal] = useState(false);
   const videoRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
 
+  // ---- EARLY DERIVED VALUES (NO useMemo/useEffect/useCallback above this block) ----
+  // All query-param-derived flags and computed booleans must be declared here
+  // to avoid Temporal Dead Zone (TDZ) errors when referenced in useMemo/useEffect/useCallback
+  
+  // Query param derived values (already declared above, but keeping for clarity)
+  // const sessionId = qp.get('session_id');
+  // const justPurchased = qp.get('justPurchased') === '1';
+  
+  // Additional query params that might be used
+  const referralCode = qp.get('ref') ?? '';
+  const embed = qp.get('embed') === '1';
+  
+  // Computed booleans derived from state (must be declared before useMemo/useEffect/useCallback)
+  // These are safe to compute here because they're simple boolean expressions
+  // Default to false until state is loaded to prevent TDZ
+  const userHasJoinedContest = statusLoaded && hasJoinedContest && Boolean(contestEmail);
+  const hasAssociate = statusLoaded && hasProfile && Boolean(contestEmail);
+  
+  // Additional computed flags (if any)
+  // const isReturning = Boolean(associate?.id);
+  // const hasLedger = Boolean(associate?.code);
+
+  // ---- MEMOS / EFFECTS / CALLBACKS (all hooks that use the above values go here) ----
+  
   // Handle fresh=1 param: clear identity storage before rendering
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -282,6 +318,7 @@ export default function ContestClient() {
     const loadStatus = async () => {
       if (!contestEmail) {
         setHasProfile(false);
+        setHasJoinedContest(false);
         setProfileFirstName(null);
         setAssociate(null);
         setStatusLoaded(false);
@@ -310,8 +347,25 @@ export default function ContestClient() {
         const data = await res.json();
         if (cancelled) return;
 
+        // D: Self-heal - if not authenticated OR missing principal → show RequestAccessModal
+        if (!data?.ok || !data?.id || !data?.email) {
+          console.log('[contest] Not authenticated or missing principal - showing RequestAccessModal', {
+            ok: data?.ok,
+            id: data?.id,
+            email: data?.email,
+          });
+          setShowRequestAccessModal(true);
+          setStatusLoading(false);
+          setStatusLoaded(true);
+          return;
+        }
+
+        // R4: Use contestJoined from ledger (single source of truth)
+        // Prefer contestJoined field, fallback to hasJoinedContest for backward compatibility
         const nextHasProfile = Boolean(data?.hasProfile);
+        const nextHasJoinedContest = Boolean(data?.contestJoined ?? data?.hasJoinedContest);
         setHasProfile(nextHasProfile);
+        setHasJoinedContest(nextHasJoinedContest);
         setProfileFirstName(data?.firstName || null);
 
         if (data?.firstName) {
@@ -343,6 +397,7 @@ export default function ContestClient() {
         }
         if (!cancelled) {
           setHasProfile(false);
+          setHasJoinedContest(false);
           setProfileFirstName(null);
           // Keep existing associate if we have one (don't clear on error)
           // Only clear if we don't have one already
@@ -371,12 +426,168 @@ export default function ContestClient() {
     };
   }, [contestEmail]);
 
+  // R6: Listen for contest:points-updated event to refresh join status immediately
+  useEffect(() => {
+    const handlePointsUpdated = () => {
+      console.log('[contest] Points updated event received - refreshing status');
+      // Re-fetch associate/status to get updated contestJoined
+      if (contestEmail) {
+        setStatusLoading(true);
+        fetch('/api/associate/status', {
+          method: 'GET',
+          cache: 'no-store',
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            const nextHasJoinedContest = Boolean(data?.contestJoined ?? data?.hasJoinedContest);
+            setHasJoinedContest(nextHasJoinedContest);
+            setStatusLoaded(true);
+            setStatusLoading(false);
+          })
+          .catch((err) => {
+            console.warn('[contest] Failed to refresh status after points update', err);
+            setStatusLoading(false);
+          });
+      }
+    };
+
+    window.addEventListener('contest:points-updated', handlePointsUpdated);
+    return () => {
+      window.removeEventListener('contest:points-updated', handlePointsUpdated);
+    };
+  }, [contestEmail]);
+
+  // Part B: Deterministic refresh loop for post-purchase state update
+  useEffect(() => {
+    // Only run if we have purchase indicators AND email is loaded
+    if ((!justPurchased && !sessionId) || !contestEmail) return;
+
+    let cancelled = false;
+    const delays = [0, 1200, 2500, 4500]; // Attempt 0 immediately, then 1.2s, 2.5s, 4.5s
+    const timers: NodeJS.Timeout[] = [];
+
+    const refreshAssociateStatus = async (): Promise<boolean> => {
+      try {
+        const res = await fetch('/api/associate/status', {
+          method: 'GET',
+          cache: 'no-store',
+          credentials: 'include', // Part C: Ensure cookies are included for origin stability
+        });
+
+        if (!res.ok) {
+          console.warn('[contest] Refresh status failed', { status: res.status });
+          return false;
+        }
+
+        const data = await res.json();
+        const nextHasJoinedContest = Boolean(data?.contestJoined ?? data?.hasJoinedContest);
+
+        setHasJoinedContest(nextHasJoinedContest);
+        setStatusLoaded(true);
+        setStatusLoading(false);
+
+        return nextHasJoinedContest; // Return true if joined, false otherwise
+      } catch (err) {
+        console.warn('[contest] Refresh status error', err);
+        return false;
+      }
+    };
+
+    const runRefreshLoop = async () => {
+      for (let i = 0; i < delays.length; i++) {
+        if (cancelled) return;
+
+        // Wait for the delay (cumulative from start, except first attempt)
+        if (i > 0) {
+          const delayMs = delays[i] - delays[i - 1];
+          await new Promise<void>((resolve) => {
+            const timer = setTimeout(() => {
+              resolve();
+            }, delayMs);
+            timers.push(timer);
+          });
+        }
+
+        if (cancelled) return;
+
+        // Attempt refresh
+        console.log('[contest] Refresh attempt', { attempt: i + 1, delay: delays[i] });
+        const isJoined = await refreshAssociateStatus();
+
+        // Stop early if contestJoined === true
+        if (isJoined) {
+          console.log('[contest] Refresh loop stopped early - contestJoined is true', {
+            attempt: i + 1,
+            totalAttempts: delays.length,
+            elapsedMs: delays[i],
+          });
+          break;
+        }
+      }
+
+      // Clean up query params after loop completes (without navigation)
+      if (!cancelled) {
+        try {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('justPurchased');
+          url.searchParams.delete('session_id');
+          window.history.replaceState({}, '', url.toString());
+          console.log('[contest] Cleaned up purchase query params');
+        } catch (err) {
+          console.warn('[contest] Failed to clean up query params', err);
+        }
+      }
+    };
+
+    console.log('[contest] Starting deterministic refresh loop', {
+      justPurchased,
+      sessionId,
+      contestEmail,
+    });
+
+    runRefreshLoop();
+
+    return () => {
+      cancelled = true;
+      timers.forEach((timer) => clearTimeout(timer));
+    };
+  }, [justPurchased, sessionId, contestEmail]);
+
+  // Refresh status when page becomes visible (fallback for non-purchase scenarios)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && contestEmail && statusLoaded && !justPurchased && !sessionId) {
+        console.log('[contest] Page became visible - refreshing status');
+        // Re-fetch associate/status to get updated contestJoined
+        setStatusLoading(true);
+        fetch('/api/associate/status', {
+          method: 'GET',
+          cache: 'no-store',
+          credentials: 'include',
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            const nextHasJoinedContest = Boolean(data?.contestJoined ?? data?.hasJoinedContest);
+            setHasJoinedContest(nextHasJoinedContest);
+            setStatusLoaded(true);
+            setStatusLoading(false);
+          })
+          .catch((err) => {
+            console.warn('[contest] Failed to refresh status on visibility change', err);
+            setStatusLoading(false);
+          });
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [contestEmail, statusLoaded, justPurchased, sessionId]);
+
   // Detect “just did something that earns points” signals:
   // - return from Stripe: ?session_id=...
   // - explicit flag: ?justPurchased=1
-  const sessionId = qp.get('session_id');
-  const justPurchased = qp.get('justPurchased') === '1';
-
   // YouTube IFrame API setup for video looping
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -574,9 +785,9 @@ export default function ContestClient() {
       },
       {
         id: 'contestBtn',
-        label: 'Enter the Contest',
-        text: 'You can win this for your family!',
-        href: '/contest/signup?from=/contest',
+        label: userHasJoinedContest ? 'See Your Progress' : 'Officially Enter (500 pts)',
+        text: userHasJoinedContest ? 'View your contest score and progress' : 'You can win this for your family!',
+        href: userHasJoinedContest ? '/contest/score' : '/contest/signup?from=/contest',
         type: 'link' as const,
       },
       {
@@ -593,7 +804,7 @@ export default function ContestClient() {
         type: 'button' as const,
       },
     ],
-    [],
+    [userHasJoinedContest],
   );
 
   useEffect(() => {
@@ -605,10 +816,6 @@ export default function ContestClient() {
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, buttons]);
-
-  const hasAssociate = useMemo(() => {
-    return statusLoaded && hasProfile && Boolean(contestEmail);
-  }, [statusLoaded, hasProfile, contestEmail]);
 
   const handleChangeAccount = useCallback(async () => {
     try {
@@ -623,9 +830,8 @@ export default function ContestClient() {
       // Clear localStorage
       clearAssociateCaches();
       
-      // Redirect to IBM Terminal entry (Vite app)
-      const viteUrl = process.env.NEXT_PUBLIC_TERMINAL_URL || 'http://localhost:5173';
-      window.location.href = viteUrl;
+      // Redirect to IBM Terminal entry (preserves origin - ngrok stays ngrok)
+      window.location.href = '/terminal';
     } catch (err) {
       console.error('[contest] Change account error', err);
       // Fallback: just clear and reload
@@ -649,13 +855,13 @@ export default function ContestClient() {
       storedUserCode 
     });
     
-    // If user has identity and associate profile, go to score page
-    if (hasIdentity && statusLoaded && hasAssociate) {
+    // If user has joined the contest, go to score page
+    if (hasIdentity && statusLoaded && userHasJoinedContest) {
       router.push('/contest/score');
       return;
     }
     
-    // If user has identity but no associate profile yet, route normally
+    // If user has identity but hasn't joined yet, route normally
     if (hasIdentity && statusLoaded) {
       router.push(href);
       return;
@@ -863,9 +1069,25 @@ export default function ContestClient() {
       )}
 
       {/* MENU BUTTONS */}
-      <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '1.2rem' }}>
+      {/* E1: Mobile layout - wrap buttons in portrait, ensure all visible */}
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        gap: '12px', // E1: Consistent gap
+        marginTop: '1.2rem',
+        flexWrap: 'wrap', // E1: Wrap on mobile portrait
+        padding: '0 1rem', // E1: Padding for mobile
+        maxWidth: '100%', // E1: Prevent overflow
+        width: '100%', // E1: Full width container
+      }}>
         {buttons.map((btn, index) => (
-          <div key={btn.id} style={{ position: 'relative', textAlign: 'center' }}>
+          <div key={btn.id} style={{ 
+            position: 'relative', 
+            textAlign: 'center',
+            flex: '1 1 auto', // E1: Allow buttons to grow/shrink
+            minWidth: '160px', // E1: Minimum width for readability
+            maxWidth: '100%', // E1: Don't exceed container
+          }}>
             {index === current && (
               <>
                 <div
@@ -911,15 +1133,13 @@ export default function ContestClient() {
                   cursor: statusLoading ? 'not-allowed' : 'pointer',
                   animation: index === current ? 'pulse 1s infinite' : 'none',
                   transition: 'all 0.3s',
-                  minWidth: '200px',
+                  minWidth: '160px', // E1: Smaller min width for mobile
+                  width: '100%', // E1: Full width on mobile
+                  maxWidth: '100%', // E1: Don't exceed container
                   opacity: statusLoading ? 0.6 : 1,
                 }}
               >
-                {statusLoading
-                  ? 'Checking...'
-                  : hasAssociate
-                    ? 'See Your Progress'
-                    : btn.label}
+                {statusLoading ? 'Checking...' : btn.label}
               </button>
             ) : btn.type === 'button' ? (
               <BuyBookButton
@@ -936,6 +1156,9 @@ export default function ContestClient() {
                   cursor: 'pointer',
                   animation: index === current ? 'pulse 1s infinite' : 'none',
                   transition: 'all 0.3s',
+                  minWidth: '160px', // E1: Smaller min width for mobile
+                  width: '100%', // E1: Full width on mobile
+                  maxWidth: '100%', // E1: Don't exceed container
                 }}
               >
                 {btn.label}
@@ -957,6 +1180,9 @@ export default function ContestClient() {
                   cursor: 'pointer',
                   animation: index === current ? 'pulse 1s infinite' : 'none',
                   transition: 'all 0.3s',
+                  minWidth: '160px', // E1: Smaller min width for mobile
+                  width: '100%', // E1: Full width on mobile
+                  maxWidth: '100%', // E1: Don't exceed container
                 }}
               >
                 {btn.label}
@@ -1049,6 +1275,49 @@ export default function ContestClient() {
       {/* Invisible behavior: wires Buy button to checkout */}
       <CheckoutWiring />
       <HelpButton />
+
+      {/* D: Self-heal - RequestAccessModal for unauthenticated users */}
+      <RequestAccessModal
+        isOpen={showRequestAccessModal}
+        onSuccess={() => {
+          // D: After login, refetch associate/status
+          console.log('[contest] RequestAccessModal success - refetching status');
+          setShowRequestAccessModal(false);
+          setStatusLoading(true);
+          fetch('/api/associate/status', {
+            method: 'GET',
+            cache: 'no-store',
+          })
+            .then((res) => res.json())
+            .then((data) => {
+              const nextHasProfile = Boolean(data?.hasProfile);
+              const nextHasJoinedContest = Boolean(data?.contestJoined ?? data?.hasJoinedContest);
+              setHasProfile(nextHasProfile);
+              setHasJoinedContest(nextHasJoinedContest);
+              setProfileFirstName(data?.firstName || null);
+              
+              if (data?.id && data?.email) {
+                const payload: AssociateCache = {
+                  id: data.id,
+                  email: data.email,
+                  name: data?.name || data.email,
+                  code: data?.code || '',
+                };
+                writeAssociate(payload);
+                setAssociate(payload);
+              }
+              
+              setStatusLoading(false);
+              setStatusLoaded(true);
+            })
+            .catch((err) => {
+              console.error('[contest] Failed to refetch status after login', err);
+              setStatusLoading(false);
+              setStatusLoaded(true);
+            });
+        }}
+        redirectTo="/contest"
+      />
     </div>
   );
 }

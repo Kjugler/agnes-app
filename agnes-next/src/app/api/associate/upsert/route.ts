@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { normalizeEmail } from '@/lib/email';
 import { upsertAssociateByEmail } from '@/lib/associate';
+import { proxyJson } from '@/lib/deepquillProxy';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -103,34 +104,112 @@ export async function POST(req: NextRequest) {
       hasHandles: !!(handles.x || handles.instagram || handles.tiktok || handles.truth),
     });
 
-    const user = await upsertAssociateByEmail(email, {
-      fname: firstName,
-      lname: lastName,
-      firstName,
-      phone,
-      handleX,
-      handleInstagram,
-      handleTiktok,
-      handleTruth,
-    });
+    // Proxy to deepquill for canonical DB writes
+    try {
+      const { data, status } = await proxyJson('/api/associate/upsert', req, {
+        method: 'POST',
+        body: {
+          firstName,
+          lastName,
+          email,
+          phone,
+          handles: {
+            x: handleX,
+            instagram: handleInstagram,
+            tiktok: handleTiktok,
+            truth: handleTruth,
+          },
+        },
+        headers: {
+          'x-user-email': email,
+        },
+      });
 
-    const name = user.fname && user.lname ? `${user.fname} ${user.lname}` : `${firstName} ${lastName}`.trim();
+      if (status === 200 && data?.ok) {
+        console.log('[associate/upsert] Proxied to deepquill', {
+          id: data.id,
+          email: data.email,
+          code: data.code,
+        });
 
-    console.log('[associate/upsert] Successfully upserted user', { id: user.id, email: user.email, code: user.referralCode });
+        const res = NextResponse.json({
+          ok: true,
+          id: data.id,
+          email: data.email,
+          name: data.name,
+          code: data.code,
+        });
 
-    const res = NextResponse.json({
-      ok: true,
-      id: user.id,
-      email: user.email,
-      name,
-      code: user.referralCode,
-    });
+        // Set cookies on response (Next.js 15 compatible)
+        res.cookies.set('mockEmail', email, { httpOnly: false, path: '/', maxAge: 60 * 60 * 24 * 365 });
+        res.cookies.set('ref', data.code, { httpOnly: false, path: '/', maxAge: 60 * 60 * 24 * 365 });
 
-    // Set cookies on response (Next.js 15 compatible)
-    res.cookies.set('mockEmail', email, { httpOnly: false, path: '/', maxAge: 60 * 60 * 24 * 365 });
-    res.cookies.set('ref', user.referralCode, { httpOnly: false, path: '/', maxAge: 60 * 60 * 24 * 365 });
+        return res;
+      } else {
+        console.warn('[associate/upsert] Deepquill proxy failed, falling back to local', {
+          status,
+          data,
+        });
+        // Fallback to local DB write
+        const user = await upsertAssociateByEmail(email, {
+          fname: firstName,
+          lname: lastName,
+          firstName,
+          phone,
+          handleX,
+          handleInstagram,
+          handleTiktok,
+          handleTruth,
+        });
 
-    return res;
+        const name = user.fname && user.lname ? `${user.fname} ${user.lname}` : `${firstName} ${lastName}`.trim();
+
+        console.log('[associate/upsert] Successfully upserted user (local fallback)', { id: user.id, email: user.email, code: user.referralCode });
+
+        const res = NextResponse.json({
+          ok: true,
+          id: user.id,
+          email: user.email,
+          name,
+          code: user.referralCode,
+        });
+
+        res.cookies.set('mockEmail', email, { httpOnly: false, path: '/', maxAge: 60 * 60 * 24 * 365 });
+        res.cookies.set('ref', user.referralCode, { httpOnly: false, path: '/', maxAge: 60 * 60 * 24 * 365 });
+
+        return res;
+      }
+    } catch (proxyErr) {
+      console.error('[associate/upsert] Proxy error, falling back to local', {
+        error: proxyErr instanceof Error ? proxyErr.message : String(proxyErr),
+      });
+      // Fallback to local DB write
+      const user = await upsertAssociateByEmail(email, {
+        fname: firstName,
+        lname: lastName,
+        firstName,
+        phone,
+        handleX,
+        handleInstagram,
+        handleTiktok,
+        handleTruth,
+      });
+
+      const name = user.fname && user.lname ? `${user.fname} ${user.lname}` : `${firstName} ${lastName}`.trim();
+
+      const res = NextResponse.json({
+        ok: true,
+        id: user.id,
+        email: user.email,
+        name,
+        code: user.referralCode,
+      });
+
+      res.cookies.set('mockEmail', email, { httpOnly: false, path: '/', maxAge: 60 * 60 * 24 * 365 });
+      res.cookies.set('ref', user.referralCode, { httpOnly: false, path: '/', maxAge: 60 * 60 * 24 * 365 });
+
+      return res;
+    }
   } catch (err: any) {
     console.error('[associate/upsert] error', {
       message: err?.message,

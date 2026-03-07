@@ -30,13 +30,26 @@ export default function CheckoutClient() {
       return;
     }
 
-    // Check if user has contest email (required for checkout)
+    // Root Cause B Fix: Catalog + Checkout must never require contest auth
+    // Email is optional - checkout can proceed without it (Stripe will collect email)
     const email = readContestEmail();
     if (!email) {
-      // Redirect to contest entry if no email
-      router.replace('/contest?redirect=checkout');
-      return;
+      console.log('[CHECKOUT] Proceeding without contest email - Stripe will collect email', {
+        pathname: '/checkout',
+        search: searchParams.toString(),
+        hasRefParam: !!searchParams.get('ref'),
+        note: 'Checkout does not require contest auth (Root Cause B fix)',
+      });
+      // Continue to checkout - do NOT redirect to contest
     }
+    
+    // Part 1B: Log checkout click (for debugging)
+    console.log('[CHECKOUT] Checkout initiated', {
+      product,
+      hasEmail: !!email,
+      hasRefParam: !!searchParams.get('ref'),
+      search: searchParams.toString(),
+    });
 
     // Extract tracking params
     const ref = searchParams.get('ref');

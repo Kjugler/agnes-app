@@ -11,7 +11,9 @@ const { buildReferrerCommissionEmail } = require('../src/lib/referrerCommissionE
 const { applyGlobalEmailBanner } = require('../src/lib/emailBanner.cjs');
 const { normalizeEmail, normalizeReferralCode, extractNameFromEmail } = require('../src/lib/normalize.cjs');
 const envConfig = require('../src/config/env.cjs');
-const { awardPurchaseDailyPoints, awardReferralPoints } = require('../lib/points/awardPoints.cjs');
+const { awardPurchaseDailyPoints, awardReferralSponsorPoints } = require('../lib/points/awardPoints.cjs');
+const { recordLedgerEntry } = require('../lib/ledger/recordLedger.cjs');
+const { getPointsRollupForUser } = require('../lib/pointsRollup.cjs');
 
 // Use single Prisma singleton with explicit datasourceUrl
 const { prisma, datasourceUrl, dbPath, ensureDatabaseUrl } = require('../server/prisma.cjs');
@@ -39,6 +41,70 @@ function getMailchimpClient() {
   return mailchimp(apiKey);
 }
 
+/**
+ * Normalize Mailchimp Transactional API response to canonical delivery outcome
+ * 
+ * Maps Mailchimp response to:
+ * - deliveryStatus: sent | queued | rejected | error
+ * - providerMessageId: _id if present
+ * - rejectReason: reject_reason if present
+ * - queuedReason: queued_reason if present
+ * 
+ * @param {any} emailResult - Mailchimp API response (array or object)
+ * @returns {object} Normalized delivery outcome
+ */
+function normalizeEmailDeliveryOutcome(emailResult) {
+  // Default outcome
+  let outcome = {
+    deliveryStatus: 'error',
+    providerMessageId: 'unknown',
+    rejectReason: null,
+    queuedReason: null,
+    rawStatus: 'unknown',
+  };
+
+  try {
+    // Handle array response (most common for Mandrill)
+    let firstResult = null;
+    if (Array.isArray(emailResult) && emailResult.length > 0) {
+      firstResult = emailResult[0];
+    } else if (emailResult && typeof emailResult === 'object') {
+      firstResult = emailResult;
+    }
+
+    if (firstResult) {
+      const status = firstResult.status || 'unknown';
+      outcome.rawStatus = status;
+      outcome.providerMessageId = firstResult._id || firstResult.id || firstResult.messageId || 'unknown';
+      outcome.rejectReason = firstResult.reject_reason || null;
+      outcome.queuedReason = firstResult.queued_reason || null;
+
+      // Map status to canonical deliveryStatus
+      if (status === 'sent') {
+        outcome.deliveryStatus = 'sent';
+      } else if (status === 'queued') {
+        outcome.deliveryStatus = 'queued';
+      } else if (status === 'rejected') {
+        outcome.deliveryStatus = 'rejected';
+      } else if (status === 'invalid' || status === 'error' || status === 'bounced') {
+        outcome.deliveryStatus = 'error';
+      } else {
+        // Unknown status - treat as error
+        outcome.deliveryStatus = 'error';
+      }
+    } else {
+      // Unexpected response format
+      outcome.deliveryStatus = 'error';
+    }
+  } catch (err) {
+    // Error parsing response - treat as error
+    outcome.deliveryStatus = 'error';
+    outcome.rejectReason = `Parse error: ${err.message}`;
+  }
+
+  return outcome;
+}
+
 // IMPORTANT: Use express.raw() to preserve exact body bytes for signature verification
 // This MUST be mounted before any JSON parsing middleware
 router.post(
@@ -54,6 +120,22 @@ router.post(
     console.log(`Stripe-Signature header present: ${!!req.headers['stripe-signature']}`);
     console.log(`Content-Type: ${req.headers['content-type']}`);
     console.log(`Content-Length: ${req.headers['content-length']}`);
+    
+    // CRITICAL: Log body type and size for signature verification debugging
+    const bodyType = typeof req.body;
+    const bodyIsBuffer = Buffer.isBuffer(req.body);
+    const bodyLength = bodyIsBuffer ? req.body.length : (typeof req.body === 'string' ? req.body.length : 'unknown');
+    console.log(`[WEBHOOK] Body type: ${bodyType}, isBuffer: ${bodyIsBuffer}, length: ${bodyLength}`);
+    
+    // Log first 100 chars of body (safe - no secrets) for debugging
+    let bodyPreview = 'N/A';
+    if (Buffer.isBuffer(req.body)) {
+      bodyPreview = req.body.toString('utf8', 0, Math.min(100, req.body.length));
+    } else if (typeof req.body === 'string') {
+      bodyPreview = req.body.substring(0, 100);
+    }
+    console.log(`[WEBHOOK] Body preview (first 100 chars): ${bodyPreview}...`);
+    
     console.log('='.repeat(80));
     
     try {
@@ -69,23 +151,47 @@ router.post(
         return res.status(500).json({ error: 'Webhook secret not configured' });
       }
 
-      // Verify signature and construct event
+      // BULLETPROOF: express.raw() guarantees req.body is a Buffer
+      // Use it directly - no conversion, no stringification, no modification
+      if (!Buffer.isBuffer(req.body)) {
+        console.error('[WEBHOOK] FATAL: req.body is not a Buffer!', {
+          type: typeof req.body,
+          isBuffer: Buffer.isBuffer(req.body),
+          constructor: req.body?.constructor?.name,
+        });
+        return res.status(500).json({ 
+          error: 'Internal error: body not in Buffer format',
+          detail: 'express.raw() middleware should provide Buffer, but it did not'
+        });
+      }
+
+      // Verify signature and construct event using Buffer directly
+      // stripe.webhooks.constructEvent() accepts Buffer or string - Buffer is preferred
       let event;
       try {
         event = stripe.webhooks.constructEvent(
-          req.body,
+          req.body, // Use Buffer directly - no conversion
           sig,
           STRIPE_WEBHOOK_SECRET
         );
+        console.log('✅ [WEBHOOK] Verified signature successfully');
+        console.log('[WEBHOOK] Using secret:', STRIPE_WEBHOOK_SECRET.substring(0, 10) + '...');
+        console.log('[WEBHOOK] Body verified as Buffer, length:', req.body.length);
       } catch (err) {
-        console.error('[WEBHOOK] Signature verification failed:', err.message);
+        console.error('❌ [WEBHOOK] Signature verification failed:', err.message);
+        console.error('[WEBHOOK] Expected secret:', STRIPE_WEBHOOK_SECRET ? STRIPE_WEBHOOK_SECRET.substring(0, 10) + '...' : 'NOT SET');
+        console.error('[WEBHOOK] Body type used for verification:', Buffer.isBuffer(req.body) ? 'Buffer' : typeof req.body);
+        console.error('[WEBHOOK] Body length used for verification:', req.body.length);
+        console.error('[WEBHOOK] Signature header:', sig ? sig.substring(0, 50) + '...' : 'MISSING');
         return res.status(400).json({ error: `Webhook signature verification failed: ${err.message}` });
       }
 
       // ===== STEP 2: LOG EVENT.TYPE AND CRITICAL IDs =====
+      const eventMode = event.livemode ? 'live' : 'test';
       console.log('[WEBHOOK] Event received:', {
         type: event.type,
         id: event.id,
+        mode: eventMode,
         livemode: event.livemode,
       });
       
@@ -95,17 +201,28 @@ router.post(
       // Handle different event types
       switch (event.type) {
         case 'checkout.session.completed': {
-          const session = event.data.object;
-          
-          // Extract email with multiple fallbacks (preferred order)
-          let customerEmail = null;
-          if (session.customer_details?.email) {
-            customerEmail = session.customer_details.email;
-          } else if (session.customer_email) {
-            customerEmail = session.customer_email;
-          } else if (session.customer && typeof session.customer === 'object' && session.customer.email) {
-            customerEmail = session.customer.email;
-          }
+          try {
+            const session = event.data.object;
+            
+            // ===== INSTRUMENTATION: START checkout.session.completed =====
+            console.log('[WEBHOOK] checkout.session.completed START evt=' + event.id);
+            
+            // Extract email with multiple fallbacks (preferred order)
+            let customerEmail = null;
+            let emailSource = 'MISSING';
+            if (session.customer_details?.email) {
+              customerEmail = session.customer_details.email;
+              emailSource = 'customer_details.email';
+            } else if (session.customer_email) {
+              customerEmail = session.customer_email;
+              emailSource = 'customer_email';
+            } else if (session.customer && typeof session.customer === 'object' && session.customer.email) {
+              customerEmail = session.customer.email;
+              emailSource = 'customer.email';
+            }
+            
+            console.log('[WEBHOOK] session.id=' + session.id + ' email=' + (customerEmail || 'MISSING') + ' amount_total=' + (session.amount_total || 0));
+            console.log('[WEBHOOK] Buyer email source: ' + emailSource);
           
           // Extract shipping/contact details from session
           // Priority: shipping_details > customer_details > billing_details
@@ -157,9 +274,69 @@ router.post(
           
           const contestEmailRaw = metadata.contest_email;
           const contestEmail = (contestEmailRaw && typeof contestEmailRaw === 'string' && contestEmailRaw.trim()) ? contestEmailRaw.trim() : null;
-          const product = metadata.product || 'unknown';
+          
+          // Part G3: Validate product - fail loudly if missing
+          const product = metadata.product || metadata.productType || null;
+          if (!product || typeof product !== 'string') {
+            console.error('[WEBHOOK] ❌ Missing product metadata', {
+              sessionId: session.id,
+              metadata: session.metadata,
+              hasMetadata: !!session.metadata,
+              metadataKeys: session.metadata ? Object.keys(session.metadata) : [],
+            });
+            
+            // Record missing product in ledger for observability
+            if (prisma && buyerUserId) {
+              try {
+                ensureDatabaseUrl();
+                await prisma.ledger.create({
+                  data: {
+                    sessionId: session.id,
+                    userId: buyerUserId,
+                    type: 'WEBHOOK_MISSING_PRODUCT',
+                    points: 0,
+                    amount: session.amount_total || 0,
+                    currency: 'usd',
+                    note: 'Missing product in Stripe metadata - webhook halted',
+                    meta: {
+                      sessionId: session.id,
+                      metadata: session.metadata || {},
+                      attemptedAt: new Date().toISOString(),
+                      error: 'product_missing',
+                    },
+                  },
+                });
+                console.log('[WEBHOOK] Recorded missing product in ledger', { sessionId: session.id });
+              } catch (ledgerErr) {
+                console.error('[WEBHOOK] Failed to record missing product in ledger', {
+                  error: ledgerErr.message,
+                  sessionId: session.id,
+                });
+              }
+            }
+            
+            // Stop referral + fulfillment logic - return 200 to prevent Stripe retries
+            // (We've logged and recorded the issue, but don't want infinite retries)
+            console.error('[WEBHOOK] ❌ Halting webhook processing - product missing', {
+              sessionId: session.id,
+              note: 'Purchase recorded but referral/fulfillment skipped due to missing product',
+            });
+            return res.status(200).json({ 
+              received: true,
+              error: 'product_missing',
+              note: 'Webhook received but processing halted due to missing product metadata'
+            });
+          }
+          
           const ref = metadata.ref || metadata.referrerCode || null;
           const refValid = metadata.ref_valid === 'true';
+          
+          // Part C1: Check for AP referral metadata (from Part B2 - auto-applied latest referral)
+          const apReferralCode = metadata.ap_referral_code || null;
+          const apUserId = metadata.ap_user_id || null;
+          
+          // Log product attribution source (now guaranteed to exist)
+          console.log('[WEBHOOK] Product attribution: product=' + product + ' source=metadata.product');
           
           // Store purchase award result for email template (will be set when points are awarded)
           let purchaseAwardResultForEmail = null;
@@ -209,10 +386,19 @@ router.post(
               : session.payment_intent?.id || null;
             
             // ===== BUYER ATTRIBUTION & POINTS AWARD =====
-            // Use contest_user_id (PRIMARY) or contest_user_code (fallback)
-            // NEVER use email for attribution - only for sending emails
+            // [PRINCIPAL] Resolve canonical User principal from checkout metadata
+            // Priority: contest_user_id (canonical) > contest_user_code > email (fallback)
+            // NEVER use email for attribution if contest_user_id is available
             let buyerUser = null;
             let buyerAttributionMethod = 'none';
+            
+            // [PRINCIPAL] Log metadata availability
+            console.log('[PRINCIPAL] Resolving buyer principal from webhook metadata', {
+              sessionId: session.id,
+              contestUserId: contestUserId || 'MISSING',
+              contestUserCode: contestUserCode || 'MISSING',
+              customerEmail: customerEmail || 'MISSING',
+            });
             
             if (prisma) {
               // Use singleton prisma (already has explicit datasourceUrl)
@@ -227,13 +413,13 @@ router.post(
               process.env.DATABASE_URL = datasourceUrl;
               
               try {
-                // PRIMARY: Use contest_user_id if available
+                // PRIMARY: Use contest_user_id if available (canonical - from cookie)
                 if (contestUserId) {
                   try {
                     // Safely trim contestUserId - handle non-string types
                     const trimmedUserId = typeof contestUserId === 'string' ? contestUserId.trim() : String(contestUserId || '').trim();
                     if (!trimmedUserId) {
-                      console.warn('[ATTRIBUTION_BUYER] contestUserId is empty after trimming', { contestUserId });
+                      console.warn('[PRINCIPAL] contestUserId is empty after trimming', { contestUserId });
                       throw new Error('contestUserId is empty');
                     }
                     // CRITICAL: Set DATABASE_URL RIGHT BEFORE the query
@@ -248,14 +434,18 @@ router.post(
                     });
                     if (buyerUser) {
                       buyerAttributionMethod = 'contest_user_id';
-                      console.log('[ATTRIBUTION_BUYER] Found by contest_user_id', {
-                        buyerId: buyerUser.id,
-                        buyerCode: buyerUser.code || buyerUser.referralCode || 'MISSING',
-                        buyerEmail: buyerUser.email || 'MISSING',
+                      console.log('[PRINCIPAL] Buyer principal resolved by contest_user_id', {
+                        userId: buyerUser.id,
+                        email: buyerUser.email || 'MISSING',
+                        code: buyerUser.code || buyerUser.referralCode || 'MISSING',
+                      });
+                    } else {
+                      console.warn('[PRINCIPAL] MISMATCH - contest_user_id provided but User not found', {
+                        contestUserId: trimmedUserId,
                       });
                     }
                   } catch (err) {
-                    console.warn('[ATTRIBUTION_BUYER] Error looking up by contest_user_id', {
+                    console.warn('[PRINCIPAL] Error looking up by contest_user_id', {
                       error: err.message,
                       contestUserId,
                     });
@@ -278,15 +468,15 @@ router.post(
                       });
                       if (buyerUser) {
                         buyerAttributionMethod = 'contest_user_code';
-                        console.log('[ATTRIBUTION_BUYER] Found by contest_user_code', {
-                          buyerId: buyerUser.id,
-                          buyerCode: buyerUser.code || buyerUser.referralCode || 'MISSING',
-                          buyerEmail: buyerUser.email || 'MISSING',
+                        console.log('[PRINCIPAL] Buyer principal resolved by contest_user_code', {
+                          userId: buyerUser.id,
+                          email: buyerUser.email || 'MISSING',
+                          code: buyerUser.code || buyerUser.referralCode || 'MISSING',
                         });
                       }
                     }
                   } catch (err) {
-                    console.warn('[ATTRIBUTION_BUYER] Error looking up by contest_user_code', {
+                    console.warn('[PRINCIPAL] Error looking up by contest_user_code', {
                       error: err.message,
                       stack: err.stack,
                       contestUserCode,
@@ -308,25 +498,33 @@ router.post(
                       });
                       if (buyerUser) {
                         buyerAttributionMethod = 'email_fallback';
-                        console.log('[ATTRIBUTION_BUYER] Found by email fallback', {
-                          buyerId: buyerUser.id,
-                          buyerCode: buyerUser.code || buyerUser.referralCode || 'MISSING',
-                          buyerEmail: buyerUser.email || 'MISSING',
-                          warning: 'Used email fallback - contestUserId/Code were missing from metadata',
+                        console.warn('[PRINCIPAL] Buyer principal resolved by email fallback (contest_user_id missing)', {
+                          userId: buyerUser.id,
+                          email: buyerUser.email || 'MISSING',
+                          code: buyerUser.code || buyerUser.referralCode || 'MISSING',
+                          warning: 'contest_user_id should be provided in checkout metadata',
                         });
                       }
                     }
                   } catch (err) {
-                    console.warn('[ATTRIBUTION_BUYER] Error looking up by email', {
+                    console.warn('[PRINCIPAL] Error looking up by email', {
                       error: err.message,
                       customerEmail,
                     });
                   }
                 }
                 
-                // HARD FAIL: No attribution possible
-                if (!buyerUser) {
-                  console.error('[ATTRIBUTION_BUYER] HARD FAIL - Cannot attribute purchase', {
+                // [PRINCIPAL] Log final resolution
+                if (buyerUser) {
+                  console.log('[PRINCIPAL] Buyer principal resolved', {
+                    userId: buyerUser.id,
+                    email: buyerUser.email || 'MISSING',
+                    code: buyerUser.code || buyerUser.referralCode || 'MISSING',
+                    method: buyerAttributionMethod,
+                    sessionId: session.id,
+                  });
+                } else {
+                  console.error('[PRINCIPAL] Buyer principal NOT resolved - cannot attribute purchase', {
                     sessionId: session.id,
                     contestUserId: contestUserId || 'MISSING',
                     contestUserCode: contestUserCode || 'MISSING',
@@ -377,6 +575,11 @@ router.post(
                 // ALWAYS create Purchase row (idempotent) - even if buyer not found
                 // This ensures /api/contest/score can always find the purchase
                 const PURCHASE_POINTS = 500; // Points for buying any product
+                
+                // Declare purchase variables in outer scope so they're accessible for email sending
+                let existingPurchase = null;
+                let createdPurchase = null;
+                
                 if (prisma) {
                   try {
                     // Use singleton prisma (standard SQLite, no adapter)
@@ -387,8 +590,8 @@ router.post(
                     
                     // Idempotency check: has this purchase already been recorded?
                     ensureDatabaseUrl(); // Ensure before query
-                    const existingPurchase = await prismaClient.purchase.findUnique({
-                      where: { stripeSessionId: session.id },
+                    existingPurchase = await prismaClient.purchase.findUnique({
+                      where: { sessionId: session.id },
                     });
                 
                 if (existingPurchase) {
@@ -399,29 +602,39 @@ router.post(
                   });
                   
                   // Case 1: Buyer was found now but wasn't before (userId was null)
-                  // Also update Customer and Fulfillment if missing
+                  // Also update Customer if missing
                   if (buyerUser && !existingPurchase.userId) {
                     // Upsert Customer first
-                    let customerId = existingPurchase.customerId;
-                    if (finalEmail && !customerId) {
+                    // NOTE: Purchase model does not have customerId field - Customer is stored separately
+                    let customerId = null;
+                    if (finalEmail) {
                       try {
                         ensureDatabaseUrl();
                         const customerData = {
                           email: finalEmail,
+                          userId: buyerUser?.id || null, // Attach to canonical User principal
                           name: finalName || null,
                           phone: finalPhone || null,
                           shippingStreet: finalAddress?.line1 || null,
                           shippingCity: finalAddress?.city || null,
                           shippingState: finalAddress?.state || null,
-                          shippingPostalCode: finalAddress?.postal_code || null,
+                          shippingZip: finalAddress?.postal_code || null,
                           shippingCountry: finalAddress?.country || null,
                         };
                         const customer = await prismaClient.customer.upsert({
                           where: { email: finalEmail },
-                          update: customerData,
+                          update: {
+                            ...customerData,
+                            userId: buyerUser?.id || undefined, // Update userId if buyerUser available
+                          },
                           create: customerData,
                         });
                         customerId = customer.id;
+                        console.log('[PRINCIPAL] Customer linked to User', {
+                          customerId: customer.id,
+                          userId: customer.userId || 'none',
+                          email: customer.email,
+                        });
                       } catch (customerErr) {
                         console.warn('[CUSTOMER] Failed to upsert customer during retroactive update', {
                           error: customerErr.message,
@@ -431,24 +644,22 @@ router.post(
                     
                     ensureDatabaseUrl(); // Ensure before transaction
                     
-                    // Award purchase points using guardrails helper
-                    const purchaseAwardResult = await awardPurchaseDailyPoints({
+                    // Award purchase points (Math Mode - deterministic, no caps)
+                    const purchaseAwardResult = await awardPurchaseDailyPoints(prismaClient, {
                       userId: buyerUser.id,
-                      purchaseId: existingPurchase.id,
-                      now: new Date(session.created * 1000),
+                      sessionId: session.id, // Required for idempotency
                     });
                     
                     // Store for email template
                     purchaseAwardResultForEmail = purchaseAwardResult;
                     
                     await prismaClient.purchase.update({
-                      where: { stripeSessionId: session.id },
+                      where: { sessionId: session.id },
                       data: {
                         userId: buyerUser.id,
-                        userCode: buyerUser.code || buyerUser.referralCode || null,
-                        customerId: customerId || undefined,
-                        paymentIntentId: paymentIntentId || undefined,
-                        pointsAwarded: purchaseAwardResult.awarded,
+                        amount: session.amount_total || null,
+                        currency: session.currency || null,
+                        source: 'stripe',
                       },
                     });
                     
@@ -458,26 +669,9 @@ router.post(
                       reason: purchaseAwardResult.reason,
                     });
                     
-                    // Ensure Fulfillment exists
-                    // Only create fulfillment for physical products (paperback)
-                    if (existingPurchase.id && product === 'paperback') {
-                      try {
-                        ensureDatabaseUrl();
-                        const existingFulfillment = await prismaClient.fulfillment.findUnique({
-                          where: { purchaseId: existingPurchase.id },
-                        });
-                        if (!existingFulfillment) {
-                          await prismaClient.fulfillment.create({
-                            data: {
-                              purchaseId: existingPurchase.id,
-                              status: 'PENDING',
-                            },
-                          });
-                        }
-                      } catch (fulfillmentErr) {
-                        // Ignore - non-critical
-                      }
-                    }
+                    // NOTE: Fulfillment model does not exist in schema
+                    // Fulfillment information is stored in Order model (status, labelPrintedAt, shippedAt, etc.)
+                    // Order is linked to Purchase via stripeSessionId
                     
                     console.log('[ATTRIBUTION_BUYER] Updated Purchase with buyer and awarded points', {
                       buyerId: buyerUser.id,
@@ -510,7 +704,7 @@ router.post(
                           shippingStreet: addr?.line1 ?? null,
                           shippingCity: addr?.city ?? null,
                           shippingState: addr?.state ?? null,
-                          shippingPostalCode: addr?.postal_code ?? null,
+                          shippingZip: addr?.postal_code ?? null,
                           shippingCountry: addr?.country ?? null,
                         };
                         
@@ -527,48 +721,13 @@ router.post(
                           shippingStreet: customer.shippingStreet || 'none',
                         });
                         
-                        // Update Purchase with customerId + paymentIntentId (if not already set)
-                        if (!existingPurchase.customerId || !existingPurchase.paymentIntentId) {
-                          ensureDatabaseUrl();
-                          await prismaClient.purchase.update({
-                            where: { id: existingPurchase.id },
-                            data: {
-                              customerId: customer.id,
-                              paymentIntentId: paymentIntentId || undefined,
-                            },
-                          });
-                          
-                          console.log('[PURCHASE] ✅ linked customer', {
-                            purchaseId: existingPurchase.id,
-                            customerId: customer.id,
-                            paymentIntentId: paymentIntentId || 'none',
-                          });
-                        }
+                        // NOTE: Purchase model does not have customerId or paymentIntentId fields
+                        // Customer and Fulfillment are stored separately (Customer model, Order model)
+                        // Purchase only stores: sessionId, amount, currency, source, userId
                         
-                        // Ensure Fulfillment exists ONLY for physical products (paperback)
-                        // Ebooks and audio_preorder don't need fulfillment
-                        if (isPhysicalProduct) {
-                          ensureDatabaseUrl();
-                          await prismaClient.fulfillment.upsert({
-                            where: { purchaseId: existingPurchase.id },
-                            create: {
-                              purchaseId: existingPurchase.id,
-                              status: 'PENDING',
-                            },
-                            update: {},
-                          });
-                          
-                          console.log('[FULFILLMENT] ✅ ensured', {
-                            purchaseId: existingPurchase.id,
-                            status: 'PENDING',
-                            product: product,
-                          });
-                        } else {
-                          console.log('[FULFILLMENT] ⏭️  Skipped (digital product)', {
-                            purchaseId: existingPurchase.id,
-                            product: product,
-                          });
-                        }
+                        // NOTE: Fulfillment model does not exist in schema
+                        // Fulfillment information is stored in Order model (status, labelPrintedAt, shippedAt, etc.)
+                        // Order is linked to Purchase via stripeSessionId
                       } catch (customerFulfillmentErr) {
                         console.error('[CUSTOMER/FULFILLMENT] ❌ Failed to persist customer/fulfillment', {
                           error: customerFulfillmentErr.message,
@@ -601,17 +760,19 @@ router.post(
                     }
                     
                     if (retroBuyer) {
-                      // Award purchase points using guardrails helper
-                      const purchaseAwardResult = await awardPurchaseDailyPoints({
+                      // Award purchase points (Math Mode - deterministic, no caps)
+                      const purchaseAwardResult = await awardPurchaseDailyPoints(prismaClient, {
                         userId: retroBuyer.id,
-                        purchaseId: existingPurchase.id,
-                        now: new Date(existingPurchase.createdAt),
+                        sessionId: session.id, // Required for idempotency
                       });
                       
                       await prismaClient.purchase.update({
-                        where: { stripeSessionId: session.id },
+                        where: { sessionId: session.id },
                         data: {
-                          pointsAwarded: purchaseAwardResult.awarded,
+                          // Purchase model doesn't have pointsAwarded field - points are tracked in Ledger
+                          // Just update amount/currency if needed
+                          amount: session.amount_total || existingPurchase.amount,
+                          currency: session.currency || existingPurchase.currency,
                         },
                       });
                       
@@ -638,19 +799,19 @@ router.post(
                         
                         if (retroBuyerByEmail) {
                           ensureDatabaseUrl(); // Ensure before transaction
-                          // Award purchase points using guardrails helper
-                          const purchaseAwardResult = await awardPurchaseDailyPoints({
+                          // Award purchase points (Math Mode - deterministic, no caps)
+                          const purchaseAwardResult = await awardPurchaseDailyPoints(prismaClient, {
                             userId: retroBuyerByEmail.id,
-                            purchaseId: existingPurchase.id,
-                            now: new Date(existingPurchase.createdAt),
+                            sessionId: session.id, // Required for idempotency
                           });
                           
                           await prismaClient.purchase.update({
-                            where: { stripeSessionId: session.id },
+                            where: { sessionId: session.id },
                             data: {
                               userId: retroBuyerByEmail.id,
-                              userCode: retroBuyerByEmail.code || retroBuyerByEmail.referralCode || null,
-                              pointsAwarded: purchaseAwardResult.awarded,
+                              amount: session.amount_total || existingPurchase.amount,
+                              currency: session.currency || existingPurchase.currency,
+                              source: 'stripe',
                             },
                           });
                           
@@ -685,30 +846,35 @@ router.post(
                         shippingStreet: finalAddress?.line1 || null,
                         shippingCity: finalAddress?.city || null,
                         shippingState: finalAddress?.state || null,
-                        shippingPostalCode: finalAddress?.postal_code || null,
+                        shippingZip: finalAddress?.postal_code || null,
                         shippingCountry: finalAddress?.country || null,
                       };
                       
-                      // Upsert Customer by email
+                      // Upsert Customer by email and attach to User principal
                       const customer = await prismaClient.customer.upsert({
                         where: { email: finalEmail },
                         update: {
-                          // Update existing customer with latest shipping info
+                          // Update existing customer with latest shipping info and userId
+                          userId: buyerUser?.id || undefined, // Attach to canonical User principal
                           name: customerData.name || undefined,
                           phone: customerData.phone || undefined,
                           shippingStreet: customerData.shippingStreet || undefined,
                           shippingCity: customerData.shippingCity || undefined,
                           shippingState: customerData.shippingState || undefined,
-                          shippingPostalCode: customerData.shippingPostalCode || undefined,
+                          shippingZip: customerData.shippingZip || undefined,
                           shippingCountry: customerData.shippingCountry || undefined,
                         },
-                        create: customerData,
+                        create: {
+                          ...customerData,
+                          userId: buyerUser?.id || null, // Attach to canonical User principal
+                        },
                       });
                       
                       customerId = customer.id;
                       // ===== STEP 4: LOG SUCCESS =====
-                      console.log('[CUSTOMER] ✅ Customer upserted successfully', {
+                      console.log('[PRINCIPAL] Customer linked to User', {
                         customerId: customer.id,
+                        userId: customer.userId || 'none',
                         email: customer.email,
                         hasShipping: !!(customerData.shippingStreet || customerData.shippingCity),
                       });
@@ -734,60 +900,206 @@ router.post(
                   }
                   
                   // ===== CREATE PURCHASE RECORD =====
-                  let createdPurchase = null;
+                  // createdPurchase already declared in outer scope
                   try {
+                    console.log('[WEBHOOK] DB: upsert order START');
                     if (buyerUser) {
-                      // Buyer found: create Purchase + award points + fulfillment
-                      console.log('[PURCHASE] Creating Purchase with buyer', {
-                        sessionId: session.id,
-                        buyerId: buyerUser.id,
-                        customerId: customerId || 'none',
-                        paymentIntentId: paymentIntentId || 'none',
-                      });
-                      
-                      ensureDatabaseUrl(); // Ensure before transaction
-                      const purchaseData = {
-                        stripeSessionId: session.id,
-                        paymentIntentId: paymentIntentId || null,
-                        userId: buyerUser.id,
-                        userCode: buyerUser.code || buyerUser.referralCode || null,
-                        customerId: customerId || null,
-                        product: product,
-                        amountPaidCents: session.amount_total || 0,
-                        pointsAwarded: PURCHASE_POINTS,
-                      };
-                      
-                      // Award purchase points using guardrails helper
-                      const purchaseAwardResult = await awardPurchaseDailyPoints({
-                        userId: buyerUser.id,
-                        purchaseId: null, // Will be set after creation
-                        now: new Date(session.created * 1000),
-                      });
-                      
-                      // Store for email template
-                      purchaseAwardResultForEmail = purchaseAwardResult;
-                      
-                      // Update purchaseData with actual points awarded
-                      purchaseData.pointsAwarded = purchaseAwardResult.awarded;
-                      
-                      await prismaClient.purchase.create({
-                        data: purchaseData,
-                      });
-                      
-                      // Note: Points already awarded by helper function
-                      console.log('[PURCHASE] Purchase points award result', {
-                        userId: buyerUser.id,
-                        awarded: purchaseAwardResult.awarded,
-                        reason: purchaseAwardResult.reason,
-                      });
-                      
-                      // Get the created purchase for fulfillment creation
+                      // Check if Purchase already exists (idempotency - webhook retries)
                       ensureDatabaseUrl(); // Ensure before query
-                      createdPurchase = await prismaClient.purchase.findUnique({
-                        where: { stripeSessionId: session.id },
+                      const existingPurchaseCheck = await prismaClient.purchase.findUnique({
+                        where: { sessionId: session.id },
                       });
+                      
+                      if (existingPurchaseCheck) {
+                        console.log('[PURCHASE] Purchase already exists (idempotency)', {
+                          sessionId: session.id,
+                          purchaseId: existingPurchaseCheck.id,
+                          buyerId: existingPurchaseCheck.userId || 'MISSING',
+                        });
+                        createdPurchase = existingPurchaseCheck;
+                        existingPurchase = existingPurchaseCheck;
+                        
+                        // Still try to award points (idempotent - will skip if already awarded)
+                        console.log('[WEBHOOK] Points: awardPurchase START userId=' + buyerUser.id + ' sessionId=' + session.id);
+                        const purchaseAwardResult = await awardPurchaseDailyPoints(prismaClient, {
+                          userId: buyerUser.id,
+                          sessionId: session.id, // Required for idempotency
+                        });
+                        purchaseAwardResultForEmail = purchaseAwardResult;
+                        console.log('[WEBHOOK] Points: awardPurchase OK delta=' + purchaseAwardResult.awarded + ' total=' + (buyerUser.points + purchaseAwardResult.awarded) + ' reason=' + (purchaseAwardResult.reason || 'none'));
+                      } else {
+                        // Buyer found: create Purchase + award points + fulfillment
+                        console.log('[PURCHASE] Creating Purchase with buyer', {
+                          sessionId: session.id,
+                          buyerId: buyerUser.id,
+                          customerId: customerId || 'none',
+                          paymentIntentId: paymentIntentId || 'none',
+                        });
+                        
+                        ensureDatabaseUrl(); // Ensure before transaction
+                        
+                        // Award purchase points (Math Mode - deterministic, no caps)
+                        console.log('[WEBHOOK] Points: awardPurchase START userId=' + buyerUser.id + ' sessionId=' + session.id);
+                        const purchaseAwardResult = await awardPurchaseDailyPoints(prismaClient, {
+                          userId: buyerUser.id,
+                          sessionId: session.id, // Required for idempotency
+                        });
+                        
+                        // Store for email template
+                        purchaseAwardResultForEmail = purchaseAwardResult;
+                        
+                        console.log('[WEBHOOK] Points: awardPurchase OK delta=' + purchaseAwardResult.awarded + ' total=' + (buyerUser.points + purchaseAwardResult.awarded) + ' reason=' + (purchaseAwardResult.reason || 'none'));
+                        
+                        const purchaseData = {
+                          sessionId: session.id,
+                          userId: buyerUser.id,
+                          amount: session.amount_total || null,
+                          currency: session.currency || null,
+                          source: 'stripe',
+                        };
+                        
+                        // Use upsert for idempotency (handles webhook retries gracefully)
+                        createdPurchase = await prismaClient.purchase.upsert({
+                          where: { sessionId: session.id },
+                          update: {
+                            // Update if exists (shouldn't happen, but handle gracefully)
+                            userId: buyerUser.id,
+                            amount: session.amount_total || null,
+                            currency: session.currency || null,
+                          },
+                          create: purchaseData,
+                        });
+                        
+                        // Note: Points already awarded by helper function
+                        console.log('[PURCHASE] Purchase points award result', {
+                          userId: buyerUser.id,
+                          awarded: purchaseAwardResult.awarded,
+                          reason: purchaseAwardResult.reason,
+                        });
+                      }
+                      
+                      // ===== LEDGER: Record Purchase Transaction =====
+                      try {
+                        await recordLedgerEntry(prismaClient, {
+                          sessionId: session.id,
+                          userId: buyerUser.id,
+                          type: 'PURCHASE_RECORDED',
+                          amount: session.amount_total || 0,
+                          currency: session.currency || 'usd',
+                          note: `Purchase recorded: ${product}`,
+                          meta: {
+                            product,
+                            paymentStatus,
+                            email: customerEmail || buyerUser.email,
+                            stripePaymentIntentId: paymentIntentId,
+                            purchaseId: createdPurchase.id,
+                          },
+                        });
+                      } catch (ledgerErr) {
+                        console.error('[LEDGER] Failed to record PURCHASE_RECORDED', {
+                          error: ledgerErr.message,
+                          code: ledgerErr.code,
+                          sessionId: session.id,
+                          userId: buyerUser.id,
+                          stack: ledgerErr.stack,
+                        });
+                        // Don't fail webhook - ledger is for auditability
+                      }
+                      
+                      // ===== LEDGER: Record Points Awarded/Skipped =====
+                      // Ensure purchaseAwardResult is always defined (fallback if somehow missing)
+                      const purchaseAwardResult = purchaseAwardResultForEmail || { awarded: 0, reason: 'not_awarded' };
+                      try {
+                        if (purchaseAwardResult.awarded > 0) {
+                          await recordLedgerEntry(prismaClient, {
+                            sessionId: session.id,
+                            userId: buyerUser.id,
+                            type: 'POINTS_AWARDED_PURCHASE',
+                            points: purchaseAwardResult.awarded,
+                            amount: purchaseAwardResult.awarded,
+                            currency: 'points',
+                            note: `Points awarded for purchase`,
+                            meta: {
+                              reason: purchaseAwardResult.reason || 'awarded',
+                              purchaseId: createdPurchase.id,
+                            },
+                          });
+                        } else {
+                          await recordLedgerEntry(prismaClient, {
+                            sessionId: session.id,
+                            userId: buyerUser.id,
+                            type: 'POINTS_SKIPPED_PURCHASE',
+                            points: 0,
+                            amount: 0,
+                            currency: 'points',
+                            note: `Points skipped: ${purchaseAwardResult.reason || 'unknown'}`,
+                            meta: {
+                              reason: purchaseAwardResult.reason || 'unknown',
+                              purchaseId: createdPurchase.id,
+                            },
+                          });
+                        }
+                      } catch (ledgerErr) {
+                        console.error('[LEDGER] Failed to record POINTS ledger entry', {
+                          error: ledgerErr.message,
+                          sessionId: session.id,
+                          userId: buyerUser.id,
+                        });
+                        // Don't fail webhook - ledger is for auditability
+                      }
+                      
+                      // ===== LEDGER: Ensure implicit CONTEST_JOIN exists (idempotent) =====
+                      // After purchase, user is implicitly in contest - create CONTEST_JOIN if missing
+                      try {
+                        const { hasContestJoin } = require('../lib/contest/hasContestJoin.cjs');
+                        const alreadyJoined = await hasContestJoin(prismaClient, buyerUser.id);
+                        
+                        if (!alreadyJoined) {
+                          const CONTEST_JOIN_SESSION_ID = 'contest_join';
+                          await recordLedgerEntry(prismaClient, {
+                            sessionId: CONTEST_JOIN_SESSION_ID,
+                            userId: buyerUser.id,
+                            type: 'CONTEST_JOIN',
+                            points: 500,
+                            amount: 500,
+                            currency: 'points',
+                            note: 'Implicit contest entry via purchase',
+                            meta: {
+                              entryMethod: 'purchase',
+                              purchaseId: createdPurchase.id,
+                              entryAt: new Date().toISOString(),
+                            },
+                          });
+                          console.log('[WEBHOOK] Created implicit CONTEST_JOIN', {
+                            userId: buyerUser.id,
+                            purchaseId: createdPurchase.id,
+                            sessionId: session.id,
+                          });
+                        } else {
+                          console.log('[WEBHOOK] User already has CONTEST_JOIN (skipping implicit entry)', {
+                            userId: buyerUser.id,
+                            purchaseId: createdPurchase.id,
+                          });
+                        }
+                      } catch (contestJoinErr) {
+                        // Handle unique constraint violation (race condition)
+                        if (contestJoinErr.code === 'P2002' || contestJoinErr.message?.includes('Unique constraint')) {
+                          console.log('[WEBHOOK] CONTEST_JOIN already exists (race condition)', {
+                            userId: buyerUser.id,
+                            purchaseId: createdPurchase.id,
+                          });
+                        } else {
+                          console.error('[WEBHOOK] Failed to create implicit CONTEST_JOIN', {
+                            error: contestJoinErr.message,
+                            sessionId: session.id,
+                            userId: buyerUser.id,
+                          });
+                          // Don't fail webhook - implicit entry is non-critical
+                        }
+                      }
                       
                       // ===== STEP 4: LOG SUCCESS =====
+                      console.log('[WEBHOOK] DB: upsert order OK orderId=' + createdPurchase.id);
                       console.log('[PURCHASE] ✅ Purchase created + points awarded', {
                         purchaseId: createdPurchase.id,
                         buyerId: buyerUser.id,
@@ -819,68 +1131,40 @@ router.post(
                           // Upsert Customer by email
                           const customerData = {
                             email: email,
+                            userId: buyerUser?.id || null, // Attach to canonical User principal
                             name: name ?? null,
                             phone: phone ?? null,
                             shippingStreet: addr?.line1 ?? null,
                             shippingCity: addr?.city ?? null,
                             shippingState: addr?.state ?? null,
-                            shippingPostalCode: addr?.postal_code ?? null,
+                            shippingZip: addr?.postal_code ?? null,
                             shippingCountry: addr?.country ?? null,
                           };
                           
                           ensureDatabaseUrl();
                           const customer = await prismaClient.customer.upsert({
                             where: { email: email },
-                            update: customerData,
+                            update: {
+                              ...customerData,
+                              userId: buyerUser?.id || undefined, // Update userId if buyerUser available
+                            },
                             create: customerData,
                           });
                           
-                          console.log('[CUSTOMER] ✅ upserted', {
+                          console.log('[PRINCIPAL] Customer linked to User', {
                             email: customer.email,
                             customerId: customer.id,
+                            userId: customer.userId || 'none',
                             shippingStreet: customer.shippingStreet || 'none',
                           });
                           
-                          // Update Purchase with customerId + paymentIntentId
-                          ensureDatabaseUrl();
-                          await prismaClient.purchase.update({
-                            where: { id: createdPurchase.id },
-                            data: {
-                              customerId: customer.id,
-                              paymentIntentId: paymentIntentId || null,
-                            },
-                          });
+                          // NOTE: Purchase model does not have customerId or paymentIntentId fields
+                          // Customer and Fulfillment are stored separately (Customer model, Order model)
+                          // Purchase only stores: sessionId, amount, currency, source, userId
                           
-                          console.log('[PURCHASE] ✅ linked customer', {
-                            purchaseId: createdPurchase.id,
-                            customerId: customer.id,
-                            paymentIntentId: paymentIntentId || 'none',
-                          });
-                          
-                          // Ensure Fulfillment exists ONLY for physical products (paperback)
-                          // Ebooks and audio_preorder don't need fulfillment
-                          if (isPhysicalProduct) {
-                            ensureDatabaseUrl();
-                            await prismaClient.fulfillment.upsert({
-                              where: { purchaseId: createdPurchase.id },
-                              create: {
-                                purchaseId: createdPurchase.id,
-                                status: 'PENDING',
-                              },
-                              update: {},
-                            });
-                            
-                            console.log('[FULFILLMENT] ✅ ensured', {
-                              purchaseId: createdPurchase.id,
-                              status: 'PENDING',
-                              product: product,
-                            });
-                          } else {
-                            console.log('[FULFILLMENT] ⏭️  Skipped (digital product)', {
-                              purchaseId: createdPurchase.id,
-                              product: product,
-                            });
-                          }
+                          // NOTE: Fulfillment model does not exist in schema
+                          // Fulfillment information is stored in Order model (status, labelPrintedAt, shippedAt, etc.)
+                          // Order is linked to Purchase via stripeSessionId
                         } catch (customerFulfillmentErr) {
                           console.error('[CUSTOMER/FULFILLMENT] ❌ Failed to persist customer/fulfillment', {
                             error: customerFulfillmentErr.message,
@@ -897,29 +1181,21 @@ router.post(
                         });
                       }
                     } else {
-                      // Buyer not found: still create Purchase for debugging/attribution
-                      console.log('[PURCHASE] Creating Purchase without buyer', {
+                      // Buyer not found: cannot create Purchase (userId is required)
+                      console.error('[WEBHOOK] DB FAILED: Cannot create Purchase - buyer not found', {
                         sessionId: session.id,
-                        customerId: customerId || 'none',
-                        paymentIntentId: paymentIntentId || 'none',
+                        contestUserId: contestUserId || 'MISSING',
+                        contestUserCode: contestUserCode || 'MISSING',
+                        customerEmail: customerEmail || 'MISSING',
                       });
-                      
-                      const purchaseData = {
-                        stripeSessionId: session.id,
-                        paymentIntentId: paymentIntentId || null,
-                        userId: null, // No buyer attributed
-                        userCode: contestUserCode || null,
-                        customerId: customerId || null,
-                        product: product,
-                        amountPaidCents: session.amount_total || 0,
-                        pointsAwarded: 0, // No points awarded (buyer not found)
-                      };
-                      
-                      createdPurchase = await prismaClient.purchase.create({
-                        data: purchaseData,
+                      // Return 500 so Stripe retries - buyer attribution may succeed on retry
+                      return res.status(500).json({ 
+                        error: 'Purchase creation failed - buyer attribution required',
+                        details: 'No buyer found for session. Points and email will not be sent until buyer is attributed.'
                       });
                       
                       // ===== STEP 4: LOG SUCCESS =====
+                      console.log('[WEBHOOK] DB: upsert order OK orderId=' + createdPurchase.id + ' (no buyer)');
                       console.log('[PURCHASE] ✅ Purchase created WITHOUT buyer attribution', {
                         purchaseId: createdPurchase.id,
                         sessionId: session.id,
@@ -929,6 +1205,14 @@ router.post(
                         customerId: customerId || 'none',
                         paymentIntentId: paymentIntentId || 'none',
                         note: 'Purchase row exists but pointsAwarded=0. Buyer lookup failed.',
+                      });
+                      
+                      // ===== LEDGER: Record Purchase Transaction (no buyer) =====
+                      // Note: Can't record ledger entry without userId, but we can log it
+                      console.warn('[LEDGER] Purchase recorded but no buyer - skipping ledger entry', {
+                        sessionId: session.id,
+                        purchaseId: createdPurchase.id,
+                        customerEmail: customerEmail || 'MISSING',
                       });
                       
                       // ===== CUSTOMER/FULFILLMENT PERSISTENCE (ATTRIBUTION FLOW - NO BUYER) =====
@@ -951,59 +1235,40 @@ router.post(
                           // Upsert Customer by email
                           const customerData = {
                             email: email,
+                            userId: buyerUser?.id || null, // Attach to canonical User principal
                             name: name ?? null,
                             phone: phone ?? null,
                             shippingStreet: addr?.line1 ?? null,
                             shippingCity: addr?.city ?? null,
                             shippingState: addr?.state ?? null,
-                            shippingPostalCode: addr?.postal_code ?? null,
+                            shippingZip: addr?.postal_code ?? null,
                             shippingCountry: addr?.country ?? null,
                           };
                           
                           ensureDatabaseUrl();
                           const customer = await prismaClient.customer.upsert({
                             where: { email: email },
-                            update: customerData,
+                            update: {
+                              ...customerData,
+                              userId: buyerUser?.id || undefined, // Update userId if buyerUser available
+                            },
                             create: customerData,
                           });
                           
-                          console.log('[CUSTOMER] ✅ upserted', {
+                          console.log('[PRINCIPAL] Customer linked to User', {
                             email: customer.email,
                             customerId: customer.id,
+                            userId: customer.userId || 'none',
                             shippingStreet: customer.shippingStreet || 'none',
                           });
                           
-                          // Update Purchase with customerId + paymentIntentId
-                          ensureDatabaseUrl();
-                          await prismaClient.purchase.update({
-                            where: { id: createdPurchase.id },
-                            data: {
-                              customerId: customer.id,
-                              paymentIntentId: paymentIntentId || null,
-                            },
-                          });
+                          // NOTE: Purchase model does not have customerId or paymentIntentId fields
+                          // Customer and Fulfillment are stored separately (Customer model, Order model)
+                          // Purchase only stores: sessionId, amount, currency, source, userId
                           
-                          console.log('[PURCHASE] ✅ linked customer', {
-                            purchaseId: createdPurchase.id,
-                            customerId: customer.id,
-                            paymentIntentId: paymentIntentId || 'none',
-                          });
-                          
-                          // Ensure Fulfillment exists
-                          ensureDatabaseUrl();
-                          await prismaClient.fulfillment.upsert({
-                            where: { purchaseId: createdPurchase.id },
-                            create: {
-                              purchaseId: createdPurchase.id,
-                              status: 'PENDING',
-                            },
-                            update: {},
-                          });
-                          
-                          console.log('[FULFILLMENT] ✅ ensured', {
-                            purchaseId: createdPurchase.id,
-                            status: 'PENDING',
-                          });
+                          // NOTE: Fulfillment model does not exist in schema
+                          // Fulfillment information is stored in Order model (status, labelPrintedAt, shippedAt, etc.)
+                          // Order is linked to Purchase via stripeSessionId
                         } catch (customerFulfillmentErr) {
                           console.error('[CUSTOMER/FULFILLMENT] ❌ Failed to persist customer/fulfillment', {
                             error: customerFulfillmentErr.message,
@@ -1021,68 +1286,116 @@ router.post(
                       }
                     }
                     
-                    // ===== CREATE FULFILLMENT RECORD =====
-                    if (createdPurchase) {
+                    // ===== LEDGER: Record Fulfillment Obligations =====
+                    if (createdPurchase && buyerUser) {
                       try {
-                        console.log('[FULFILLMENT] Ensuring Fulfillment record', {
-                          purchaseId: createdPurchase.id,
-                        });
+                        // Re-extract shipping address for fulfillment ledger (addr may be out of scope)
+                        const shipForLedger = session.collected_information?.shipping_details ?? session.shipping_details ?? null;
+                        const isPhysicalProductForLedger = product === 'paperback';
+                        const addrForLedger = isPhysicalProductForLedger ? (shipForLedger?.address ?? null) : null;
+                        const nameForLedger = shipForLedger?.name ?? session.customer_details?.name ?? null;
                         
-                        ensureDatabaseUrl(); // Ensure before query
-                        // Check if fulfillment already exists
-                        const existingFulfillment = await prismaClient.fulfillment.findUnique({
-                          where: { purchaseId: createdPurchase.id },
-                        });
-                        
-                        if (!existingFulfillment) {
-                          ensureDatabaseUrl(); // Ensure before create
-                          const fulfillment = await prismaClient.fulfillment.create({
-                            data: {
+                        // Always record what we owe the buyer based on product
+                        if (product === 'paperback') {
+                          // Paperback purchase: record shipment obligation
+                          await recordLedgerEntry(prismaClient, {
+                            sessionId: session.id,
+                            userId: buyerUser.id,
+                            type: 'FULFILLMENT_PAPERBACK_SHIP',
+                            amount: null,
+                            currency: null,
+                            note: 'Paperback shipment owed',
+                            meta: {
+                              productOwed: 'paperback',
+                              status: 'queued',
+                              shippingRequired: true,
+                              address: addrForLedger ? {
+                                line1: addrForLedger.line1,
+                                city: addrForLedger.city,
+                                state: addrForLedger.state,
+                                postal_code: addrForLedger.postal_code,
+                                country: addrForLedger.country,
+                              } : null,
+                              name: nameForLedger || null,
+                              email: customerEmail || buyerUser.email || null,
                               purchaseId: createdPurchase.id,
-                              status: 'PENDING',
                             },
                           });
-                          // ===== STEP 4: LOG SUCCESS =====
-                          console.log('[FULFILLMENT] ✅ Fulfillment ensured for purchaseId', {
-                            fulfillmentId: fulfillment.id,
-                            purchaseId: createdPurchase.id,
-                            status: 'PENDING',
+                          
+                          // Paperback purchases also get free eBook grant
+                          await recordLedgerEntry(prismaClient, {
+                            sessionId: session.id,
+                            userId: buyerUser.id,
+                            type: 'FULFILLMENT_EBOOK_GRANT',
+                            amount: null,
+                            currency: null,
+                            note: 'eBook download granted (free with paperback)',
+                            meta: {
+                              productOwed: 'ebook',
+                              status: 'queued',
+                              shippingRequired: false,
+                              purchaseId: createdPurchase.id,
+                            },
                           });
-                        } else {
-                          console.log('[FULFILLMENT] ✅ Fulfillment already exists', {
-                            fulfillmentId: existingFulfillment.id,
-                            purchaseId: createdPurchase.id,
-                            status: existingFulfillment.status,
+                        } else if (product === 'ebook') {
+                          // eBook purchase: record download grant
+                          await recordLedgerEntry(prismaClient, {
+                            sessionId: session.id,
+                            userId: buyerUser.id,
+                            type: 'FULFILLMENT_EBOOK_GRANT',
+                            amount: null,
+                            currency: null,
+                            note: 'eBook download granted',
+                            meta: {
+                              productOwed: 'ebook',
+                              status: 'queued',
+                              shippingRequired: false,
+                              purchaseId: createdPurchase.id,
+                            },
+                          });
+                        } else if (product === 'audio_preorder') {
+                          // Audio preorder: record fulfillment obligation
+                          await recordLedgerEntry(prismaClient, {
+                            sessionId: session.id,
+                            userId: buyerUser.id,
+                            type: 'FULFILLMENT_AUDIO_PREORDER',
+                            amount: null,
+                            currency: null,
+                            note: 'Audio preorder fulfillment',
+                            meta: {
+                              productOwed: 'audio_preorder',
+                              status: 'queued',
+                              shippingRequired: false,
+                              purchaseId: createdPurchase.id,
+                            },
                           });
                         }
-                      } catch (fulfillmentErr) {
-                        // ===== STEP 3: FAIL LOUDLY =====
-                        console.error('[FULFILLMENT] ❌ FULFILLMENT WRITE FAILED', {
-                          error: fulfillmentErr.message,
-                          stack: fulfillmentErr.stack,
-                          purchaseId: createdPurchase.id,
+                      } catch (fulfillmentLedgerErr) {
+                        console.error('[LEDGER] Failed to record fulfillment ledger entries', {
+                          error: fulfillmentLedgerErr.message,
+                          sessionId: session.id,
+                          userId: buyerUser.id,
+                          product,
                         });
-                        // Return 500 so Stripe retries and we see the failure
-                        return res.status(500).json({ 
-                          error: 'Fulfillment creation failed',
-                          details: fulfillmentErr.message 
-                        });
+                        // Don't fail webhook - ledger is for auditability
                       }
-                    } else {
-                      console.error('[PURCHASE] ❌ Purchase was not created - cannot create Fulfillment');
-                      return res.status(500).json({ 
-                        error: 'Purchase creation failed - no purchase record returned' 
-                      });
                     }
+                    
+                    // NOTE: Fulfillment model does not exist in schema
+                    // Fulfillment information is stored in Order model (status, labelPrintedAt, shippedAt, etc.)
+                    // Order is linked to Purchase via stripeSessionId
+                    // This section removed to prevent Prisma errors
                   } catch (purchaseErr) {
                     // ===== STEP 3: FAIL LOUDLY =====
-                    console.error('[PURCHASE] ❌ PURCHASE WRITE FAILED', {
+                    console.error('[WEBHOOK] checkout.session.completed ERROR', purchaseErr?.stack || purchaseErr);
+                    console.error('[WEBHOOK] DB FAILED: Purchase creation failed - skipping points/email', {
                       error: purchaseErr.message,
                       stack: purchaseErr.stack,
                       sessionId: session.id,
                       customerId: customerId || 'none',
+                      buyerId: buyerUser?.id || 'MISSING',
                     });
-                    // Return 500 so Stripe retries and we see the failure
+                    // Return 500 so Stripe retries - Purchase creation is critical
                     return res.status(500).json({ 
                       error: 'Purchase creation failed',
                       details: purchaseErr.message 
@@ -1090,148 +1403,21 @@ router.post(
                   }
                 }
               } catch (pointsErr) {
-                console.error('[ATTRIBUTION_BUYER] Failed to create Purchase record', {
+                console.error('[WEBHOOK] checkout.session.completed ERROR', pointsErr?.stack || pointsErr);
+                console.error('[WEBHOOK] DB FAILED: Purchase record creation failed', {
                   error: pointsErr.message,
                   sessionId: session.id,
                   buyerId: buyerUser?.id || 'MISSING',
                   stack: pointsErr.stack,
                 });
-                // Don't fail webhook - Purchase creation is important but shouldn't block email sending
+                // Return 500 so Stripe retries - Purchase creation is critical
+                return res.status(500).json({ 
+                  error: 'Purchase creation failed',
+                  details: pointsErr.message 
+                });
               }
             } else {
               console.error('[ATTRIBUTION_BUYER] Prisma not available - cannot create Purchase record', {
-                sessionId: session.id,
-              });
-            }
-
-            // Build download URL for eBook purchases (ebook) and free ebook for paperback purchases
-            let downloadUrl = null;
-            if (product === 'ebook' || product === 'paperback') {
-              const siteUrl = envConfig.SITE_URL;
-              if (siteUrl) {
-                downloadUrl = `${siteUrl}/ebook/download?session_id=${encodeURIComponent(session.id)}`;
-              } else {
-                console.warn('[WEBHOOK] SITE_URL not configured - cannot generate download URL');
-              }
-            }
-
-            // Send purchase confirmation email
-            if (customerEmail) {
-              console.log('[WEBHOOK] Starting purchase confirmation email send', {
-                sessionId: session.id,
-                email: customerEmail,
-                product,
-                downloadUrl: downloadUrl || 'none',
-              });
-              
-              try {
-                const client = getMailchimpClient();
-                if (!client) {
-                  console.warn('[WEBHOOK] Cannot send purchase email - Mailchimp not configured');
-                } else {
-                  const fromEmail = process.env.MAILCHIMP_FROM_EMAIL || 'hello@theagnesprotocol.com';
-                  
-                  // Build purchase confirmation email
-                  // Get buyer's total points - try multiple methods
-                  let buyerTotalPoints = null;
-                  if (prisma) {
-                    try {
-                      ensureDatabaseUrl(); // Ensure before query
-                      
-                      // Method 1: If buyerUser was found, use their ID
-                      if (buyerUser && buyerUser.id) {
-                        const buyerWithPoints = await prisma.user.findUnique({
-                          where: { id: buyerUser.id },
-                          select: { points: true },
-                        });
-                        if (buyerWithPoints) {
-                          buyerTotalPoints = buyerWithPoints.points;
-                        }
-                      }
-                      
-                      // Method 2: If buyerUser not found, try by email (fallback)
-                      if (buyerTotalPoints === null && customerEmail) {
-                        const normalizedEmail = normalizeEmail(customerEmail);
-                        if (normalizedEmail) {
-                          ensureDatabaseUrl(); // Ensure before query
-                          const buyerByEmail = await prisma.user.findUnique({
-                            where: { email: normalizedEmail },
-                            select: { points: true },
-                          });
-                          if (buyerByEmail) {
-                            buyerTotalPoints = buyerByEmail.points;
-                            console.log('[WEBHOOK] Fetched buyer points by email fallback', {
-                              email: normalizedEmail,
-                              points: buyerTotalPoints,
-                            });
-                          }
-                        }
-                      }
-                    } catch (pointsErr) {
-                      console.warn('[WEBHOOK] Failed to fetch buyer points for email', {
-                        error: pointsErr.message,
-                        buyerId: buyerUser?.id || 'none',
-                        customerEmail: customerEmail || 'none',
-                      });
-                    }
-                  }
-                  
-                  // Get actual points award result (or default if not awarded yet)
-                  const pointsAwardResult = purchaseAwardResultForEmail || { awarded: 0, reason: 'not_awarded_yet' };
-                  
-                  const { subject, text, html } = buildPurchaseConfirmationEmail({
-                    email: customerEmail,
-                    sessionId: session.id,
-                    product: product || 'unknown',
-                    amountTotal: session.amount_total || 0,
-                    currency: session.currency || 'usd',
-                    downloadUrl,
-                    pointsAwarded: pointsAwardResult, // Pass full award result
-                    totalPoints: buyerTotalPoints, // Total points user has
-                  });
-                  
-                  // Apply global email banner
-                  const { html: finalHtml, text: finalText, subject: finalSubject } = applyGlobalEmailBanner({
-                    html,
-                    text,
-                    subject,
-                  });
-                  
-                  // Send email
-                  await client.messages.send({
-                    message: {
-                      from_email: fromEmail,
-                      from_name: 'The Agnes Protocol',
-                      subject: finalSubject || subject,
-                      to: [{ email: customerEmail, type: 'to' }],
-                      text: finalText || text,
-                      html: finalHtml || html,
-                    },
-                  });
-                  
-                  console.log('[WEBHOOK] Purchase confirmation email sent successfully', {
-                    sessionId: session.id,
-                    email: customerEmail,
-                  });
-                }
-              } catch (emailErr) {
-                console.error('[WEBHOOK] Failed to send purchase confirmation email', {
-                  error: emailErr.message,
-                  stack: emailErr.stack,
-                  sessionId: session.id,
-                  email: customerEmail,
-                });
-                // In dev, return non-200 so error is visible
-                if (process.env.NODE_ENV === 'development') {
-                  return res.status(500).json({ 
-                    error: 'Purchase email failed', 
-                    details: emailErr.message 
-                  });
-                }
-                // In production, log but don't fail webhook (email is non-critical)
-              }
-            } else {
-              console.warn('[WEBHOOK] Cannot send purchase email - missing customer email', {
                 sessionId: session.id,
               });
             }
@@ -1288,16 +1474,83 @@ router.post(
               }
             }
 
-            // Process referral commission (if referral code present and valid)
-            if (ref && refValid && paymentStatus === 'paid') {
+            // Part C1: Process referral commission
+            // Priority: metadata.ap_referral_code > metadata.ref (if valid) > buyer's lastReferral (if active)
+            let referralCodeToUse = null;
+            let referralSource = 'none';
+            
+            if (apReferralCode && apUserId && paymentStatus === 'paid') {
+              // Priority 1: AP referral metadata (from auto-applied latest referral)
+              referralCodeToUse = apReferralCode;
+              referralSource = 'ap_metadata';
+              console.log('[ATTRIBUTION_REFERRER] Using AP referral from metadata', {
+                apReferralCode,
+                apUserId,
+                sessionId: session.id,
+              });
+            } else if (ref && refValid && paymentStatus === 'paid') {
+              // Priority 2: Explicit ref param (user-entered or stored)
+              referralCodeToUse = ref;
+              referralSource = 'metadata_ref';
+              console.log('[ATTRIBUTION_REFERRER] Using ref from metadata', {
+                ref,
+                sessionId: session.id,
+              });
+            } else if (buyerUser && paymentStatus === 'paid' && prisma) {
+              // Priority 3: Check buyer's lastReferral (if within attribution window)
+              try {
+                ensureDatabaseUrl();
+                const buyerWithReferral = await prisma.user.findUnique({
+                  where: { id: buyerUser.id },
+                  select: {
+                    lastReferralCode: true,
+                    lastReferralAt: true,
+                    lastReferredByUserId: true,
+                    lastReferralSource: true,
+                  },
+                });
+                
+                if (buyerWithReferral?.lastReferralCode && buyerWithReferral?.lastReferralAt) {
+                  const REFERRAL_ATTRIBUTION_WINDOW_DAYS = 30;
+                  const REFERRAL_ATTRIBUTION_WINDOW_MS = REFERRAL_ATTRIBUTION_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+                  const referralAgeMs = Date.now() - new Date(buyerWithReferral.lastReferralAt).getTime();
+                  
+                  if (referralAgeMs <= REFERRAL_ATTRIBUTION_WINDOW_MS) {
+                    referralCodeToUse = buyerWithReferral.lastReferralCode;
+                    referralSource = 'buyer_last_referral';
+                    console.log('[ATTRIBUTION_REFERRER] Using buyer lastReferral', {
+                      referralCode: referralCodeToUse,
+                      ageDays: Math.floor(referralAgeMs / (24 * 60 * 60 * 1000)),
+                      source: buyerWithReferral.lastReferralSource,
+                      sessionId: session.id,
+                    });
+                  } else {
+                    console.log('[ATTRIBUTION_REFERRER] Buyer lastReferral expired', {
+                      referralCode: buyerWithReferral.lastReferralCode,
+                      ageDays: Math.floor(referralAgeMs / (24 * 60 * 60 * 1000)),
+                      windowDays: REFERRAL_ATTRIBUTION_WINDOW_DAYS,
+                      sessionId: session.id,
+                    });
+                  }
+                }
+              } catch (lastRefErr) {
+                console.warn('[ATTRIBUTION_REFERRER] Failed to check buyer lastReferral', {
+                  error: lastRefErr.message,
+                  sessionId: session.id,
+                });
+              }
+            }
+            
+            if (referralCodeToUse && paymentStatus === 'paid') {
               try {
                 await processReferralCommission({
-                  referrerCode: ref.toUpperCase(),
+                  referrerCode: referralCodeToUse.toUpperCase(),
                   buyerEmail: customerEmail,
                   buyerUserId: buyerUser?.id || null,
                   sessionId: session.id,
                   product: product,
                   amountTotal: session.amount_total || 0,
+                  session: session, // Pass full session object for discount calculation
                   metadata,
                   purchaseId: createdPurchase?.id || existingPurchase?.id || null,
                   purchaseDay: new Date(session.created * 1000),
@@ -1306,7 +1559,8 @@ router.post(
                 console.error('[WEBHOOK] Failed to process referral commission', {
                   error: refErr.message,
                   sessionId: session.id,
-                  referrerCode: ref,
+                  referrerCode: referralCodeToUse,
+                  referralSource,
                 });
                 // Don't fail webhook - referral commission is non-critical
               }
@@ -1316,7 +1570,368 @@ router.post(
                 ref_valid: refValid,
                 sessionId: session.id,
               });
+              
+              // ===== LEDGER: Record Referral Skipped =====
+              // Use prisma singleton directly (prismaClient is scoped inside if(prisma) block)
+              if (buyerUser && prisma) {
+                try {
+                  ensureDatabaseUrl(); // Ensure DATABASE_URL is set
+                  await recordLedgerEntry(prisma, {
+                    sessionId: session.id,
+                    userId: buyerUser.id,
+                    type: 'REFERRAL_SKIPPED',
+                    amount: 0,
+                    currency: 'usd',
+                    note: `Referral skipped: ref_valid is false`,
+                    meta: {
+                      reason: 'ref_valid_false',
+                      referrerCode: ref,
+                      purchaseId: createdPurchase?.id || existingPurchase?.id || null,
+                    },
+                  });
+                  console.log('[LEDGER] REFERRAL_SKIPPED recorded', {
+                    sessionId: session.id,
+                    userId: buyerUser.id,
+                    reason: 'ref_valid_false',
+                  });
+                } catch (ledgerErr) {
+                  console.error('[LEDGER] Failed to record REFERRAL_SKIPPED', {
+                    error: ledgerErr.message,
+                    sessionId: session.id,
+                    stack: ledgerErr.stack,
+                  });
+                }
+              }
+            } else if (!ref && buyerUser) {
+              // No referral code - still record skipped for auditability
+              // Use prisma singleton directly (prismaClient is scoped inside if(prisma) block)
+              if (prisma) {
+                try {
+                  ensureDatabaseUrl(); // Ensure DATABASE_URL is set
+                  await recordLedgerEntry(prisma, {
+                    sessionId: session.id,
+                    userId: buyerUser.id,
+                    type: 'REFERRAL_SKIPPED',
+                    amount: 0,
+                    currency: 'usd',
+                    note: `Referral skipped: no valid referral code`,
+                    meta: {
+                      reason: 'no_referral_code',
+                      purchaseId: createdPurchase?.id || existingPurchase?.id || null,
+                    },
+                  });
+                  console.log('[LEDGER] REFERRAL_SKIPPED recorded', {
+                    sessionId: session.id,
+                    userId: buyerUser.id,
+                    reason: 'no_referral_code',
+                  });
+                } catch (ledgerErr) {
+                  console.error('[LEDGER] Failed to record REFERRAL_SKIPPED', {
+                    error: ledgerErr.message,
+                    sessionId: session.id,
+                    stack: ledgerErr.stack,
+                  });
+                }
+              }
             }
+
+            // ===== SEND PURCHASE CONFIRMATION EMAIL (LAST STEP - AFTER ALL DB OPERATIONS) =====
+            // Sequence: resolve buyer → upsert Customer → create Purchase → award points → process referral → send email
+            // Only send email if Purchase was successfully created
+            const finalPurchase = createdPurchase || existingPurchase;
+            if (!finalPurchase) {
+              console.error('[WEBHOOK] Cannot send purchase email - Purchase was not created', {
+                sessionId: session.id,
+                buyerFound: !!buyerUser,
+                customerEmail: customerEmail || 'MISSING',
+              });
+              // Return 500 so Stripe retries - Purchase creation is critical
+              return res.status(500).json({ 
+                error: 'Purchase creation failed - cannot send email',
+                details: 'Purchase record was not created successfully'
+              });
+            }
+
+            // Build download URL for eBook purchases (ebook) and free ebook for paperback purchases
+            // Use APP_BASE_URL for testing (ngrok), fallback to SITE_URL, then production
+            let downloadUrl = null;
+            if (product === 'ebook' || product === 'paperback') {
+              const siteUrl = process.env.APP_BASE_URL || envConfig.SITE_URL || 'https://theagnesprotocol.com';
+              downloadUrl = `${siteUrl}/ebook/download?session_id=${encodeURIComponent(session.id)}`;
+              console.log('[WEBHOOK] Generated download URL', { siteUrl, downloadUrl, product });
+            }
+
+            // Send purchase confirmation email (GUARANTEED - returns 500 on failure)
+            if (!customerEmail) {
+              console.warn('[WEBHOOK] Cannot send purchase email - missing customer email', {
+                sessionId: session.id,
+                purchaseId: finalPurchase.id,
+              });
+              // Return 500 so Stripe retries - email is required
+              return res.status(500).json({ 
+                error: 'Purchase email failed - missing customer email',
+                details: 'Customer email is required to send purchase confirmation'
+              });
+            }
+
+            console.log('[WEBHOOK] Email: sendPurchaseConfirmation START sessionId=' + session.id + ' purchaseId=' + finalPurchase.id + ' to=' + customerEmail + ' template=purchase_confirmation');
+            
+            try {
+              const client = getMailchimpClient();
+              const emailSystem = client ? 'Mailchimp Transactional API' : 'NOT CONFIGURED';
+              console.log('[WEBHOOK] Email system selected:', emailSystem);
+              
+              if (!client) {
+                console.error('[WEBHOOK] Cannot send purchase email - Mailchimp not configured');
+                // Return 500 so Stripe retries - email is required
+                return res.status(500).json({ 
+                  error: 'Purchase email failed - Mailchimp not configured',
+                  details: 'MAILCHIMP_TRANSACTIONAL_KEY is missing'
+                });
+              }
+
+              const fromEmail = process.env.MAILCHIMP_FROM_EMAIL || 'hello@theagnesprotocol.com';
+              
+              // Build purchase confirmation email
+              // Get buyer's total points - try multiple methods
+              let buyerTotalPoints = null;
+              if (prisma) {
+                try {
+                  ensureDatabaseUrl(); // Ensure before query
+                  
+                  // Method 1: If buyerUser was found, use their ID
+                  if (buyerUser && buyerUser.id) {
+                    const buyerWithPoints = await prisma.user.findUnique({
+                      where: { id: buyerUser.id },
+                      select: { points: true },
+                    });
+                    if (buyerWithPoints) {
+                      buyerTotalPoints = buyerWithPoints.points;
+                    }
+                  }
+                  
+                  // Method 2: If buyerUser not found, try by email (fallback)
+                  if (buyerTotalPoints === null && customerEmail) {
+                    const normalizedEmail = normalizeEmail(customerEmail);
+                    if (normalizedEmail) {
+                      ensureDatabaseUrl(); // Ensure before query
+                      const buyerByEmail = await prisma.user.findUnique({
+                        where: { email: normalizedEmail },
+                        select: { points: true },
+                      });
+                      if (buyerByEmail) {
+                        buyerTotalPoints = buyerByEmail.points;
+                        console.log('[WEBHOOK] Fetched buyer points by email fallback', {
+                          email: normalizedEmail,
+                          points: buyerTotalPoints,
+                        });
+                      }
+                    }
+                  }
+                } catch (pointsErr) {
+                  console.warn('[WEBHOOK] Failed to fetch buyer points for email', {
+                    error: pointsErr.message,
+                    buyerId: buyerUser?.id || 'none',
+                    customerEmail: customerEmail || 'none',
+                  });
+                }
+              }
+              
+              // Get actual points award result (or default if not awarded yet)
+              const pointsAwardResult = purchaseAwardResultForEmail || { awarded: 0, reason: 'not_awarded_yet' };
+              
+              const { subject, text, html } = buildPurchaseConfirmationEmail({
+                email: customerEmail,
+                sessionId: session.id,
+                product: product || 'unknown',
+                amountTotal: session.amount_total || 0,
+                currency: session.currency || 'usd',
+                downloadUrl,
+                pointsAwarded: pointsAwardResult, // Pass full award result
+                totalPoints: buyerTotalPoints, // Total points user has
+              });
+              
+              // Apply global email banner
+              const { html: finalHtml, text: finalText, subject: finalSubject } = applyGlobalEmailBanner({
+                html,
+                text,
+                subject,
+              });
+              
+              // Send email
+              const emailResult = await client.messages.send({
+                message: {
+                  from_email: fromEmail,
+                  from_name: 'The Agnes Protocol',
+                  subject: finalSubject || subject,
+                  to: [{ email: customerEmail, type: 'to' }],
+                  text: finalText || text,
+                  html: finalHtml || html,
+                },
+              });
+              
+              // Log full Mailchimp Transactional API response JSON for debugging
+              console.log('[WEBHOOK] Email: Mailchimp Transactional API response JSON:', JSON.stringify(emailResult, null, 2));
+              
+              // Normalize provider response to canonical delivery outcome
+              const deliveryOutcome = normalizeEmailDeliveryOutcome(emailResult);
+              
+              // Log appropriately based on delivery status (honest logs)
+              if (deliveryOutcome.deliveryStatus === 'rejected') {
+                // REJECTED: Log as warning, do not say "sent successfully"
+                console.warn('[WEBHOOK] Email rejected by provider', {
+                  email: customerEmail,
+                  providerMessageId: deliveryOutcome.providerMessageId,
+                  rejectReason: deliveryOutcome.rejectReason,
+                  sessionId: session.id,
+                  purchaseId: finalPurchase.id,
+                  rawStatus: deliveryOutcome.rawStatus,
+                });
+              } else if (deliveryOutcome.deliveryStatus === 'sent' || deliveryOutcome.deliveryStatus === 'queued') {
+                // SENT/QUEUED: Log as info, email accepted by provider
+                console.log('[WEBHOOK] Email accepted by provider', {
+                  email: customerEmail,
+                  providerMessageId: deliveryOutcome.providerMessageId,
+                  deliveryStatus: deliveryOutcome.deliveryStatus,
+                  sessionId: session.id,
+                  purchaseId: finalPurchase.id,
+                  queuedReason: deliveryOutcome.queuedReason || null,
+                });
+              } else {
+                // ERROR: Log as error
+                console.error('[WEBHOOK] Email send failed', {
+                  email: customerEmail,
+                  providerMessageId: deliveryOutcome.providerMessageId,
+                  deliveryStatus: deliveryOutcome.deliveryStatus,
+                  rejectReason: deliveryOutcome.rejectReason,
+                  rawStatus: deliveryOutcome.rawStatus,
+                  sessionId: session.id,
+                  purchaseId: finalPurchase.id,
+                });
+              }
+              
+              // Persist email delivery outcome in Ledger (idempotent per sessionId)
+              if (prisma && buyerUser) {
+                try {
+                  ensureDatabaseUrl();
+                  
+                  // Build note string: concise status + reason
+                  let note = `status=${deliveryOutcome.deliveryStatus}`;
+                  if (deliveryOutcome.rejectReason) {
+                    note += ` reason=${deliveryOutcome.rejectReason}`;
+                  }
+                  if (deliveryOutcome.queuedReason) {
+                    note += ` queued=${deliveryOutcome.queuedReason}`;
+                  }
+                  if (deliveryOutcome.providerMessageId !== 'unknown') {
+                    note += ` msgId=${deliveryOutcome.providerMessageId}`;
+                  }
+                  
+                  // Store in ledger with EMAIL_PURCHASE_CONFIRMATION type
+                  await recordLedgerEntry(prisma, {
+                    sessionId: session.id,
+                    userId: buyerUser.id,
+                    type: 'EMAIL_PURCHASE_CONFIRMATION',
+                    amount: 0,
+                    currency: 'email',
+                    note: note,
+                    meta: {
+                      attemptedAt: new Date().toISOString(),
+                      providerMessageId: deliveryOutcome.providerMessageId,
+                      deliveryStatus: deliveryOutcome.deliveryStatus,
+                      rejectReason: deliveryOutcome.rejectReason,
+                      queuedReason: deliveryOutcome.queuedReason,
+                      email: customerEmail,
+                      rawStatus: deliveryOutcome.rawStatus,
+                    },
+                  });
+                  
+                  console.log('[WEBHOOK] Email delivery outcome stored in ledger', {
+                    deliveryStatus: deliveryOutcome.deliveryStatus,
+                    providerMessageId: deliveryOutcome.providerMessageId,
+                    sessionId: session.id,
+                  });
+                } catch (ledgerErr) {
+                  // Don't fail webhook if ledger write fails - email was still attempted
+                  console.warn('[WEBHOOK] Failed to store email delivery outcome in ledger', {
+                    error: ledgerErr.message,
+                    sessionId: session.id,
+                    deliveryStatus: deliveryOutcome.deliveryStatus,
+                  });
+                }
+              }
+              
+              // Webhook flow continues regardless of email delivery status
+              // Purchase, points, and ledger entries are already created above
+              // Email delivery outcome is tracked in ledger for observability
+            } catch (emailErr) {
+              // Email send failed (API call threw, timeout, etc.)
+              console.error('[WEBHOOK] Email send failed', {
+                error: emailErr.message,
+                stack: emailErr.stack,
+                sessionId: session.id,
+                purchaseId: finalPurchase.id,
+                email: customerEmail,
+              });
+              
+              // Record error outcome in ledger
+              if (prisma && buyerUser) {
+                try {
+                  ensureDatabaseUrl();
+                  const errorOutcome = {
+                    deliveryStatus: 'error',
+                    providerMessageId: 'unknown',
+                    rejectReason: `Send error: ${emailErr.message}`,
+                    queuedReason: null,
+                    rawStatus: 'error',
+                  };
+                  
+                  await recordLedgerEntry(prisma, {
+                    sessionId: session.id,
+                    userId: buyerUser.id,
+                    type: 'EMAIL_PURCHASE_CONFIRMATION',
+                    amount: 0,
+                    currency: 'email',
+                    note: `status=error reason=${emailErr.message}`,
+                    meta: {
+                      attemptedAt: new Date().toISOString(),
+                      providerMessageId: 'unknown',
+                      deliveryStatus: 'error',
+                      rejectReason: `Send error: ${emailErr.message}`,
+                      queuedReason: null,
+                      email: customerEmail,
+                      rawStatus: 'error',
+                      errorDetails: emailErr.stack || emailErr.message,
+                    },
+                  });
+                } catch (ledgerErr) {
+                  console.warn('[WEBHOOK] Failed to store email error in ledger', {
+                    error: ledgerErr.message,
+                    sessionId: session.id,
+                  });
+                }
+              }
+              
+              // Continue webhook flow - do not return 500
+              // Email delivery failure does not block purchase completion
+              // Purchase, points, and ledger entries are already created above
+              console.log('[WEBHOOK] Email send failed but webhook continues - purchase completed successfully', {
+                sessionId: session.id,
+                purchaseId: finalPurchase.id,
+              });
+            }
+          }
+          
+          } catch (checkoutErr) {
+            console.error('[WEBHOOK] checkout.session.completed ERROR', checkoutErr?.stack || checkoutErr);
+            console.error('[WEBHOOK] checkout.session.completed FATAL ERROR', {
+              error: checkoutErr.message,
+              stack: checkoutErr.stack,
+              eventId: event.id,
+              sessionId: event.data?.object?.id || 'unknown',
+            });
+            // Don't break - let it fall through to default handler
+            throw checkoutErr; // Re-throw so outer catch can handle it
           }
           
           break;
@@ -1382,10 +1997,11 @@ console.log('[WEBHOOK_CONFIG] Webhook endpoint configured:', {
 });
 
 /**
- * Process referral commission: award points, record commission, send email
+ * Process referral commission: award points, record commission, track friend savings, send email
+ * Math Mode v2: Sponsor gets +5000 points, $2 commission, and friend savings credit
  * Includes idempotency guard to prevent duplicate processing
  */
-async function processReferralCommission({ referrerCode, buyerEmail, buyerUserId, sessionId, product, amountTotal, metadata, purchaseId = null, purchaseDay = null }) {
+async function processReferralCommission({ referrerCode, buyerEmail, buyerUserId, sessionId, product, amountTotal, session, metadata, purchaseId = null, purchaseDay = null }) {
   // Use singleton prisma (already has explicit datasourceUrl)
   const prismaClient = prisma;
   
@@ -1449,25 +2065,37 @@ async function processReferralCommission({ referrerCode, buyerEmail, buyerUserId
       
       if (referrer) {
         totalEarningsCents = referrer.referralEarningsCents || 0;
-        // Calculate total points and savings from conversions
+        // A1: Use centralized points rollup (single source of truth)
+        // Calculate total points from ledger (matches scorecard/UI)
         try {
           ensureDatabaseUrl(); // Ensure before query
+          const pointsRollup = await getPointsRollupForUser(prismaClient, referrer.id);
+          totalPoints = pointsRollup.totalPoints;
+          
+          // Calculate total savings from ReferralConversion (for email display)
           const conversions = await prismaClient.referralConversion.findMany({
             where: {
               referrerUserId: referrer.id,
             },
             select: {
               savingsCents: true,
+              commissionCents: true,
             },
           });
-          totalPoints = conversions.length * 1000; // 1000 points per conversion
           totalSavingsCents = conversions.reduce((sum, conv) => sum + (conv.savingsCents || 0), 0);
+          // Calculate total earnings from commissionCents (for email display)
+          const totalCommissionCents = conversions.reduce((sum, conv) => sum + (conv.commissionCents || 0), 0);
+          // Update totalEarningsCents if we calculated it from conversions
+          if (totalCommissionCents > 0) {
+            totalEarningsCents = totalCommissionCents;
+          }
         } catch (pointsErr) {
-          console.warn('[WEBHOOK] Failed to count conversions for points/savings', {
+          console.warn('[WEBHOOK] Failed to calculate totals (non-fatal)', {
             error: pointsErr.message,
+            note: 'Email will still be sent with default totals',
           });
-          // Use defaults if we can't count
-          totalPoints = totalEarningsCents > 0 ? Math.floor(totalEarningsCents / 2) : 0;
+          // Use defaults if we can't count - email will still be sent
+          totalPoints = 0;
           totalSavingsCents = 0;
         }
         
@@ -1541,91 +2169,120 @@ async function processReferralCommission({ referrerCode, buyerEmail, buyerUserId
     return; // Can't send email without address
   }
 
-  // Calculate commission (e.g., $2 = 200 cents)
-  const commissionCents = 200; // $2 commission
+  // Constants (Math Mode v2)
+  const COMMISSION_CENTS = 200; // $2.00 commission per referred purchase (fixed for all products)
   
   // Store referral points award result for email template (will be set when points are awarded)
   let referralAwardResult = null;
 
-  // Calculate savings (money saved by buyer due to discount)
-  // List prices (in cents): ebook = $12.00 = 1200, paperback = varies, audio_preorder = varies
-  const LIST_PRICES = {
-    ebook: 1200, // $12.00
-    paperback: 2500, // $25.00 (example)
-    audio_preorder: 2000, // $20.00 (example)
-  };
+  // Calculate discount amount from Stripe session (Math Mode v2 - friend savings)
+  // Priority order:
+  // 1. session.total_details.amount_discount (in cents)
+  // 2. Sum of discount_amounts[].amount from session.total_details.breakdown.discounts
+  // 3. Compute: (undiscounted_subtotal - session.amount_subtotal) if available
+  // 4. Fallback: 0 (still award points + commission, but record savings as 0)
+  let discountCents = 0;
+  
+  if (session) {
+    // Priority 1: session.total_details.amount_discount
+    if (session.total_details?.amount_discount !== undefined && session.total_details.amount_discount !== null) {
+      discountCents = Math.max(0, session.total_details.amount_discount);
+      console.log('[WEBHOOK] Discount calculated from total_details.amount_discount', { discountCents, sessionId });
+    }
+    // Priority 2: Sum discount_amounts from breakdown.discounts
+    else if (session.total_details?.breakdown?.discounts && Array.isArray(session.total_details.breakdown.discounts)) {
+      discountCents = session.total_details.breakdown.discounts.reduce((sum, discount) => {
+        return sum + (discount.amount || 0);
+      }, 0);
+      console.log('[WEBHOOK] Discount calculated from breakdown.discounts', { discountCents, sessionId });
+    }
+    // Priority 3: Compute from subtotals (if available)
+    else if (session.total_details?.amount_subtotal !== undefined && session.amount_subtotal !== undefined) {
+      // This is a fallback - we'd need the undiscounted subtotal, which Stripe doesn't always provide
+      // For now, skip this method
+      console.log('[WEBHOOK] Discount calculation: subtotal method not available', { sessionId });
+    }
+    
+    // If still 0, log but don't fail (still award points + commission)
+    if (discountCents === 0) {
+      console.log('[WEBHOOK] Discount not available in session payload - recording as 0', {
+        sessionId,
+        note: 'Points and commission still awarded, but friend savings will be 0',
+      });
+    }
+  } else {
+    console.warn('[WEBHOOK] Session object not provided - cannot calculate discount', { sessionId });
+  }
   
   const productType = product || 'ebook';
-  const listPriceCents = LIST_PRICES[productType] || LIST_PRICES.ebook;
-  const amountPaidCents = amountTotal || 0;
-  const savingsCents = Math.max(0, listPriceCents - amountPaidCents);
 
   // Record commission (with idempotency)
   if (prismaClient && referrer.id !== 'allowlist-fallback') {
     try {
       ensureDatabaseUrl(); // Ensure before transaction
       await prismaClient.$transaction(async (tx) => {
-        // Create referral conversion record (idempotency key: sessionId)
+        // Part F2 + G5: Create referral conversion record (idempotency key: sessionId)
         // Use upsert to make it idempotent - safe to retry webhook events
+        // Part G5: Product is required here (validated earlier in webhook)
+        // Include all fields: referralCode, savingsCents, amountPaidCents, product, currency
         await tx.referralConversion.upsert({
           where: { stripeSessionId: sessionId },
           create: {
-            referrerCode: normalizedReferrerCode, // Fixed: was referralCode, schema expects referrerCode
-            referrerEmail: referrerEmail,
-            buyerEmail: normalizeEmail(buyerEmail),
-            product: productType,
+            referralCode: normalizedReferrerCode, // Required field - use the referral code
+            buyerEmail: normalizeEmail(buyerEmail) || null,
             stripeSessionId: sessionId,
-            commissionCents: commissionCents,
-            amountPaidCents: amountPaidCents,
-            listPriceCents: listPriceCents,
-            savingsCents: savingsCents,
+            commissionCents: COMMISSION_CENTS,
+            savingsCents: discountCents ?? 0, // Money saved by buyer (discount amount)
+            amountPaidCents: amountTotal || 0, // Amount buyer actually paid (after discount)
+            product: productType, // Part G5: Required - must be explicitly set (validated earlier)
+            currency: 'usd', // Default currency
             // ✅ connect via relation (this is what Prisma expects)
             referrer: { connect: { id: referrer.id } },
           },
           update: {
             // If conversion already exists, update it (idempotent retry)
-            referrerCode: normalizedReferrerCode,
-            referrerEmail: referrerEmail,
-            buyerEmail: normalizeEmail(buyerEmail),
-            product: productType,
-            commissionCents: commissionCents,
-            amountPaidCents: amountPaidCents,
-            listPriceCents: listPriceCents,
-            savingsCents: savingsCents,
+            referralCode: normalizedReferrerCode,
+            buyerEmail: normalizeEmail(buyerEmail) || null,
+            commissionCents: COMMISSION_CENTS,
+            savingsCents: discountCents ?? 0,
+            amountPaidCents: amountTotal || 0,
+            product: productType, // Part G5: Required - must be explicitly set
+            currency: 'usd',
             referrer: { connect: { id: referrer.id } },
           },
         });
 
-        // Update referrer earnings (points will be awarded separately via helper)
+        // Update referrer earnings (commission only - points and savings tracked in ledger)
         await tx.user.update({
           where: { id: referrer.id },
           data: {
             referralEarningsCents: {
-              increment: commissionCents,
+              increment: COMMISSION_CENTS,
             },
           },
         });
       });
       
-      // Award referral points using guardrails helper (outside transaction)
-      referralAwardResult = await awardReferralPoints({
-        referrerId: referrer.id,
-        referredUserId: buyerUserId || null, // Use buyerUserId from function params
-        sku: productType, // ebook, paperback, audio_preorder
-        purchaseDay: purchaseDay || new Date(), // Use provided purchase day or current time
-        purchaseId: purchaseId || null, // Use provided purchase ID
+      // Award referral sponsor points (Math Mode - deterministic, no caps)
+      referralAwardResult = await awardReferralSponsorPoints(prismaClient, {
+        referrerUserId: referrer.id,
+        sessionId: sessionId, // Required for idempotency
+        buyerUserId: buyerUserId || null,
+        product: productType, // ebook, paperback, audio_preorder
       });
 
       console.log('[WEBHOOK] Referral commission recorded', {
         referrerCode: normalizedReferrerCode,
         referrerId: referrer.id,
-        commissionCents,
+        commissionCents: COMMISSION_CENTS,
+        discountCents,
         pointsAwarded: referralAwardResult.awarded,
         reason: referralAwardResult.reason,
         sessionId,
       });
       
-      // Fetch updated totals after recording commission
+      // Part C: Calculate totals (non-fatal - email will be sent even if this fails)
+      // Wrap in try/catch so totals failure doesn't block email
       try {
         ensureDatabaseUrl(); // Ensure before query
         const updatedReferrer = await prismaClient.user.findUnique({
@@ -1638,44 +2295,181 @@ async function processReferralCommission({ referrerCode, buyerEmail, buyerUserId
           totalEarningsCents = updatedReferrer.referralEarningsCents || 0;
         }
         
-        // Fetch conversions for total points and savings
+        // A1: Use centralized points rollup (single source of truth)
         ensureDatabaseUrl(); // Ensure before query
+        const pointsRollup = await getPointsRollupForUser(prismaClient, referrer.id);
+        totalPoints = pointsRollup.totalPoints;
+        
+        // Calculate total savings from ReferralConversion (for email display)
         const conversions = await prismaClient.referralConversion.findMany({
           where: {
             referrerUserId: referrer.id,
           },
           select: {
             savingsCents: true,
+            commissionCents: true,
           },
         });
-        totalPoints = conversions.length * 1000; // 1000 points per conversion
         totalSavingsCents = conversions.reduce((sum, conv) => sum + (conv.savingsCents || 0), 0);
+        // Calculate total earnings from commissionCents
+        const totalCommissionCents = conversions.reduce((sum, conv) => sum + (conv.commissionCents || 0), 0);
+        if (totalCommissionCents > 0) {
+          totalEarningsCents = totalCommissionCents;
+        }
         
-        // Structured logging: commission awarded
-        console.log('[ATTRIBUTION_REFERRER] Commission awarded', {
+        console.log('[ATTRIBUTION_REFERRER] Totals calculated', {
           referrerId: referrer.id,
-          referrerCode: referrer.referralCode,
-          referrerEmail: referrerEmail,
-          pointsAwarded: referralAwardResult?.awarded || 0,
-          commissionCents: commissionCents,
-          savingsCentsThisPurchase: savingsCents,
-          savingsCentsTotal: totalSavingsCents,
           totalEarningsCents,
           totalPoints,
+          totalSavingsCents,
+          conversionCount: conversions.length,
         });
       } catch (totalsErr) {
-        console.warn('[WEBHOOK] Failed to fetch updated totals', {
+        console.warn('[WEBHOOK] Failed to calculate totals (non-fatal - email will still be sent)', {
           error: totalsErr.message,
+          referrerId: referrer.id,
+          note: 'Email will be sent with default totals',
         });
-        // Use the values we calculated earlier
+        // Use defaults - email will still be sent
+        totalPoints = referralAwardResult?.awarded || 0;
+        totalSavingsCents = discountCents || 0;
       }
+      
+      // ===== LEDGER: Record Referral Commission Earned (for referrer) - Math Mode v2 =====
+      // Idempotency: unique constraint on (sessionId, type, userId)
+      try {
+        await recordLedgerEntry(prismaClient, {
+          sessionId: sessionId,
+          userId: referrer.id,
+          type: 'REFERRAL_COMMISSION_EARNED',
+          amount: COMMISSION_CENTS,
+          currency: 'usd',
+          usd: COMMISSION_CENTS / 100, // Store as Decimal
+          note: `Commission earned from referral: $${(COMMISSION_CENTS / 100).toFixed(2)}`,
+          meta: {
+            referrerCode: normalizedReferrerCode,
+            buyerUserId: buyerUserId || null,
+            buyerEmail: normalizeEmail(buyerEmail) || null,
+            product: productType,
+            purchaseId: purchaseId || null,
+            discountCents: discountCents,
+          },
+        });
+        console.log('[LEDGER] REFERRAL_COMMISSION_EARNED recorded', {
+          sessionId,
+          referrerId: referrer.id,
+          commissionCents: COMMISSION_CENTS,
+        });
+      } catch (ledgerErr) {
+        // Handle idempotency (already exists)
+        if (ledgerErr.code === 'P2002' || ledgerErr.message?.includes('Unique constraint')) {
+          console.log('[LEDGER] REFERRAL_COMMISSION_EARNED already exists (idempotent)', {
+            sessionId,
+            referrerId: referrer.id,
+          });
+        } else {
+          console.error('[LEDGER] Failed to record REFERRAL_COMMISSION_EARNED', {
+            error: ledgerErr.message,
+            sessionId,
+            referrerId: referrer.id,
+          });
+        }
+        // Don't fail - ledger is for auditability
+      }
+      
+      // ===== LEDGER: Record Friend Savings Credited (for referrer) - Math Mode v2 =====
+      // Idempotency: unique constraint on (sessionId, type, userId)
+      try {
+        await recordLedgerEntry(prismaClient, {
+          sessionId: sessionId,
+          userId: referrer.id,
+          type: 'FRIEND_SAVINGS_CREDITED',
+          amount: discountCents,
+          currency: 'usd',
+          usd: discountCents / 100, // Store as Decimal
+          note: discountCents > 0 
+            ? `Friend savings credited: $${(discountCents / 100).toFixed(2)}`
+            : 'Friend savings credited: $0.00 (discount not available in session payload)',
+          meta: {
+            referrerCode: normalizedReferrerCode,
+            buyerUserId: buyerUserId || null,
+            buyerEmail: normalizeEmail(buyerEmail) || null,
+            product: productType,
+            purchaseId: purchaseId || null,
+            discountCents: discountCents,
+            discountSource: discountCents > 0 ? 'stripe_session' : 'not_available',
+          },
+        });
+        console.log('[LEDGER] FRIEND_SAVINGS_CREDITED recorded', {
+          sessionId,
+          referrerId: referrer.id,
+          discountCents,
+        });
+      } catch (ledgerErr) {
+        // Handle idempotency (already exists)
+        if (ledgerErr.code === 'P2002' || ledgerErr.message?.includes('Unique constraint')) {
+          console.log('[LEDGER] FRIEND_SAVINGS_CREDITED already exists (idempotent)', {
+            sessionId,
+            referrerId: referrer.id,
+          });
+        } else {
+          console.error('[LEDGER] Failed to record FRIEND_SAVINGS_CREDITED', {
+            error: ledgerErr.message,
+            sessionId,
+            referrerId: referrer.id,
+          });
+        }
+        // Don't fail - ledger is for auditability
+      }
+      
+      // ===== LEDGER: Record Referral Discount Applied (for buyer) =====
+      if (buyerUserId && discountCents > 0) {
+        try {
+          await recordLedgerEntry(prismaClient, {
+            sessionId: sessionId,
+            userId: buyerUserId,
+            type: 'REFERRAL_DISCOUNT_APPLIED',
+            amount: -discountCents, // Negative amount (discount)
+            currency: 'usd',
+            note: `Discount applied from referral code: $${(discountCents / 100).toFixed(2)}`,
+            meta: {
+              referrerCode: normalizedReferrerCode,
+              referrerUserId: referrer.id,
+              product: productType,
+              purchaseId: purchaseId || null,
+              discountCents: discountCents,
+            },
+          });
+        } catch (ledgerErr) {
+          console.error('[LEDGER] Failed to record REFERRAL_DISCOUNT_APPLIED', {
+            error: ledgerErr.message,
+            sessionId,
+            buyerUserId,
+          });
+          // Don't fail - ledger is for auditability
+        }
+      }
+      
+      // Totals calculation is now done above (non-fatal, wrapped in try/catch)
+      // Log commission awarded
+      console.log('[ATTRIBUTION_REFERRER] Commission awarded', {
+        referrerId: referrer.id,
+        referrerCode: referrer.referralCode,
+        referrerEmail: referrerEmail,
+        pointsAwarded: referralAwardResult?.awarded || 0,
+        commissionCents: COMMISSION_CENTS,
+        discountCentsThisPurchase: discountCents,
+        discountCentsTotal: totalSavingsCents,
+        totalEarningsCents,
+        totalPoints,
+      });
     } catch (err) {
       // Handle unique constraint violation (idempotency)
       if (err.code === 'P2002' || err.message?.includes('Unique constraint')) {
         console.log('[WEBHOOK] Referral commission already recorded (unique constraint)', {
           sessionId,
         });
-        // Still fetch totals for email even if already processed
+        // Part C: Still fetch totals for email even if already processed (non-fatal)
         try {
           ensureDatabaseUrl(); // Ensure before query
           const updatedReferrer = await prismaClient.user.findUnique({
@@ -1687,15 +2481,32 @@ async function processReferralCommission({ referrerCode, buyerEmail, buyerUserId
           if (updatedReferrer) {
             totalEarningsCents = updatedReferrer.referralEarningsCents || 0;
           }
+          // A1: Use centralized points rollup (single source of truth)
           ensureDatabaseUrl(); // Ensure before query
-          const conversions = await prismaClient.referralConversion.count({
+          const pointsRollup = await getPointsRollupForUser(prismaClient, referrer.id);
+          totalPoints = pointsRollup.totalPoints;
+          
+          // Calculate total savings from ReferralConversion (for email display)
+          const conversions = await prismaClient.referralConversion.findMany({
             where: {
               referrerUserId: referrer.id,
             },
+            select: {
+              savingsCents: true,
+              commissionCents: true,
+            },
           });
-          totalPoints = conversions * 1000;
+          totalSavingsCents = conversions.reduce((sum, conv) => sum + (conv.savingsCents || 0), 0);
+          const totalCommissionCents = conversions.reduce((sum, conv) => sum + (conv.commissionCents || 0), 0);
+          if (totalCommissionCents > 0) {
+            totalEarningsCents = totalCommissionCents;
+          }
         } catch (totalsErr) {
-          // Ignore - use defaults
+          // Ignore - use defaults, email will still be sent
+          console.warn('[WEBHOOK] Failed to fetch totals for already-processed conversion (non-fatal)', {
+            error: totalsErr.message,
+            note: 'Email will be sent with default totals',
+          });
         }
         // Don't return - still send email even if already processed
         // Set referralAwardResult to default if not set
@@ -1711,7 +2522,8 @@ async function processReferralCommission({ referrerCode, buyerEmail, buyerUserId
     referralAwardResult = { awarded: 0, reason: 'no_prisma_or_allowlist' };
   }
 
-  // Send referrer commission email (ALWAYS send if referrerEmail exists, regardless of points)
+  // Part D: Send referrer commission email (ALWAYS send if referrerEmail exists, regardless of points or totals)
+  // Email is sent even if totals calculation failed
   if (referrerEmail) {
     try {
       const client = getMailchimpClient();
@@ -1726,17 +2538,47 @@ async function processReferralCommission({ referrerCode, buyerEmail, buyerUserId
         // Get referral points award result (already computed above)
         const referralPointsAwardResult = referralAwardResult || { awarded: 0, reason: 'not_awarded' };
         
+        // B1: Recalculate rollup RIGHT BEFORE email to ensure it includes all newly awarded points
+        // This ensures AP sale email totals match /api/points/me exactly
+        let finalTotalPoints = totalPoints;
+        try {
+          ensureDatabaseUrl();
+          const finalRollup = await getPointsRollupForUser(prismaClient, referrer.id);
+          finalTotalPoints = finalRollup.totalPoints;
+          console.log('[AP_SALE_EMAIL] Final rollup calculated', {
+            referrerId: referrer.id,
+            finalTotalPoints,
+            previousTotalPoints: totalPoints,
+            pointsAwardedThisPurchase: referralPointsAwardResult.awarded,
+            note: 'Using rollup total directly (includes all points including this purchase)',
+          });
+        } catch (rollupErr) {
+          console.warn('[AP_SALE_EMAIL] Failed to recalculate rollup before email (using previous total)', {
+            error: rollupErr.message,
+            referrerId: referrer.id,
+            fallbackTotalPoints: totalPoints,
+          });
+          // Use previous totalPoints as fallback
+        }
+        
+        // Part C: Compute totals safely (use defaults if calculation failed)
+        // These are for email display only - email will be sent even with defaults
+        const safeTotalEarningsCents = totalEarningsCents + COMMISSION_CENTS;
+        // B1: Use finalTotalPoints directly from rollup (already includes all points)
+        const safeTotalPoints = finalTotalPoints;
+        const safeTotalSavingsCents = totalSavingsCents + discountCents;
+        
         const { subject, text, html } = buildReferrerCommissionEmail({
           referrerEmail: referrerEmail,
           referrerCode: normalizedReferrerCode,
           buyerName: buyerDisplayName,
           product: product || 'unknown',
-          commissionCents,
+          commissionCents: COMMISSION_CENTS,
           pointsAwarded: referralPointsAwardResult, // Pass full award result
-          savingsCents, // Money saved by this buyer
-          totalEarningsCents: totalEarningsCents + commissionCents, // Include this commission in total
-          totalPoints: totalPoints + referralPointsAwardResult.awarded, // Use actual awarded amount
-          totalSavingsCents: totalSavingsCents + savingsCents, // Include this savings in total
+          savingsCents: discountCents, // Money saved by this buyer (discount amount)
+          totalEarningsCents: safeTotalEarningsCents,
+          totalPoints: safeTotalPoints, // B1: Use rollup total directly (matches /api/points/me)
+          totalSavingsCents: safeTotalSavingsCents,
         });
 
         const { html: finalHtml, text: finalText, subject: finalSubject } = applyGlobalEmailBanner({
@@ -1745,22 +2587,109 @@ async function processReferralCommission({ referrerCode, buyerEmail, buyerUserId
           subject,
         });
 
-        await client.messages.send({
-          message: {
-            from_email: fromEmail,
-            from_name: 'The Agnes Protocol',
-            subject: finalSubject || subject,
-            to: [{ email: referrerEmail, type: 'to' }],
-            text: finalText || text,
-            html: finalHtml || html,
-          },
-        });
-
-        console.log('[WEBHOOK] Referrer commission email sent', {
-          referrerEmail: referrerEmail,
-          referrerCode: normalizedReferrerCode,
+        // Part E: Loud log line for AP sale email
+        // B1: Log that we're using rollup total (matches /api/points/me)
+        console.log('[AP_SALE_EMAIL] START', {
           sessionId,
+          referrerEmail,
+          totalPoints: safeTotalPoints, // B1: This matches /api/points/me total
+          pointsAwardedThisPurchase: referralPointsAwardResult.awarded,
+          note: 'totalPoints from rollup (single source of truth)',
+          buyerEmail: buyerEmail || 'unknown',
+          referralCode: normalizedReferrerCode,
+          commissionCents: COMMISSION_CENTS,
+          discountCents,
+          pointsAwarded: referralPointsAwardResult.awarded,
+          purchaseId: purchaseId || 'none',
         });
+        
+        let emailResult = null;
+        try {
+          emailResult = await client.messages.send({
+            message: {
+              from_email: fromEmail,
+              from_name: 'The Agnes Protocol',
+              subject: finalSubject || subject,
+              to: [{ email: referrerEmail, type: 'to' }],
+              text: finalText || text,
+              html: finalHtml || html,
+            },
+          });
+
+          console.log('[AP_SALE_EMAIL] OK', {
+            sessionId,
+            referrerEmail,
+            status: 'sent',
+            emailResult: Array.isArray(emailResult) ? emailResult.length : 'object',
+          });
+        } catch (sendErr) {
+          console.error('[WEBHOOK] AP sale email send failed', {
+            error: sendErr.message,
+            referrerEmail: referrerEmail,
+            sessionId,
+          });
+          // Continue - email failure doesn't block webhook
+        }
+
+        // Part C2: Track email delivery outcome in ledger
+        if (prismaClient && referrer) {
+          try {
+            ensureDatabaseUrl();
+            const deliveryOutcome = emailResult ? normalizeEmailDeliveryOutcome(emailResult) : {
+              deliveryStatus: 'error',
+              providerMessageId: 'unknown',
+              rejectReason: 'Send failed',
+              queuedReason: null,
+              rawStatus: 'error',
+            };
+
+            let note = `status=${deliveryOutcome.deliveryStatus}`;
+            if (deliveryOutcome.rejectReason) {
+              note += ` reason=${deliveryOutcome.rejectReason}`;
+            }
+            if (deliveryOutcome.queuedReason) {
+              note += ` queued=${deliveryOutcome.queuedReason}`;
+            }
+            if (deliveryOutcome.providerMessageId !== 'unknown') {
+              note += ` msgId=${deliveryOutcome.providerMessageId}`;
+            }
+
+            await recordLedgerEntry(prismaClient, {
+              sessionId: sessionId,
+              userId: referrer.id,
+              type: 'EMAIL_AP_SALE_NOTIFICATION',
+              amount: 0,
+              currency: 'email',
+              note: note,
+              meta: {
+                attemptedAt: new Date().toISOString(),
+                providerMessageId: deliveryOutcome.providerMessageId,
+                deliveryStatus: deliveryOutcome.deliveryStatus,
+                rejectReason: deliveryOutcome.rejectReason,
+                queuedReason: deliveryOutcome.queuedReason,
+                email: referrerEmail,
+                rawStatus: deliveryOutcome.rawStatus,
+                recipientEmail: referrerEmail,
+                sessionId: sessionId,
+                purchaseId: purchaseId || null,
+              },
+            });
+
+            console.log('[AP_SALE_EMAIL] Ledger written', {
+              deliveryStatus: deliveryOutcome.deliveryStatus,
+              providerMessageId: deliveryOutcome.providerMessageId,
+              sessionId: sessionId,
+              referrerId: referrer.id,
+              ledgerType: 'EMAIL_AP_SALE_NOTIFICATION',
+            });
+          } catch (ledgerErr) {
+            // Don't fail webhook if ledger write fails - email was still attempted
+            console.warn('[WEBHOOK] Failed to store AP sale email delivery outcome in ledger', {
+              error: ledgerErr.message,
+              sessionId: sessionId,
+            });
+          }
+        }
       }
     } catch (emailErr) {
       console.error('[WEBHOOK] Failed to send referrer commission email', {

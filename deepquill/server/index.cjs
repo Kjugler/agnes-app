@@ -204,6 +204,55 @@ const contestLoginHandler = require('../api/contest/login.cjs');
 app.post('/api/contest/login', contestLoginHandler);
 console.log('✅ Mounted /api/contest/login');
 
+const contestJoinHandler = require('../api/contest/join.cjs');
+app.post('/api/contest/join', contestJoinHandler);
+console.log('✅ Mounted /api/contest/join');
+
+const contestExplicitEnterHandler = require('../api/contest/explicitEnter.cjs');
+app.post('/api/contest/explicit-enter', contestExplicitEnterHandler);
+console.log('✅ Mounted /api/contest/explicit-enter');
+
+// Points endpoint (canonical DB owner)
+const pointsMeHandler = require('../api/points/me.cjs');
+app.get('/api/points/me', pointsMeHandler);
+console.log('✅ Mounted /api/points/me');
+
+// Associate status endpoint (canonical DB owner)
+const associateStatusHandler = require('../api/associate/status.cjs');
+app.get('/api/associate/status', associateStatusHandler);
+console.log('✅ Mounted /api/associate/status');
+
+// Associate upsert endpoint (canonical DB owner)
+const associateUpsertHandler = require('../api/associate/upsert.cjs');
+app.post('/api/associate/upsert', associateUpsertHandler);
+console.log('✅ Mounted /api/associate/upsert');
+
+// Contest score endpoint (canonical DB owner)
+const contestScoreHandler = require('../api/contest/score.cjs');
+app.get('/api/contest/score', contestScoreHandler);
+console.log('✅ Mounted /api/contest/score');
+
+// Email delivery status endpoint (canonical DB owner)
+const emailDeliveryStatusHandler = require('../api/email/purchase-confirmation-status.cjs');
+app.get('/api/email/purchase-confirmation/status', emailDeliveryStatusHandler);
+console.log('✅ Mounted /api/email/purchase-confirmation/status');
+
+// Referral code validation endpoint (canonical DB owner)
+const validateReferralCodeHandler = require('../api/referral/validate.cjs');
+app.get('/api/referral/validate', validateReferralCodeHandler);
+app.post('/api/referral/validate', validateReferralCodeHandler);
+console.log('✅ Mounted /api/referral/validate');
+
+// Referral email points award endpoint (canonical DB owner)
+const awardReferralEmailPointsHandler = require('../api/referral/award-email-points.cjs');
+app.post('/api/referral/award-email-points', awardReferralEmailPointsHandler);
+console.log('✅ Mounted /api/referral/award-email-points');
+
+// Webhook diagnostic endpoint (check if purchase was processed)
+const webhookDiagnosticHandler = require('../api/webhook-diagnostic.cjs');
+app.get('/api/webhook-diagnostic', webhookDiagnosticHandler);
+console.log('✅ Mounted /api/webhook-diagnostic');
+
 // Debug endpoint (dev only)
 if (envConfig.DEBUG) {
   app.get('/api/debug/env', (req, res) => {
@@ -228,6 +277,14 @@ if (envConfig.DEBUG) {
 }
 
 const PORT = 5055;
+
+// ✅ Print startup banner before server starts
+const { printStartupBanner } = require('../lib/startupBanner.cjs');
+printStartupBanner({
+  port: PORT,
+  nodeEnv: envConfig.NODE_ENV,
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 Server is running on http://localhost:${PORT}`);
 });
