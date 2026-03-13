@@ -9,6 +9,14 @@ type SignalRow = {
   id: string;
   createdAt: Date;
   text: string;
+  title: string | null;
+  type: string | null;
+  content: string | null;
+  mediaType: string | null;
+  mediaUrl: string | null;
+  locationTag: string | null;
+  tags: unknown;
+  discussionEnabled: boolean;
   status: 'APPROVED' | 'HELD' | 'REJECTED';
   isSystem: boolean;
   isAnonymous: boolean;
@@ -55,12 +63,15 @@ export default async function SignalRoomPage() {
   try {
     signals = await prisma.signal.findMany({
       where: {
-        status: 'APPROVED',
+        AND: [
+          { status: 'APPROVED' },
+          { OR: [{ publishStatus: 'PUBLISHED' }, { publishStatus: null }] },
+        ],
       },
       orderBy: {
         createdAt: 'desc',
       },
-      take: 50,
+      take: 20,
       include: {
         user: {
           select: {
@@ -139,6 +150,14 @@ export default async function SignalRoomPage() {
   const signalsData = signals.map((signal) => ({
     id: signal.id,
     text: signal.text,
+    title: signal.title ?? null,
+    type: signal.type ?? null,
+    content: signal.content ?? null,
+    mediaType: signal.mediaType ?? null,
+    mediaUrl: signal.mediaUrl ?? null,
+    locationTag: signal.locationTag ?? null,
+    tags: signal.tags ?? null,
+    discussionEnabled: signal.discussionEnabled ?? true,
     isSystem: signal.isSystem,
     createdAt: signal.createdAt,
     userEmail: signal.user?.email || null,

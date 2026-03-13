@@ -1,6 +1,7 @@
 // agnes-next/src/lib/email/associateCommission.ts
 
 import mailchimp from '@mailchimp/mailchimp_transactional';
+import { shouldSendTransactionalEmails } from '@/lib/emailConfig';
 
 type AssociateCommissionEmailParams = {
   referrerEmail: string;
@@ -31,6 +32,11 @@ function formatCentsToDollars(cents: number): string {
 export async function sendAssociateCommissionEmail(
   params: AssociateCommissionEmailParams
 ): Promise<void> {
+  if (!shouldSendTransactionalEmails()) {
+    console.log('[ASSOCIATE_COMMISSION] Skipping email (TRANSACTIONAL_EMAIL_ENABLED not set)');
+    return;
+  }
+
   const client = getClient();
   if (!client) {
     console.warn('[ASSOCIATE_COMMISSION] Mailchimp not configured, skipping email');
@@ -173,17 +179,18 @@ export async function sendAssociateCommissionEmail(
       totalFriendsConverted,
     });
 
-    // Apply global test contest banner
+    // Apply global test contest banner (includes subject prefix)
     const { applyGlobalEmailBanner } = await import('@/lib/emailBanner');
-    const { html: htmlWithBanner, text: textWithBanner } = applyGlobalEmailBanner({
+    const { html: htmlWithBanner, text: textWithBanner, subject: finalSubject } = applyGlobalEmailBanner({
       html: htmlBody,
       text: textBody,
+      subject,
     });
 
     await client.messages.send({
       message: {
         from_email: fromEmail,
-        subject,
+        subject: finalSubject ?? subject,
         to: toList,
         text: textWithBanner,
         html: htmlWithBanner,

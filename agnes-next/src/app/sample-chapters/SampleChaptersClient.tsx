@@ -3,8 +3,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { useSafeBack } from '@/lib/nav';
-import { readContestEmail } from '@/lib/identity';
 import { BuyBookButton } from '@/components/BuyBookButton';
 import HelpButton from '@/components/HelpButton';
 
@@ -23,8 +21,6 @@ export default function SampleChaptersClient() {
   const rightVideoRef = useRef<HTMLIFrameElement>(null);
   const leftPlayerRef = useRef<any>(null);
   const rightPlayerRef = useRef<any>(null);
-  const goBack = useSafeBack('/contest');
-
   // Preserve referral code from URL to localStorage/cookie (if not already stored)
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -323,6 +319,19 @@ export default function SampleChaptersClient() {
         minHeight: '100vh',
       }}
     >
+      <div style={{ paddingTop: '20px', marginBottom: '0.5rem' }}>
+        <Link
+          href="/contest"
+          style={{
+            color: '#00ffe5',
+            textDecoration: 'none',
+            fontSize: '0.95em',
+            display: 'inline-block',
+          }}
+        >
+          ← Back to Contest Hub
+        </Link>
+      </div>
       <h1 style={{ marginTop: '20px', fontSize: '1.6em' }}>
         Explore Sample Chapters from <em>The Agnes Protocol</em>
       </h1>
@@ -444,9 +453,8 @@ export default function SampleChaptersClient() {
             <span style={{ marginLeft: '12px', fontSize: '1.2em' }}>👉</span>
           )}
         </BuyBookButton>
-        <button
-          type="button"
-          onClick={goBack}
+        <Link
+          href="/contest"
           style={{
             padding: '10px 14px',
             border: '2px solid #00ffe5',
@@ -460,11 +468,11 @@ export default function SampleChaptersClient() {
             alignItems: 'center',
             justifyContent: 'center',
             fontSize: '16px',
-            cursor: 'pointer',
+            textDecoration: 'none',
           }}
         >
-          Go Back
-        </button>
+          Back to Contest Hub
+        </Link>
       </div>
 
       {/* PULSE KEYFRAMES */}

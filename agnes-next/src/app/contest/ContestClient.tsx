@@ -7,7 +7,6 @@ import CheckoutWiring from './CheckoutWiring'; // ← invisible helper that wire
 import CurrentScoreButton from './CurrentScoreButton';
 import { BuyBookButton } from '@/components/BuyBookButton';
 import { ContestEntryForm } from '@/components/ContestEntryForm';
-import { startCheckout } from '@/lib/checkout';
 import HelpButton from '@/components/HelpButton';
 import {
   clearAssociateCaches,
@@ -19,6 +18,7 @@ import {
   type AssociateCache,
 } from '@/lib/identity';
 import RequestAccessModal from '@/components/auth/RequestAccessModal';
+import BetaContestRules from '@/components/BetaContestRules';
 
 declare global {
   interface Window {
@@ -26,6 +26,15 @@ declare global {
     onYouTubeIframeAPIReady: () => void;
   }
 }
+
+const BANNER_MOTIVATIONAL = [
+  'Join the game. It takes less than 30 seconds.',
+  'Solve the mystery. Earn points. Climb the leaderboard.',
+  'Top players qualify for the 6-Day, 7-Night Family Vacation drawing.',
+  'Every signal earns points. Every point moves you closer.',
+  "You're already here. Join the game.",
+  "It's fun. Everyone is doing it.",
+];
 
 export default function ContestClient() {
   const qp = useSearchParams();
@@ -53,6 +62,19 @@ export default function ContestClient() {
   const [showIdentityBanner, setShowIdentityBanner] = useState(false);
   const [showYouTubeOverlay, setShowYouTubeOverlay] = useState(true);
   const [showRequestAccessModal, setShowRequestAccessModal] = useState(false);
+  const [liveStats, setLiveStats] = useState<{
+    playersExploring: number;
+    currentLeaderName: string | null;
+    currentLeaderPoints: number;
+    friendsSavedCents: number;
+    associateRewardsCents: number;
+    booksClaimed: number;
+  } | null>(null);
+  const [liveStatsHighlight, setLiveStatsHighlight] = useState<Set<string>>(new Set());
+  const [bannerIndex, setBannerIndex] = useState(0);
+  const [showTerminalUnlockPanel, setShowTerminalUnlockPanel] = useState(false);
+  const [terminalDiscoveryBannerActive, setTerminalDiscoveryBannerActive] = useState(false);
+  const [terminalDiscoveryJustAwarded, setTerminalDiscoveryJustAwarded] = useState<boolean | null>(null);
   const videoRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
 
@@ -80,6 +102,36 @@ export default function ContestClient() {
 
   // ---- MEMOS / EFFECTS / CALLBACKS (all hooks that use the above values go here) ----
   
+  // SPEC 3: Terminal discovery - when v=terminal, award bonus and show unlock panel
+  useEffect(() => {
+    const v = qp.get('v') || qp.get('variant');
+    if (v !== 'terminal') return;
+
+    setShowTerminalUnlockPanel(true);
+
+    // Mark terminal discovery complete so returning users get protocol/contest by default (not forced back to terminal)
+    try {
+      document.cookie = 'terminal_discovery_complete=1; path=/; max-age=' + (60 * 60 * 24 * 365) + '; SameSite=Lax';
+    } catch {
+      /* ignore */
+    }
+
+    fetch('/api/contest/terminal-discovery', {
+      method: 'POST',
+      credentials: 'include',
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        setTerminalDiscoveryJustAwarded(data?.awarded ?? false);
+        if (data?.awarded) {
+          setTerminalDiscoveryBannerActive(true);
+          setTimeout(() => setTerminalDiscoveryBannerActive(false), 2500);
+          window.dispatchEvent(new CustomEvent('contest:points-updated'));
+        }
+      })
+      .catch(() => {});
+  }, [qp]);
+
   // Handle fresh=1 param: clear identity storage before rendering
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -107,32 +159,6 @@ export default function ContestClient() {
     
     // No longer showing identity banner - proceed directly with greeting
   }, [qp]);
-
-  // Inject ticker animation CSS as fallback (ensures animation works)
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    
-    const styleId = 'contest-ticker-animation';
-    if (document.getElementById(styleId)) return; // Already injected
-    
-    const style = document.createElement('style');
-    style.id = styleId;
-    style.textContent = `
-      @keyframes ticker {
-        0% { transform: translateX(0); }
-        100% { transform: translateX(-100%); }
-      }
-      .ticker-text {
-        animation: ticker 20s linear infinite !important;
-      }
-    `;
-    document.head.appendChild(style);
-    
-    return () => {
-      const existing = document.getElementById(styleId);
-      if (existing) existing.remove();
-    };
-  }, []);
 
   // Handle email query param from IBM Terminal redirect - PRIORITY: set immediately
   // Use both useSearchParams() AND direct URL reading for reliability
@@ -425,6 +451,74 @@ export default function ContestClient() {
       setStatusLoading(false);
     };
   }, [contestEmail]);
+
+  // Live stats for Rock Concert Mode (read-only)
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/contest/live-stats', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled || !data?.ok) return;
+        setLiveStats({
+          playersExploring: data.playersExploring ?? 0,
+          currentLeaderName: data.currentLeaderName ?? null,
+          currentLeaderPoints: data.currentLeaderPoints ?? 0,
+          friendsSavedCents: data.friendsSavedCents ?? 0,
+          associateRewardsCents: data.associateRewardsCents ?? 0,
+          booksClaimed: data.booksClaimed ?? 0,
+        });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  // Poll live stats every 30s
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetch('/api/contest/live-stats', { cache: 'no-store' })
+        .then((res) => res.json())
+        .then((data) => {
+          if (!data?.ok) return;
+          setLiveStats((prev) => {
+            if (!prev) return {
+              playersExploring: data.playersExploring ?? 0,
+              currentLeaderName: data.currentLeaderName ?? null,
+              currentLeaderPoints: data.currentLeaderPoints ?? 0,
+              friendsSavedCents: data.friendsSavedCents ?? 0,
+              associateRewardsCents: data.associateRewardsCents ?? 0,
+              booksClaimed: data.booksClaimed ?? 0,
+            };
+            const next = {
+              playersExploring: data.playersExploring ?? 0,
+              currentLeaderName: data.currentLeaderName ?? null,
+              currentLeaderPoints: data.currentLeaderPoints ?? 0,
+              friendsSavedCents: data.friendsSavedCents ?? 0,
+              associateRewardsCents: data.associateRewardsCents ?? 0,
+              booksClaimed: data.booksClaimed ?? 0,
+            };
+            const toHighlight: string[] = [];
+            if (prev.playersExploring === 0 && next.playersExploring > 0) toHighlight.push('playersExploring');
+            if (prev.currentLeaderPoints === 0 && next.currentLeaderPoints > 0) toHighlight.push('currentLeaderPoints');
+            if (prev.friendsSavedCents === 0 && next.friendsSavedCents > 0) toHighlight.push('friendsSavedCents');
+            if (prev.associateRewardsCents === 0 && next.associateRewardsCents > 0) toHighlight.push('associateRewardsCents');
+            if (prev.booksClaimed === 0 && next.booksClaimed > 0) toHighlight.push('booksClaimed');
+            if (toHighlight.length > 0) {
+              setLiveStatsHighlight((p) => new Set([...p, ...toHighlight]));
+              setTimeout(() => {
+                setLiveStatsHighlight((p) => {
+                  const n = new Set(p);
+                  toHighlight.forEach((k) => n.delete(k));
+                  return n;
+                });
+              }, 600);
+            }
+            return next;
+          });
+        })
+        .catch(() => {});
+    }, 10000);
+    return () => clearInterval(interval);
+  }, []);
 
   // R6: Listen for contest:points-updated event to refresh join status immediately
   useEffect(() => {
@@ -779,6 +873,7 @@ export default function ContestClient() {
       {
         id: 'sampleBtn',
         label: 'Read Sample Chapters',
+        microPrompt: 'Explore the story',
         text: 'Tap here to read a sample chapter!',
         href: '/sample-chapters',
         type: 'link' as const,
@@ -786,6 +881,7 @@ export default function ContestClient() {
       {
         id: 'contestBtn',
         label: userHasJoinedContest ? 'See Your Progress' : 'Officially Enter (500 pts)',
+        microPrompt: userHasJoinedContest ? 'View your progress' : 'Start earning points',
         text: userHasJoinedContest ? 'View your contest score and progress' : 'You can win this for your family!',
         href: userHasJoinedContest ? '/contest/score' : '/contest/signup?from=/contest',
         type: 'link' as const,
@@ -793,6 +889,7 @@ export default function ContestClient() {
       {
         id: 'pointsBtn',
         label: 'Send Signal',
+        microPrompt: 'Send your first signal',
         text: 'Tap here to win points.',
         href: '/signal-room',
         type: 'link' as const,
@@ -800,6 +897,7 @@ export default function ContestClient() {
       {
         id: 'buyBtn',
         label: 'Buy the Book',
+        microPrompt: 'Own the book',
         text: 'The adventure’s great—and you’re already living it.',
         type: 'button' as const,
       },
@@ -816,6 +914,38 @@ export default function ContestClient() {
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, buttons]);
+
+  // Dynamic banner messages: motivational + live metrics (only when > 0)
+  const bannerMessages = useMemo(() => {
+    const msgs = [...BANNER_MOTIVATIONAL];
+    if (liveStats) {
+      if (liveStats.currentLeaderPoints > 0 && liveStats.currentLeaderName) {
+        msgs.push(`⚡ Current leader: ${liveStats.currentLeaderName} — ${liveStats.currentLeaderPoints.toLocaleString()} pts`);
+      }
+      if (liveStats.playersExploring > 0) {
+        msgs.push(`⚡ ${liveStats.playersExploring} players exploring the system`);
+      }
+      if (liveStats.friendsSavedCents > 0) {
+        msgs.push(`⚡ Friends have saved $${(liveStats.friendsSavedCents / 100).toFixed(0)} through shared links`);
+      }
+      if (liveStats.associateRewardsCents > 0) {
+        msgs.push(`⚡ Associate publishers have earned $${(liveStats.associateRewardsCents / 100).toFixed(0)} in rewards`);
+      }
+      if (liveStats.booksClaimed > 0) {
+        msgs.push(`⚡ ${liveStats.booksClaimed} books claimed through the system`);
+      }
+    }
+    return msgs;
+  }, [liveStats]);
+
+  // Banner rotation: 2.5s per message, smooth fade
+  useEffect(() => {
+    if (bannerMessages.length === 0) return;
+    const interval = setInterval(() => {
+      setBannerIndex((prev) => (prev + 1) % bannerMessages.length);
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [bannerMessages.length]);
 
   const handleChangeAccount = useCallback(async () => {
     try {
@@ -847,35 +977,16 @@ export default function ContestClient() {
     const storedUserCode = typeof window !== 'undefined' ? localStorage.getItem('contest_user_code') : null;
     const hasIdentity = !!(contestEmail || storedEmail || storedUserId || storedUserCode);
     
-    console.log('[contest] EnterContest click', { 
-      hasIdentity, 
-      contestEmail, 
-      storedEmail, 
-      storedUserId, 
-      storedUserCode 
-    });
-    
     // If user has joined the contest, go to score page
     if (hasIdentity && statusLoaded && userHasJoinedContest) {
       router.push('/contest/score');
       return;
     }
     
-    // If user has identity but hasn't joined yet, route normally
-    if (hasIdentity && statusLoaded) {
-      router.push(href);
-      return;
-    }
-    
-    // New user → show entry form
-    setShowEntryFormForCheckout(true);
-    // Scroll form into view
-    setTimeout(() => {
-      const formElement = document.querySelector('[data-contest-entry-form]');
-      if (formElement) {
-        formElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    }, 100);
+    // All other cases: navigate to dedicated entry route (replaces hub; no inline form)
+    // - Has identity but not joined: /contest/signup?from=/contest
+    // - New user: same route — dedicated page, no hub media carryover
+    router.push(href);
   };
 
   const handleRequireContestEntry = useCallback(() => {
@@ -889,18 +1000,17 @@ export default function ContestClient() {
     }, 100);
   }, []);
 
-  const handleContestEntryCompletedFromBuy = useCallback(async () => {
-    try {
-      const path = typeof window !== 'undefined' ? window.location.pathname : '/contest';
-      await startCheckout({
-        source: 'contest',
-        path,
-        successPath: '/contest/thank-you',
-        cancelPath: '/contest',
-      });
-    } catch (err: any) {
-      alert(err?.message || 'Could not start checkout.');
-    }
+  const handleContestEntryCompletedFromBuy = useCallback(() => {
+    setShowEntryFormForCheckout(false);
+    // User returns to Contest Hub; they can click Buy again when ready
+  }, []);
+
+  const handleCloseTerminalUnlock = useCallback(() => {
+    setShowTerminalUnlockPanel(false);
+    const url = new URL(window.location.href);
+    url.searchParams.delete('v');
+    url.searchParams.delete('variant');
+    window.history.replaceState({}, '', url.pathname + (url.search || ''));
   }, []);
 
   return (
@@ -917,6 +1027,66 @@ export default function ContestClient() {
         paddingBottom: '4rem', // leave room for ticker
       }}
     >
+      {/* SPEC 3: Terminal discovery unlock panel */}
+      {showTerminalUnlockPanel && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0,0,0,0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2000,
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: 'rgba(0, 20, 30, 0.95)',
+              border: '2px solid #00ffe0',
+              borderRadius: 12,
+              padding: '2rem',
+              maxWidth: 420,
+              textAlign: 'center',
+              boxShadow: '0 0 24px rgba(0, 255, 224, 0.3)',
+            }}
+          >
+            <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#00ffe0', marginBottom: '1rem' }}>
+              ⚡ TERMINAL ACCESS DETECTED
+            </div>
+            <p style={{ color: '#d1d5db', marginBottom: '0.75rem', lineHeight: 1.5 }}>
+              You discovered a hidden system entry point.
+            </p>
+            <p style={{ color: '#00ffe0', fontWeight: 600, marginBottom: '0.75rem' }}>
+              {terminalDiscoveryJustAwarded === true
+                ? '+250 bonus points awarded.'
+                : terminalDiscoveryJustAwarded === false
+                ? 'You already received this bonus.'
+                : '+250 bonus points awarded.'}
+            </p>
+            <p style={{ color: '#9ca3af', fontSize: '0.9rem', marginBottom: '1.5rem', lineHeight: 1.5 }}>
+              Keep exploring. Not everything in the system is obvious.
+            </p>
+            <button
+              type="button"
+              onClick={handleCloseTerminalUnlock}
+              style={{
+                padding: '0.75rem 2rem',
+                backgroundColor: '#00ffe0',
+                color: '#000',
+                fontWeight: 600,
+                border: 'none',
+                borderRadius: 8,
+                cursor: 'pointer',
+                fontSize: '1rem',
+              }}
+            >
+              Continue
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* VIDEO SEGMENT */}
       <div style={{ width: '100%', height: '65vh', position: 'relative', overflow: 'hidden' }}>
         <div
@@ -984,9 +1154,101 @@ export default function ContestClient() {
               return 'Explorer';
             })()}.
           </h2>
+          <p style={{ fontSize: '1.1rem', fontWeight: 700, color: '#00ffe0', marginBottom: '0.5rem', textShadow: '0 0 8px rgba(0, 255, 224, 0.5)' }}>
+            WIN A 6-DAY • 7-NIGHT FAMILY VACATION
+          </p>
           <p style={{ fontSize: '1rem', color: '#9ca3af' }}>
             You're in. Let's play.
           </p>
+          {process.env.NEXT_PUBLIC_STRESS_TEST_MODE === '1' && (
+            <p style={{ fontSize: '0.8rem', color: 'rgba(156, 163, 175, 0.8)', marginTop: '0.25rem' }}>
+              Public Stress Test Active — simulation only
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* LIVE CONTEST STATUS PANEL */}
+      {liveStats && (
+        <div
+          style={{
+            marginTop: '1rem',
+            marginBottom: '0.5rem',
+            padding: '1rem 1.25rem',
+            backgroundColor: 'rgba(0, 255, 224, 0.05)',
+            border: '1px solid rgba(0, 255, 224, 0.25)',
+            borderRadius: '0.5rem',
+            maxWidth: '600px',
+            marginLeft: 'auto',
+            marginRight: 'auto',
+            textAlign: 'left',
+          }}
+        >
+          <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#00ffe0', marginBottom: '0.75rem' }}>
+            ⚡ LIVE CONTEST STATUS
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.9rem', color: '#d1d5db' }}>
+            {liveStats.playersExploring > 0 && (
+              <div
+                style={{
+                  transition: 'all 0.3s ease',
+                  ...(liveStatsHighlight.has('playersExploring')
+                    ? { color: '#00ffe0', textShadow: '0 0 8px rgba(0, 255, 224, 0.6)', animation: 'liveStatPulse 0.6s ease' }
+                    : {}),
+                }}
+              >
+                {liveStats.playersExploring} players exploring the system
+              </div>
+            )}
+            {liveStats.currentLeaderPoints > 0 && liveStats.currentLeaderName && (
+              <div
+                style={{
+                  transition: 'all 0.3s ease',
+                  ...(liveStatsHighlight.has('currentLeaderPoints')
+                    ? { color: '#00ffe0', textShadow: '0 0 8px rgba(0, 255, 224, 0.6)', animation: 'liveStatPulse 0.6s ease' }
+                    : {}),
+                }}
+              >
+                Current leader: {liveStats.currentLeaderName} — {liveStats.currentLeaderPoints.toLocaleString()} pts
+              </div>
+            )}
+            {liveStats.friendsSavedCents > 0 && (
+              <div
+                style={{
+                  transition: 'all 0.3s ease',
+                  ...(liveStatsHighlight.has('friendsSavedCents')
+                    ? { color: '#00ffe0', textShadow: '0 0 8px rgba(0, 255, 224, 0.6)', animation: 'liveStatPulse 0.6s ease' }
+                    : {}),
+                }}
+              >
+                Friends saved so far: ${(liveStats.friendsSavedCents / 100).toFixed(0)}
+              </div>
+            )}
+            {liveStats.associateRewardsCents > 0 && (
+              <div
+                style={{
+                  transition: 'all 0.3s ease',
+                  ...(liveStatsHighlight.has('associateRewardsCents')
+                    ? { color: '#00ffe0', textShadow: '0 0 8px rgba(0, 255, 224, 0.6)', animation: 'liveStatPulse 0.6s ease' }
+                    : {}),
+                }}
+              >
+                Associate rewards earned: ${(liveStats.associateRewardsCents / 100).toFixed(0)}
+              </div>
+            )}
+            {liveStats.booksClaimed > 0 && (
+              <div
+                style={{
+                  transition: 'all 0.3s ease',
+                  ...(liveStatsHighlight.has('booksClaimed')
+                    ? { color: '#00ffe0', textShadow: '0 0 8px rgba(0, 255, 224, 0.6)', animation: 'liveStatPulse 0.6s ease' }
+                    : {}),
+                }}
+              >
+                Books claimed: {liveStats.booksClaimed}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1062,6 +1324,9 @@ export default function ContestClient() {
           <div style={{ fontSize: '1.2rem', fontWeight: 600, marginBottom: '0.5rem', color: '#00ffe0', textShadow: '0 0 8px rgba(0, 255, 224, 0.5)' }}>
             Welcome, friend.
           </div>
+          <div style={{ fontSize: '1rem', fontWeight: 700, color: '#00ffe0', marginBottom: '0.5rem', textShadow: '0 0 6px rgba(0, 255, 224, 0.4)' }}>
+            WIN A 6-DAY • 7-NIGHT FAMILY VACATION
+          </div>
           <div style={{ fontSize: '0.9rem', color: '#d1d5db', lineHeight: '1.5' }}>
             You&apos;re new here — enjoy your stay. When you&apos;re ready, you can enter the contest anytime.
           </div>
@@ -1088,6 +1353,16 @@ export default function ContestClient() {
             minWidth: '160px', // E1: Minimum width for readability
             maxWidth: '100%', // E1: Don't exceed container
           }}>
+            <div
+              style={{
+                fontSize: '0.75rem',
+                color: '#9ca3af',
+                marginBottom: '0.35rem',
+                minHeight: '1.2em',
+              }}
+            >
+              {btn.microPrompt}
+            </div>
             {index === current && (
               <>
                 <div
@@ -1218,48 +1493,51 @@ export default function ContestClient() {
         </div>
       )}
 
-      {/* TICKER BANNER */}
-      <div
-        style={{
-          backgroundColor: 'red',
-          color: 'white',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          position: 'fixed',
-          bottom: 0,
-          width: '100%',
-          padding: '0.5rem',
-          fontWeight: 'bold',
-          zIndex: 1000,
+      {/* DYNAMIC RUNNING BANNER: motivation + live metrics, 2–3s rotation, smooth fade */}
+      {bannerMessages.length > 0 && (
+        <div
+          style={{
+            backgroundColor: 'rgba(0, 255, 224, 0.12)',
+            borderTop: '1px solid rgba(0, 255, 224, 0.3)',
+            color: '#00ffe0',
+            position: 'fixed',
+            bottom: 0,
+            width: '100%',
+            padding: '0.6rem 1rem',
+            fontWeight: 600,
+            zIndex: 1000,
+            textAlign: 'center',
+            minHeight: 44,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
         }}
       >
-        <span
-          className="ticker-text"
+        <p
+          key={bannerIndex}
           style={{
-            display: 'inline-block',
-            paddingLeft: '100%',
-            animation: 'ticker 20s linear infinite',
+            margin: 0,
+            fontSize: '0.95rem',
+            animation: 'contestBannerFade 0.5s ease',
           }}
         >
-          Agnes Protocol tops banned book list – again • Jody Vernon breaks silence in viral
-          interview • New points leader: Billy Bronski – 1,340 pts • Tapsy declares: “This book
-          changes everything” • Enter to win the 6-day dream vacation NOW!
-        </span>
+          {terminalDiscoveryBannerActive
+            ? '⚡ Hidden terminal discovered — bonus points awarded'
+            : bannerMessages[bannerIndex]}
+        </p>
       </div>
+      )}
 
       {/* ANIMATIONS */}
       <style jsx global>{`
-        @keyframes ticker {
-          0% {
-            transform: translateX(0);
-          }
-          100% {
-            transform: translateX(-100%);
-          }
+        @keyframes contestBannerFade {
+          from { opacity: 0; }
+          to { opacity: 1; }
         }
-        
-        .ticker-text {
-          animation: ticker 20s linear infinite !important;
+        @keyframes liveStatPulse {
+          0% { opacity: 1; box-shadow: 0 0 0 rgba(0, 255, 224, 0); }
+          50% { opacity: 1; box-shadow: 0 0 12px rgba(0, 255, 224, 0.5); }
+          100% { opacity: 1; box-shadow: 0 0 0 rgba(0, 255, 224, 0); }
         }
         @keyframes pulse {
           0% { box-shadow: 0 0 5px lime; }
@@ -1271,6 +1549,20 @@ export default function ContestClient() {
           50% { transform: translateX(-50%) translateY(-5px); }
         }
       `}</style>
+
+      {/* SPEC 4: Beta Contest Rules footer during public stress test */}
+      {process.env.NEXT_PUBLIC_STRESS_TEST_MODE === '1' && (
+        <div style={{
+          marginTop: '2rem',
+          marginBottom: '1rem',
+          padding: '0 1.5rem',
+          maxWidth: '600px',
+          marginLeft: 'auto',
+          marginRight: 'auto',
+        }}>
+          <BetaContestRules variant="compact" />
+        </div>
+      )}
 
       {/* Invisible behavior: wires Buy button to checkout */}
       <CheckoutWiring />

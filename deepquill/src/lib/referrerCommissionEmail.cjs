@@ -54,7 +54,7 @@ function buildReferrerCommissionEmail({ referrerEmail, referrerCode, buyerName, 
   const buyerDisplayName = buyerName || 'someone';
   
   const subject = pointsEarned > 0 
-    ? `${buyerDisplayName} purchased The Agnes Protocol (${productLabel})`
+    ? `You just earned rewards from a Protocol purchase 🎉`
     : `Your friend purchased — here's what happened`;
   
   // Build points messaging based on award result

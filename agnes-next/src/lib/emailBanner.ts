@@ -1,26 +1,19 @@
 // agnes-next/src/lib/emailBanner.ts
 // Global test contest banner injection for all emails
+// Controlled by STRESS_TEST_MODE or EMAIL_CONTEST_BANNER (see emailConfig.ts)
 
-const EMAIL_CONTEST_BANNER = process.env.EMAIL_CONTEST_BANNER === '1';
-const EMAIL_CONTEST_BANNER_MODE = process.env.EMAIL_CONTEST_BANNER_MODE || 'test';
+import { shouldApplyEmailTestBanner } from './emailConfig';
 
-// HTML banner (inline styles, email-safe)
+// Short, tasteful banner — not dominate
 const BANNER_HTML = `
-<div style="background-color: #1a1a1a; border: 2px solid #00ff7f; padding: 16px 20px; margin-bottom: 24px; font-family: Arial, Helvetica, sans-serif;">
-  <h2 style="margin: 0 0 12px 0; color: #00ff7f; font-size: 18px; font-weight: bold;">TEST CONTEST ACTIVE</h2>
-  <p style="margin: 0 0 8px 0; color: #f5f5f5; font-size: 14px; line-height: 1.5;">You can win cash & prizes.</p>
-  <p style="margin: 0 0 8px 0; color: #f5f5f5; font-size: 14px; line-height: 1.5;">Stripe Test Mode — no real charges.</p>
-  <p style="margin: 0 0 8px 0; color: #f5f5f5; font-size: 14px; line-height: 1.5;">Use test card: <code style="background-color: #2a2a2a; padding: 2px 6px; border-radius: 3px; font-family: monospace;">4242 4242 4242 4242</code></p>
-  <p style="margin: 0; color: #d0d0d0; font-size: 13px; line-height: 1.5;">If you experience any issues while testing the site, forward details to <a href="mailto:hello@theagnesprotocol.com" style="color: #00ff7f; text-decoration: underline;">hello@theagnesprotocol.com</a></p>
-</div>
-<div style="margin-bottom: 24px; text-align: center; color: #999; font-size: 12px;">—</div>
+<p style="margin: 0 0 16px 0; padding: 12px 16px; background-color: #f8f9fa; border-left: 4px solid #6c757d; font-size: 13px; line-height: 1.5; color: #495057; font-family: Arial, Helvetica, sans-serif;">
+  Public beta stress test: purchases are simulated. No real charges or deliveries will occur.
+</p>
 `;
 
 // Plain text banner
-const BANNER_TEXT = `[TEST CONTEST ACTIVE] You can win cash & prizes.
-Stripe TEST MODE — no real charges. Use test card 4242 4242 4242 4242.
-Issues? Forward details to hello@theagnesprotocol.com
----
+const BANNER_TEXT = `Public beta stress test: purchases are simulated. No real charges or deliveries will occur.
+
 `;
 
 export interface ApplyBannerParams {
@@ -40,14 +33,14 @@ export interface ApplyBannerResult {
  */
 export function applyGlobalEmailBanner({ html, text, subject }: ApplyBannerParams): ApplyBannerResult {
   // If banner is disabled, return unchanged
-  if (!EMAIL_CONTEST_BANNER) {
+  if (!shouldApplyEmailTestBanner()) {
     return { html, text, subject };
   }
 
   // Guard against double-injection
-  const hasBannerMarker = 
-    (html && html.includes('TEST CONTEST ACTIVE')) ||
-    (text && text.includes('[TEST CONTEST ACTIVE]'));
+  const hasBannerMarker =
+    (html && (html.includes('Public beta stress test') || html.includes('PUBLIC STRESS TEST ACTIVE') || html.includes('PUBLIC BETA TEST'))) ||
+    (text && (text.includes('Public beta stress test') || text.includes('[PUBLIC BETA TEST]')));
 
   if (hasBannerMarker) {
     console.log('[emailBanner] Banner already present, skipping injection');
@@ -66,9 +59,9 @@ export function applyGlobalEmailBanner({ html, text, subject }: ApplyBannerParam
     result.text = BANNER_TEXT + '\n\n' + text;
   }
 
-  // Add [TEST CONTEST] prefix to subject if not already present
-  if (subject && !subject.includes('[TEST CONTEST]')) {
-    result.subject = `[TEST CONTEST] ${subject}`;
+  // Add [PUBLIC BETA TEST] prefix to subject if not already present
+  if (subject && !subject.includes('[PUBLIC BETA TEST]') && !subject.includes('[PUBLIC STRESS TEST]') && !subject.includes('[TEST CONTEST]')) {
+    result.subject = `[PUBLIC BETA TEST] ${subject}`;
   }
 
   return result;

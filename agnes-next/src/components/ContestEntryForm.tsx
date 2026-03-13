@@ -1,6 +1,15 @@
 'use client';
 
 import { FormEvent, useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react';
+
+const MOTIVATIONAL_LINES = [
+  'Join the game. It takes less than 30 seconds.',
+  'Solve the mystery. Earn points. Climb the leaderboard.',
+  'Top players qualify for the 6-Day, 7-Night Family Vacation drawing.',
+  'Every signal earns points. Every point moves you closer.',
+  "You're already here. Join the game.",
+  "It's fun. Everyone is doing it.",
+];
 import { useRouter } from 'next/navigation';
 import {
   clearAssociateCaches,
@@ -48,6 +57,16 @@ export function ContestEntryForm({
   const [contestEmail, setContestEmail] = useState<string | null>(null);
   const [contestEmailOverride, setContestEmailOverride] = useState<string | null>(null);
   const [associateCache, setAssociateCache] = useState<AssociateCache | null>(null);
+  const [bannerIndex, setBannerIndex] = useState(0);
+  const [betaAcknowledged, setBetaAcknowledged] = useState(false);
+
+  // Motivational banner: slow rotation, 2–3 seconds between messages
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setBannerIndex((prev) => (prev + 1) % MOTIVATIONAL_LINES.length);
+    }, 2500);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleChangeAccount = useCallback(() => {
     clearAssociateCaches();
@@ -107,15 +126,19 @@ export function ContestEntryForm({
     return normalizedFormEmail !== normalizedContestEmail;
   }, [effectiveContestEmail, form.email]);
 
+  const stressTestMode = process.env.NEXT_PUBLIC_STRESS_TEST_MODE === '1';
   const canSubmit = useMemo(() => {
     const emailValid = /.+@.+/.test(form.email.trim());
-    return (
+    const baseValid =
       form.firstName.trim().length > 0 &&
       form.lastName.trim().length > 0 &&
       emailValid &&
-      !emailMismatch
-    );
-  }, [form, emailMismatch]);
+      !emailMismatch;
+    if (stressTestMode) {
+      return baseValid && betaAcknowledged;
+    }
+    return baseValid;
+  }, [form, emailMismatch, stressTestMode, betaAcknowledged]);
 
   const onChange = (key: keyof FormState) => (e: ChangeEvent<HTMLInputElement>) => {
     setForm((prev) => ({ ...prev, [key]: e.target.value }));
@@ -376,10 +399,23 @@ export function ContestEntryForm({
         ...style,
       }}
     >
-      <h1 style={{ fontSize: '2rem', fontWeight: 700, marginBottom: '0.5rem' }}>Enter the Contest</h1>
+      <h1 style={{ fontSize: '2rem', fontWeight: 700, marginBottom: '0.5rem' }}>Enter to Win a 6-Day, 7-Night Family Vacation</h1>
       <p style={{ marginBottom: '1.5rem', color: '#cbd5f5' }}>
-        Join the crew, earn points, and unlock insider rewards.
+        Join the Agnes Protocol contest. Earn points, climb the leaderboard, and qualify for the vacation drawing.
       </p>
+      {process.env.NEXT_PUBLIC_STRESS_TEST_MODE === '1' && (
+        <div style={{
+          marginBottom: '1.5rem',
+          padding: '12px 16px',
+          background: 'rgba(0, 255, 127, 0.1)',
+          border: '1px solid rgba(0, 255, 127, 0.3)',
+          borderRadius: '8px',
+          fontSize: '14px',
+          color: '#a5b4fc',
+        }}>
+          <strong style={{ color: '#00ff7f' }}>PUBLIC STRESS TEST ACTIVE</strong> — Everything you see is a simulation. No real charges. No real deliveries. Your mission: try to break the system. <a href="mailto:hello@theagnesprotocol.com" style={{ color: '#00ff7f', textDecoration: 'underline' }}>Found a bug? Email hello@theagnesprotocol.com</a>
+        </div>
+      )}
       {effectiveContestEmail ? (
         <p
           style={{
@@ -547,6 +583,35 @@ export function ContestEntryForm({
         </div>
       </div>
 
+      {/* Motivational banner: slow rotation, smooth fade */}
+      <div
+        style={{
+          marginTop: '1.5rem',
+          padding: '1rem 1.25rem',
+          borderRadius: 12,
+          background: 'rgba(30, 41, 59, 0.6)',
+          border: '1px solid rgba(148, 163, 184, 0.2)',
+          minHeight: 52,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          transition: 'opacity 0.5s ease',
+        }}
+      >
+        <p
+          key={bannerIndex}
+          style={{
+            color: '#a5b4fc',
+            fontSize: '0.95rem',
+            margin: 0,
+            textAlign: 'center',
+            animation: 'contestBannerFade 0.5s ease',
+          }}
+        >
+          {MOTIVATIONAL_LINES[bannerIndex]}
+        </p>
+      </div>
+
       {error && (
         <div
           style={{
@@ -577,11 +642,52 @@ export function ContestEntryForm({
         </div>
       )}
 
+      {/* SPEC: Required beta acknowledgment during stress test */}
+      {stressTestMode && (
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '12px',
+            marginTop: '1.5rem',
+            marginBottom: '1rem',
+            cursor: 'pointer',
+            color: '#cbd5f5',
+            fontSize: '0.9rem',
+            lineHeight: 1.5,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={betaAcknowledged}
+            onChange={(e) => setBetaAcknowledged(e.target.checked)}
+            style={{ marginTop: '4px', flexShrink: 0 }}
+          />
+          <span>
+            I understand this is a public beta stress test. All purchases are simulated and no real deliveries will occur. I have read the{' '}
+            <a
+              href="/contest/beta-rules"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: '#00ff7f', textDecoration: 'underline' }}
+            >
+              Beta Test Rules
+            </a>
+            .
+          </span>
+        </label>
+      )}
+
+      {/* Quick completion reassurance */}
+      <p style={{ marginTop: '1.5rem', marginBottom: 0, color: '#94a3b8', fontSize: '0.9rem', textAlign: 'center' }}>
+        Join the game. It takes less than 30 seconds.
+      </p>
+
       <button
         type="submit"
         disabled={!canSubmit || submitting}
         style={{
-          marginTop: '2rem',
+          marginTop: '1rem',
           width: '100%',
           padding: '0.95rem 1.25rem',
           borderRadius: 999,
@@ -598,6 +704,18 @@ export function ContestEntryForm({
       >
         {submitting ? 'Saving…' : 'Officially Enter (500 pts)'}
       </button>
+
+      {/* Legal line */}
+      <p style={{ marginTop: '1.5rem', marginBottom: 0, color: '#64748b', fontSize: '0.8rem', textAlign: 'center' }}>
+        No purchase necessary. Void where prohibited.
+      </p>
+
+      <style jsx global>{`
+        @keyframes contestBannerFade {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+      `}</style>
     </form>
   );
 }

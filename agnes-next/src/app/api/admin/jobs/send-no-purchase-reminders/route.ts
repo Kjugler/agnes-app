@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { buildNoPurchaseReminderEmail } from '@/lib/email/noPurchaseReminder';
+import { shouldSendTransactionalEmails } from '@/lib/emailConfig';
 import mailchimp from '@mailchimp/mailchimp_transactional';
 import { getSiteUrl } from '@/lib/getSiteUrl';
 
@@ -18,6 +19,15 @@ function getEmailClient() {
 
 export async function GET(req: NextRequest) {
   try {
+    if (!shouldSendTransactionalEmails()) {
+      return NextResponse.json({
+        ok: true,
+        skipped: true,
+        reason: 'TRANSACTIONAL_EMAIL_ENABLED not set',
+        sentCount: 0,
+      });
+    }
+
     const client = getEmailClient();
     if (!client) {
       return NextResponse.json(
@@ -78,15 +88,15 @@ export async function GET(req: NextRequest) {
           journalUrl: `${BASE_URL}/journal`, // Placeholder
         });
 
-        // Apply global test contest banner
+        // Apply global test contest banner (includes subject prefix)
         const { applyGlobalEmailBanner } = await import('@/lib/emailBanner');
-        const { html: htmlWithBanner } = applyGlobalEmailBanner({ html });
+        const { html: htmlWithBanner, subject: finalSubject } = applyGlobalEmailBanner({ html, subject });
 
         // Send email via Mailchimp Transactional
         await client.messages.send({
           message: {
             from_email: fromEmail,
-            subject,
+            subject: finalSubject ?? subject,
             to: [{ email: user.email, type: 'to' }],
             html: htmlWithBanner,
             headers: {

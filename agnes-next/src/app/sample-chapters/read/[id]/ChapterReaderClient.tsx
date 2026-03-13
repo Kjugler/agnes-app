@@ -1,7 +1,6 @@
 'use client';
 
-import React, { useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import React from 'react';
 import Link from 'next/link';
 import { getChapter, isValidChapterId } from '../../chapters';
 
@@ -10,13 +9,7 @@ interface ChapterReaderClientProps {
 }
 
 export default function ChapterReaderClient({ chapterId }: ChapterReaderClientProps) {
-  const router = useRouter();
-  
   const chapter = getChapter(chapterId);
-  
-  const handleBack = useCallback(() => {
-    router.push('/sample-chapters');
-  }, [router]);
 
   if (!chapter || !isValidChapterId(chapterId)) {
     return (
@@ -77,23 +70,30 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
           borderBottom: '1px solid rgba(0, 255, 229, 0.2)',
         }}
       >
-        <button
-          type="button"
-          onClick={handleBack}
-          aria-label="Go back"
-          style={{
-            background: 'transparent',
-            border: '1px solid rgba(0, 255, 229, 0.5)',
-            color: '#00ffe5',
-            padding: '8px 16px',
-            fontSize: 14,
-            fontFamily: 'inherit',
-            cursor: 'pointer',
-            borderRadius: 6,
-          }}
-        >
-          ← Back
-        </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-start' }}>
+          <Link
+            href="/sample-chapters"
+            style={{
+              color: '#00ffe5',
+              fontSize: 14,
+              fontFamily: 'inherit',
+              textDecoration: 'none',
+            }}
+          >
+            ← Back to Sample Chapters
+          </Link>
+          <Link
+            href="/contest"
+            style={{
+              color: '#00ffe5',
+              fontSize: 14,
+              fontFamily: 'inherit',
+              textDecoration: 'none',
+            }}
+          >
+            ← Back to Contest Hub
+          </Link>
+        </div>
         
         <span
           style={{

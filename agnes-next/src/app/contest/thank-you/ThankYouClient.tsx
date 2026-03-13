@@ -245,6 +245,19 @@ export default function ThankYouClient({ sessionId }: ThankYouClientProps) {
   // Render product details and verification status
   return (
     <div style={{ textAlign: 'center' }}>
+      {process.env.NEXT_PUBLIC_STRESS_TEST_MODE === '1' && (
+        <div style={{
+          marginBottom: '20px',
+          padding: '12px 16px',
+          background: 'rgba(0, 255, 127, 0.1)',
+          border: '1px solid rgba(0, 255, 127, 0.3)',
+          borderRadius: '8px',
+          fontSize: '14px',
+          color: 'rgba(245, 245, 245, 0.9)',
+        }}>
+          <strong style={{ color: '#00ff7f' }}>PUBLIC STRESS TEST ACTIVE</strong> — Everything you see is a simulation. No real charges. No real deliveries. <a href="mailto:hello@theagnesprotocol.com" style={{ color: '#00ff7f', textDecoration: 'underline' }}>Found a bug? Email hello@theagnesprotocol.com</a>
+        </div>
+      )}
       {/* Product type */}
       {sessionData?.productType && (
         <div

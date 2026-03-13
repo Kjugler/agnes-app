@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const nodemailer = require('nodemailer');
 const { prisma } = require('../prisma.cjs');
+const { applyGlobalEmailBanner } = require('../../src/lib/emailBanner.cjs');
 const { normalizeEmail } = require('../../src/lib/normalize.cjs');
 const { normalizeReferralCode } = require('../../src/lib/normalize.cjs');
 const { ensureDatabaseUrl } = require('../prisma.cjs');
@@ -237,13 +238,15 @@ router.post('/', async (req, res) => {
         // Inject version stamp at the top of body
         const html = `<p style="font-size: 10px; color: #999;">Template: ${REFERRAL_TEMPLATE_VERSION}</p>\n${baseHtml}`;
 
+        const { html: finalHtml, subject: finalSubject } = applyGlobalEmailBanner({ html, subject });
+
         // Log template version before sending (proves which code ran)
         console.log("[REFER-FRIEND] Using template", REFERRAL_TEMPLATE_VERSION, {
           to: email,
           referrerDisplayName,
           referralCode: code,
           videoId: vidId,
-          subject,
+          subject: finalSubject || subject,
         });
 
         // Use referrer name as "From" display name (fallback to DeepQuill LLC)
@@ -253,8 +256,8 @@ router.post('/', async (req, res) => {
         await transporter.sendMail({
           from: `"${fromDisplayName}" <${fromEmail}>`,
           to: email,
-          subject,
-          html,
+          subject: finalSubject || subject,
+          html: finalHtml || html,
           replyTo: MAILCHIMP_FROM_EMAIL || 'hello@theagnesprotocol.com'
         });
 

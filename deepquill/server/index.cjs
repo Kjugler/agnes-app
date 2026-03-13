@@ -232,6 +232,16 @@ const contestScoreHandler = require('../api/contest/score.cjs');
 app.get('/api/contest/score', contestScoreHandler);
 console.log('✅ Mounted /api/contest/score');
 
+// Contest live stats (read-only aggregates for Rock Concert Mode)
+const contestLiveStatsHandler = require('../api/contest/liveStats.cjs');
+app.get('/api/contest/live-stats', contestLiveStatsHandler);
+console.log('✅ Mounted /api/contest/live-stats');
+
+// Terminal discovery bonus (SPEC 3: +250 pts for hidden path discovery)
+const contestTerminalDiscoveryHandler = require('../api/contest/terminalDiscovery.cjs');
+app.post('/api/contest/terminal-discovery', contestTerminalDiscoveryHandler);
+console.log('✅ Mounted /api/contest/terminal-discovery');
+
 // Email delivery status endpoint (canonical DB owner)
 const emailDeliveryStatusHandler = require('../api/email/purchase-confirmation-status.cjs');
 app.get('/api/email/purchase-confirmation/status', emailDeliveryStatusHandler);

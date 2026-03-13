@@ -210,6 +210,32 @@ function InstructionsContent() {
         )}
       </div>
 
+      {/* Instructional video (device-aware) */}
+      <div style={{ marginBottom: '2rem' }}>
+        <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.75rem', textAlign: 'center' }}>
+          Watch the 1-Minute Demo
+        </h3>
+        <video
+          key={activeTab}
+          controls
+          playsInline
+          preload="metadata"
+          style={{
+            width: '100%',
+            maxWidth: 640,
+            borderRadius: 12,
+            display: 'block',
+            margin: '20px auto',
+          }}
+        >
+          <source
+            src={activeTab === 'ios' ? '/training/x-instructions-iPhone.mp4' : '/training/x-instructions-android.mp4'}
+            type="video/mp4"
+          />
+          Your browser does not support the video tag.
+        </video>
+      </div>
+
       {/* Section: Steps (device-aware) */}
       <div style={{ marginBottom: '2rem' }}>
         <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>

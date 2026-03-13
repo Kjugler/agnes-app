@@ -180,6 +180,19 @@ export default function ProtocolChallengeClient() {
       )}
 
       <div className={styles.topBlock}>
+        {process.env.NEXT_PUBLIC_STRESS_TEST_MODE === '1' && (
+          <div style={{
+            marginBottom: '16px',
+            padding: '10px 14px',
+            background: 'rgba(0, 255, 127, 0.1)',
+            border: '1px solid rgba(0, 255, 127, 0.3)',
+            borderRadius: '8px',
+            fontSize: '13px',
+            color: 'rgba(245, 245, 245, 0.9)',
+          }}>
+            <strong style={{ color: '#00ff7f' }}>PUBLIC STRESS TEST ACTIVE</strong> — Simulation. No real charges. No real deliveries. <a href="mailto:hello@theagnesprotocol.com" style={{ color: '#00ff7f', textDecoration: 'underline' }}>Found a bug?</a>
+          </div>
+        )}
         <div className={styles.ad}>
           <h1 style={{ fontSize: '1.8em', margin: 0 }}>
             Win a 7 Day, 6 Night Family Cruise

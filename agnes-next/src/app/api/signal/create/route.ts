@@ -27,24 +27,43 @@ function containsProfanity(text: string): boolean {
 }
 
 export async function POST(req: NextRequest) {
+  const VALID_TYPES = ['ARCHIVE', 'LOCATION', 'VISUAL', 'NARRATIVE', 'PLAYER_QUESTION', 'PODCASTER_PROMPT', 'SPECULATIVE'] as const;
+  const VALID_MEDIA_TYPES = ['image', 'video', 'map', 'document', 'audio'] as const;
+
   try {
-    // Parse and validate text
     const body = await req.json();
     const textRaw = body?.text;
+    const titleRaw = body?.title;
+    const typeRaw = body?.type;
+    const contentRaw = body?.content;
+    const mediaTypeRaw = body?.mediaType;
+    const mediaUrlRaw = body?.mediaUrl;
+    const locationTagRaw = body?.locationTag;
+    const tagsRaw = body?.tags;
+    const discussionEnabledRaw = body?.discussionEnabled;
 
     if (typeof textRaw !== 'string') {
       return NextResponse.json({ ok: false, error: 'text must be a string' }, { status: 400 });
     }
 
     const text = textRaw.trim();
-
     if (text.length < 3) {
       return NextResponse.json({ ok: false, error: 'text must be at least 3 characters' }, { status: 400 });
     }
-
     if (text.length > 240) {
       return NextResponse.json({ ok: false, error: 'text must be at most 240 characters' }, { status: 400 });
     }
+
+    const title = typeof titleRaw === 'string' ? titleRaw.trim() || null : null;
+    const type = typeof typeRaw === 'string' && VALID_TYPES.includes(typeRaw as any) ? typeRaw : null;
+    const content = typeof contentRaw === 'string' ? contentRaw.trim() || null : null;
+    const mediaType = typeof mediaTypeRaw === 'string' && VALID_MEDIA_TYPES.includes(mediaTypeRaw as any) ? mediaTypeRaw : null;
+    const mediaUrl = typeof mediaUrlRaw === 'string' && mediaUrlRaw.trim() ? mediaUrlRaw.trim() : null;
+    const locationTag = typeof locationTagRaw === 'string' ? locationTagRaw.trim() || null : null;
+    const tags = Array.isArray(tagsRaw) && tagsRaw.every((t) => typeof t === 'string')
+      ? tagsRaw
+      : null;
+    const discussionEnabled = typeof discussionEnabledRaw === 'boolean' ? discussionEnabledRaw : true;
 
     // Identify user from cookies/headers
     const headerEmail = req.headers.get('x-user-email');
@@ -126,10 +145,17 @@ export async function POST(req: NextRequest) {
     const countryCode = req.headers.get('x-vercel-ip-country') || null;
     const region = req.headers.get('x-vercel-ip-country-region') || null;
 
-    // Create signal
     const signal = await prisma.signal.create({
       data: {
         text,
+        title: title ?? undefined,
+        type: type ?? undefined,
+        content: content ?? undefined,
+        mediaType: mediaType ?? undefined,
+        mediaUrl: mediaUrl ?? undefined,
+        locationTag: locationTag ?? undefined,
+        tags: tags ?? undefined,
+        discussionEnabled,
         status,
         heldReason,
         isSystem: false,

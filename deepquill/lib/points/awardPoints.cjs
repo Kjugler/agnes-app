@@ -3,10 +3,24 @@
 
 const { prisma: defaultPrisma } = require('../../server/prisma.cjs');
 
+/** Start of today (server local time) for calendar-day cap */
+function getStartOfToday() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+/** Start of tomorrow for calendar-day cap */
+function getStartOfTomorrow() {
+  const d = getStartOfToday();
+  d.setDate(d.getDate() + 1);
+  return d;
+}
+
 /**
  * Award purchase points (Math Mode - deterministic):
  * - Awards +500 points per purchase
- * - No daily caps, no lifetime caps
+ * - Daily cap: 1 award per user per calendar day (max 500 points/day)
  * - Idempotency: one award per sessionId (prevents double-crediting on webhook retries)
  * - Returns { awarded: number, reason: string }
  * @param {Object} prismaClient - Prisma client instance (required)
@@ -45,6 +59,22 @@ async function awardPurchaseDailyPoints(prismaClient, { userId, sessionId }) {
       return { awarded: 0, reason: 'already_awarded_for_session' };
     }
 
+    // Daily cap: 1 award per user per calendar day
+    const startOfToday = getStartOfToday();
+    const startOfTomorrow = getStartOfTomorrow();
+    const todayAward = await prismaClient.ledger.findFirst({
+      where: {
+        userId,
+        type: 'POINTS_AWARDED_PURCHASE',
+        createdAt: { gte: startOfToday, lt: startOfTomorrow },
+      },
+      select: { id: true },
+    });
+    if (todayAward) {
+      console.log('[POINTS] purchase_points_skipped_daily_cap', { userId, sessionId });
+      return { awarded: 0, reason: 'daily_cap_reached' };
+    }
+
     // A2: Award points - create ledger entry ONLY (no user.points increment)
     // Totals are computed from ledger rollup (canonical source of truth)
     await prismaClient.$transaction(async (tx) => {
@@ -79,10 +109,13 @@ async function awardPurchaseDailyPoints(prismaClient, { userId, sessionId }) {
   }
 }
 
+const REFERRAL_DAILY_CAP = 5;  // Max 5 referral awards per day (25,000 points)
+const REFERRAL_POINTS_PER_REFERRAL = 5000;
+
 /**
  * Award referral sponsor points (Math Mode - deterministic):
  * - Awards +5,000 points to sponsor per referred purchase
- * - No caps, no limits
+ * - Daily cap: 5 referral awards per sponsor per calendar day (max 25,000 points/day)
  * - Idempotency: one award per sessionId (prevents double-crediting on webhook retries)
  * - Returns { awarded: number, reason: string }
  * @param {Object} prismaClient - Prisma client instance (required)
@@ -119,6 +152,21 @@ async function awardReferralSponsorPoints(prismaClient, { referrerUserId, sessio
     if (existingAward) {
       console.log('[POINTS] referral_sponsor_skip_already_awarded', { referrerUserId, sessionId });
       return { awarded: 0, reason: 'already_awarded_for_session' };
+    }
+
+    // Daily cap: 5 referral awards per sponsor per calendar day (25,000 points)
+    const startOfToday = getStartOfToday();
+    const startOfTomorrow = getStartOfTomorrow();
+    const todayCount = await prismaClient.ledger.count({
+      where: {
+        userId: referrerUserId,
+        type: 'REFERRAL_POINTS_AWARDED',
+        createdAt: { gte: startOfToday, lt: startOfTomorrow },
+      },
+    });
+    if (todayCount >= REFERRAL_DAILY_CAP) {
+      console.log('[POINTS] referral_sponsor_skip_daily_cap', { referrerUserId, sessionId, todayCount });
+      return { awarded: 0, reason: 'daily_cap_reached' };
     }
 
     // A2: Award points - create ledger entry ONLY (no user.points increment)

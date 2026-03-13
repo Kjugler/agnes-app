@@ -4,6 +4,8 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useMemo, useEffect } from 'react';
 import { PRODUCTS } from '@/lib/products';
 
+const stressTestMode = process.env.NEXT_PUBLIC_STRESS_TEST_MODE === '1';
+
 export default function CatalogClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -47,10 +49,10 @@ export default function CatalogClient() {
         maxWidth: '1200px',
         margin: '0 auto',
       }}>
-        {/* Trust block */}
+        {/* Trust block — SPEC 4: Public Stress Test messaging when active */}
         <div style={{
           background: '#111111',
-          border: '1px solid #222222',
+          border: `1px solid ${stressTestMode ? '#00ff7f' : '#222222'}`,
           borderRadius: '8px',
           padding: '16px 24px',
           marginBottom: '32px',
@@ -58,18 +60,42 @@ export default function CatalogClient() {
           lineHeight: '1.6',
           color: '#d0d0d0',
         }}>
-          <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: '#f5f5f5' }}>
-            Stripe Test Mode — No real charges.
-          </p>
-          <p style={{ margin: '0 0 8px 0' }}>
-            Use test card: <code style={{ background: '#222', padding: '2px 6px', borderRadius: '4px' }}>4242 4242 4242 4242</code>
-          </p>
-          <p style={{ margin: 0 }}>
-            If you experience any issues while testing the site, forward details to{' '}
-            <a href="mailto:hello@theagnesprotocol.com" style={{ color: '#00ff7f', textDecoration: 'underline' }}>
-              hello@theagnesprotocol.com
-            </a>
-          </p>
+          {stressTestMode ? (
+            <>
+              <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: '#00ff7f' }}>
+                PUBLIC STRESS TEST ACTIVE
+              </p>
+              <p style={{ margin: '0 0 8px 0' }}>
+                Everything you see is a simulation. No real charges. No real deliveries.
+              </p>
+              <p style={{ margin: '0 0 8px 0' }}>
+                Your mission: try to break the system. Invite friends. Buy books. Earn points. Report anything strange.
+              </p>
+              <p style={{ margin: '0 0 8px 0' }}>
+                Use test card: <code style={{ background: '#222', padding: '2px 6px', borderRadius: '4px' }}>4242 4242 4242 4242</code>
+              </p>
+              <p style={{ margin: 0 }}>
+                <a href="mailto:hello@theagnesprotocol.com" style={{ color: '#00ff7f', textDecoration: 'underline' }}>
+                  Found a bug? Email hello@theagnesprotocol.com
+                </a>
+              </p>
+            </>
+          ) : (
+            <>
+              <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: '#f5f5f5' }}>
+                Stripe Test Mode — No real charges.
+              </p>
+              <p style={{ margin: '0 0 8px 0' }}>
+                Use test card: <code style={{ background: '#222', padding: '2px 6px', borderRadius: '4px' }}>4242 4242 4242 4242</code>
+              </p>
+              <p style={{ margin: 0 }}>
+                If you experience any issues while testing the site, forward details to{' '}
+                <a href="mailto:hello@theagnesprotocol.com" style={{ color: '#00ff7f', textDecoration: 'underline' }}>
+                  hello@theagnesprotocol.com
+                </a>
+              </p>
+            </>
+          )}
         </div>
 
         {/* Product cards */}

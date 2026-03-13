@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import SignalComposer from './SignalComposer';
 import ReviewsPanel from './ReviewsPanel';
 
@@ -19,15 +20,33 @@ export default function SignalRoomHeader() {
           borderBottom: '1px solid #1a1f3a',
         }}
       >
-        {/* Top-left: Signal icon placeholder */}
+        {/* Top-left: Back link + Signal icon */}
         <div
           style={{
-            fontSize: '24px',
-            color: '#00ffe0',
-            fontWeight: 'bold',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '1rem',
           }}
         >
-          📡 Signal
+          <Link
+            href="/contest"
+            style={{
+              color: '#00ffe0',
+              fontSize: '0.9em',
+              textDecoration: 'none',
+            }}
+          >
+            ← Back to Contest Hub
+          </Link>
+          <span
+            style={{
+              fontSize: '24px',
+              color: '#00ffe0',
+              fontWeight: 'bold',
+            }}
+          >
+            📡 Signal
+          </span>
         </div>
 
         {/* Top-right: + icon and matrix icon */}
@@ -38,6 +57,17 @@ export default function SignalRoomHeader() {
             alignItems: 'center',
           }}
         >
+          <Link
+            href="/signal-room/admin"
+            title="Admin: Manage Signals"
+            style={{
+              fontSize: '20px',
+              color: '#00ffe0',
+              textDecoration: 'none',
+            }}
+          >
+            ⚙
+          </Link>
           <div
             onClick={() => setIsComposerOpen(true)}
             title="Send a Signal"

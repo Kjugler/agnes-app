@@ -57,6 +57,7 @@ model User {
   nonParticipantEmailSentAt    DateTime?
   missionaryEmailSentAt        DateTime?
   engagedEmailSentAt           DateTime?
+  terminalDiscoveryAwarded    Boolean               @default(false)
   events                       Event[]
   badges                       UserBadge[]
   posts                        Post[]
@@ -112,6 +113,7 @@ enum LedgerType {
   SHARE_TT
   CONTEST_JOIN
   CONTEST_EXPLICIT_ENTRY // Explicit contest entry via score page (+500 pts, idempotent)
+  TERMINAL_DISCOVERY_BONUS // Hidden terminal path discovery (+250 pts, once per user)
   SUBSCRIBE_DIGEST
   TRIVIA
   RABBIT_BONUS

@@ -77,7 +77,7 @@ const EmailModal = ({ isOpen, onClose, onEmailSubmitted }) => {
           email,
           source: 'contest',
           ref: typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('ref') || undefined : undefined,
-          meta: { path: '/lightening' },
+          meta: { path: '/contest', source: 'terminal' },
         }),
       }).catch(() => {});
     } catch {}
@@ -143,34 +143,26 @@ const EmailModal = ({ isOpen, onClose, onEmailSubmitted }) => {
           console.warn('[EmailModal] Could not clear localStorage', e);
         }
         
-        // Redirect to /lightening first (correct sequence: Terminal 1 → Terminal 2 → Lightning → Contest)
-        // Preserve existing query params and add email
+        // Spec 1: Terminal return → /contest (Lightning already played before terminal)
+        // Preserve ref, email, variant, and campaign params for continuity
         const currentParams = new URLSearchParams(window.location.search);
         currentParams.set('email', normalizedEmail);
-        
-        // Preserve tracking params if present
-        const trackingParams = ['ref', 'src', 'v', 'origin', 'code', 'utm_source', 'utm_medium', 'utm_campaign'];
-        trackingParams.forEach(key => {
-          const value = currentParams.get(key);
-          if (value) {
-            currentParams.set(key, value);
-          }
-        });
-        
-        // Gesture handoff: Set flag to allow audio on Lightning page
-        if (typeof window !== 'undefined' && window.sessionStorage) {
-          sessionStorage.setItem('allow_lightening_audio', '1');
-          console.log('[EmailModal] Set allow_lightening_audio flag for gesture handoff');
+        currentParams.set('v', 'terminal'); // variant continuity
+
+        // Ref from URL or cookies (ap_ref, ref)
+        if (!currentParams.get('ref') && typeof document !== 'undefined') {
+          const apRef = document.cookie.match(/ap_ref=([^;]+)/)?.[1]?.trim();
+          const refCookie = document.cookie.match(/ref=([^;]+)/)?.[1]?.trim();
+          const ref = apRef || refCookie;
+          if (ref) currentParams.set('ref', ref);
         }
-        
-        // F1: Use absolute path for redirect when in terminal-proxy
+
         const isTerminalProxy = typeof window !== 'undefined' && window.location.pathname.startsWith('/terminal-proxy');
-        const lighteningUrl = isTerminalProxy
-          ? `${window.location.origin}/lightening?${currentParams.toString()}`
-          : `/lightening?${currentParams.toString()}`;
-        console.log('[EmailModal] Redirecting to lightening with email:', lighteningUrl);
-        // Redirect immediately - no delay needed
-        window.location.href = lighteningUrl;
+        const contestUrl = isTerminalProxy
+          ? `${window.location.origin}/contest?${currentParams.toString()}`
+          : `/contest?${currentParams.toString()}`;
+        console.log('[EmailModal] Redirecting to contest (Spec 1):', contestUrl);
+        window.location.href = contestUrl;
       } else {
         let errorMessage = `Failed to log in (status ${loginRes.status})`;
         try {
