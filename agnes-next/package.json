@@ -10,7 +10,8 @@
     "start": "next start -p 3002",
     "lint": "next lint",
     "prisma:gen": "prisma generate",
-    "prisma:migrate": "prisma migrate dev --name init-ledger"
+    "prisma:migrate": "prisma migrate dev --name init-ledger",
+    "upload-training-videos": "node scripts/upload-training-videos-to-blob.js"
   },
   "dependencies": {
     "@mailchimp/mailchimp_transactional": "^1.1.2",
@@ -27,6 +28,7 @@
     "@types/nodemailer": "^7.0.4",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vercel/blob": "^0.26.0",
     "kill": "^0.0.2",
     "kill-port": "^2.0.1",
     "port": "^0.8.1",

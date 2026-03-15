@@ -4,6 +4,7 @@ import { Suspense } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { getTrainingVideoUrl } from '@/config/trainingVideos';
 import { buildShareCaption } from '@/lib/shareCaption';
 import { buildTrackingLink } from '@/lib/shareHelpers';
 import { readContestEmail } from '@/lib/identity';
@@ -169,7 +170,7 @@ function InstructionsContent() {
           Training Video
         </div>
         <video
-          src="/training/ig-instructions-ios.mp4"
+          src={getTrainingVideoUrl('IG_INSTRUCTIONS_IOS')}
           controls
           playsInline
           muted

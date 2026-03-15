@@ -4,6 +4,7 @@ import { Suspense } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { getTrainingVideoUrl } from '@/config/trainingVideos';
 import { buildShareCaption } from '@/lib/shareCaption';
 import { buildTrackingLink } from '@/lib/shareHelpers';
 import { readContestEmail } from '@/lib/identity';
@@ -229,7 +230,7 @@ function InstructionsContent() {
           }}
         >
           <source
-            src={activeTab === 'ios' ? '/training/x-instructions-iPhone.mp4' : '/training/x-instructions-android.mp4'}
+            src={activeTab === 'ios' ? getTrainingVideoUrl('X_INSTRUCTIONS_IOS') : getTrainingVideoUrl('X_INSTRUCTIONS_ANDROID')}
             type="video/mp4"
           />
           Your browser does not support the video tag.

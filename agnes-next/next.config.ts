@@ -4,7 +4,8 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   webpack: (config) => config,
   allowedDevOrigins: [
-    'simona-nonindictable-pseudoapoplectically.ngrok-free.dev',
+    '*.ngrok-free.dev',
+    '*.ngrok-free.app',
   ],
 };
 

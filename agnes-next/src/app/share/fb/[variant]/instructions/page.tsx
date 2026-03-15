@@ -4,6 +4,7 @@ import { Suspense } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { getTrainingVideoUrl } from '@/config/trainingVideos';
 import { buildShareCaption } from '@/lib/shareCaption';
 import { buildTrackingLink, buildFbPreviewUrl } from '@/lib/shareHelpers';
 import { readContestEmail } from '@/lib/identity';
@@ -261,7 +262,7 @@ function InstructionsContent() {
       <div style={{ marginBottom: '2rem' }}>
         <video
           key={activeTab}
-          src={activeTab === 'ios' ? '/training/fb-instructions-iPhone.mp4' : '/training/fb-instructions-android.mp4'}
+          src={activeTab === 'ios' ? getTrainingVideoUrl('FB_INSTRUCTIONS_IOS') : getTrainingVideoUrl('FB_INSTRUCTIONS_ANDROID')}
           controls
           playsInline
           style={{

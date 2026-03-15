@@ -4,6 +4,7 @@ import { Suspense } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { getTrainingVideoUrl } from '@/config/trainingVideos';
 import { buildShareCaption } from '@/lib/shareCaption';
 import { buildTrackingLink } from '@/lib/shareHelpers';
 import { readContestEmail } from '@/lib/identity';
@@ -170,7 +171,7 @@ function InstructionsContent() {
           Training Video
         </div>
         <video
-          src={activeTab === 'ios' ? '/training/tt-instructions-ios.mp4' : '/training/tt-instructions-android.mp4'}
+          src={activeTab === 'ios' ? getTrainingVideoUrl('TT_INSTRUCTIONS_IOS') : getTrainingVideoUrl('TT_INSTRUCTIONS_ANDROID')}
           controls
           playsInline
           muted

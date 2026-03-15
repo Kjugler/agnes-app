@@ -17,6 +17,7 @@ dist/
 # Large training videos (exceed GitHub 100MB limit; host elsewhere for prod)
 # -----------------------------
 agnes-next/public/training/*.mp4
+training-video-archive/
 
 # -----------------------------
 # OS / editor noise
@@ -25,3 +26,6 @@ agnes-next/public/training/*.mp4
 Thumbs.db
 .env.local
 .env.*
+
+.vercel
+.env*.local
