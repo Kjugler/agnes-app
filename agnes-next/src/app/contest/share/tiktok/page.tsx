@@ -7,6 +7,7 @@ import { JodyTrainingModal } from '@/components/JodyTrainingModal';
 import { readContestEmail, readAssociate } from '@/lib/identity';
 import HelpButton from '@/components/HelpButton';
 import { buildShareCaption } from '@/lib/shareCaption';
+import { getTrainingVideoUrl } from '@/config/trainingVideos';
 import { getNextVariant, shareAssets } from '@/lib/shareAssets';
 
 export default function TikTokSharePage() {
@@ -459,7 +460,7 @@ export default function TikTokSharePage() {
       <JodyTrainingModal
         isOpen={showTikTokTraining}
         onClose={() => setShowTikTokTraining(false)}
-        videoSrc="/training/jody-tiktok-training.mp4"
+        videoSrc={getTrainingVideoUrl('JODY_TIKTOK')}
         title="How to Post on TikTok"
         steps={[
           { text: <>On this page, click <strong>Copy caption</strong>.</> },

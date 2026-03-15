@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { readContestEmail, readAssociate } from '@/lib/identity';
 import { buildShareCaption } from '@/lib/shareCaption';
+import { getTrainingVideoUrl } from '@/config/trainingVideos';
 import { getNextVariant, shareAssets } from '@/lib/shareAssets';
 import { JodyAssistant } from '@/components/JodyAssistant';
 import { JodyTrainingModal } from '@/components/JodyTrainingModal';
@@ -457,7 +458,7 @@ export default function TruthSharePage() {
           isOpen={showTruthTraining}
           onClose={() => setShowTruthTraining(false)}
           title="How to Post on Truth Social"
-          videoSrc="/training/jody-truth-training.mp4"
+          videoSrc={getTrainingVideoUrl('JODY_TRUTH')}
           steps={[
             { text: <>On this page, click <strong>Copy caption</strong> to copy the full Truth Social caption with your personal code and links.</> },
             { text: <>Click <strong>Download Truth Video</strong> to save the video to your device. It will usually go into your Downloads folder.</> },
