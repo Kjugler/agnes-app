@@ -3,27 +3,20 @@ import type { SharePlatform } from '@/lib/shareAssets';
 import { shareAssets } from '@/lib/shareAssets';
 
 type Params = { platform?: string; variant?: string };
-type Search = { ref?: string; target?: string };
 
 // TEMP: hard-wire the current public base URL so Facebook always
 // gets a real, https, non-localhost URL.
 const BASE_URL = 'https://agnes-dev.ngrok-free.app';
 
-export async function generateMetadata(
-  props: {
-    params: Promise<Params> | Params;
-    searchParams: Promise<Search> | Search | undefined;
-  }
-): Promise<Metadata> {
+export async function generateMetadata(props: { params: Promise<Params> }): Promise<Metadata> {
   const p = await props.params;
-  const sp = props.searchParams ? await props.searchParams : undefined;
 
   const platform = (p?.platform as SharePlatform) || 'fb';
   const variantRaw = Number(p?.variant ?? '1') || 1;
   const variant = (variantRaw >= 1 && variantRaw <= 3 ? variantRaw : 1) as 1 | 2 | 3;
 
-  const refCode = typeof sp?.ref === 'string' ? sp.ref : '';
-  const target = typeof sp?.target === 'string' ? sp.target : 'challenge';
+  const refCode = '';
+  const target = 'challenge';
 
   // Get image path from shareAssets (X and IG platforms use FB thumbnails)
   const assets = shareAssets[platform]?.variants[variant];

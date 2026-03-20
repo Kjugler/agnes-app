@@ -1,11 +1,11 @@
 import "../styles/globals.css";
+import { Suspense } from "react";
+import CheckoutWiring from "./contest/CheckoutWiring";
 
 export const metadata = {
   title: "Agnes App",
   description: "Welcome to the Agnes Protocol App",
 };
-
-import CheckoutWiring from "./contest/CheckoutWiring";
 
 export default function RootLayout({
   children,
@@ -22,7 +22,9 @@ export default function RootLayout({
       <body suppressHydrationWarning={true}>
         {children}
         {/* Global, invisible, zero animation/layout impact */}
-        <CheckoutWiring />
+        <Suspense fallback={null}>
+          <CheckoutWiring />
+        </Suspense>
       </body>
     </html>
   );

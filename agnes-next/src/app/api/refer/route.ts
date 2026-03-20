@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
 
     // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const invalid = emails.filter((e) => !emailRegex.test(e));
+    const invalid = emails.filter((e: string) => !emailRegex.test(e));
     if (invalid.length > 0) {
       return NextResponse.json(
         {

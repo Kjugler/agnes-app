@@ -1,7 +1,7 @@
 'use client';
 
 import '@/styles/score.css';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
@@ -44,7 +44,7 @@ type PointsPayload = {
   } | null;
 };
 
-export default function ScorePage() {
+function ScoreClient() {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const qp = useSearchParams();
   const router = useRouter();
@@ -1390,5 +1390,13 @@ export default function ScorePage() {
       )}
       <HelpButton />
     </div>
+  );
+}
+
+export default function ScorePage() {
+  return (
+    <Suspense fallback={<div className="score-wrap" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>Loading…</div>}>
+      <ScoreClient />
+    </Suspense>
   );
 }

@@ -59,3 +59,6 @@ exports.SITE_URL = process.env.SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || '
 exports.NODE_ENV = process.env.NODE_ENV || 'development';
 exports.DEBUG = process.env.DEBUG === 'true' || exports.NODE_ENV === 'development';
 
+// Post-purchase beta caps: when true, apply daily limits (buyer 500/day, referrer 25k/day)
+exports.POST_PURCHASE_BETA = process.env.POST_PURCHASE_BETA === 'true';
+

@@ -168,7 +168,7 @@ export function readContestEmail() {
         clearAssociateCaches({ keepContestEmail: false });
       }
       // Update localStorage to match cookie
-      writeContestEmail(normalizedCookieEmail);
+      if (normalizedCookieEmail) writeContestEmail(normalizedCookieEmail);
     }
     return normalizedCookieEmail;
   }

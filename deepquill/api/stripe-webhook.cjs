@@ -219,14 +219,17 @@ router.post(
             }
           }
 
-          // TODO: Process purchase, award points, send emails, etc.
-          // This should be implemented to:
-          // 1. Create/update Order record in Prisma
-          // 2. Award buyer points (+500)
-          // 3. Award associate rewards if ref was used (+1000 points, +$2 payout)
-          // 4. Send order confirmation email
-          // 5. Send associate commission email if applicable
-          
+          // Post-purchase sync: Customer, User, Purchase, Order, Ledger, ReferralConversion, Event
+          try {
+            const { syncPostPurchase } = require('../lib/postPurchaseSync.cjs');
+            const syncResult = await syncPostPurchase(session);
+            if (!syncResult.ok) {
+              console.error('[WEBHOOK] postPurchaseSync failed:', syncResult.error);
+            }
+          } catch (syncErr) {
+            console.error('[WEBHOOK] postPurchaseSync error:', syncErr.message, syncErr.stack);
+          }
+
           break;
         }
 

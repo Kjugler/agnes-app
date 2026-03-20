@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useEffect, useRef, useState, useMemo } from "react";
+import { Suspense, useEffect, useRef, useState, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import HelpButton from "@/components/HelpButton";
 import { writeContestEmail } from "@/lib/identity";
@@ -14,7 +14,7 @@ declare global {
   }
 }
 
-export default function LighteningPage() {
+function LighteningClient() {
   const playerRef = useRef<HTMLDivElement>(null);
   const youtubePlayerRef = useRef<any>(null);
   const router = useRouter();
@@ -370,7 +370,7 @@ export default function LighteningPage() {
         if (originalCallback) {
           window.onYouTubeIframeAPIReady = originalCallback;
         } else {
-          delete window.onYouTubeIframeAPIReady;
+          (window as { onYouTubeIframeAPIReady?: () => void }).onYouTubeIframeAPIReady = undefined;
         }
         // Cleanup
         if (youtubePlayerRef.current) {
@@ -571,5 +571,13 @@ export default function LighteningPage() {
       </div>
       <HelpButton />
     </>
+  );
+}
+
+export default function LighteningPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>Loading…</div>}>
+      <LighteningClient />
+    </Suspense>
   );
 }

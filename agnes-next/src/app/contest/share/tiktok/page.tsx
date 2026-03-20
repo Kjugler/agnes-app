@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { JodyAssistant } from '@/components/JodyAssistant';
 import { JodyTrainingModal } from '@/components/JodyTrainingModal';
@@ -10,7 +10,7 @@ import { buildShareCaption } from '@/lib/shareCaption';
 import { getTrainingVideoUrl } from '@/config/trainingVideos';
 import { getNextVariant, shareAssets } from '@/lib/shareAssets';
 
-export default function TikTokSharePage() {
+function TikTokShareClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [hasCopied, setHasCopied] = useState(false);
@@ -484,6 +484,14 @@ export default function TikTokSharePage() {
       />
       <HelpButton />
     </div>
+  );
+}
+
+export default function TikTokSharePage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>Loading…</div>}>
+      <TikTokShareClient />
+    </Suspense>
   );
 }
 

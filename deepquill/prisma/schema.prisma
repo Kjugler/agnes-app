@@ -1,0 +1,362 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                    String               @id @default(cuid())
+  email                 String               @unique
+  fname                 String?
+  lname                 String?
+  firstName             String?
+  code                  String               @unique
+  referralCode          String               @unique
+  referredBy            String?
+  createdAt             DateTime             @default(now())
+  points                Int                  @default(0)
+  earnedPurchaseBook    Boolean              @default(false)
+  rabbit1Completed      Boolean              @default(false)
+  rabbitStep            Int                  @default(500)
+  rabbitTarget          Int?
+  rabbitCatches         Int                  @default(0)
+  lastRabbitBonusIntent String?
+  rabbitSeq             Int                  @default(1)
+  lastRabbitCatchAt     DateTime?
+  phone                 String?
+  handleX               String?
+  handleInstagram       String?
+  handleTiktok          String?
+  handleTruth           String?
+  referralEarningsCents Int                  @default(0)
+  associateBalanceCents Int                  @default(0)
+  associateLifetimeEarnedCents Int           @default(0)
+  associateFriendsSavedCents Int             @default(0)
+  noPurchaseEmailSentAt        DateTime?
+  contestJoinedAt             DateTime?
+  nonParticipantEmailSentAt   DateTime?
+  missionaryEmailSentAt       DateTime?
+  engagedEmailSentAt          DateTime?
+  events                Event[]
+  badges                UserBadge[]
+  posts                 Post[]
+  purchases             Purchase[]
+  ledger                Ledger[]
+  referralConversions   ReferralConversion[]
+  signals               Signal[]
+  signalReplies         SignalReply[]
+  signalAcknowledges    SignalAcknowledge[]
+  reviews               Review[]
+
+  @@index([referralCode])
+}
+
+model Ledger {
+  id        String     @id @default(cuid())
+  userId    String
+  type      LedgerType
+  points    Int        @default(0)
+  usd       Decimal    @default(0)
+  note      String?
+  createdAt DateTime   @default(now())
+  user      User       @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+}
+
+enum LedgerType {
+  PURCHASE_BOOK
+  REFER_FRIEND_PAYOUT
+  REFER_EMAIL
+  REFER_PURCHASE
+  ASSOCIATE_PAYOUT
+  MANUAL_ADJUST
+  SHARE_X
+  SHARE_IG
+  SHARE_FB
+  SHARE_TRUTH
+  SHARE_TT
+  CONTEST_JOIN
+  SUBSCRIBE_DIGEST
+  TRIVIA
+  RABBIT_BONUS
+  SIGNUP_BONUS
+}
+
+model Event {
+  id        String   @id @default(cuid())
+  user      User?    @relation(fields: [userId], references: [id])
+  userId    String?
+  type      String
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId, type, createdAt])
+}
+
+model Badge {
+  id          String      @id @default(cuid())
+  slug        String      @unique
+  title       String
+  points      Int
+  actionType  String
+  actionUrl   String?
+  cooldownHrs Int?
+  maxTimes    Int         @default(1)
+  active      Boolean     @default(true)
+  userBadges  UserBadge[] // ADD THIS LINE
+}
+
+model UserBadge {
+  id         String   @id @default(cuid())
+  user       User     @relation(fields: [userId], references: [id])
+  userId     String
+  badge      Badge    @relation(fields: [badgeId], references: [id])
+  badgeId    String
+  times      Int      @default(1)
+  lastEarned DateTime @default(now())
+
+  @@unique([userId, badgeId])
+}
+
+model Post {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  content   String
+  status    String   @default("approved")
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model Purchase {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  sessionId String   @unique
+  amount    Int?
+  currency  String?
+  source    String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model ReferralConversion {
+  id              String    @id @default(cuid())
+  referrerUserId  String
+  referralCode    String
+  buyerEmail      String?
+  stripeSessionId String    @unique
+  commissionCents Int
+  createdAt       DateTime  @default(now())
+  lastDigestDate  DateTime? // Date when this conversion was included in a digest
+  referrer        User      @relation(fields: [referrerUserId], references: [id])
+
+  @@index([referrerUserId, createdAt])
+  @@index([referralCode])
+  @@index([lastDigestDate])
+}
+
+model Customer {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  name            String?
+  shippingStreet  String?
+  shippingCity    String?
+  shippingState   String?
+  shippingZip     String?
+  shippingCountry String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  orders          Order[]
+
+  @@index([email])
+}
+
+model FulfillmentUser {
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  printedOrders Order[]  @relation("LabelPrinter")
+  shippedOrders Order[]  @relation("Shipper")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([email])
+}
+
+model Order {
+  id              String   @id @default(cuid())
+  customer        Customer @relation(fields: [customerId], references: [id])
+  customerId      String
+  stripeSessionId String   @unique
+  amountTotal     Int? // in cents
+  currency        String?
+  contestPlayerId String? // FK to User.id (optional)
+  referralCode    String?
+  pointsAwarded   Boolean  @default(false)
+  
+  // Commission tracking (optional, for admin visibility)
+  commissionCents Int?
+  friendSavedCents Int?
+  
+  // Fulfillment fields
+  status              String          @default("pending")
+  labelPrintedAt      DateTime?
+  shippedAt           DateTime?
+  labelPrintedById    String?
+  shippedById         String?
+  labelPrintedBy      FulfillmentUser? @relation("LabelPrinter", fields: [labelPrintedById], references: [id])
+  shippedBy           FulfillmentUser? @relation("Shipper", fields: [shippedById], references: [id])
+  
+  // Shipping information
+  shippingName         String?
+  shippingAddressLine1 String?
+  shippingAddressLine2 String?
+  shippingCity         String?
+  shippingState        String?
+  shippingPostalCode   String?
+  shippingCountry      String?
+  shippingPhone        String?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([customerId, createdAt])
+  @@index([stripeSessionId])
+  @@index([contestPlayerId])
+  @@index([status])
+  @@index([labelPrintedById])
+  @@index([shippedById])
+}
+
+enum SignalStatus {
+  APPROVED
+  HELD
+  REJECTED
+}
+
+enum SignalHeldReason {
+  PROFANITY
+  HARASSMENT
+  HATE
+  CLAIM
+  LINK
+  OTHER
+}
+
+model Signal {
+  id           String       @id @default(cuid())
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  // Author
+  userId       String?
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  isSystem     Boolean      @default(false)
+  isAnonymous  Boolean      @default(false)
+
+  // Content
+  text         String       // enforce 140 chars at app layer
+
+  // Moderation
+  status       SignalStatus @default(APPROVED)
+  heldReason   SignalHeldReason?
+  heldAt       DateTime?
+  approvedAt   DateTime?
+  rejectedAt   DateTime?
+
+  // Coarse geo at time of posting (no raw IP stored here)
+  countryCode  String?      // e.g. "US"
+  region       String?      // e.g. "UT" (state/region code)
+  
+  // Relationships
+  replies      SignalReply[]
+  acknowledges SignalAcknowledge[]
+
+  @@index([createdAt])
+  @@index([status, createdAt])
+  @@index([countryCode, region, createdAt])
+}
+
+model SignalReply {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+
+  signalId    String
+  signal      Signal   @relation(fields: [signalId], references: [id], onDelete: Cascade)
+
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  isAnonymous Boolean  @default(false)
+  text        String   // enforce 140 chars at app layer
+
+  @@index([signalId, createdAt])
+}
+
+model SignalAcknowledge {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  signalId  String
+  signal    Signal   @relation(fields: [signalId], references: [id], onDelete: Cascade)
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([signalId, userId])
+  @@index([signalId, createdAt])
+}
+
+enum ReviewStatus {
+  APPROVED
+  HELD
+  REJECTED
+}
+
+enum ReviewHeldReason {
+  PROFANITY
+  HARASSMENT
+  HATE
+  CLAIM
+  LINK
+  OTHER
+}
+
+model Review {
+  id           String         @id @default(cuid())
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  // Author
+  userId       String
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Content
+  rating       Int            // 1-5
+  text         String         // enforce 3-240 chars at app layer
+  tags         String?        // JSON array of tags (max 5), optional for v1
+
+  // Moderation
+  status       ReviewStatus   @default(APPROVED)
+  heldReason   ReviewHeldReason?
+  heldAt       DateTime?
+  approvedAt   DateTime?
+  rejectedAt   DateTime?
+
+  // Coarse geo at time of posting
+  countryCode  String?        // e.g. "US"
+  region       String?        // e.g. "UT" (state/region code)
+
+  @@unique([userId]) // One review per user (upsert)
+  @@index([status, createdAt])
+  @@index([createdAt])
+}

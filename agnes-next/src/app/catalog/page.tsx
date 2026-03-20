@@ -1,10 +1,11 @@
 'use client';
 
+import { Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useMemo, useEffect } from 'react';
 import { PRODUCTS } from '@/lib/products';
 
-export default function CatalogPage() {
+function CatalogClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -144,6 +145,14 @@ export default function CatalogPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function CatalogPage() {
+  return (
+    <Suspense fallback={<main style={{ minHeight: '100vh', background: '#0a0a0a', color: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading…</main>}>
+      <CatalogClient />
+    </Suspense>
   );
 }
 

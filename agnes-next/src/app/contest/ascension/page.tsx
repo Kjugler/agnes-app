@@ -1,14 +1,16 @@
 'use client';
 
+import { Suspense } from 'react';
 import styles from './page.module.css';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { readAssociate, readContestEmail } from '@/lib/identity';
 import { JodyAssistant } from '@/components/JodyAssistant';
 
-export default function AscensionPage() {
+function AscensionClient() {
   const router = useRouter();
-  const qp = useSearchParams();
+  const _qp = useSearchParams(); // Wrapped by Suspense
+  void _qp;
   const [reduced, setReduced] = useState(false);
   const [doorsVisible, setDoorsVisible] = useState(false);
   const [audioPlayed, setAudioPlayed] = useState(false);
@@ -258,5 +260,13 @@ export default function AscensionPage() {
         }}
       />
     </div>
+  );
+}
+
+export default function AscensionPage() {
+  return (
+    <Suspense fallback={<div className={styles.root} style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>Loading…</div>}>
+      <AscensionClient />
+    </Suspense>
   );
 }

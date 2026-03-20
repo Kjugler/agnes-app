@@ -1,13 +1,13 @@
 import { cookies } from 'next/headers';
 
-export function getReferralCodeFromCookie(): string | null {
-  const cookieStore = cookies();
+export async function getReferralCodeFromCookie(): Promise<string | null> {
+  const cookieStore = await cookies();
   const ref = cookieStore.get('ref');
   return ref?.value || null;
 }
 
-export function getMockEmailFromCookie(): string | null {
-  const cookieStore = cookies();
+export async function getMockEmailFromCookie(): Promise<string | null> {
+  const cookieStore = await cookies();
   const mockEmail = cookieStore.get('mockEmail');
   return mockEmail?.value || null;
 }

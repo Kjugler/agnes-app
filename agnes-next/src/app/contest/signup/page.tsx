@@ -1,9 +1,10 @@
 'use client';
 
+import { Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ContestEntryForm } from '@/components/ContestEntryForm';
 
-export default function ContestSignupPage() {
+function SignupClient() {
   const router = useRouter();
   const qp = useSearchParams();
   const from = qp.get('from') || '/contest';
@@ -43,5 +44,13 @@ export default function ContestSignupPage() {
         </button>
       </div>
     </div>
+  );
+}
+
+export default function ContestSignupPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>Loading…</div>}>
+      <SignupClient />
+    </Suspense>
   );
 }

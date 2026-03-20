@@ -170,7 +170,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Check and award Rabbit 1 if conditions are met
-    if (pointsAwarded > 0 || map.type === 'PURCHASE_BOOK') {
+    if (pointsAwarded > 0) {
       // Get updated actions snapshot after this event
       const actionsSnapshot = await getActionsSnapshot(user.id);
       await checkAndAwardRabbit1(user.id, actionsSnapshot);

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { Suspense, useEffect, useState, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useSafeBack } from '@/lib/nav';
 import { readContestEmail } from '@/lib/identity';
@@ -14,7 +14,7 @@ declare global {
   }
 }
 
-export default function SampleChaptersPage() {
+function SampleChaptersClient() {
   const searchParams = useSearchParams();
   const [current, setCurrent] = useState(0);
   const [activeVideo, setActiveVideo] = useState<'left' | 'right'>('left');
@@ -503,5 +503,13 @@ export default function SampleChaptersPage() {
       </footer>
       <HelpButton />
     </div>
+  );
+}
+
+export default function SampleChaptersPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>Loading…</div>}>
+      <SampleChaptersClient />
+    </Suspense>
   );
 }

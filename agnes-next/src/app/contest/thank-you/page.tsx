@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 
-export default function ContestThankYou() {
+function ThankYouClient() {
   const qp = useSearchParams();
   const router = useRouter();
   const sessionId = qp.get('session_id') || '';
@@ -69,5 +69,13 @@ export default function ContestThankYou() {
         <span style={{ opacity: 0.6 }}>(auto-redirecting…)</span>
       </p>
     </main>
+  );
+}
+
+export default function ContestThankYou() {
+  return (
+    <Suspense fallback={<main style={{ maxWidth: 720, margin: '48px auto', padding: '0 16px' }}>Loading…</main>}>
+      <ThankYouClient />
+    </Suspense>
   );
 }

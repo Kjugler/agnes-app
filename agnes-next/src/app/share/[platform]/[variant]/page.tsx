@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import type { SharePlatform } from '@/lib/shareAssets';
 import { shareAssets } from '@/lib/shareAssets';
@@ -20,7 +20,7 @@ const platformNames: Record<SharePlatform, string> = {
   truth: 'Truth Social',
 };
 
-export default function ShareLandingPage() {
+function ShareLandingClient() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -601,5 +601,13 @@ export default function ShareLandingPage() {
       {platform === 'ig' && <JodyAssistant variant="ig" autoShowDelayMs={4000} />}
       <HelpButton />
     </div>
+  );
+}
+
+export default function ShareLandingPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>Loading…</div>}>
+      <ShareLandingClient />
+    </Suspense>
   );
 }

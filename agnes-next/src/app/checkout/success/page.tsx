@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-export default function CheckoutSuccessRedirect() {
+function CheckoutSuccessClient() {
   const router = useRouter();
   const qp = useSearchParams();
 
@@ -13,4 +13,12 @@ export default function CheckoutSuccessRedirect() {
   }, [router, qp]);
 
   return <p style={{padding:16}}>Finishing up your order…</p>;
+}
+
+export default function CheckoutSuccessRedirect() {
+  return (
+    <Suspense fallback={<p style={{padding:16}}>Loading…</p>}>
+      <CheckoutSuccessClient />
+    </Suspense>
+  );
 }

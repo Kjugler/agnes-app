@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
-import { prisma } from '@/lib/db';
 import { proxyJson } from '@/lib/deepquillProxy';
 
 export const runtime = 'nodejs';
@@ -43,66 +42,6 @@ const EVENTS_WITHOUT_EMAIL = new Set(['CHECKOUT_STARTED', 'PURCHASE_COMPLETED'])
 // Mailchimp operations are proxied to deepquill
 // Frontend should check backend readiness via: GET http://localhost:5055/api/debug/env
 const EMAIL_ENABLED = process.env.NEXT_PUBLIC_EMAIL_ENABLED === 'true';
-
-// ---- helpers --------------------------------------------------------------
-
-async function getOrCreateUserId(email?: string, merge?: Record<string, any>) {
-  if (!email) return null;
-  const code = nanoid(8).toUpperCase();
-  const user = await prisma.user.upsert({
-    where: { email },
-    update: {
-      fname: merge?.FNAME ?? undefined,
-      lname: merge?.LNAME ?? undefined,
-      lastUrl: merge?.LASTURL ?? undefined,
-    },
-    create: {
-      email,
-      code,
-      fname: merge?.FNAME ?? undefined,
-      lname: merge?.LNAME ?? undefined,
-      lastUrl: merge?.LASTURL ?? undefined,
-    },
-    select: { id: true },
-  });
-  return user.id;
-}
-
-async function recordPurchase(email?: string, source?: string | null, meta?: any) {
-  const sessionId: string | undefined = meta?.session_id || meta?.sessionId;
-  if (!sessionId) return; // nothing to do
-
-  const userId =
-    (await getOrCreateUserId(email, {
-      FNAME: meta?.fname,
-      LNAME: meta?.lname,
-      LASTURL: meta?.path,
-    })) ??
-    (await getOrCreateUserId(`unknown+${nanoid(6)}@example.org`));
-
-  // Prisma path (explicit id to satisfy DB that lacks default on Purchase.id)
-  await prisma.purchase.upsert({
-    where: { sessionId },
-    update: {
-      amount: Number.isFinite(meta?.amount_total) ? Number(meta.amount_total) : undefined,
-      currency: typeof meta?.currency === 'string' ? meta.currency : undefined,
-      source: source ?? undefined,
-    },
-    create: {
-      id: nanoid(24), // <-- ensure id is present
-      sessionId,
-      userId: userId!,
-      amount: Number.isFinite(meta?.amount_total) ? Number(meta.amount_total) : null,
-      currency: typeof meta?.currency === 'string' ? meta.currency : null,
-      source: source ?? null,
-    },
-  });
-
-  // Lightweight event record
-  await prisma.event.create({
-    data: { userId: userId!, type: 'PURCHASE_COMPLETED', meta: meta ?? {} },
-  });
-}
 
 // ---- main ----------------------------------------------------------------
 
@@ -162,11 +101,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 2) Local persistence for purchases (so the site remembers)
-    if (type === 'PURCHASE_COMPLETED') {
-      const src = (meta?.source ?? source ?? 'unknown') as string | null;
-      await recordPurchase(email, src, meta);
-    }
+    // 2) PURCHASE_COMPLETED: no DB writes (webhook is canonical writer).
+    //    Return 200 so sendBeacon succeeds; localStorage set client-side.
 
     return NextResponse.json({ ok: true }, { headers });
   } catch (e: any) {
