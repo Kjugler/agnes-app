@@ -3,6 +3,7 @@
 import mailchimp from '@mailchimp/mailchimp_transactional';
 import { type ReferVideoId } from '@/config/referVideos';
 import { applyGlobalEmailBanner } from '@/lib/emailBanner';
+import { shouldSendTransactionalEmails } from '@/lib/emailConfig';
 
 type SendReferralEmailParams = {
   toEmail: string;
@@ -28,6 +29,11 @@ function getClient() {
 export async function sendReferralEmail(
   params: SendReferralEmailParams
 ): Promise<void> {
+  if (!shouldSendTransactionalEmails()) {
+    console.log('[REFERRAL_EMAIL] Skipping email (TRANSACTIONAL_EMAIL_ENABLED not set)');
+    return;
+  }
+
   const client = getClient();
   if (!client) {
     console.warn('[REFERRAL_EMAIL] Mailchimp not configured, skipping email');

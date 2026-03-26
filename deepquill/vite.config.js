@@ -4,6 +4,14 @@ import tailwindcss from "@tailwindcss/vite";
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react({
+      fastRefresh: false, // Disable React Fast Refresh (prevents /@react-refresh 404s when proxied)
+    }),
+    tailwindcss(),
+  ],
   base: "/",
+  server: {
+    hmr: false, // Disable HMR websocket (not needed when proxied through /terminal-proxy)
+  },
 });

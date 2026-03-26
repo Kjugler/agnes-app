@@ -1,46 +1,20 @@
-// agnes-next/src/app/api/fulfillment/next-for-label/route.ts
+// agnes-next: proxy-only to deepquill /api/fulfillment/next-for-label
+// Command: atomically claim oldest eligible order (FIFO). Deepquill owns canonical Order fulfillment.
 
-import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { NextRequest } from 'next/server';
+import { fulfillmentProxy } from '@/lib/fulfillmentProxy';
 
-export async function GET(request: NextRequest) {
+export async function GET(req: NextRequest) {
   try {
-    // Find the oldest order where status = "pending" and labelPrintedAt IS NULL
-    const order = await prisma.order.findFirst({
-      where: {
-        status: 'pending',
-        labelPrintedAt: null,
-      },
-      orderBy: {
-        createdAt: 'asc',
-      },
-      include: {
-        customer: true,
-      },
+    const { response } = await fulfillmentProxy('/api/fulfillment/next-for-label', req, {
+      method: 'GET',
     });
-
-    if (!order) {
-      return NextResponse.json({ order: null });
-    }
-
-    return NextResponse.json({
-      id: order.id,
-      createdAt: order.createdAt.toISOString(),
-      shippingName: order.shippingName,
-      shippingAddressLine1: order.shippingAddressLine1,
-      shippingAddressLine2: order.shippingAddressLine2,
-      shippingCity: order.shippingCity,
-      shippingState: order.shippingState,
-      shippingPostalCode: order.shippingPostalCode,
-      shippingCountry: order.shippingCountry,
-      shippingPhone: order.shippingPhone,
-    });
-  } catch (error) {
-    console.error('[fulfillment/next-for-label] Error:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch next order for label' },
-      { status: 500 }
+    return response;
+  } catch (err) {
+    console.error('[fulfillment/next-for-label] proxy error', err);
+    return Response.json(
+      { error: 'Service unavailable' },
+      { status: 503 }
     );
   }
 }
-

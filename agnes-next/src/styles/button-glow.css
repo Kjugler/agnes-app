@@ -1,0 +1,71 @@
+/* Button hover glow effects - Thank You page & Score page */
+
+.button-glow {
+  transition:
+    box-shadow 220ms ease,
+    transform 180ms ease,
+    filter 180ms ease;
+  cursor: pointer;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+}
+
+.button-glow:hover {
+  filter: brightness(1.08);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px rgba(0,0,0,0.3);
+}
+
+.button-glow--green:hover {
+  box-shadow: 0 0 14px rgba(0, 255, 120, 0.35);
+}
+
+.button-glow--yellow:hover {
+  box-shadow: 0 0 14px rgba(255, 200, 0, 0.35);
+}
+
+.button-glow--neutral:hover {
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.25);
+}
+
+/* Color-specific glows for score page buttons */
+.button-glow--emerald:hover {
+  box-shadow: 0 0 14px rgba(16, 185, 129, 0.4);
+}
+
+.button-glow--purple:hover {
+  box-shadow: 0 0 14px rgba(196, 38, 211, 0.4);
+}
+
+.button-glow--blue:hover {
+  box-shadow: 0 0 14px rgba(24, 119, 242, 0.4);
+}
+
+.button-glow--indigo:hover {
+  box-shadow: 0 0 14px rgba(99, 102, 241, 0.4);
+}
+
+.button-glow--black:hover {
+  box-shadow: 0 0 14px rgba(0, 0, 0, 0.5);
+}
+
+.button-glow--orange:hover {
+  box-shadow: 0 0 14px rgba(234, 88, 12, 0.4);
+}
+
+.button-glow:active {
+  transform: translateY(0);
+  filter: brightness(0.98);
+}
+
+.button-glow:disabled,
+.button-glow[disabled] {
+  cursor: not-allowed !important;
+  opacity: 0.6;
+}
+
+.button-glow:disabled:hover,
+.button-glow[disabled]:hover {
+  filter: none;
+  transform: none;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+}

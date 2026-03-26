@@ -106,12 +106,6 @@ async function handlePoints(req: NextRequest) {
           amountPoints: 0,
         },
         recent: [],
-        rival: {
-          label: 'Rabbit',
-          points: 100,
-          gap: 100,
-          tip: 'Earn points by purchasing, sharing, and completing challenges.',
-        },
       });
     }
 
@@ -165,14 +159,6 @@ async function handlePoints(req: NextRequest) {
       amountPoints,
     };
 
-    const rabbitTarget = totalPoints < 75 ? 100 : Math.ceil((totalPoints + 25) / 25) * 25;
-    const rival = {
-      label: 'Rabbit',
-      points: rabbitTarget,
-      gap: Math.max(rabbitTarget - totalPoints, 0),
-      tip: 'Earn points by purchasing, sharing, and completing challenges.',
-    };
-
     const displayName = user.email ? maskEmail(user.email) : 'Player';
 
     return NextResponse.json({
@@ -185,7 +171,6 @@ async function handlePoints(req: NextRequest) {
         at: e.createdAt,
         sessionId: null, // not stored on Event in current schema
       })),
-      rival,
     });
   } catch (err) {
     console.error('[points] error', err);

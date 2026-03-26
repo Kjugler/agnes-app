@@ -30,13 +30,26 @@ export default function CheckoutClient() {
       return;
     }
 
-    // Check if user has contest email (required for checkout)
+    // Root Cause B Fix: Catalog + Checkout must never require contest auth
+    // Email is optional - checkout can proceed without it (Stripe will collect email)
     const email = readContestEmail();
     if (!email) {
-      // Redirect to contest entry if no email
-      router.replace('/contest?redirect=checkout');
-      return;
+      console.log('[CHECKOUT] Proceeding without contest email - Stripe will collect email', {
+        pathname: '/checkout',
+        search: searchParams.toString(),
+        hasRefParam: !!searchParams.get('ref'),
+        note: 'Checkout does not require contest auth (Root Cause B fix)',
+      });
+      // Continue to checkout - do NOT redirect to contest
     }
+    
+    // Part 1B: Log checkout click (for debugging)
+    console.log('[CHECKOUT] Checkout initiated', {
+      product,
+      hasEmail: !!email,
+      hasRefParam: !!searchParams.get('ref'),
+      search: searchParams.toString(),
+    });
 
     // Extract tracking params
     const ref = searchParams.get('ref');
@@ -90,6 +103,11 @@ export default function CheckoutClient() {
           padding: '24px',
           maxWidth: '500px',
         }}>
+          {process.env.NEXT_PUBLIC_STRESS_TEST_MODE === '1' && (
+            <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: '#00ff7f' }}>
+              PUBLIC STRESS TEST — Simulation. No real charges. <a href="mailto:hello@theagnesprotocol.com" style={{ color: '#00ff7f', textDecoration: 'underline' }}>Found a bug?</a>
+            </p>
+          )}
           <h2 style={{ margin: '0 0 16px 0', color: '#ff4444' }}>Checkout Error</h2>
           <p style={{ margin: '0 0 24px 0', color: '#d0d0d0' }}>{error}</p>
           <button
@@ -125,6 +143,11 @@ export default function CheckoutClient() {
       <div style={{
         textAlign: 'center',
       }}>
+        {process.env.NEXT_PUBLIC_STRESS_TEST_MODE === '1' && (
+          <p style={{ fontSize: '13px', margin: '0 0 16px 0', color: '#00ff7f' }}>
+            PUBLIC STRESS TEST — Simulation. No real charges. <a href="mailto:hello@theagnesprotocol.com" style={{ color: '#00ff7f', textDecoration: 'underline' }}>Found a bug?</a>
+          </p>
+        )}
         <p style={{ fontSize: '18px', margin: '0 0 16px 0' }}>
           {loading ? 'Starting checkout...' : 'Redirecting to checkout...'}
         </p>

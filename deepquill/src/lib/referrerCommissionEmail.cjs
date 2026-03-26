@@ -1,6 +1,9 @@
 // deepquill/src/lib/referrerCommissionEmail.cjs
 // Email template for referrer commission notification
 
+const { formatPoints } = require('../../lib/pointsRollup.cjs');
+const { formatUsdFromCents } = require('../../lib/formatUsdFromCents.cjs');
+
 /**
  * Build referrer commission email
  * 
@@ -23,20 +26,35 @@ function buildReferrerCommissionEmail({ referrerEmail, referrerCode, buyerName, 
     ? pointsAwarded 
     : { awarded: pointsAwarded || 0, reason: 'awarded' };
   const pointsEarned = awardResult.awarded;
-  const commissionDollars = (commissionCents / 100).toFixed(2);
-  const savingsDollars = (savingsCents / 100).toFixed(2);
-  const totalEarningsDollars = (totalEarningsCents / 100).toFixed(2);
-  const totalSavingsDollars = (totalSavingsCents / 100).toFixed(2);
-  const productName = {
-    paperback: 'Paperback',
-    ebook: 'eBook',
-    audio_preorder: 'Audio Book (Preorder)',
-  }[product] || 'Product';
+  // D1: Use formatUsdFromCents helper to ensure correct cents→dollars conversion
+  const commissionDollars = formatUsdFromCents(commissionCents).replace('$', ''); // Remove $ for inline use
+  const savingsDollars = formatUsdFromCents(savingsCents).replace('$', '');
+  const totalEarningsDollars = formatUsdFromCents(totalEarningsCents).replace('$', '');
+  const totalSavingsDollars = formatUsdFromCents(totalSavingsCents).replace('$', '');
+  
+  // Format points with thousands separators
+  const formattedPointsEarned = formatPoints(pointsEarned);
+  const formattedTotalPoints = formatPoints(totalPoints);
+  
+  // Part G5: Defensive product handling - should never be null if webhook validation works
+  let productLabel = 'Unknown product';
+  let productWarning = '';
+  if (!product || typeof product !== 'string') {
+    productWarning = '⚠️ Product attribution missing for this sale. Please review.';
+    console.warn('[AP_EMAIL] Missing product in email template', { product, referrerCode });
+  } else {
+    const productNameMap = {
+      paperback: 'Paperback',
+      ebook: 'eBook',
+      audio_preorder: 'Audio Book (Preorder)',
+    };
+    productLabel = productNameMap[product] || product; // Fallback to raw value if unknown
+  }
   
   const buyerDisplayName = buyerName || 'someone';
   
   const subject = pointsEarned > 0 
-    ? `${buyerDisplayName} purchased The Agnes Protocol (${productName})`
+    ? `You just earned rewards from a Protocol purchase 🎉`
     : `Your friend purchased — here's what happened`;
   
   // Build points messaging based on award result
@@ -47,7 +65,7 @@ function buildReferrerCommissionEmail({ referrerEmail, referrerCode, buyerName, 
     // Points were awarded
     pointsSectionText = `You earned:
 - $${commissionDollars} commission
-- ${pointsEarned} contest points
+- ${formattedPointsEarned} contest points
 
 You just saved ${buyerDisplayName} $${savingsDollars}!`;
     
@@ -58,7 +76,7 @@ You just saved ${buyerDisplayName} $${savingsDollars}!`;
                   <strong>$${commissionDollars}</strong> commission
                 </p>
                 <p style="margin:8px 0;font-size:16px;line-height:1.6;color:#333333;">
-                  <strong>${pointsEarned}</strong> contest points
+                  <strong>${formattedPointsEarned}</strong> contest points
                 </p>
                 <p style="margin:8px 0;font-size:16px;line-height:1.6;color:#333333;">
                   <strong>You just saved ${buyerDisplayName} $${savingsDollars}!</strong>
@@ -126,9 +144,9 @@ Thanks for helping us test the system — you now have an edge when the real con
   }
   
   const text = `
-${pointsEarned > 0 ? 'Great news!' : '🎉 Your friend just made a purchase — nice work.'}
+${productWarning ? `${productWarning}\n\n` : ''}${pointsEarned > 0 ? 'Great news!' : '🎉 Your friend just made a purchase — nice work.'}
 
-${buyerDisplayName} just purchased The Agnes Protocol ${productName} using your referral code.
+${buyerDisplayName} just purchased The Agnes Protocol ${productLabel} using your referral code.
 
 ${pointsSectionText}
 
@@ -136,7 +154,7 @@ ${pointsEarned > 0 ? `You just saved ${buyerDisplayName} $${savingsDollars}!
 
 Your new totals:
 - Total earnings: $${totalEarningsDollars}
-- Total points: ${totalPoints}
+- Total points: ${formattedTotalPoints}
 - Total you've saved friends: $${totalSavingsDollars}
 
 Keep going — you're on pace! Keep sharing your referral link to earn more rewards.` : ''}
@@ -166,8 +184,14 @@ DeepQuill LLC
             <td style="padding:40px 30px;">
               <h1 style="margin:0 0 20px 0;font-size:24px;color:#0a0a0a;">${pointsEarned > 0 ? 'Great news! 🎉' : '🎉 Your friend just made a purchase — nice work.'}</h1>
               
+              ${productWarning ? `<div style="background-color:#fff3cd;border-left:4px solid #ffc107;border-radius:6px;padding:15px;margin:0 0 20px 0;">
+                <p style="margin:0;font-size:14px;line-height:1.6;color:#856404;">
+                  ${productWarning}
+                </p>
+              </div>` : ''}
+              
               <p style="margin:0 0 20px 0;font-size:16px;line-height:1.6;color:#333333;">
-                <strong>${buyerDisplayName}</strong> just purchased <strong>The Agnes Protocol ${productName}</strong> using your referral code.
+                <strong>${buyerDisplayName}</strong> just purchased <strong>The Agnes Protocol ${productLabel}</strong> using your referral code.
               </p>
               
               ${pointsSectionHtml}
@@ -179,7 +203,7 @@ DeepQuill LLC
                   <strong>Total earnings:</strong> $${totalEarningsDollars}
                 </p>
                 <p style="margin:8px 0;font-size:16px;line-height:1.6;color:#333333;">
-                  <strong>Total points:</strong> ${totalPoints}
+                  <strong>Total points:</strong> ${formattedTotalPoints}
                 </p>
                 <p style="margin:8px 0;font-size:16px;line-height:1.6;color:#333333;">
                   <strong>Total you've saved friends:</strong> $${totalSavingsDollars}

@@ -1,12 +1,20 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import SignalComposer from './SignalComposer';
-import ReviewsPanel from './ReviewsPanel';
+import ReviewComposer from './ReviewComposer';
 
-export default function SignalRoomHeader() {
+type SignalRoomHeaderProps = {
+  /** When true (gate view), hide composer and reviews - user has no access yet */
+  gated?: boolean;
+  /** Called after a review is submitted (for feed refresh) */
+  onReviewSubmitted?: () => void;
+};
+
+export default function SignalRoomHeader({ gated = false, onReviewSubmitted }: SignalRoomHeaderProps) {
   const [isComposerOpen, setIsComposerOpen] = useState(false);
-  const [isReviewsPanelOpen, setIsReviewsPanelOpen] = useState(false);
+  const [isReviewComposerOpen, setIsReviewComposerOpen] = useState(false);
 
   return (
     <>
@@ -19,18 +27,36 @@ export default function SignalRoomHeader() {
           borderBottom: '1px solid #1a1f3a',
         }}
       >
-        {/* Top-left: Signal icon placeholder */}
+        {/* Top-left: Back link + Signal icon */}
         <div
           style={{
-            fontSize: '24px',
-            color: '#00ffe0',
-            fontWeight: 'bold',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '1rem',
           }}
         >
-          📡 Signal
+          <Link
+            href="/contest"
+            style={{
+              color: '#00ffe0',
+              fontSize: '0.9em',
+              textDecoration: 'none',
+            }}
+          >
+            ← Back to Contest Hub
+          </Link>
+          <span
+            style={{
+              fontSize: '24px',
+              color: '#00ffe0',
+              fontWeight: 'bold',
+            }}
+          >
+            📡 Signal
+          </span>
         </div>
 
-        {/* Top-right: + icon and matrix icon */}
+        {/* Top-right: admin, composer, reviews (hidden when gated) */}
         <div
           style={{
             display: 'flex',
@@ -38,35 +64,57 @@ export default function SignalRoomHeader() {
             alignItems: 'center',
           }}
         >
-          <div
-            onClick={() => setIsComposerOpen(true)}
-            title="Send a Signal"
+          <Link
+            href="/signal-room/admin"
+            title="Admin: Manage Signals"
             style={{
               fontSize: '20px',
               color: '#00ffe0',
-              cursor: 'pointer',
-              position: 'relative',
+              textDecoration: 'none',
             }}
           >
-            +
-          </div>
-          <div
-            onClick={() => setIsReviewsPanelOpen(true)}
-            title="Write a Review"
-            style={{
-              fontSize: '20px',
-              color: '#00ffe0',
-              cursor: 'pointer',
-              position: 'relative',
-            }}
-          >
-            ⚡
-          </div>
+            ⚙
+          </Link>
+          {!gated && (
+            <>
+              <div
+                onClick={() => setIsComposerOpen(true)}
+                title="Send a Signal"
+                style={{
+                  fontSize: '20px',
+                  color: '#00ffe0',
+                  cursor: 'pointer',
+                  position: 'relative',
+                }}
+              >
+                +
+              </div>
+              <div
+                onClick={() => setIsReviewComposerOpen(true)}
+                title="Write a Review"
+                style={{
+                  fontSize: '20px',
+                  color: '#00ffe0',
+                  cursor: 'pointer',
+                  position: 'relative',
+                }}
+              >
+                ⚡
+              </div>
+            </>
+          )}
         </div>
       </header>
 
       <SignalComposer isOpen={isComposerOpen} onClose={() => setIsComposerOpen(false)} />
-      <ReviewsPanel isOpen={isReviewsPanelOpen} onClose={() => setIsReviewsPanelOpen(false)} />
+      <ReviewComposer
+        isOpen={isReviewComposerOpen}
+        onClose={() => setIsReviewComposerOpen(false)}
+        onSubmitted={() => {
+          onReviewSubmitted?.();
+          setIsReviewComposerOpen(false);
+        }}
+      />
     </>
   );
 }

@@ -51,33 +51,48 @@ export async function startCheckout(opts: StartCheckoutOpts = {}) {
   // 1) fire tracking first (non-blocking — does not affect animations)
   trackCheckoutStarted(source, path);
 
+  // Root Cause B Fix: Email is optional - checkout can proceed without contest auth
   const email = readContestEmail();
   if (!email) {
-    throw new Error('Please enter the contest first so we know who to credit.');
+    console.log('[startCheckout] Proceeding without contest email - Stripe will collect email', {
+      note: 'Checkout does not require contest auth (Root Cause B fix)',
+    });
+    // Continue to checkout - email is optional
   }
 
-  // Capture referral code from query params, localStorage, or cookie
+  // Root Cause A Fix: Capture referral code with correct precedence: query param > cookie > localStorage
+  // Query param ref must always override cookie (prevents stale referral context)
   let referralCode: string | undefined;
   if (typeof window !== 'undefined') {
-    // Try query params first (check both 'code' and 'ref')
+    // Priority 1: Query params (highest priority - always wins)
     const urlParams = new URLSearchParams(window.location.search);
     const codeFromQuery = urlParams.get('code'); // from /refer?code=...
-    const refFromQuery = urlParams.get('ref'); // from /contest?ref=...
+    const refFromQuery = urlParams.get('ref'); // from /contest?ref=... or /catalog?ref=...
     
-    if (codeFromQuery) {
+    if (codeFromQuery && codeFromQuery.trim()) {
       referralCode = codeFromQuery.trim();
-    } else if (refFromQuery) {
+    } else if (refFromQuery && refFromQuery.trim()) {
       referralCode = refFromQuery.trim();
     } else {
-      // Fallback to localStorage (set by /refer page)
+      // Priority 2: Cookie (ap_ref or ref)
       try {
-        referralCode = window.localStorage.getItem('referral_code') || undefined;
-      } catch {
-        // localStorage not available, try cookie
         const cookies = document.cookie.split(';');
-        const referralCookie = cookies.find(c => c.trim().startsWith('referral_code='));
-        if (referralCookie) {
-          referralCode = referralCookie.split('=')[1]?.trim();
+        const apRefCookie = cookies.find(c => c.trim().startsWith('ap_ref='));
+        const refCookie = cookies.find(c => c.trim().startsWith('ref='));
+        const cookieValue = apRefCookie?.split('=')[1] || refCookie?.split('=')[1];
+        if (cookieValue) {
+          referralCode = decodeURIComponent(cookieValue.trim());
+        }
+      } catch {
+        // Cookie parsing failed
+      }
+      
+      // Priority 3: localStorage (lowest priority - only if no query/cookie)
+      if (!referralCode) {
+        try {
+          referralCode = window.localStorage.getItem('referral_code') || undefined;
+        } catch {
+          // localStorage not available
         }
       }
     }
@@ -109,7 +124,7 @@ export async function startCheckout(opts: StartCheckoutOpts = {}) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-User-Email': email,
+        ...(email ? { 'X-User-Email': email } : {}), // Only include email header if available
       },
       body: JSON.stringify({
         product,
@@ -157,8 +172,20 @@ export async function startCheckout(opts: StartCheckoutOpts = {}) {
       throw new Error(data?.error || 'Checkout session created but no URL returned');
     }
 
-    // Redirect to Stripe Checkout
-    window.location.href = data.url;
+    // Redirect to Stripe Checkout at top-level (breaks out of iframe if needed)
+    // Stripe Checkout requires top-level navigation and will not work in iframes
+    const target = window.top ?? window;
+    try {
+      const isFramed = window.self !== window.top;
+      if (isFramed) {
+        console.log('[startCheckout] Detected iframe context - redirecting top-level window');
+      }
+      target.location.assign(data.url);
+    } catch (e) {
+      // Cross-origin iframe would throw - fallback to same window
+      console.warn('[startCheckout] Could not access top-level window (cross-origin?), using same window:', e);
+      window.location.assign(data.url);
+    }
   } catch (err: any) {
     console.error('[startCheckout] Checkout error', err);
     

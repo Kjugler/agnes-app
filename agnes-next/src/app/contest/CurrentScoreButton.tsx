@@ -33,7 +33,8 @@ export default function CurrentScoreButton({ className = '' }: { className?: str
           return;
         }
 
-        const res = await fetch(`/api/points?sessionId=${encodeURIComponent(sessionId)}`, {
+        // Use canonical contest/score (deepquill) instead of local /api/points
+        const res = await fetch(`/api/contest/score?session_id=${encodeURIComponent(sessionId)}`, {
           method: 'GET',
           credentials: 'include',
         }).catch(() => null);
@@ -45,7 +46,7 @@ export default function CurrentScoreButton({ className = '' }: { className?: str
         }
 
         const json = (await res.json()) as PointsResponse;
-        const current = Math.max(0, Number(json?.totalPoints || 0));
+        const current = Math.max(0, Number(json?.totalPoints ?? 0));
         const last = Math.max(0, Number(localStorage.getItem('contest:last-points') || 0));
 
         // Should the button be visible after the celebration?

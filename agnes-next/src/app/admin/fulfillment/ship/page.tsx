@@ -22,41 +22,28 @@ type OrderToShip = {
 
 export default function ShipBooksPage() {
   const [user, setUser] = useState<FulfillmentUser | null>(null);
+  const [helperOptions, setHelperOptions] = useState<FulfillmentUser[]>([]);
   const [orders, setOrders] = useState<OrderToShip[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shippingOrderId, setShippingOrderId] = useState<string | null>(null);
 
-  // Static helper options (can be made dynamic later)
-  const helperOptions = [
-    { name: 'Carly Jugler', email: 'carly@example.com' },
-    { name: 'Denise', email: 'denise@example.com' },
-  ];
-
-  // Load or create fulfillment user
-  const selectHelper = async (name: string, email: string) => {
-    setLoading(true);
-    setError(null);
+  const loadHelpers = async () => {
     try {
-      const response = await fetch('/api/fulfillment/user', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to create/load helper');
+      const res = await fetch('/api/fulfillment/users?activeOnly=true');
+      if (res.ok) {
+        const data = await res.json();
+        setHelperOptions(Array.isArray(data) ? data : []);
       }
-
-      const fulfillmentUser = await response.json();
-      setUser(fulfillmentUser);
-      localStorage.setItem('fulfillmentUserId', fulfillmentUser.id);
-      localStorage.setItem('fulfillmentUserName', fulfillmentUser.name);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load helper');
-    } finally {
-      setLoading(false);
+    } catch {
+      setHelperOptions([]);
     }
+  };
+
+  const selectHelper = (helper: FulfillmentUser) => {
+    setUser(helper);
+    localStorage.setItem('fulfillmentUserId', helper.id);
+    localStorage.setItem('fulfillmentUserName', helper.name);
   };
 
   // Load orders to ship
@@ -121,18 +108,20 @@ export default function ShipBooksPage() {
     return diffDays;
   };
 
-  // Load user from localStorage on mount
   useEffect(() => {
+    loadHelpers();
+  }, []);
+
+  useEffect(() => {
+    if (helperOptions.length === 0) return;
     const savedUserId = localStorage.getItem('fulfillmentUserId');
-    const savedUserName = localStorage.getItem('fulfillmentUserName');
-    if (savedUserId && savedUserName) {
-      // Try to find the helper in the list
-      const helper = helperOptions.find((h) => h.name === savedUserName);
+    if (savedUserId) {
+      const helper = helperOptions.find((h) => h.id === savedUserId);
       if (helper) {
-        selectHelper(helper.name, helper.email);
+        setUser(helper);
       }
     }
-  }, []);
+  }, [helperOptions]);
 
   // Load orders when user is set
   useEffect(() => {
@@ -144,6 +133,11 @@ export default function ShipBooksPage() {
 
   return (
     <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
+      <div style={{ marginBottom: '16px' }}>
+        <a href="/admin/fulfillment/labels" style={{ marginRight: '16px' }}>Labels</a>
+        <a href="/admin/fulfillment/ship" style={{ marginRight: '16px', fontWeight: 600 }}>Ship</a>
+        <a href="/admin/fulfillment/helpers">Helpers</a>
+      </div>
       <h1 style={{ marginBottom: '24px' }}>Ship Books</h1>
 
       {/* Helper Selection */}
@@ -153,10 +147,13 @@ export default function ShipBooksPage() {
             Select Helper
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {helperOptions.length === 0 && !loading ? (
+              <p style={{ color: '#666' }}>No active helpers. Add helpers in Admin → Fulfillment Helpers.</p>
+            ) : null}
             {helperOptions.map((helper) => (
               <button
-                key={helper.email}
-                onClick={() => selectHelper(helper.name, helper.email)}
+                key={helper.id}
+                onClick={() => selectHelper(helper)}
                 disabled={loading}
                 style={{
                   padding: '12px 16px',

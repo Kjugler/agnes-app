@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import Terminal, { ColorMode, TerminalOutput } from 'react-terminal-ui';
 import EmailModal from './EmailModal';
 import JodyAssistant from './JodyAssistant';
+import MobileInputModal from './MobileInputModal';
 import './TerminalEmulator.css';
 import { subscribeEmail } from '../api/subscribeEmail';
 
@@ -22,10 +23,87 @@ const TerminalEmulator = () => {
   const [emailSubmitting, setEmailSubmitting] = useState(false);
   const [emailError, setEmailError] = useState('');
 
+  // Part A: Mobile detection (single source of truth)
+  const [isMobile, setIsMobile] = useState(false);
+  const [showMobileSecretModal, setShowMobileSecretModal] = useState(false);
+  const [simpleMode, setSimpleMode] = useState(false); // Part G: Simple mode toggle
+
   const introIntervalRef = useRef(null);
   const terminalContainerRef = useRef(null);
   const downloadIntervalRef = useRef(null);
   const phaseRef = useRef(phase);
+
+  // Unmount-only cleanup: ALWAYS remove mobile-terminal on unmount to prevent contaminating other pages
+  useEffect(() => {
+    return () => {
+      if (typeof document !== 'undefined') {
+        document.body.classList.remove('mobile-terminal');
+        document.body.classList.remove('simple-mode');
+      }
+    };
+  }, []);
+
+  // Part A: Detect mobile and set body class + query override support
+  useEffect(() => {
+    const checkMobile = () => {
+      // Check query param override first
+      const urlParams = new URLSearchParams(window.location.search);
+      const forceMobile = urlParams.get('mobile') === '1';
+      
+      // Then check viewport width (iPhone-first: <= 480px, or 520px for more coverage)
+      const viewportWidth = window.innerWidth;
+      const isSmallViewport = viewportWidth <= 520;
+      
+      // Use pointer:coarse media query (most reliable) + fallback to viewport width
+      const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
+      const isMobileDevice = forceMobile || isCoarsePointer || isSmallViewport;
+      
+      setIsMobile(isMobileDevice);
+      
+      // Part A: Set body class (single source of truth)
+      if (typeof document !== 'undefined') {
+        document.body.classList.toggle('mobile-terminal', isMobileDevice);
+        // Part G: Apply simple mode class if enabled
+        document.body.classList.toggle('simple-mode', simpleMode && isMobileDevice);
+      }
+      
+      // Show mobile secret modal if we're on mobile and waiting for secret code
+      if (isMobileDevice && phase === 'intro' && isIntroComplete && !isAccessGranted) {
+        setShowMobileSecretModal(true);
+      } else if (!isMobileDevice || isAccessGranted) {
+        setShowMobileSecretModal(false);
+      }
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => {
+      window.removeEventListener('resize', checkMobile);
+      // Cleanup body class on unmount
+      if (typeof document !== 'undefined') {
+        document.body.classList.remove('mobile-terminal', 'simple-mode');
+      }
+    };
+  }, [phase, isIntroComplete, isAccessGranted, simpleMode]);
+
+  // Part G: Update simple mode class when toggled
+  useEffect(() => {
+    if (typeof document !== 'undefined' && isMobile) {
+      document.body.classList.toggle('simple-mode', simpleMode);
+    }
+    return () => {
+      if (typeof document !== 'undefined') {
+        document.body.classList.remove('simple-mode');
+      }
+    };
+  }, [simpleMode, isMobile]);
+
+  // Show mobile secret modal when intro completes on mobile
+  useEffect(() => {
+    if (isMobile && isIntroComplete && !isAccessGranted && phase === 'intro') {
+      setShowMobileSecretModal(true);
+    }
+  }, [isMobile, isIntroComplete, isAccessGranted, phase]);
 
   const introMessages = [
     'VERIFYING SECURITY ID...',
@@ -191,6 +269,76 @@ const TerminalEmulator = () => {
     // EmailModal redirects directly, so we don't need to do anything here
   };
 
+  // Part E1: Handle mobile secret code submission
+  const handleMobileSecretSubmit = (input) => {
+    setShowMobileSecretModal(false);
+    // Inject command into terminal as if typed
+    handleInput(input);
+  };
+
+  // Part D: Handle NEXT button click (mobile only)
+  const handleNextClick = () => {
+    if (!isMobile) return;
+    
+    // Determine what action to take based on current phase/state
+    if (phase === 'intro' && !isIntroComplete) {
+      // Skip intro animation (for testing, or if user wants to skip)
+      setIsIntroComplete(true);
+      setLineData(prev => [
+        ...prev,
+        <TerminalOutput key={`hint1-${Date.now()}`} className="text-green-500">
+          {'You must know the secret to get in.'}
+        </TerminalOutput>,
+      ]);
+      setLineData(prev => [
+        ...prev,
+        <TerminalOutput key={`hint2-${Date.now()}`} className="text-green-500">
+          {"Hint: It starts with '#where'"}
+        </TerminalOutput>,
+      ]);
+      if (isMobile) {
+        setShowMobileSecretModal(true);
+      }
+    } else if (phase === 'intro' && isIntroComplete && !isAccessGranted) {
+      // Show mobile secret modal
+      setShowMobileSecretModal(true);
+    } else if (phase === 'terminal1' && isAccessGranted) {
+      // Terminal 1 is complete, advance to terminal2
+      setPhase('terminal2');
+    } else if (phase === 'terminal2' && isDownloading && downloadProgress < 100) {
+      // Skip download animation (for testing)
+      setDownloadProgress(100);
+      setIsDownloading(false);
+      setShowEmailModal(true);
+    } else if (phase === 'terminal2' && !isDownloading && !showEmailModal) {
+      // Trigger email modal if download is complete
+      setShowEmailModal(true);
+    } else {
+      // Default: simulate Enter key press on terminal input
+      const input = document.querySelector('.react-terminal-input');
+      if (input && input instanceof HTMLElement) {
+        input.focus();
+        // Trigger Enter keypress
+        const enterEvent = new KeyboardEvent('keydown', {
+          key: 'Enter',
+          code: 'Enter',
+          keyCode: 13,
+          which: 13,
+          bubbles: true,
+        });
+        input.dispatchEvent(enterEvent);
+      }
+    }
+  };
+
+  // Part D: Get current step indicator text
+  const getStepIndicator = () => {
+    if (phase === 'intro') return 'TERMINAL 1/2';
+    if (phase === 'terminal1') return 'TERMINAL 1/2';
+    if (phase === 'terminal2') return 'TERMINAL 2/2';
+    return '';
+  };
+
   const handleInput = (input) => {
     // echo the command
     setLineData(prev => [
@@ -205,6 +353,10 @@ const TerminalEmulator = () => {
     // Always allow secret code entry, even if intro isn't complete
     // This prevents the loop where entering the code restarts the intro
     if (normalizedInput === 'where is jody vernon' || normalizedInput === '#whereisjodyvernon') {
+      // Close mobile modal if open
+      if (showMobileSecretModal) {
+        setShowMobileSecretModal(false);
+      }
       if (introIntervalRef.current) {
         clearInterval(introIntervalRef.current);
         introIntervalRef.current = null;
@@ -340,7 +492,13 @@ const TerminalEmulator = () => {
       <div 
         ref={terminalContainerRef}
         className={`terminal-container ${phase === 'terminal2' ? 'terminal2-root' : ''}`}
-        style={{ width: '100%', height: '100vh', display: phase === 'lightning' ? 'none' : 'block' }}
+        style={{ 
+          width: '100%', 
+          height: '100vh', 
+          display: phase === 'lightning' ? 'none' : 'block',
+          // Part E1: Hide terminal input on mobile when secret modal is shown
+          pointerEvents: isMobile && showMobileSecretModal ? 'none' : 'auto',
+        }}
       >
         <Terminal
           name="THE CONTROL ROOM"
@@ -352,6 +510,16 @@ const TerminalEmulator = () => {
           {lineData}
         </Terminal>
       </div>
+
+      {/* Part E1: Mobile secret code input modal */}
+      <MobileInputModal
+        isOpen={showMobileSecretModal}
+        prompt="Enter the secret code"
+        placeholder="Hint: It starts with '#where'"
+        onSubmit={handleMobileSecretSubmit}
+        inputType="text"
+        autoFocus={true}
+      />
 
       {(() => {
         console.log('[TerminalEmulator] Render - showEmailModal:', showEmailModal, 'phase:', phase);
@@ -368,6 +536,35 @@ const TerminalEmulator = () => {
       
       {/* Jody Assistant - First IBM Terminal - Hide when email modal is open */}
       {!showEmailModal && phase !== 'lightning' && <JodyAssistant variant="em1" autoShowDelayMs={4000} />}
+      
+      {/* Part D: Sticky NEXT button for mobile only */}
+      {isMobile && phase !== 'lightning' && (
+        <div className="mobile-terminal-action-bar">
+          <div className="mobile-terminal-progress">
+            {getStepIndicator()}
+          </div>
+          <div className="mobile-terminal-actions">
+            <button
+              type="button"
+              onClick={handleNextClick}
+              className="mobile-terminal-next-btn"
+              aria-label="Next"
+            >
+              NEXT
+            </button>
+            {/* Part G: Simple mode toggle (optional) */}
+            <button
+              type="button"
+              onClick={() => setSimpleMode(!simpleMode)}
+              className="mobile-terminal-simple-toggle"
+              aria-label="Toggle Simple Mode"
+              title={simpleMode ? 'Show full terminal' : 'Show simplified view'}
+            >
+              {simpleMode ? 'FULL' : 'SIMPLE'}
+            </button>
+          </div>
+        </div>
+      )}
       
       {/* debug badge: shows which app and API base are in use */}
 <div style={{

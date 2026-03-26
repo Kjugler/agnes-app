@@ -8,6 +8,8 @@ export const metadata = {
 
 import { Suspense } from 'react';
 import CheckoutWiring from "./contest/CheckoutWiring";
+import StressTestBanner from "@/components/StressTestBanner";
+import StressTestLayoutWrapper from "@/components/StressTestLayoutWrapper";
 
 export default function RootLayout({
   children,
@@ -22,7 +24,10 @@ export default function RootLayout({
         <link rel="preload" as="image" href="/images/score-bg.jpg" />
       </head>
       <body suppressHydrationWarning={true}>
-        {children}
+        <StressTestBanner />
+        <StressTestLayoutWrapper>
+          {children}
+        </StressTestLayoutWrapper>
         {/* Global, invisible, zero animation/layout impact */}
         <Suspense fallback={null}>
           <CheckoutWiring />

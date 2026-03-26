@@ -2,6 +2,7 @@
 // Proxy to deepquill to verify Stripe checkout session
 
 import { NextRequest, NextResponse } from 'next/server';
+import { getInternalProxySecretTrimmed } from '@/lib/internalProxySecret';
 import { proxyJson } from '@/lib/deepquillProxy';
 
 export const runtime = 'nodejs';
@@ -37,19 +38,8 @@ function extractSessionId(req: NextRequest): string {
 }
 
 export async function GET(req: NextRequest) {
-  console.log('[VERIFY_SESSION_PROXY] hit', { method: req.method, url: req.url });
-  
   try {
     const session_id = extractSessionId(req);
-
-    // Debug logs (keep for now)
-    console.log('[VERIFY_SESSION_PROXY] href:', req.nextUrl.href);
-    console.log('[VERIFY_SESSION_PROXY] search:', req.nextUrl.search);
-    console.log(
-      '[VERIFY_SESSION_PROXY] params:',
-      Array.from(req.nextUrl.searchParams.entries())
-    );
-    console.log('[VERIFY_SESSION_PROXY] extracted session_id:', session_id);
 
     if (!session_id) {
       return NextResponse.json(
@@ -58,18 +48,16 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    console.log('[verify-session] Verifying session via deepquill', { session_id });
-
     // IMPORTANT: forward the query string to deepquill
     // Pass path with query included so deepquill receives it
     const path = `/api/checkout/verify-session?session_id=${encodeURIComponent(session_id)}`;
 
-    // Proxy to deepquill
+    const proxySecret = getInternalProxySecretTrimmed();
+
+    // Proxy to deepquill: x-internal-proxy only when INTERNAL_PROXY_SECRET is set (matches deepquill verify-session)
     const { data, status } = await proxyJson(path, req, {
       method: 'GET',
-      headers: {
-        'x-internal-proxy': process.env.INTERNAL_PROXY_SECRET || 'dev-only-secret',
-      },
+      headers: proxySecret ? { 'x-internal-proxy': proxySecret } : {},
     });
 
     if (status !== 200) {

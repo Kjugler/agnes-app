@@ -1,9 +1,8 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { useSafeBack } from '@/lib/nav';
-import { readContestEmail } from '@/lib/identity';
 import { BuyBookButton } from '@/components/BuyBookButton';
 import HelpButton from '@/components/HelpButton';
 
@@ -22,8 +21,6 @@ export default function SampleChaptersClient() {
   const rightVideoRef = useRef<HTMLIFrameElement>(null);
   const leftPlayerRef = useRef<any>(null);
   const rightPlayerRef = useRef<any>(null);
-  const goBack = useSafeBack('/contest');
-
   // Preserve referral code from URL to localStorage/cookie (if not already stored)
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -50,25 +47,25 @@ export default function SampleChaptersClient() {
       id: 'btn1',
       label: 'Read Chapter 1',
       text: 'Starts off running.',
-      link: '/chapters/chapter1.pdf',
+      link: '/sample-chapters/read/1',
     },
     {
       id: 'btn2',
       label: 'Read Chapter 2',
       text: 'Fred enters the scene – Agnes already doesn’t like him.',
-      link: '/chapters/chapter2.pdf',
+      link: '/sample-chapters/read/2',
     },
     {
       id: 'btn3',
       label: 'Read Chapter 9',
       text: 'Meet Matt and Reese – straight from the orphanage.',
-      link: '/chapters/chapter9.pdf',
+      link: '/sample-chapters/read/9',
     },
     {
       id: 'btn4',
       label: 'Read Chapter 45',
       text: 'Fred and Jody – always two steps ahead.',
-      link: '/chapters/chapter45.pdf',
+      link: '/sample-chapters/read/45',
     },
     {
       id: 'btn5',
@@ -322,6 +319,19 @@ export default function SampleChaptersClient() {
         minHeight: '100vh',
       }}
     >
+      <div style={{ paddingTop: '20px', marginBottom: '0.5rem' }}>
+        <Link
+          href="/contest"
+          style={{
+            color: '#00ffe5',
+            textDecoration: 'none',
+            fontSize: '0.95em',
+            display: 'inline-block',
+          }}
+        >
+          ← Back to Contest Hub
+        </Link>
+      </div>
       <h1 style={{ marginTop: '20px', fontSize: '1.6em' }}>
         Explore Sample Chapters from <em>The Agnes Protocol</em>
       </h1>
@@ -376,10 +386,8 @@ export default function SampleChaptersClient() {
               justifyContent: 'center',
             }}
           >
-            <a
-              href={btn.link}
-              target="_blank"
-              rel="noopener noreferrer"
+            <Link
+              href={btn.link ?? '#'}
               style={{
                 padding: '12px 24px',
                 border: '2px solid #00ff00',
@@ -393,7 +401,7 @@ export default function SampleChaptersClient() {
               {current === index && (
                 <span style={{ marginLeft: '12px', fontSize: '1.2em' }}>👉</span>
               )}
-            </a>
+            </Link>
             {current === index && (
               <span
                 style={{
@@ -445,9 +453,8 @@ export default function SampleChaptersClient() {
             <span style={{ marginLeft: '12px', fontSize: '1.2em' }}>👉</span>
           )}
         </BuyBookButton>
-        <button
-          type="button"
-          onClick={goBack}
+        <Link
+          href="/contest"
           style={{
             padding: '10px 14px',
             border: '2px solid #00ffe5',
@@ -461,11 +468,11 @@ export default function SampleChaptersClient() {
             alignItems: 'center',
             justifyContent: 'center',
             fontSize: '16px',
-            cursor: 'pointer',
+            textDecoration: 'none',
           }}
         >
-          Go Back
-        </button>
+          Back to Contest Hub
+        </Link>
       </div>
 
       {/* PULSE KEYFRAMES */}

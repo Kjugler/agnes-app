@@ -1,6 +1,7 @@
 // agnes-next/src/lib/email/shippingConfirmation.ts
 
 import mailchimp from '@mailchimp/mailchimp_transactional';
+import { applyGlobalEmailBanner } from '@/lib/emailBanner';
 
 type ShippingEmailParams = {
   toEmail: string;
@@ -78,6 +79,13 @@ export async function sendShippingConfirmationEmail(
     toList.push({ email: alertEmail, type: 'bcc', name: 'DeepQuill Orders' });
   }
 
+  const subject = 'Your copy of *The Agnes Protocol* is on its way';
+  const { html: finalHtml, text: finalText, subject: finalSubject } = applyGlobalEmailBanner({
+    html: htmlBody,
+    text: textBody,
+    subject,
+  });
+
   try {
     console.log('[email] Sending shipping confirmation email', {
       toEmail,
@@ -87,10 +95,10 @@ export async function sendShippingConfirmationEmail(
     await client.messages.send({
       message: {
         from_email: fromEmail,
-        subject: 'Your copy of *The Agnes Protocol* is on its way',
+        subject: finalSubject ?? subject,
         to: toList,
-        text: textBody,
-        html: htmlBody,
+        text: finalText ?? textBody,
+        html: finalHtml ?? htmlBody,
       },
     });
 

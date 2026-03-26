@@ -18,66 +18,84 @@ datasource db {
 }
 
 model User {
-  id                    String               @id @default(cuid())
-  email                 String               @unique
-  fname                 String?
-  lname                 String?
-  firstName             String?
-  code                  String               @unique
-  referralCode          String               @unique
-  referredBy            String?
-  createdAt             DateTime             @default(now())
-  points                Int                  @default(0)
-  earnedPurchaseBook    Boolean              @default(false)
-  rabbit1Completed      Boolean              @default(false)
-  rabbitStep            Int                  @default(500)
-  rabbitTarget          Int?
-  rabbitCatches         Int                  @default(0)
-  lastRabbitBonusIntent String?
-  rabbitSeq             Int                  @default(1)
-  lastRabbitCatchAt     DateTime?
-  phone                 String?
-  handleX               String?
-  handleInstagram       String?
-  handleTiktok          String?
-  handleTruth           String?
-  referralEarningsCents Int                  @default(0)
-  associateBalanceCents Int                  @default(0)
-  associateLifetimeEarnedCents Int           @default(0)
-  associateFriendsSavedCents Int             @default(0)
+  id                           String               @id @default(cuid())
+  email                        String               @unique
+  fname                        String?
+  lname                        String?
+  firstName                    String?
+  code                         String               @unique
+  referralCode                 String               @unique
+  preferredDiscountCode        String? // User's preferred discount code (auto-applied to future checkouts)
+  referredBy                   String?
+  createdAt                    DateTime             @default(now())
+  points                       Int                  @default(0)
+  earnedPurchaseBook           Boolean              @default(false)
+  rabbit1Completed             Boolean              @default(false)
+  rabbitStep                   Int                  @default(500)
+  rabbitTarget                 Int?
+  rabbitCatches                Int                  @default(0)
+  lastRabbitBonusIntent        String?
+  rabbitSeq                    Int                  @default(1)
+  lastRabbitCatchAt            DateTime?
+  phone                        String?
+  handleX                      String?
+  handleInstagram              String?
+  handleTiktok                 String?
+  handleTruth                  String?
+  referralEarningsCents        Int                  @default(0)
+  associateBalanceCents        Int                  @default(0)
+  associateLifetimeEarnedCents Int                  @default(0)
+  associateFriendsSavedCents   Int                  @default(0)
   noPurchaseEmailSentAt        DateTime?
-  contestJoinedAt             DateTime?
-  nonParticipantEmailSentAt   DateTime?
-  missionaryEmailSentAt       DateTime?
-  engagedEmailSentAt          DateTime?
-  events                Event[]
-  badges                UserBadge[]
-  posts                 Post[]
-  purchases             Purchase[]
-  ledger                Ledger[]
-  referralConversions   ReferralConversion[]
-  signals               Signal[]
-  signalReplies         SignalReply[]
-  signalAcknowledges    SignalAcknowledge[]
-  reviews               Review[]
+  contestJoinedAt              DateTime?
+  nonParticipantEmailSentAt    DateTime?
+  missionaryEmailSentAt        DateTime?
+  engagedEmailSentAt           DateTime?
+  terminalDiscoveryAwarded    Boolean               @default(false)
+  events                       Event[]
+  badges                       UserBadge[]
+  posts                        Post[]
+  purchases                    Purchase[]
+  ledger                       Ledger[]
+  referralConversions          ReferralConversion[]
+  signals                      Signal[]
+  signalReplies                SignalReply[]
+  signalAcknowledges           SignalAcknowledge[]
+  signalComments               SignalComment[]
+  signalCommentUpvotes         SignalCommentUpvote[]
+  reviews                      Review[]
+  customers                    Customer[] // Customers linked to this User
 
   @@index([referralCode])
 }
 
 model Ledger {
   id        String     @id @default(cuid())
-  userId    String
+  sessionId String? // Stripe checkout session id (for idempotency and audit)
+  userId    String // Buyer principal (canonical User)
   type      LedgerType
-  points    Int        @default(0)
-  usd       Decimal    @default(0)
-  note      String?
+  points    Int        @default(0) // Points delta (can be negative)
+  usd       Decimal    @default(0) // USD cents delta (can be negative)
+  amount    Int? // Generic amount (points or cents, depending on type)
+  currency  String? // Currency code (e.g., 'usd', 'points')
+  note      String? // Human-readable note
+  meta      Json? // Structured metadata (product, reason, referrerUserId, etc.)
   createdAt DateTime   @default(now())
   user      User       @relation(fields: [userId], references: [id])
 
+  @@unique([sessionId, type, userId], name: "uniq_ledger_type_session_user") // Idempotency: one ledger entry per session+type+user
   @@index([userId, createdAt])
+  @@index([sessionId])
+  @@index([type, createdAt])
 }
 
 enum LedgerType {
+  // Purchase & Points
+  PURCHASE_RECORDED // Purchase transaction recorded
+  POINTS_AWARDED_PURCHASE // Points awarded for purchase (+500)
+  POINTS_SKIPPED_PURCHASE // Points skipped (with reason in meta)
+
+  // Legacy point types (keep for backward compatibility)
   PURCHASE_BOOK
   REFER_FRIEND_PAYOUT
   REFER_EMAIL
@@ -89,11 +107,29 @@ enum LedgerType {
   SHARE_FB
   SHARE_TRUTH
   SHARE_TT
+  SHARE_X_BACK_BONUS
   CONTEST_JOIN
+  CONTEST_EXPLICIT_ENTRY
+  TERMINAL_DISCOVERY_BONUS
   SUBSCRIBE_DIGEST
   TRIVIA
   RABBIT_BONUS
   SIGNUP_BONUS
+
+  // Referral & Commission
+  REFERRAL_DISCOUNT_APPLIED // Discount applied to buyer (negative amount)
+  REFERRAL_COMMISSION_EARNED // Commission earned by referrer (positive amount, $2.00 per purchase)
+  REFERRAL_POINTS_AWARDED // Points awarded to sponsor for referred purchase (+5000)
+  FRIEND_SAVINGS_CREDITED // Friend savings credited to sponsor (discount amount applied)
+  REFERRAL_SKIPPED // Referral skipped (with reason in meta)
+
+  // Fulfillment Obligations
+  FULFILLMENT_PAPERBACK_SHIP // Paperback shipment owed
+  FULFILLMENT_EBOOK_GRANT // eBook download granted
+  FULFILLMENT_AUDIO_PREORDER // Audio preorder fulfillment
+
+  // Email Delivery Tracking
+  EMAIL_PURCHASE_CONFIRMATION // Purchase confirmation email delivery outcome
 }
 
 model Event {
@@ -175,7 +211,10 @@ model ReferralConversion {
 model Customer {
   id              String   @id @default(cuid())
   email           String   @unique
+  userId          String?  @unique // Link to canonical User principal (optional - may not have contest account)
+  user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   name            String?
+  phone           String?
   shippingStreet  String?
   shippingCity    String?
   shippingState   String?
@@ -186,18 +225,35 @@ model Customer {
   orders          Order[]
 
   @@index([email])
+  @@index([userId])
 }
 
 model FulfillmentUser {
-  id            String   @id @default(cuid())
-  name          String
-  email         String   @unique
-  printedOrders Order[]  @relation("LabelPrinter")
-  shippedOrders Order[]  @relation("Shipper")
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id              String   @id @default(cuid())
+  name            String
+  email           String   @unique
+  active          Boolean  @default(true)
+  printedOrders   Order[]  @relation("LabelPrinter")
+  shippedOrders   Order[]  @relation("Shipper")
+  reservedOrders  Order[]  @relation("Reserver")
+  payments        FulfillmentPayment[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@index([email])
+  @@index([active])
+}
+
+model FulfillmentPayment {
+  id                String         @id @default(cuid())
+  fulfillmentUserId String
+  fulfillmentUser   FulfillmentUser @relation(fields: [fulfillmentUserId], references: [id], onDelete: Restrict)
+  amountCents       Int
+  paidAt            DateTime       @default(now())
+  note              String?
+  createdAt         DateTime       @default(now())
+
+  @@index([fulfillmentUserId])
 }
 
 model Order {
@@ -210,20 +266,23 @@ model Order {
   contestPlayerId String? // FK to User.id (optional)
   referralCode    String?
   pointsAwarded   Boolean  @default(false)
-  
+
   // Commission tracking (optional, for admin visibility)
-  commissionCents Int?
+  commissionCents  Int?
   friendSavedCents Int?
-  
+
   // Fulfillment fields
-  status              String          @default("pending")
-  labelPrintedAt      DateTime?
-  shippedAt           DateTime?
-  labelPrintedById    String?
-  shippedById         String?
-  labelPrintedBy      FulfillmentUser? @relation("LabelPrinter", fields: [labelPrintedById], references: [id])
-  shippedBy           FulfillmentUser? @relation("Shipper", fields: [shippedById], references: [id])
-  
+  status           String           @default("pending")
+  reservedAt       DateTime?        // Claim when worker fetches; 30min TTL
+  reservedById     String?
+  reservedBy       FulfillmentUser? @relation("Reserver", fields: [reservedById], references: [id])
+  labelPrintedAt   DateTime?
+  shippedAt        DateTime?
+  labelPrintedById String?
+  shippedById      String?
+  labelPrintedBy   FulfillmentUser? @relation("LabelPrinter", fields: [labelPrintedById], references: [id])
+  shippedBy        FulfillmentUser? @relation("Shipper", fields: [shippedById], references: [id])
+
   // Shipping information
   shippingName         String?
   shippingAddressLine1 String?
@@ -233,14 +292,16 @@ model Order {
   shippingPostalCode   String?
   shippingCountry      String?
   shippingPhone        String?
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([customerId, createdAt])
   @@index([stripeSessionId])
   @@index([contestPlayerId])
   @@index([status])
+  @@index([reservedById])
+  @@index([status, reservedAt])
   @@index([labelPrintedById])
   @@index([shippedById])
 }
@@ -260,67 +321,132 @@ enum SignalHeldReason {
   OTHER
 }
 
+enum SignalType {
+  ARCHIVE
+  LOCATION
+  VISUAL
+  NARRATIVE
+  PLAYER_QUESTION  // maps to "Questions" in UI
+  PODCASTER_PROMPT // maps to "Podcaster Prompts" in UI
+  SPECULATIVE
+}
+
+enum SignalPublishStatus {
+  DRAFT
+  PUBLISHED
+}
+
 model Signal {
-  id           String       @id @default(cuid())
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Author
-  userId       String?
-  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
-  isSystem     Boolean      @default(false)
-  isAnonymous  Boolean      @default(false)
+  userId      String?
+  user        User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  author      String? // display name override (e.g. "System")
+  isSystem    Boolean @default(false)
+  isAnonymous Boolean @default(false)
 
   // Content
-  text         String       // enforce 140 chars at app layer
+  text    String   // legacy; min 3 chars
+  title   String?
+  type    SignalType? @default(NARRATIVE)
+  content String?
+
+  // Media (image | video | map | document | audio | none)
+  mediaType String?
+  mediaUrl  String?
+
+  // Location
+  locationTag  String?
+  locationName String?
+  locationLat  Float?
+  locationLng  Float?
+  tags         Json?
+
+  // Discussion & scheduling
+  discussionEnabled Boolean @default(true)
+  publishAt         DateTime?
+  publishStatus     SignalPublishStatus? @default(PUBLISHED)
 
   // Moderation
-  status       SignalStatus @default(APPROVED)
-  heldReason   SignalHeldReason?
-  heldAt       DateTime?
-  approvedAt   DateTime?
-  rejectedAt   DateTime?
+  status     SignalStatus      @default(APPROVED)
+  heldReason SignalHeldReason?
+  heldAt     DateTime?
+  approvedAt DateTime?
+  rejectedAt DateTime?
 
-  // Coarse geo at time of posting (no raw IP stored here)
-  countryCode  String?      // e.g. "US"
-  region       String?      // e.g. "UT" (state/region code)
-  
+  countryCode String?
+  region       String?
+
   // Relationships
   replies      SignalReply[]
   acknowledges SignalAcknowledge[]
+  comments     SignalComment[]
+  events       SignalEvent[]
 
   @@index([createdAt])
   @@index([status, createdAt])
-  @@index([countryCode, region, createdAt])
+  @@index([publishStatus, createdAt])
+  @@index([type, createdAt])
 }
 
 model SignalReply {
-  id          String   @id @default(cuid())
-  createdAt   DateTime @default(now())
-
-  signalId    String
-  signal      Signal   @relation(fields: [signalId], references: [id], onDelete: Cascade)
-
-  userId      String?
-  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-
-  isAnonymous Boolean  @default(false)
-  text        String   // enforce 140 chars at app layer
-
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  signalId  String
+  signal    Signal   @relation(fields: [signalId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  isAnonymous Boolean @default(false)
+  text      String
   @@index([signalId, createdAt])
 }
 
 model SignalAcknowledge {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
-
   signalId  String
   signal    Signal   @relation(fields: [signalId], references: [id], onDelete: Cascade)
-
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   @@unique([signalId, userId])
+  @@index([signalId, createdAt])
+}
+
+model SignalComment {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  signalId  String
+  signal    Signal   @relation(fields: [signalId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  commentText String
+  upvotes   Int      @default(0)
+  isFlagged Boolean  @default(false)
+  flagReason String?
+  upvoteRecords SignalCommentUpvote[]
+  @@index([signalId, createdAt])
+}
+
+model SignalCommentUpvote {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  commentId String
+  comment   SignalComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([commentId, userId])
+  @@index([commentId])
+}
+
+model SignalEvent {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  signalId  String
+  signal    Signal   @relation(fields: [signalId], references: [id], onDelete: Cascade)
+  eventText String   // e.g. "Signal detected — Bangkok warehouse footage uploaded."
   @@index([signalId, createdAt])
 }
 
@@ -340,29 +466,29 @@ enum ReviewHeldReason {
 }
 
 model Review {
-  id           String         @id @default(cuid())
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Author
-  userId       String
-  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Content
-  rating       Int            // 1-5
-  text         String         // enforce 3-240 chars at app layer
-  tags         String?        // JSON array of tags (max 5), optional for v1
+  rating Int // 1-5
+  text   String // enforce 3-240 chars at app layer
+  tags   String? // JSON array of tags (max 5), optional for v1
 
   // Moderation
-  status       ReviewStatus   @default(APPROVED)
-  heldReason   ReviewHeldReason?
-  heldAt       DateTime?
-  approvedAt   DateTime?
-  rejectedAt   DateTime?
+  status     ReviewStatus      @default(APPROVED)
+  heldReason ReviewHeldReason?
+  heldAt     DateTime?
+  approvedAt DateTime?
+  rejectedAt DateTime?
 
   // Coarse geo at time of posting
-  countryCode  String?        // e.g. "US"
-  region       String?        // e.g. "UT" (state/region code)
+  countryCode String? // e.g. "US"
+  region      String? // e.g. "UT" (state/region code)
 
   @@unique([userId]) // One review per user (upsert)
   @@index([status, createdAt])

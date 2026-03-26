@@ -1,44 +1,20 @@
-// agnes-next/src/app/api/fulfillment/user/route.ts
+// agnes-next: proxy-only to deepquill /api/fulfillment/user
+// Command. Deepquill owns canonical FulfillmentUser.
 
-import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { NextRequest } from 'next/server';
+import { fulfillmentProxy } from '@/lib/fulfillmentProxy';
 
-export async function POST(request: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
-    const body = await request.json();
-    const { name, email } = body;
-
-    if (!name || !email) {
-      return NextResponse.json(
-        { error: 'Name and email are required' },
-        { status: 400 }
-      );
-    }
-
-    // Upsert fulfillment user by email
-    const fulfillmentUser = await prisma.fulfillmentUser.upsert({
-      where: { email },
-      update: {
-        name,
-        // email stays the same
-      },
-      create: {
-        name,
-        email,
-      },
+    const { response } = await fulfillmentProxy('/api/fulfillment/user', req, {
+      method: 'POST',
     });
-
-    return NextResponse.json({
-      id: fulfillmentUser.id,
-      name: fulfillmentUser.name,
-      email: fulfillmentUser.email,
-    });
-  } catch (error) {
-    console.error('[fulfillment/user] Error:', error);
-    return NextResponse.json(
-      { error: 'Failed to create/update fulfillment user' },
-      { status: 500 }
+    return response;
+  } catch (err) {
+    console.error('[fulfillment/user] proxy error', err);
+    return Response.json(
+      { error: 'Service unavailable' },
+      { status: 503 }
     );
   }
 }
-

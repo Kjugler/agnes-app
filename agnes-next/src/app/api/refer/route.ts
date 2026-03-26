@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { REFER_VIDEOS, type ReferVideoId } from '@/config/referVideos';
 import { logReferralInvite } from '@/lib/referrals/logReferralInvite';
-import { prisma } from '@/lib/db';
-import { startOfToday } from '@/lib/dailySharePoints';
 import { rateLimitByIP, rateLimitByEmail } from '@/lib/rateLimit';
 import { proxyJson } from '@/lib/deepquillProxy';
 
@@ -106,13 +104,52 @@ export async function POST(req: NextRequest) {
 
     console.log('[Refer] Determined origin', { origin });
 
-    // Find the user by referral code
-    const user = await prisma.user.findUnique({
-      where: { referralCode },
-      select: { id: true, email: true, firstName: true, fname: true, lname: true },
-    });
+    // Normalize referral code to uppercase for consistent lookup
+    const normalizedReferralCode = referralCode.toUpperCase().trim();
+
+    // Validate referral code by proxying to deepquill (canonical DB)
+    // This ensures we check against the same database where users are created
+    let user: { id: string; email: string; firstName: string | null; fname: string | null; lname: string | null } | null = null;
+    
+    try {
+      // Proxy to deepquill's referral validation endpoint
+      // Construct URL with query param for GET request
+      const validateUrl = `/api/referral/validate?code=${encodeURIComponent(normalizedReferralCode)}`;
+      const { data, status } = await proxyJson(validateUrl, req, {
+        method: 'GET',
+      });
+
+      if (status === 200 && data?.valid && data?.userId) {
+        // Code is valid - use the user data from deepquill
+        user = {
+          id: data.userId,
+          email: data.email,
+          firstName: data.firstName || null,
+          fname: data.firstName || null,
+          lname: data.lastName || null,
+        };
+        console.log('[Refer] Referral code validated via deepquill', {
+          code: normalizedReferralCode,
+          userId: user.id,
+        });
+      } else {
+        console.warn('[Refer] Referral code validation failed', {
+          code: normalizedReferralCode,
+          status,
+          data,
+        });
+      }
+    } catch (proxyErr) {
+      console.error('[Refer] Failed to validate via deepquill proxy', {
+        error: proxyErr instanceof Error ? proxyErr.message : String(proxyErr),
+        stack: proxyErr instanceof Error ? proxyErr.stack : undefined,
+      });
+    }
 
     if (!user) {
+      console.warn('[Refer] Invalid referral code - not found in deepquill database', {
+        referralCode: normalizedReferralCode,
+      });
       return NextResponse.json(
         { error: 'Invalid referral code.' },
         { status: 400 }
@@ -120,70 +157,41 @@ export async function POST(req: NextRequest) {
     }
 
     // Get referrer's full name for email personalization
-    const referrerName =
-      [user.firstName, user.lname].filter(Boolean).join(" ") ||
-      [user.fname, user.lname].filter(Boolean).join(" ") ||
-      null;
-
-    // Points constants
-    const MAX_EMAILS_PER_DAY = 20;
-    const MAX_POINTS_PER_DAY = 100;
-    const POINTS_PER_EMAIL = 5;
-
-    // Check today's referral email activity
-    const todayStart = startOfToday();
-    const todayReferralEmails = await prisma.ledger.findMany({
-      where: {
-        userId: user.id,
-        type: 'REFER_EMAIL',
-        createdAt: { gte: todayStart },
-      },
-      select: { points: true },
-    });
-
-    const emailsSentToday = todayReferralEmails.length;
-    const pointsFromEmailsToday = todayReferralEmails.reduce(
-      (sum: number, entry: { points: number }) => sum + entry.points,
-      0
-    );
-
-    // Calculate remaining capacity
-    const remainingEmails = Math.max(0, MAX_EMAILS_PER_DAY - emailsSentToday);
-    const remainingPoints = Math.max(0, MAX_POINTS_PER_DAY - pointsFromEmailsToday);
+    const referrerFirstName = user.firstName || user.fname || null;
+    const referrerLastName = user.lname || null;
 
     console.log('[Refer] Sending referral emails', {
       emailCount: emails.length,
-      referralCode,
+      referralCode: normalizedReferralCode,
       videoId,
       origin,
       referrerEmail: referrerEmail || '(not provided)',
       userId: user.id,
-      emailsSentToday,
-      pointsFromEmailsToday,
-      remainingEmails,
-      remainingPoints,
     });
 
     // Send emails via deepquill (secrets stay backend)
     let deepquillResult: { ok: boolean; sent: number; failed: number; errors?: Array<{ email: string; error: string }> } | null = null;
     
     try {
+      const deepquillPath = '/api/refer-friend';
       console.log('[Refer] Proxying email send to deepquill', {
+        deepquillUrl: `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5055'}${deepquillPath}`,
         emailCount: emails.length,
         referralCode,
         videoId,
         origin,
       });
 
-      const { data, status } = await proxyJson('/api/referrals/invite', req, {
+      const { data, status } = await proxyJson(deepquillPath, req, {
         method: 'POST',
         body: {
-          emails,
+          friendEmails: emails,
           referralCode,
           videoId,
           referrerEmail,
+          referrerFirstName,
+          referrerLastName,
           origin,
-          channel: 'email',
         },
         headers: {
           'x-internal-proxy': process.env.INTERNAL_PROXY_SECRET || 'dev-only-secret',
@@ -220,34 +228,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Process points for successfully sent emails
-    const results: Array<{
-      email: string;
-      pointsAwarded: number;
-      sent: boolean;
-    }> = [];
-
-    // Track running totals as we process emails
-    let currentEmailsSent = emailsSentToday;
-    let currentPointsAwarded = pointsFromEmailsToday;
-
-    // Process emails sequentially (not in parallel) to correctly track caps
+    // Log referral invites (non-blocking)
     for (const friendEmail of emails) {
-      // Check if we're still under caps
-      const eligibleForPoints =
-        currentEmailsSent < MAX_EMAILS_PER_DAY &&
-        currentPointsAwarded < MAX_POINTS_PER_DAY;
-      
-      let pointsForThisEmail = 0;
-      if (eligibleForPoints) {
-        const pointsRemaining = MAX_POINTS_PER_DAY - currentPointsAwarded;
-        pointsForThisEmail = Math.min(POINTS_PER_EMAIL, pointsRemaining);
-      }
-
-      // Log referral invite (non-blocking)
       try {
         await logReferralInvite({
-          referralCode,
+          referralCode: normalizedReferralCode,
           friendEmail,
           videoId,
           channel: 'email',
@@ -255,60 +240,64 @@ export async function POST(req: NextRequest) {
       } catch (err: unknown) {
         console.warn('[Refer] Failed to log referral invite (non-blocking)', err);
       }
-
-      // Award points if eligible (always record in ledger, even if 0 points)
-      if (pointsForThisEmail > 0) {
-        await prisma.$transaction([
-          prisma.ledger.create({
-            data: {
-              userId: user.id,
-              type: 'REFER_EMAIL',
-              points: pointsForThisEmail,
-              note: `Referral email sent to ${friendEmail}`,
-            },
-          }),
-          prisma.user.update({
-            where: { id: user.id },
-            data: { points: { increment: pointsForThisEmail } },
-          },
-          ),
-        ]);
-        currentPointsAwarded += pointsForThisEmail;
-        console.log('[POINTS] Awarded', pointsForThisEmail, 'points for refer_email to', friendEmail, {
-          userId: user.id,
-          totalPointsAfter: currentPointsAwarded,
-        });
-      } else {
-        // Still record in ledger for audit trail (0 points)
-        await prisma.ledger.create({
-          data: {
-            userId: user.id,
-            type: 'REFER_EMAIL',
-            points: 0,
-            note: `Referral email sent to ${friendEmail} (daily cap reached)`,
-          },
-        });
-        console.log('[POINTS] Referral email sent but no points awarded (daily cap reached)', {
-          userId: user.id,
-          friendEmail,
-          emailsSentToday: currentEmailsSent,
-          pointsFromEmailsToday: currentPointsAwarded,
-        });
-      }
-
-      currentEmailsSent += 1;
-
-      results.push({
-        email: friendEmail,
-        pointsAwarded: pointsForThisEmail,
-        sent: true,
-      });
     }
 
-    // Calculate final totals (use tracked values)
-    const totalPointsAwarded = results.reduce((sum, r) => sum + r.pointsAwarded, 0);
-    const finalEmailsSentToday = currentEmailsSent;
-    const finalPointsFromEmailsToday = currentPointsAwarded;
+    // Award points via deepquill (canonical DB)
+    let pointsResult: {
+      ok: boolean;
+      pointsAwarded: number;
+      daily: {
+        emailsSentToday: number;
+        pointsFromEmailsToday: number;
+        maxEmailsPerDay: number;
+        maxPointsPerDay: number;
+      };
+      results: Array<{
+        email: string;
+        pointsAwarded: number;
+        sent: boolean;
+      }>;
+    } | null = null;
+
+    try {
+      const { data, status } = await proxyJson('/api/referral/award-email-points', req, {
+        method: 'POST',
+        body: {
+          userId: user.id,
+          friendEmails: emails,
+        },
+        headers: {
+          'x-internal-proxy': process.env.INTERNAL_PROXY_SECRET || 'dev-only-secret',
+        },
+      });
+
+      if (status === 200 && data?.ok) {
+        pointsResult = data;
+        console.log('[Refer] Points awarded via deepquill', {
+          totalPointsAwarded: data.pointsAwarded,
+          emailsSentToday: data.daily.emailsSentToday,
+        });
+      } else {
+        console.error('[Refer] Failed to award points via deepquill', { status, data });
+      }
+    } catch (pointsErr) {
+      console.error('[Refer] Error awarding points via deepquill', {
+        error: pointsErr instanceof Error ? pointsErr.message : String(pointsErr),
+      });
+      // Don't fail the request - email was sent successfully
+    }
+
+    // Use points result if available, otherwise return success without points
+    const totalPointsAwarded = pointsResult?.pointsAwarded || 0;
+    const finalEmailsSentToday = pointsResult?.daily?.emailsSentToday || emails.length;
+    const finalPointsFromEmailsToday = pointsResult?.daily?.pointsFromEmailsToday || 0;
+    const maxEmailsPerDay = pointsResult?.daily?.maxEmailsPerDay || 20;
+    const maxPointsPerDay = pointsResult?.daily?.maxPointsPerDay || 100;
+    const results = pointsResult?.results || emails.map(email => ({
+      email,
+      pointsAwarded: 0,
+      sent: true,
+    }));
 
     return NextResponse.json({
       success: true,
@@ -317,8 +306,8 @@ export async function POST(req: NextRequest) {
       daily: {
         emailsSentToday: finalEmailsSentToday,
         pointsFromEmailsToday: finalPointsFromEmailsToday,
-        maxEmailsPerDay: MAX_EMAILS_PER_DAY,
-        maxPointsPerDay: MAX_POINTS_PER_DAY,
+        maxEmailsPerDay,
+        maxPointsPerDay,
       },
       results,
     });

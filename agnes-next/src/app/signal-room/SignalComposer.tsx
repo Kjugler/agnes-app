@@ -10,9 +10,22 @@ type SignalComposerProps = {
 
 type SubmitState = 'idle' | 'submitting' | 'approved' | 'held' | 'error';
 
+type MediaTypeOption = 'none' | 'video' | 'image';
+
+function isValidMediaUrl(url: string): boolean {
+  try {
+    const u = new URL(url.trim());
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 export default function SignalComposer({ isOpen, onClose }: SignalComposerProps) {
   const router = useRouter();
   const [text, setText] = useState('');
+  const [mediaType, setMediaType] = useState<MediaTypeOption>('none');
+  const [mediaUrl, setMediaUrl] = useState('');
   const [submitState, setSubmitState] = useState<SubmitState>('idle');
   const [error, setError] = useState<string | null>(null);
 
@@ -20,6 +33,8 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
   useEffect(() => {
     if (isOpen) {
       setText('');
+      setMediaType('none');
+      setMediaUrl('');
       setSubmitState('idle');
       setError(null);
     }
@@ -30,15 +45,35 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    // Validate media when selected
+    if (mediaType !== 'none') {
+      const url = mediaUrl.trim();
+      if (!url) {
+        setError('Please enter a media URL');
+        return;
+      }
+      if (!isValidMediaUrl(url)) {
+        setError('Media URL must start with http:// or https://');
+        return;
+      }
+    }
+
     setSubmitState('submitting');
 
     try {
+      const body: Record<string, unknown> = { text: text.trim() };
+      if (mediaType === 'video' || mediaType === 'image') {
+        body.mediaType = mediaType;
+        body.mediaUrl = mediaUrl.trim();
+      }
+
       const response = await fetch('/api/signal/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ text: text.trim() }),
+        body: JSON.stringify(body),
       });
 
       const data = await response.json();
@@ -49,13 +84,15 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
 
       if (data.ok) {
         if (data.status === 'APPROVED') {
-          // Close modal and refresh
           setSubmitState('approved');
           setText('');
-          onClose();
-          router.refresh();
+          setMediaType('none');
+          setMediaUrl('');
+          setTimeout(() => {
+            onClose();
+            router.refresh();
+          }, 800);
         } else if (data.status === 'HELD') {
-          // Show pending message, don't close modal
           setSubmitState('held');
         }
       }
@@ -65,7 +102,11 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
     }
   };
 
-  const isValid = text.trim().length >= 3 && text.trim().length <= 240;
+  const textValid = text.trim().length >= 3 && text.trim().length <= 240;
+  const mediaValid =
+    mediaType === 'none' ||
+    (mediaUrl.trim() && isValidMediaUrl(mediaUrl.trim()));
+  const isValid = textValid && mediaValid;
   const canSubmit = isValid && submitState === 'idle';
   const isDisabled = submitState === 'held' || submitState === 'submitting' || submitState === 'approved';
 
@@ -120,6 +161,28 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
             Describe your experience — don't quote the book.
           </p>
 
+          {submitState === 'approved' && (
+            <div
+              style={{
+                backgroundColor: '#0a0e27',
+                border: '1px solid rgba(0,255,224,0.25)',
+                padding: '1rem',
+                borderRadius: '4px',
+                marginBottom: '1rem',
+              }}
+            >
+              <div
+                style={{
+                  color: '#00ffe0',
+                  fontSize: '1em',
+                  fontWeight: 'bold',
+                }}
+              >
+                Posted successfully
+              </div>
+            </div>
+          )}
+
           {submitState === 'held' && (
             <div
               style={{
@@ -138,7 +201,7 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
                   marginBottom: '0.25rem',
                 }}
               >
-                Signal received
+                Submitted for review
               </div>
               <div
                 style={{
@@ -146,7 +209,7 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
                   fontSize: '0.9em',
                 }}
               >
-                Pending review. It will appear once approved.
+                Your signal will appear once approved.
               </div>
             </div>
           )}
@@ -196,7 +259,7 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                marginBottom: '1.5rem',
+                marginBottom: '1rem',
               }}
             >
               <span
@@ -207,6 +270,68 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
               >
                 {text.length}/240
               </span>
+            </div>
+
+            {/* Media attachment */}
+            <div style={{ marginBottom: '1rem' }}>
+              <label
+                style={{
+                  display: 'block',
+                  color: '#888',
+                  fontSize: '0.85em',
+                  marginBottom: '0.35rem',
+                }}
+              >
+                Attach media (optional)
+              </label>
+              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <select
+                  value={mediaType}
+                  onChange={(e) => {
+                    setMediaType(e.target.value as MediaTypeOption);
+                    setError(null);
+                    if (e.target.value === 'none') setMediaUrl('');
+                  }}
+                  disabled={isDisabled}
+                  style={{
+                    padding: '0.5rem 0.75rem',
+                    backgroundColor: '#0a0e27',
+                    border: '1px solid #1a1f3a',
+                    borderRadius: 4,
+                    color: isDisabled ? '#666' : '#e0e0e0',
+                    fontFamily: '"Courier New", monospace',
+                    fontSize: '0.9em',
+                    cursor: isDisabled ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  <option value="none">None</option>
+                  <option value="image">Image</option>
+                  <option value="video">Video</option>
+                </select>
+                {mediaType !== 'none' && (
+                  <input
+                    type="url"
+                    value={mediaUrl}
+                    onChange={(e) => {
+                      setMediaUrl(e.target.value);
+                      setError(null);
+                    }}
+                    placeholder="https://..."
+                    disabled={isDisabled}
+                    style={{
+                      flex: 1,
+                      minWidth: 200,
+                      padding: '0.5rem 0.75rem',
+                      backgroundColor: '#0a0e27',
+                      border: '1px solid #1a1f3a',
+                      borderRadius: 4,
+                      color: isDisabled ? '#666' : '#e0e0e0',
+                      fontFamily: '"Courier New", monospace',
+                      fontSize: '0.9em',
+                    }}
+                  />
+                )}
+              </div>
             </div>
 
             <div
@@ -248,7 +373,13 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
                   fontWeight: 'bold',
                 }}
               >
-                {submitState === 'submitting' ? 'Sending...' : submitState === 'held' ? 'Submitted' : 'Send Signal'}
+                {submitState === 'submitting'
+                  ? 'Sending...'
+                  : submitState === 'held'
+                    ? 'Submitted for review'
+                    : submitState === 'approved'
+                      ? 'Posted'
+                      : 'Send Signal'}
               </button>
             </div>
           </form>

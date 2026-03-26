@@ -64,8 +64,28 @@ try {
   prisma = null;
 }
 
+// Fulfillment Prisma: uses FULFILLMENT_DATABASE_URL when set (e.g. agnes-next DB with Order)
+// Falls back to main prisma when both apps share the same DB
+let fulfillmentPrisma = prisma;
+if (prisma && process.env.FULFILLMENT_DATABASE_URL && process.env.FULFILLMENT_DATABASE_URL !== process.env.DATABASE_URL) {
+  try {
+    const { PrismaClient } = require('@prisma/client');
+    fulfillmentPrisma = globalThis.__fulfillmentPrisma || new PrismaClient({
+      datasourceUrl: process.env.FULFILLMENT_DATABASE_URL,
+      log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+    });
+    if (process.env.NODE_ENV !== 'production') {
+      globalThis.__fulfillmentPrisma = fulfillmentPrisma;
+    }
+    console.log('[PRISMA] Fulfillment client using FULFILLMENT_DATABASE_URL');
+  } catch (e) {
+    console.warn('[PRISMA] Fulfillment client fallback to main prisma:', e?.message);
+  }
+}
+
 module.exports = {
   prisma,
+  fulfillmentPrisma,
   datasourceUrl,
   dbPath,
   ensureDatabaseUrl,

@@ -121,6 +121,11 @@ console.log('✅ Mounted /api/stripe/webhook (raw body handler)');
 // JSON middleware for all other routes
 app.use(express.json());
 
+// Fulfillment API - mount early so /api/fulfillment/* is handled before broad /api routers
+const fulfillmentRouter = require('./routes/fulfillment.cjs');
+app.use('/api/fulfillment', fulfillmentRouter);
+console.log('✅ Mounted /api/fulfillment');
+
 // health check
 app.get('/ping', (req, res) => res.send('pong'));
 
@@ -199,10 +204,94 @@ app.post('/api/points/award', async (req, res) => {
 });
 console.log('✅ Mounted /api/points/award');
 
+// Signal CRUD (canonical DB owner)
+const signalsRouter = require('./routes/signals.cjs');
+app.use('/api', signalsRouter);
+console.log('✅ Mounted /api signals (signals, signal/create, etc.)');
+
+// Review CRUD (canonical DB owner)
+const reviewsRouter = require('./routes/reviews.cjs');
+app.use('/api', reviewsRouter);
+console.log('✅ Mounted /api reviews (reviews/create, list, summary)');
+
+// Admin moderation (approve Signal/Review, award points via Ledger)
+const moderationRouter = require('./routes/moderation.cjs');
+app.use('/api', moderationRouter);
+console.log('✅ Mounted /api admin/moderation (approve-signal, approve-review, approve-all)');
+
+// Admin jobs (email reminders, seed-signal-room)
+const adminJobsRouter = require('./routes/adminJobs.cjs');
+app.use('/api/admin/jobs', adminJobsRouter);
+console.log('✅ Mounted /api/admin/jobs (send-engaged-reminders, send-non-participant-reminders, send-no-purchase-reminders, send-missionary-emails, seed-signal-room)');
+
 // Contest login endpoint (DB owner)
 const contestLoginHandler = require('../api/contest/login.cjs');
 app.post('/api/contest/login', contestLoginHandler);
 console.log('✅ Mounted /api/contest/login');
+
+const contestJoinHandler = require('../api/contest/join.cjs');
+app.post('/api/contest/join', contestJoinHandler);
+console.log('✅ Mounted /api/contest/join');
+
+const contestExplicitEnterHandler = require('../api/contest/explicitEnter.cjs');
+app.post('/api/contest/explicit-enter', contestExplicitEnterHandler);
+console.log('✅ Mounted /api/contest/explicit-enter');
+
+// Points endpoint (canonical DB owner)
+const pointsMeHandler = require('../api/points/me.cjs');
+app.get('/api/points/me', pointsMeHandler);
+console.log('✅ Mounted /api/points/me');
+
+// Associate status endpoint (canonical DB owner)
+const associateStatusHandler = require('../api/associate/status.cjs');
+app.get('/api/associate/status', associateStatusHandler);
+console.log('✅ Mounted /api/associate/status');
+
+// Associate upsert endpoint (canonical DB owner)
+const associateUpsertHandler = require('../api/associate/upsert.cjs');
+app.post('/api/associate/upsert', associateUpsertHandler);
+console.log('✅ Mounted /api/associate/upsert');
+
+// Rabbit catch endpoint (canonical - progression + reward)
+const rabbitCatchHandler = require('../api/rabbit/catch.cjs');
+app.post('/api/rabbit/catch', rabbitCatchHandler);
+console.log('✅ Mounted /api/rabbit/catch');
+
+// Contest score endpoint (canonical DB owner)
+const contestScoreHandler = require('../api/contest/score.cjs');
+app.get('/api/contest/score', contestScoreHandler);
+console.log('✅ Mounted /api/contest/score');
+
+// Contest live stats (read-only aggregates for Rock Concert Mode)
+const contestLiveStatsHandler = require('../api/contest/liveStats.cjs');
+app.get('/api/contest/live-stats', contestLiveStatsHandler);
+console.log('✅ Mounted /api/contest/live-stats');
+
+// Terminal discovery bonus (SPEC 3: +250 pts for hidden path discovery)
+const contestTerminalDiscoveryHandler = require('../api/contest/terminalDiscovery.cjs');
+app.post('/api/contest/terminal-discovery', contestTerminalDiscoveryHandler);
+console.log('✅ Mounted /api/contest/terminal-discovery');
+
+// Email delivery status endpoint (canonical DB owner)
+const emailDeliveryStatusHandler = require('../api/email/purchase-confirmation-status.cjs');
+app.get('/api/email/purchase-confirmation/status', emailDeliveryStatusHandler);
+console.log('✅ Mounted /api/email/purchase-confirmation/status');
+
+// Referral code validation endpoint (canonical DB owner)
+const validateReferralCodeHandler = require('../api/referral/validate.cjs');
+app.get('/api/referral/validate', validateReferralCodeHandler);
+app.post('/api/referral/validate', validateReferralCodeHandler);
+console.log('✅ Mounted /api/referral/validate');
+
+// Referral email points award endpoint (canonical DB owner)
+const awardReferralEmailPointsHandler = require('../api/referral/award-email-points.cjs');
+app.post('/api/referral/award-email-points', awardReferralEmailPointsHandler);
+console.log('✅ Mounted /api/referral/award-email-points');
+
+// Webhook diagnostic endpoint (check if purchase was processed)
+const webhookDiagnosticHandler = require('../api/webhook-diagnostic.cjs');
+app.get('/api/webhook-diagnostic', webhookDiagnosticHandler);
+console.log('✅ Mounted /api/webhook-diagnostic');
 
 // Debug endpoint (dev only)
 if (envConfig.DEBUG) {
@@ -227,7 +316,16 @@ if (envConfig.DEBUG) {
   console.log('✅ Mounted /api/debug/prisma (dev only)');
 }
 
-const PORT = 5055;
+// Railway/Render/Vercel set PORT; fallback for local dev
+const PORT = Number(process.env.PORT) || 5055;
+
+// ✅ Print startup banner before server starts
+const { printStartupBanner } = require('../lib/startupBanner.cjs');
+printStartupBanner({
+  port: PORT,
+  nodeEnv: envConfig.NODE_ENV,
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 Server is running on http://localhost:${PORT}`);
 });

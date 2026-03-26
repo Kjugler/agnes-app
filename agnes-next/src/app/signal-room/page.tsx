@@ -1,33 +1,81 @@
 import React from 'react';
-import { prisma } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { normalizeEmail } from '@/lib/email';
-import SignalRoomClient from './SignalRoomClient';
+import { hasSignalRoomAccess, getSignalRoomAccessMode, SIGNAL_ROOM_ACCESS_COOKIE } from '@/lib/signal-room-access';
+import { getActiveBroadcastConfig } from '@/lib/signal-room-broadcast';
+import SignalRoomContainer from './SignalRoomContainer';
 import SignalRoomHeader from './SignalRoomHeader';
+import SignalRoomGateView from './SignalRoomGateView';
 
-type SignalRow = {
-  id: string;
-  createdAt: Date;
-  text: string;
-  status: 'APPROVED' | 'HELD' | 'REJECTED';
-  isSystem: boolean;
-  isAnonymous: boolean;
-  user: { email: string | null; firstName: string | null } | null;
-  replies: Array<{
+function getDeepquillBase() {
+  return process.env.DEEPQUILL_URL || process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5055';
+}
+
+/** Fetches a single signal from deepquill */
+async function fetchSignalFromDeepquill(
+  id: string,
+  cookieHeader: string
+): Promise<{ ok: boolean; signal?: Record<string, unknown> }> {
+  try {
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (cookieHeader) headers.Cookie = cookieHeader;
+    const res = await fetch(`${getDeepquillBase()}/api/signal/${id}`, { cache: 'no-store', headers });
+    const data = await res.json();
+    return data;
+  } catch (err) {
+    console.error('[SignalRoom] Failed to fetch signal from deepquill:', err);
+    return { ok: false };
+  }
+}
+
+/** Fetches initial signals from deepquill (same source as creates and load-more) */
+async function fetchInitialSignalsFromDeepquill(cookieHeader: string): Promise<{
+  ok: boolean;
+  signals?: Array<{
     id: string;
-    createdAt: Date;
     text: string;
-    user: { email: string | null; firstName: string | null } | null;
+    title?: string | null;
+    type?: string | null;
+    content?: string | null;
+    mediaType?: string | null;
+    mediaUrl?: string | null;
+    locationTag?: string | null;
+    tags?: unknown;
+    discussionEnabled?: boolean;
+    isSystem?: boolean;
+    createdAt: Date | string;
+    userEmail?: string | null;
+    userFirstName?: string | null;
+    isAuthor?: boolean;
+    replyCount?: number;
+    acknowledgeCount?: number;
+    acknowledged?: boolean;
+    replies?: Array<{
+      id: string;
+      text: string;
+      createdAt: Date | string;
+      userEmail?: string | null;
+      userFirstName?: string | null;
+    }>;
   }>;
-  acknowledges: Array<{ id: string }>;
-  _count: {
-    replies: number;
-    acknowledges: number;
-  };
-};
+}> {
+  try {
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (cookieHeader) headers.Cookie = cookieHeader;
+    const res = await fetch(`${getDeepquillBase()}/api/signals?limit=20`, {
+      cache: 'no-store',
+      headers,
+    });
+    const data = await res.json();
+    return data;
+  } catch (err) {
+    console.error('[SignalRoom] Failed to fetch initial signals from deepquill:', err);
+    return { ok: false };
+  }
+}
 
 export default async function SignalRoomPage() {
-  // Get current user email for acknowledge status
+  // Get current user email for acknowledge status and access check
   const cookieStore = await cookies();
   const cookieEmail =
     cookieStore.get('contest_email')?.value ||
@@ -35,167 +83,77 @@ export default async function SignalRoomPage() {
     cookieStore.get('user_email')?.value ||
     cookieStore.get('associate_email')?.value ||
     null;
+  const accessCookieValue = cookieStore.get(SIGNAL_ROOM_ACCESS_COOKIE)?.value ?? null;
+  const userEmail = cookieEmail ? normalizeEmail(cookieEmail) : null;
 
-  let currentUserId: string | null = null;
-  if (cookieEmail) {
-    try {
-      const email = normalizeEmail(cookieEmail);
-      const user = await prisma.user.findUnique({
-        where: { email },
-        select: { id: true },
-      });
-      currentUserId = user?.id || null;
-    } catch (err) {
-      // User not found or invalid email, continue without userId
-    }
+  // Gating: when mode is code/eligibility/hybrid, check access
+  const mode = getSignalRoomAccessMode();
+  const gated = mode !== 'public';
+  const canAccess = gated
+    ? hasSignalRoomAccess({
+        accessCookieValue,
+        userEmail,
+      })
+    : true;
+
+  if (gated && !canAccess) {
+    const showCodeInput = mode === 'code' || mode === 'hybrid';
+    return (
+      <div
+        style={{
+          backgroundColor: '#0a0e27',
+          color: '#e0e0e0',
+          fontFamily: '"Courier New", monospace',
+          minHeight: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          position: 'relative',
+          overflowX: 'hidden',
+        }}
+      >
+        <SignalRoomHeader gated />
+        <SignalRoomGateView showCodeInput={showCodeInput} />
+      </div>
+    );
   }
 
-  // Query signals with error handling for missing table
-  let signals: SignalRow[] = [];
-  try {
-    signals = await prisma.signal.findMany({
-      where: {
-        status: 'APPROVED',
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-      take: 50,
-      include: {
-        user: {
-          select: {
-            email: true,
-            firstName: true,
-          },
-        },
-        replies: {
-          take: 3,
-          orderBy: {
-            createdAt: 'desc',
-          },
-          include: {
-            user: {
-              select: {
-                email: true,
-                firstName: true,
-              },
-            },
-          },
-        },
-        acknowledges: currentUserId
-          ? {
-              where: {
-                userId: currentUserId,
-              },
-              select: {
-                id: true,
-              },
-            }
-          : {
-              select: {
-                id: true,
-              },
-              take: 0,
-            },
-        _count: {
-          select: {
-            replies: true,
-            acknowledges: true,
-          },
-        },
-      },
-    });
-  } catch (err: any) {
-    // Handle missing table or other Prisma errors gracefully
-    const errorMessage = err?.message || String(err);
-    const errorCode = err?.code || '';
-    
-    // Check if it's a table missing error (only show "initializing" for this)
-    const isTableMissing = 
-      errorMessage.includes('no such table: Signal') ||
-      errorMessage.includes('does not exist') && errorMessage.includes('Signal');
-    
-    if (isTableMissing) {
-      console.error('[SignalRoom] Signal table does not exist:', errorMessage);
-      console.error('[SignalRoom] Error code:', errorCode);
-      console.error('[SignalRoom] DATABASE_URL:', process.env.DATABASE_URL);
-      // Return empty array and render fallback UI
-      signals = [];
-    } else {
-      // Other errors: log and show real error (not "initializing")
-      console.error('[SignalRoom] Prisma error (not table missing):', {
-        message: errorMessage,
-        code: errorCode,
-        stack: process.env.NODE_ENV === 'development' ? err?.stack : undefined,
-      });
-      
-      // Re-throw to show actual error (not "initializing" fallback)
-      throw err;
-    }
-  }
+  // Fetch initial signals from deepquill (same source as creates and load-more)
+  const cookieHeader = cookieStore.getAll().map((c) => `${c.name}=${c.value}`).join('; ');
+  const { ok, signals: rawSignals } = await fetchInitialSignalsFromDeepquill(cookieHeader);
+  const signalsData = ok && Array.isArray(rawSignals)
+    ? rawSignals.map((s) => ({
+        id: s.id,
+        text: s.text,
+        title: s.title ?? null,
+        type: s.type ?? null,
+        content: s.content ?? null,
+        mediaType: s.mediaType ?? null,
+        mediaUrl: s.mediaUrl ?? null,
+        locationTag: s.locationTag ?? null,
+        tags: s.tags ?? null,
+        discussionEnabled: s.discussionEnabled ?? true,
+        isSystem: s.isSystem ?? false,
+        createdAt: s.createdAt,
+        userEmail: s.userEmail ?? null,
+        userFirstName: s.userFirstName ?? null,
+        isAuthor: s.isAuthor ?? false,
+        replyCount: s.replyCount ?? 0,
+        acknowledgeCount: s.acknowledgeCount ?? 0,
+        acknowledged: s.acknowledged ?? false,
+        replies: (s.replies ?? []).map((r) => ({
+          id: r.id,
+          text: r.text,
+          createdAt: r.createdAt,
+          userEmail: r.userEmail ?? null,
+          userFirstName: r.userFirstName ?? null,
+        })),
+      }))
+    : [];
 
-  // Map Prisma results to simple array for client component
-  // If signals is empty due to missing table, signalsData will be empty array
-  const signalsData = signals.map((signal) => ({
-    id: signal.id,
-    text: signal.text,
-    isSystem: signal.isSystem,
-    createdAt: signal.createdAt,
-    userEmail: signal.user?.email || null,
-    userFirstName: signal.user?.firstName || null,
-    replyCount: signal._count.replies,
-    acknowledgeCount: signal._count.acknowledges,
-    acknowledged: signal.acknowledges.length > 0,
-    replies: signal.replies.map((reply) => ({
-      id: reply.id,
-      text: reply.text,
-      createdAt: reply.createdAt,
-      userEmail: reply.user?.email || null,
-      userFirstName: reply.user?.firstName || null,
-    })),
-  }));
-
-  // Render fallback UI if table is missing (signalsData will be empty)
-  const isInitializing = signalsData.length === 0 && signals.length === 0;
+  const isInitializing = !ok;
 
   return (
-    <div
-      style={{
-        backgroundColor: '#0a0e27',
-        color: '#e0e0e0',
-        fontFamily: '"Courier New", monospace',
-        minHeight: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        position: 'relative',
-        overflowX: 'hidden',
-      }}
-    >
-      <SignalRoomHeader />
-      {isInitializing ? (
-        <div
-          style={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '2rem',
-            textAlign: 'center',
-          }}
-        >
-          <div>
-            <p style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>
-              Signal Room is initializing.
-            </p>
-            <p style={{ fontSize: '0.9rem', opacity: 0.7 }}>
-              Please refresh in a moment.
-            </p>
-          </div>
-        </div>
-      ) : (
-        <SignalRoomClient signals={signalsData} />
-      )}
-    </div>
+    <SignalRoomContainer signals={signalsData} isInitializing={isInitializing} />
   );
 }
 

@@ -23,50 +23,38 @@ type Order = {
 
 export default function PrintLabelsPage() {
   const [user, setUser] = useState<FulfillmentUser | null>(null);
+  const [helperOptions, setHelperOptions] = useState<FulfillmentUser[]>([]);
   const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Static helper options (can be made dynamic later)
-  const helperOptions = [
-    { name: 'Carly Jugler', email: 'carly@example.com' },
-    { name: 'Denise', email: 'denise@example.com' },
-  ];
-
-  // Load or create fulfillment user
-  const selectHelper = async (name: string, email: string) => {
-    setLoading(true);
-    setError(null);
+  // Load active helpers from API
+  const loadHelpers = async () => {
     try {
-      const response = await fetch('/api/fulfillment/user', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to create/load helper');
+      const res = await fetch('/api/fulfillment/users?activeOnly=true');
+      if (res.ok) {
+        const data = await res.json();
+        setHelperOptions(Array.isArray(data) ? data : []);
       }
-
-      const fulfillmentUser = await response.json();
-      setUser(fulfillmentUser);
-      localStorage.setItem('fulfillmentUserId', fulfillmentUser.id);
-      localStorage.setItem('fulfillmentUserName', fulfillmentUser.name);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load helper');
-    } finally {
-      setLoading(false);
+    } catch {
+      setHelperOptions([]);
     }
   };
 
-  // Load next FIFO order
+  const selectHelper = (helper: FulfillmentUser) => {
+    setUser(helper);
+    localStorage.setItem('fulfillmentUserId', helper.id);
+    localStorage.setItem('fulfillmentUserName', helper.name);
+  };
+
+  // Load next FIFO order (atomically claims reservation for current user)
   const loadNextOrder = async () => {
     if (!user) return;
 
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch('/api/fulfillment/next-for-label');
+      const response = await fetch(`/api/fulfillment/next-for-label?fulfillmentUserId=${encodeURIComponent(user.id)}`);
       if (!response.ok) {
         throw new Error('Failed to load next order');
       }
@@ -165,23 +153,51 @@ export default function PrintLabelsPage() {
     }
   };
 
-  // Skip current order
+  // Skip current order: release reservation, then fetch next
   const handleSkip = async () => {
-    await loadNextOrder();
+    if (!user || !currentOrder) {
+      await loadNextOrder();
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/fulfillment/release-reservation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: currentOrder.id,
+          fulfillmentUserId: user.id,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to release reservation');
+      }
+      await loadNextOrder();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to skip order');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Load user from localStorage on mount
   useEffect(() => {
+    loadHelpers();
+  }, []);
+
+  // Restore user from localStorage when helpers load
+  useEffect(() => {
+    if (helperOptions.length === 0) return;
     const savedUserId = localStorage.getItem('fulfillmentUserId');
-    const savedUserName = localStorage.getItem('fulfillmentUserName');
-    if (savedUserId && savedUserName) {
-      // Try to find the helper in the list
-      const helper = helperOptions.find((h) => h.name === savedUserName);
+    if (savedUserId) {
+      const helper = helperOptions.find((h) => h.id === savedUserId);
       if (helper) {
-        selectHelper(helper.name, helper.email);
+        setUser(helper);
       }
     }
-  }, []);
+  }, [helperOptions]);
 
   // Load next order when user is set
   useEffect(() => {
@@ -193,6 +209,11 @@ export default function PrintLabelsPage() {
 
   return (
     <div style={{ padding: '24px', maxWidth: '800px', margin: '0 auto' }}>
+      <div style={{ marginBottom: '16px' }}>
+        <a href="/admin/fulfillment/labels" style={{ marginRight: '16px', fontWeight: 600 }}>Labels</a>
+        <a href="/admin/fulfillment/ship" style={{ marginRight: '16px' }}>Ship</a>
+        <a href="/admin/fulfillment/helpers">Helpers</a>
+      </div>
       <h1 style={{ marginBottom: '24px' }}>Print Labels</h1>
 
       {/* Helper Selection */}
@@ -202,10 +223,13 @@ export default function PrintLabelsPage() {
             Select Helper
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {helperOptions.length === 0 && !loading ? (
+              <p style={{ color: '#666' }}>No active helpers. Add helpers in Admin → Fulfillment Helpers.</p>
+            ) : null}
             {helperOptions.map((helper) => (
               <button
-                key={helper.email}
-                onClick={() => selectHelper(helper.name, helper.email)}
+                key={helper.id}
+                onClick={() => selectHelper(helper)}
                 disabled={loading}
                 style={{
                   padding: '12px 16px',

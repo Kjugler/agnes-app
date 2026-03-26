@@ -5,6 +5,7 @@
 const express = require('express');
 const router = express.Router();
 const nodemailer = require('nodemailer');
+const { applyGlobalEmailBanner } = require('../../src/lib/emailBanner.cjs');
 
 const {
   MAILCHIMP_TRANSACTIONAL_KEY,
@@ -218,12 +219,18 @@ Either way, thanks for checking it out.
 
 — ${baseName}`;
 
+        const { html: finalHtml, text: finalText, subject: finalSubject } = applyGlobalEmailBanner({
+          html: htmlBody,
+          text: textBody,
+          subject,
+        });
+
         await transporter.sendMail({
           from: `DeepQuill LLC <${MAILCHIMP_FROM_EMAIL || 'hello@theagnesprotocol.com'}>`,
           to: email,
-          subject,
-          html: htmlBody,
-          text: textBody,
+          subject: finalSubject || subject,
+          html: finalHtml || htmlBody,
+          text: finalText || textBody,
           replyTo: referrerEmail || MAILCHIMP_FROM_EMAIL || 'hello@theagnesprotocol.com',
         });
 

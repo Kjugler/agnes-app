@@ -11,12 +11,32 @@ function corsHeaders(origin: string | null) {
     'http://localhost:5174', // Vite might use different port if 5173 is busy
     'http://localhost:3000',
     'http://localhost:3002',
+    'http://localhost:5055', // R7: Allow deepquill origin for terminal access
     siteUrl, // Use configured site URL
   ];
   
-  // Allow any localhost port for development
+  // Allow any localhost port for development (including deepquill)
   const isLocalhost = origin && origin.startsWith('http://localhost:');
-  const isAllowed = origin && (isLocalhost || allowedOrigins.some(allowed => origin.startsWith(allowed)));
+  // Allow any ngrok origin (for development via ngrok tunnel)
+  // Check for ngrok domains: ngrok.io, ngrok-free.dev, ngrok-free.app, etc.
+  const isNgrok = origin && (
+    origin.includes('ngrok') || 
+    origin.includes('ngrok-free.dev') || 
+    origin.includes('ngrok-free.app') ||
+    origin.includes('ngrok.io')
+  );
+  // Also check if siteUrl contains ngrok (in case NEXT_PUBLIC_SITE_URL is set to ngrok)
+  const siteUrlIsNgrok = siteUrl && (
+    siteUrl.includes('ngrok') || 
+    siteUrl.includes('ngrok-free.dev') || 
+    siteUrl.includes('ngrok-free.app')
+  );
+  const isAllowed = origin && (
+    isLocalhost || 
+    isNgrok || 
+    siteUrlIsNgrok ||
+    allowedOrigins.some(allowed => origin.startsWith(allowed))
+  );
   
   return {
     'Access-Control-Allow-Origin': isAllowed ? origin : allowedOrigins[0],
@@ -81,6 +101,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Part A3: Extract referral code from body, query params, or cookies
+    const refFromBody = body?.ref || body?.referralCode;
+    const refFromQuery = req.nextUrl.searchParams.get('ref') || req.nextUrl.searchParams.get('referralCode');
+    const refFromCookie = req.cookies.get('ap_ref')?.value || req.cookies.get('ref')?.value;
+    const referralCode = refFromBody || refFromQuery || refFromCookie || undefined;
+
     // Proxy to deepquill (DB owner)
     // Add internal proxy header for security (optional hardening)
     const internalProxySecret = process.env.INTERNAL_PROXY_SECRET || 'dev-only-secret';
@@ -92,6 +118,7 @@ export async function POST(req: NextRequest) {
       body: {
         email: emailRaw,
         origin: origin || undefined,
+        ref: referralCode, // Pass referral code to deepquill for lastReferral stamping
       },
     });
 
@@ -106,41 +133,62 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Extract email from deepquill response (normalized)
+    // Extract canonical identity from deepquill response
     const email = data.user?.email || emailRaw;
+    const userId = data.user?.id;
+    const userCode = data.user?.code || data.associate?.code;
 
-    // Set HTTP-only cookie for contest session - ALWAYS overwrite any previous value
+    if (!userId) {
+      console.error('[PRINCIPAL] MISMATCH - deepquill login did not return userId', { data });
+      return NextResponse.json(
+        { ok: false, error: 'server_error', message: 'User ID not returned from server' },
+        {
+          status: 500,
+          headers: corsHeaders(origin),
+        }
+      );
+    }
+
+    // Part 3A: Set canonical principal cookies - ALWAYS overwrite any previous value
+    // Fix secure detection: use HTTPS protocol, not just production mode
     const cookieStore = await cookies();
     const isLocalhost = origin?.includes('localhost') || origin?.includes('127.0.0.1');
-    
-    // For cross-origin requests (like from localhost:5173), we need to be more permissive
-    cookieStore.set('contest_email', email, {
+    const isHttps = origin?.startsWith('https://') || req.nextUrl.protocol === 'https:';
+    const cookieOptions = {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production' && !isLocalhost,
-      sameSite: isLocalhost ? 'lax' : 'lax', // 'lax' allows cross-site cookies
+      secure: isHttps && !isLocalhost, // Part 3A: Set secure for HTTPS (including ngrok), but not localhost
+      sameSite: 'lax' as const,
       path: '/',
       maxAge: 60 * 60 * 24 * 30, // 30 days
-    });
+    };
+    
+    // Set canonical principal cookies
+    cookieStore.set('contest_email', email, cookieOptions);
+    cookieStore.set('contest_user_id', userId, cookieOptions);
+    if (userCode) {
+      cookieStore.set('contest_user_code', userCode, cookieOptions);
+    }
 
     // Also set a non-HTTP-only cookie for client-side access (for backward compatibility)
     cookieStore.set('user_email', email, {
+      ...cookieOptions,
       httpOnly: false,
-      secure: process.env.NODE_ENV === 'production' && !isLocalhost,
-      sameSite: isLocalhost ? 'lax' : 'lax',
-      path: '/',
-      maxAge: 60 * 60 * 24 * 30,
     });
     
-    console.log('[contest/login] Cookies set', {
+    console.log('[PRINCIPAL] Principal cookies set', {
+      userId,
       email,
+      code: userCode,
       origin,
       isLocalhost,
-      secure: process.env.NODE_ENV === 'production' && !isLocalhost,
+      isHttps,
+      secure: cookieOptions.secure, // Part 3A: Log actual secure value
     });
 
     console.log('[contest/login] User logged in successfully (via deepquill)', {
       email,
-      userId: data.user?.id,
+      userId,
+      code: userCode,
       greetingName: data.greetingName,
       isReturning: data.isReturning,
     });

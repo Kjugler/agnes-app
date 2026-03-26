@@ -1,5 +1,6 @@
 // deepquill/lib/email/sendDailyReferralDigestEmail.cjs
 const nodemailer = require('nodemailer');
+const { applyGlobalEmailBanner } = require('../../src/lib/emailBanner.cjs');
 
 // Re-use the same SMTP transport as other emails
 let transporter = null;
@@ -92,13 +93,19 @@ async function sendDailyReferralDigestEmail(params) {
   const fromEmail = process.env.MAIL_FROM_EMAIL || process.env.MAILCHIMP_FROM_EMAIL || 'hello@theagnesprotocol.com';
   const fromName = process.env.MAIL_FROM_NAME || process.env.MAILCHIMP_FROM_NAME || 'The Agnes Protocol';
 
+  const { html: finalHtml, text: finalText, subject: finalSubject } = applyGlobalEmailBanner({
+    html,
+    text,
+    subject,
+  });
+
   try {
     await smtpClient.sendMail({
       from: `"${fromName}" <${fromEmail}>`,
       to: referrerEmail,
-      subject,
-      text,
-      html,
+      subject: finalSubject || subject,
+      text: finalText || text,
+      html: finalHtml || html,
     });
 
     console.log('[DAILY_DIGEST] Email sent successfully to', referrerEmail);

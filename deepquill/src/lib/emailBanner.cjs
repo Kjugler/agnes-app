@@ -1,26 +1,38 @@
 // deepquill/src/lib/emailBanner.cjs
 // Global test contest banner injection for all emails
+//
+// CANONICAL FLAG: STRESS_TEST_MODE=1 is the master. When set, email stress-test
+// messaging turns on automatically. EMAIL_CONTEST_BANNER=1 is legacy override.
 
-const EMAIL_CONTEST_BANNER = process.env.EMAIL_CONTEST_BANNER === '1';
+const STRESS_TEST_MODE = process.env.STRESS_TEST_MODE === '1';
+const EMAIL_CONTEST_BANNER_ENV = process.env.EMAIL_CONTEST_BANNER;
+const EMAIL_CONTEST_BANNER_LEGACY = EMAIL_CONTEST_BANNER_ENV === '1' || (EMAIL_CONTEST_BANNER_ENV && typeof EMAIL_CONTEST_BANNER_ENV === 'string' && EMAIL_CONTEST_BANNER_ENV.length > 0);
+const EMAIL_CONTEST_BANNER_TEXT = EMAIL_CONTEST_BANNER_ENV && EMAIL_CONTEST_BANNER_ENV !== '1' ? EMAIL_CONTEST_BANNER_ENV : null;
+
+// Banner enabled when STRESS_TEST_MODE or EMAIL_CONTEST_BANNER is set
+const EMAIL_CONTEST_BANNER = STRESS_TEST_MODE || EMAIL_CONTEST_BANNER_LEGACY;
 const EMAIL_CONTEST_BANNER_MODE = process.env.EMAIL_CONTEST_BANNER_MODE || 'test';
 
-// HTML banner (inline styles, email-safe)
+// Short, tasteful banner — not dominate
 const BANNER_HTML = `
-<div style="background-color: #1a1a1a; border: 2px solid #00ff7f; padding: 16px 20px; margin-bottom: 24px; font-family: Arial, Helvetica, sans-serif;">
-  <h2 style="margin: 0 0 12px 0; color: #00ff7f; font-size: 18px; font-weight: bold;">TEST CONTEST ACTIVE</h2>
-  <p style="margin: 0 0 8px 0; color: #f5f5f5; font-size: 14px; line-height: 1.5;">You can win cash & prizes.</p>
-  <p style="margin: 0 0 8px 0; color: #f5f5f5; font-size: 14px; line-height: 1.5;">Stripe Test Mode — no real charges.</p>
-  <p style="margin: 0 0 8px 0; color: #f5f5f5; font-size: 14px; line-height: 1.5;">Use test card: <code style="background-color: #2a2a2a; padding: 2px 6px; border-radius: 3px; font-family: monospace;">4242 4242 4242 4242</code></p>
-  <p style="margin: 0; color: #d0d0d0; font-size: 13px; line-height: 1.5;">If you experience any issues while testing the site, forward details to <a href="mailto:hello@theagnesprotocol.com" style="color: #00ff7f; text-decoration: underline;">hello@theagnesprotocol.com</a></p>
-</div>
+<p style="margin: 0 0 16px 0; padding: 12px 16px; background-color: #f8f9fa; border-left: 4px solid #6c757d; font-size: 13px; line-height: 1.5; color: #495057; font-family: Arial, Helvetica, sans-serif;">
+  Public beta stress test: purchases are simulated. No real charges or deliveries will occur.
+</p>
 `;
 
-// Plain text banner
-const BANNER_TEXT = `[TEST CONTEST ACTIVE] You can win cash & prizes.
-Stripe TEST MODE — no real charges. Use test card 4242 4242 4242 4242.
-Issues? Forward details to hello@theagnesprotocol.com
----
+const BANNER_TEXT = `Public beta stress test: purchases are simulated. No real charges or deliveries will occur.
+
 `;
+
+function getBannerContent() {
+  if (EMAIL_CONTEST_BANNER_TEXT) {
+    return {
+      html: `<p style="margin: 0 0 16px 0; padding: 12px 16px; background-color: #f8f9fa; border-left: 4px solid #6c757d; font-size: 13px; line-height: 1.5; color: #495057;"><strong>${EMAIL_CONTEST_BANNER_TEXT}</strong></p>`,
+      text: `${EMAIL_CONTEST_BANNER_TEXT}\n\n`,
+    };
+  }
+  return { html: BANNER_HTML, text: BANNER_TEXT };
+}
 
 /**
  * Apply global test contest banner to email content
@@ -37,9 +49,9 @@ function applyGlobalEmailBanner({ html, text, subject }) {
   }
 
   // Guard against double-injection
-  const hasBannerMarker = 
-    (html && html.includes('TEST CONTEST ACTIVE')) ||
-    (text && text.includes('[TEST CONTEST ACTIVE]'));
+  const hasBannerMarker =
+    (html && (html.includes('Public beta stress test') || html.includes('PUBLIC STRESS TEST ACTIVE') || html.includes('PUBLIC BETA TEST'))) ||
+    (text && (text.includes('Public beta stress test') || text.includes('[PUBLIC BETA TEST]')));
 
   if (hasBannerMarker) {
     console.log('[emailBanner] Banner already present, skipping injection');
@@ -47,20 +59,21 @@ function applyGlobalEmailBanner({ html, text, subject }) {
   }
 
   const result = { html, text, subject };
+  const bannerContent = getBannerContent();
 
   // Inject HTML banner if HTML body exists
   if (html) {
-    result.html = BANNER_HTML + html;
+    result.html = bannerContent.html + html;
   }
 
   // Inject text banner if text body exists
   if (text) {
-    result.text = BANNER_TEXT + '\n\n' + text;
+    result.text = bannerContent.text + text;
   }
 
-  // Prefix subject with [TEST CONTEST] to prevent Gmail threading and make test emails unmistakable
-  if (subject) {
-    result.subject = `[TEST CONTEST] ${subject}`;
+  // Prefix subject with [PUBLIC BETA TEST] if not already present
+  if (subject && !subject.includes('[PUBLIC BETA TEST]') && !subject.includes('[PUBLIC STRESS TEST]')) {
+    result.subject = `[PUBLIC BETA TEST] ${subject}`;
   }
 
   return result;

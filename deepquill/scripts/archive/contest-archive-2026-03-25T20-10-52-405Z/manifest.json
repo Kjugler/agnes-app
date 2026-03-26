@@ -1,0 +1,10 @@
+{
+  "createdAt": "2026-03-25T20:10:52.477Z",
+  "databaseUrlFile": "C:/dev/agnes-app/deepquill/dev.db",
+  "tables": {
+    "Ledger": 237,
+    "User": 23,
+    "Purchase": 32,
+    "ReferralConversion": 12
+  }
+}

@@ -1,14 +1,19 @@
 // JodyAssistant component for deepquill (plain React version)
 import React, { useState, useEffect } from 'react';
 
+// Helper: Force absolute paths (always starts with /)
+// Critical for Vite terminal when served via /terminal-proxy
+const abs = (p) => (p && p.startsWith('/') ? p : `/${p}`);
+
+// ICON_MAP: All paths MUST start with leading slash for Vite to resolve correctly
 const ICON_MAP = {
-  em1: '/jody-icons/jody-em1.png',
-  em2: '/jody-icons/jody-em2.png',
-  fb: '/jody-icons/jody-fb.png',
-  ig: '/jody-icons/jody-ig.png',
-  tiktok: '/jody-icons/jody-tiktok.png',
-  truth: '/jody-icons/jody-truth.png',
-  ascension: '/jody-icons/jody-ascension.png',
+  em1: abs('/jody-icons/jody-em1.png'),
+  em2: abs('/jody-icons/jody-em2.png'),
+  fb: abs('/jody-icons/jody-fb.png'),
+  ig: abs('/jody-icons/jody-ig.png'),
+  tiktok: abs('/jody-icons/jody-tiktok.png'),
+  truth: abs('/jody-icons/jody-truth.png'),
+  ascension: abs('/jody-icons/jody-ascension.png'),
 };
 
 export default function JodyAssistant({
@@ -37,14 +42,31 @@ export default function JodyAssistant({
 
   const [isMobile, setIsMobile] = useState(false);
 
-  // Detect mobile
+  // Part E: Detect mobile-terminal class on body (single source of truth)
   useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth <= 768);
+    const checkMobileTerminal = () => {
+      if (typeof document !== 'undefined') {
+        setIsMobile(document.body.classList.contains('mobile-terminal'));
+      }
     };
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
+    checkMobileTerminal();
+    
+    // Watch for class changes
+    const observer = new MutationObserver(checkMobileTerminal);
+    if (typeof document !== 'undefined' && document.body) {
+      observer.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class'],
+      });
+    }
+    
+    // Also check on resize
+    window.addEventListener('resize', checkMobileTerminal);
+    
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', checkMobileTerminal);
+    };
   }, []);
 
   // Phase-based behavior for em1 variant (Terminal 1)
@@ -150,11 +172,15 @@ export default function JodyAssistant({
   // Icon size
   const iconSize = isMobile ? 64 : 80;
 
+  // Part E: Mobile-safe container positioning
+  // Use isMobile state (which tracks mobile-terminal class)
+  const actionBarHeight = isMobile ? 100 : 0; // Height of mobile action bar
+
   // Container style
   const containerStyle = {
     position: 'fixed',
-    bottom: 60,
-    right: 24,
+    bottom: isMobile ? actionBarHeight + 12 : 60, // Part E: Above action bar on mobile
+    right: isMobile ? 12 : 24, // Part E: Closer to edge on mobile
     zIndex: 9999,
     display: 'flex',
     flexDirection: 'column',
@@ -165,9 +191,10 @@ export default function JodyAssistant({
   };
 
   // Bubble style (shared)
+  // Part E: Mobile-safe bubble sizing
   const bubbleStyle = {
-    maxWidth: 360,
-    width: '90vw',
+    maxWidth: isMobile ? 'calc(100vw - 80px)' : 360, // Part E: Never exceed viewport
+    width: isMobile ? 'calc(100vw - 80px)' : '90vw',
     background: 'linear-gradient(135deg, #ff3be0, #a100ff)',
     color: '#fff',
     borderRadius: 16,
@@ -179,6 +206,9 @@ export default function JodyAssistant({
     marginBottom: 8,
     fontSize: 14,
     lineHeight: 1.4,
+    maxHeight: isMobile ? 'calc(100vh - 200px)' : 'none', // Part E: Never exceed viewport height
+    overflowY: isMobile ? 'auto' : 'visible', // Part E: Scrollable if needed
+    WebkitOverflowScrolling: isMobile ? 'touch' : 'auto',
   };
 
   // Paragraph style
@@ -230,16 +260,20 @@ export default function JodyAssistant({
   };
 
   // DeepQuill image style
+  // Part E: Mobile-safe positioning
   const deepQuillImageStyle = {
     position: 'fixed',
-    bottom: iconSize + 160,
-    right: 24,
+    bottom: isMobile ? actionBarHeight + iconSize + 20 : iconSize + 160,
+    right: isMobile ? 12 : 24,
     zIndex: 9998,
-    maxWidth: 420,
-    width: '90vw',
+    maxWidth: isMobile ? 'calc(100vw - 24px)' : 420,
+    width: isMobile ? 'calc(100vw - 24px)' : '90vw',
     borderRadius: 12,
     boxShadow: '0 18px 40px rgba(0, 0, 0, 0.45)',
     display: 'block',
+    maxHeight: isMobile ? 'calc(100vh - 200px)' : 'none',
+    overflowY: isMobile ? 'auto' : 'visible',
+    WebkitOverflowScrolling: isMobile ? 'touch' : 'auto',
   };
 
   // Render em1 bubbles
@@ -334,7 +368,7 @@ export default function JodyAssistant({
   // Render icon
   const renderIcon = () => {
     // Force correct icon based on variant
-    const iconSrc = isEm2 ? ICON_MAP.em2 : (isEm1 ? ICON_MAP.em1 : (ICON_MAP[variant] || ICON_MAP.em1));
+    const iconSrc = abs(isEm2 ? ICON_MAP.em2 : (isEm1 ? ICON_MAP.em1 : (ICON_MAP[variant] || ICON_MAP.em1)));
 
     return (
       <div
@@ -434,7 +468,7 @@ export default function JodyAssistant({
       {isEm1 && phase === 3 && (
         <div style={deepQuillImageStyle}>
           <img
-            src="/jody-icons/jody-deepquill-post.png"
+            src={abs('/jody-icons/jody-deepquill-post.png')}
             alt="DeepQuill post with #WhereIsJodyVernon"
             style={{
               width: '100%',
@@ -451,6 +485,7 @@ export default function JodyAssistant({
       )}
 
       <div 
+        className="jody-assistant-container"
         style={containerStyle}
         onMouseDown={(e) => {
           // Prevent Jody widget from stealing focus from terminal
@@ -461,13 +496,25 @@ export default function JodyAssistant({
         }}
       >
         {/* em1 bubbles - ONLY render if isEm1 */}
-        {isEm1 && (phase === 1 || phase === 2) && renderEm1Bubble()}
+        {isEm1 && (phase === 1 || phase === 2) && (
+          <div className="jody-bubble-container">
+            {renderEm1Bubble()}
+          </div>
+        )}
 
         {/* em2 bubble - ONLY render if isEm2 */}
-        {isEm2 && renderEm2Bubble()}
+        {isEm2 && (
+          <div className="jody-bubble-container">
+            {renderEm2Bubble()}
+          </div>
+        )}
 
         {/* Other variant bubbles */}
-        {!isEm1 && !isEm2 && renderOtherBubble()}
+        {!isEm1 && !isEm2 && (
+          <div className="jody-bubble-container">
+            {renderOtherBubble()}
+          </div>
+        )}
 
         {/* Icon - always render, uses correct variant icon */}
         {renderIcon()}

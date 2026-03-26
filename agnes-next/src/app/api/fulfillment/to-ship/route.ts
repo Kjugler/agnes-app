@@ -1,62 +1,20 @@
-// agnes-next/src/app/api/fulfillment/to-ship/route.ts
+// agnes-next: proxy-only to deepquill /api/fulfillment/to-ship
+// Read-only. Deepquill owns canonical Order fulfillment.
 
-import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { NextRequest } from 'next/server';
+import { fulfillmentProxy } from '@/lib/fulfillmentProxy';
 
-type OrderRow = {
-  id: string;
-  createdAt: Date;
-  labelPrintedAt: Date | null;
-  shippingName: string | null;
-  shippingAddressLine1: string | null;
-  shippingCity: string | null;
-  shippingState: string | null;
-  shippingPostalCode: string | null;
-  shippingCountry: string | null;
-};
-
-export async function GET(request: NextRequest) {
+export async function GET(req: NextRequest) {
   try {
-    const searchParams = request.nextUrl.searchParams;
-    const fulfillmentUserId = searchParams.get('fulfillmentUserId');
-
-    if (!fulfillmentUserId) {
-      return NextResponse.json(
-        { error: 'fulfillmentUserId is required' },
-        { status: 400 }
-      );
-    }
-
-    // Find all orders where labelPrintedById = fulfillmentUserId and shippedAt IS NULL
-    const orders: OrderRow[] = await prisma.order.findMany({
-      where: {
-        labelPrintedById: fulfillmentUserId,
-        shippedAt: null,
-      },
-      orderBy: {
-        labelPrintedAt: 'asc',
-      },
+    const { response } = await fulfillmentProxy('/api/fulfillment/to-ship', req, {
+      method: 'GET',
     });
-
-    return NextResponse.json(
-      orders.map((order) => ({
-        id: order.id,
-        createdAt: order.createdAt.toISOString(),
-        labelPrintedAt: order.labelPrintedAt?.toISOString() || null,
-        shippingName: order.shippingName,
-        shippingAddressLine1: order.shippingAddressLine1,
-        shippingCity: order.shippingCity,
-        shippingState: order.shippingState,
-        shippingPostalCode: order.shippingPostalCode,
-        shippingCountry: order.shippingCountry,
-      }))
-    );
-  } catch (error) {
-    console.error('[fulfillment/to-ship] Error:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch orders to ship' },
-      { status: 500 }
+    return response;
+  } catch (err) {
+    console.error('[fulfillment/to-ship] proxy error', err);
+    return Response.json(
+      { error: 'Service unavailable' },
+      { status: 503 }
     );
   }
 }
-

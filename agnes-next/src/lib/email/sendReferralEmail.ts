@@ -1,4 +1,5 @@
 import { type ReferVideoId } from '@/config/referVideos';
+import { applyGlobalEmailBanner } from '@/lib/emailBanner';
 
 export interface SendReferralEmailParams {
   friendEmail: string;
@@ -111,6 +112,13 @@ Either way, thanks for checking it out.
     }
   }
 
+  // Apply stress-test banner when enabled (subject prefix + body note)
+  const { html: finalHtml, text: finalText, subject: finalSubject } = applyGlobalEmailBanner({
+    html: htmlBody,
+    text: textBody,
+    subject,
+  });
+
   // If SMTP is configured, send via nodemailer (same transport as Help email)
   if (smtpHost && smtpUser && smtpPass) {
     try {
@@ -129,9 +137,9 @@ Either way, thanks for checking it out.
       await transport.sendMail({
         from: `"${fromName}" <${fromEmail}>`,
         to: friendEmail,
-        subject,
-        text: textBody,
-        html: htmlBody,
+        subject: finalSubject ?? subject,
+        text: finalText ?? textBody,
+        html: finalHtml ?? htmlBody,
         ...(referrerEmail
           ? { replyTo: referrerEmail }
           : {}), // only set Reply-To if provided

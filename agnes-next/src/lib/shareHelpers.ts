@@ -58,6 +58,46 @@ export function hasSocialHandle(
 }
 
 /**
+ * Build Facebook preview page URL (for playable card post)
+ * Used by Desktop and Android flows; NOT the attachment download route
+ */
+export function buildFbPreviewUrl(
+  variant: 1 | 2 | 3,
+  refCode: string,
+  target: ShareTarget,
+  baseUrl: string
+): string {
+  const params = new URLSearchParams({
+    ref: refCode,
+    target,
+  });
+  if (target === 'terminal') {
+    params.set('secret', 'WhereIsJodyVernon');
+  }
+  return `${baseUrl.replace(/\/$/, '')}/p/fb/${variant}?${params.toString()}`;
+}
+
+/**
+ * Build tracking link for share caption (ensures correct platform in URL)
+ */
+export function buildTrackingLink(
+  platform: SharePlatform,
+  variant: 1 | 2 | 3,
+  refCode: string,
+  target: ShareTarget,
+  baseUrl: string
+): string {
+  const params = new URLSearchParams({
+    ref: refCode,
+    target,
+  });
+  if (target === 'terminal') {
+    params.set('secret', 'WhereIsJodyVernon');
+  }
+  return `${baseUrl.replace(/\/$/, '')}/share/${platform}/${variant}?${params.toString()}`;
+}
+
+/**
  * Build share URL with proper structure
  */
 export function buildShareUrl(
@@ -103,10 +143,12 @@ export function buildPlatformShareUrl(
       // Truth Social: open shareUrl (user pastes caption)
       return shareUrl;
     }
-    case 'ig':
-    case 'tt': {
-      // Instagram & TikTok: open shareUrl (user pastes caption)
+    case 'ig': {
       return shareUrl;
+    }
+    case 'tt': {
+      // TikTok: open upload page (user uploads video + pastes caption)
+      return 'https://www.tiktok.com/upload';
     }
     default:
       return shareUrl;

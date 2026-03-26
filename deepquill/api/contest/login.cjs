@@ -4,6 +4,9 @@
 
 const { prisma } = require('../../server/prisma.cjs');
 const { normalizeEmail, extractNameFromEmail } = require('../../src/lib/normalize.cjs');
+const { normalizeReferralCode } = require('../../src/lib/normalize.cjs');
+const { recordLedgerEntry } = require('../../lib/ledger/recordLedger.cjs');
+const { ensureDatabaseUrl } = require('../../server/prisma.cjs');
 const { customAlphabet } = require('nanoid');
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -95,7 +98,9 @@ async function ensureAssociateMinimal(email) {
  */
 async function handleContestLogin(req, res) {
   try {
-    const { email: emailRaw, origin } = req.body || {};
+    const { email: emailRaw, origin, ref } = req.body || {};
+    // Also check query params for ref (in case it comes from URL)
+    const refFromQuery = req.query?.ref || req.query?.referralCode;
 
     if (!emailRaw || typeof emailRaw !== 'string') {
       return res.status(400).json({
@@ -113,20 +118,94 @@ async function handleContestLogin(req, res) {
       });
     }
 
-    console.log('[contest/login] Processing login', { email, origin });
+    // Part A3: Get referral code from body or query params
+    const referralCodeRaw = ref || refFromQuery;
+    let referrerUserId = null;
+    let referrerReferralCode = null;
 
-    // Ensure User exists with Associate Publisher code
+    console.log('[PRINCIPAL] Resolving principal for login', { email, origin, referralCodeRaw });
+
+    // Ensure User exists with Associate Publisher code (canonical principal)
     const user = await ensureAssociateMinimal(email);
 
-    // Set contestJoinedAt if not already set
+    // Part A3: If referral code present, validate and stamp lastReferral
+    if (referralCodeRaw && typeof referralCodeRaw === 'string') {
+      try {
+        const normalizedRefCode = normalizeReferralCode(referralCodeRaw.trim());
+        if (normalizedRefCode) {
+          const referrerUser = await prisma.user.findFirst({
+            where: {
+              OR: [
+                { code: normalizedRefCode },
+                { referralCode: normalizedRefCode },
+              ],
+            },
+            select: {
+              id: true,
+              code: true,
+              referralCode: true,
+            },
+          });
+
+          if (referrerUser && referrerUser.id !== user.id) {
+            // Don't allow self-referral
+            referrerUserId = referrerUser.id;
+            referrerReferralCode = referrerUser.referralCode || referrerUser.code;
+
+            // Update lastReferral fields on the logged-in user
+            await prisma.user.update({
+              where: { id: user.id },
+              data: {
+                lastReferredByUserId: referrerUserId,
+                lastReferralCode: referrerReferralCode,
+                lastReferralAt: new Date(),
+                lastReferralSource: 'link',
+                lastReferralEmail: email,
+              },
+            });
+
+            console.log('[contest/login] Stamped lastReferral from referral link', {
+              userId: user.id,
+              email: user.email,
+              referrerUserId,
+              referrerReferralCode,
+              source: 'link',
+            });
+          }
+        }
+      } catch (refErr) {
+        // Non-blocking: log but don't fail login
+        console.warn('[contest/login] Failed to process referral code', {
+          error: refErr.message,
+          referralCodeRaw,
+        });
+      }
+    }
+
+    // R1: Login must NOT auto-join the contest
+    // contestJoinedAt is for analytics only - does NOT create CONTEST_JOIN ledger entry
+    // Points are ONLY awarded via /api/contest/join endpoint when user explicitly submits form
     let isReturning = false;
     if (!user.contestJoinedAt) {
+      // R7: Set contestJoinedAt for analytics (optional), but do NOT create ledger entry
       await prisma.user.update({
         where: { id: user.id },
         data: { contestJoinedAt: new Date() },
       });
+      
+      console.log('[contest/login] Contest joined timestamp set (analytics only)', {
+        userId: user.id,
+        email: user.email,
+        note: 'contestJoinedAt is for analytics - join status comes from ledger only',
+      });
     } else {
       isReturning = true;
+      console.log('[contest/login] Returning user', {
+        userId: user.id,
+        email: user.email,
+        contestJoinedAt: user.contestJoinedAt,
+        note: 'contestJoinedAt is for analytics - join status comes from ledger only',
+      });
     }
 
     // Determine greeting name: firstName (from contest form) > fname > extract from email
@@ -135,7 +214,17 @@ async function handleContestLogin(req, res) {
       greetingName = extractNameFromEmail(email);
     }
 
-    // Return response
+    // [PRINCIPAL] Log canonical identity resolution
+    console.log('[PRINCIPAL] Principal resolved', {
+      userId: user.id,
+      email: user.email,
+      code: user.code,
+      referralCode: user.referralCode,
+      method: 'email',
+      isReturning,
+    });
+
+    // Return response with canonical userId and code
     return res.json({
       ok: true,
       user: {
@@ -143,6 +232,7 @@ async function handleContestLogin(req, res) {
         email: user.email,
         firstName: user.firstName,
         contestJoinedAt: user.contestJoinedAt,
+        code: user.code, // Include code for cookie
       },
       associate: {
         code: user.code,
