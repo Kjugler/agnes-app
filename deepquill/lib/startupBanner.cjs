@@ -78,9 +78,9 @@ function isAutoReconciliationEnabled() {
 
 /**
  * Print startup banner
- * @param {Object} options - { port, nodeEnv }
+ * @param {Object} options - { port, host, nodeEnv }
  */
-function printStartupBanner({ port, nodeEnv }) {
+function printStartupBanner({ port, host, nodeEnv }) {
   const gitSha = getGitSha();
   const timestamp = new Date().toISOString();
   const legacyEnabled = isLegacyPointsImportEnabled();
@@ -90,6 +90,7 @@ function printStartupBanner({ port, nodeEnv }) {
 ────────────────────────────────────────
 🚀 DeepQuill API starting
 Environment: ${nodeEnv || 'unknown'}
+Host: ${host || '0.0.0.0'}
 Port: ${port || 'unknown'}
 Git SHA: ${gitSha}
 Started at: ${timestamp}

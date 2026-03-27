@@ -318,14 +318,17 @@ if (envConfig.DEBUG) {
 
 // Railway/Render/Vercel set PORT; fallback for local dev
 const PORT = Number(process.env.PORT) || 5055;
+// Bind all interfaces so PaaS proxies (Railway) can reach the process (not only loopback)
+const HOST = process.env.HOST || '0.0.0.0';
 
 // ✅ Print startup banner before server starts
 const { printStartupBanner } = require('../lib/startupBanner.cjs');
 printStartupBanner({
   port: PORT,
+  host: HOST,
   nodeEnv: envConfig.NODE_ENV,
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server is running on http://localhost:${PORT}`);
+app.listen(PORT, HOST, () => {
+  console.log(`🚀 Server is listening on http://${HOST}:${PORT}`);
 });
