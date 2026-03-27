@@ -11,6 +11,7 @@
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist",
     "start-server": "node server/index.cjs",
+    "migrate:deploy": "prisma migrate deploy",
     "fulfill:ebooks": "node scripts/process-fulfillments.cjs"
   },
   "dependencies": {
@@ -25,6 +26,7 @@
     "node-fetch": "^3.3.2",
     "nodemailer": "^7.0.11",
     "pdfkit": "^0.17.2",
+    "prisma": "6.10.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-terminal-ui": "^1.4.0",
@@ -40,7 +42,6 @@
     "eslint-plugin-react-hooks": "^4.6.2",
     "eslint-plugin-react-refresh": "^0.4.7",
     "gh-pages": "^6.3.0",
-    "prisma": "6.10.1",
     "vite": "^6.1.0"
   }
 }
