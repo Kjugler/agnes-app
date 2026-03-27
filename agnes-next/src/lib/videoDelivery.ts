@@ -1,11 +1,26 @@
 import type { NextRequest } from 'next/server';
-import { readFile } from 'fs/promises';
-import path from 'path';
-import { detectDevice } from './device';
+import { NextResponse } from 'next/server';
+import { detectDevice, type DeviceType } from './device';
 import { pickAsset } from './assetRotation';
 import type { SharePlatform } from './shareAssets';
 
-export type DeviceType = 'desktop' | 'ios' | 'android';
+/**
+ * Public base URL for share-download videos (no trailing slash).
+ * Production (Vercel): never read public/videos in serverless — it bloats the bundle.
+ * Redirect to the same-origin static path `/videos/<file>` served by the CDN.
+ */
+function getShareVideoPublicBase(req: NextRequest): string | null {
+  const explicit =
+    process.env.SHARE_VIDEO_PUBLIC_BASE_URL?.trim() ||
+    process.env.NEXT_PUBLIC_SHARE_VIDEO_BASE_URL?.trim();
+  if (explicit) return explicit.replace(/\/$/, '');
+  const site = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  if (site) return site.replace(/\/$/, '');
+  if (process.env.NODE_ENV !== 'production') {
+    return req.nextUrl.origin;
+  }
+  return null;
+}
 
 const PLATFORM_VIDEOS: Record<string, Record<number, string>> = {
   fb: { 1: 'fb1.mp4', 2: 'fb2.mp4', 3: 'fb3.mp4' },
@@ -53,18 +68,6 @@ function getAssetInfo(
   return { filename: map?.[variant] || 'fb1.mp4' };
 }
 
-/**
- * Get Content-Disposition based on device.
- * iOS + desktop: attachment (triggers Save bar)
- * Android: inline (saves to Gallery/Downloads cleanly)
- */
-function getContentDisposition(device: DeviceType, filename: string): string {
-  if (device === 'android') {
-    return `inline; filename="${filename}"`;
-  }
-  return `attachment; filename="${filename}"`;
-}
-
 export type ServeVideoOptions = {
   platform: SharePlatform;
   req: NextRequest;
@@ -73,38 +76,38 @@ export type ServeVideoOptions = {
 export async function serveShareVideo({ platform, req }: ServeVideoOptions): Promise<Response> {
   const variantParam = req.nextUrl.searchParams.get('variant');
   const variant = Math.min(3, Math.max(1, parseInt(variantParam || '1', 10) || 1));
-  const device = getDevice(req);
   const { filename, assetId } = getAssetInfo(platform, variant, req);
-  const downloadFilename = `agnes-protocol-${platform}-${variant}.mp4`;
 
-  try {
-    const filePath = path.join(process.cwd(), 'public', 'videos', filename);
-    const buffer = await readFile(filePath);
+  const publicBase = getShareVideoPublicBase(req);
 
-    const response = new Response(buffer, {
-      status: 200,
-      headers: {
-        'Content-Type': 'video/mp4',
-        'Content-Disposition': getContentDisposition(device, downloadFilename),
-        'Cache-Control': 'public, max-age=86400',
-        'Content-Length': String(buffer.byteLength),
-      },
-    });
-
-    // Persist FB asset choice for 7 days so user sees same creative
-    if (platform === 'fb' && assetId) {
-      response.headers.append(
-        'Set-Cookie',
-        `dq_asset_fb_${variant}=${assetId}; Path=/; Max-Age=604800; SameSite=Lax`
+  // Production / configured hosts: redirect to static `/videos/*` (not bundled into serverless).
+  if (publicBase) {
+    try {
+      const videoPath = `/videos/${encodeURIComponent(filename)}`;
+      const target = new URL(videoPath, publicBase.endsWith('/') ? publicBase : `${publicBase}/`);
+      const res = NextResponse.redirect(target, 307);
+      res.headers.set('Cache-Control', 'public, max-age=86400');
+      if (platform === 'fb' && assetId) {
+        res.headers.append(
+          'Set-Cookie',
+          `dq_asset_fb_${variant}=${assetId}; Path=/; Max-Age=604800; SameSite=Lax`
+        );
+      }
+      return res;
+    } catch (err) {
+      console.error(`[api/share/${platform}/video] Redirect build failed`, err);
+      return NextResponse.json(
+        { error: 'Video redirect failed', detail: 'Check NEXT_PUBLIC_SITE_URL or SHARE_VIDEO_PUBLIC_BASE_URL' },
+        { status: 500 }
       );
     }
-
-    return response;
-  } catch (err) {
-    console.error(`[api/share/${platform}/video] Failed to serve video`, err);
-    return new Response(JSON.stringify({ error: 'Video not found' }), {
-      status: 404,
-      headers: { 'Content-Type': 'application/json' },
-    });
   }
+
+  return NextResponse.json(
+    {
+      error: 'Share video URL not configured',
+      detail: 'Set NEXT_PUBLIC_SITE_URL or SHARE_VIDEO_PUBLIC_BASE_URL (e.g. your Vercel deployment URL).',
+    },
+    { status: 503 }
+  );
 }
