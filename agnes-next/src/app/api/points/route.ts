@@ -37,10 +37,31 @@ const POINTS_PER_USD = 1;
 // -------------------------------------------
 
 export async function GET(req: NextRequest) {
+  // P0 guardrail: deepquill owns canonical mutable data in production.
+  // This legacy local-DB endpoint must not be used in production.
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: 'Deprecated endpoint in production. Use /api/points/me (deepquill canonical).',
+      },
+      { status: 410 }
+    );
+  }
   return handlePoints(req);
 }
 
 export async function POST(req: NextRequest) {
+  // P0 guardrail: deepquill owns canonical mutable data in production.
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: 'Deprecated endpoint in production. Use /api/points/me (deepquill canonical).',
+      },
+      { status: 410 }
+    );
+  }
   return handlePoints(req);
 }
 

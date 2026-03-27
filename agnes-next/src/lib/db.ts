@@ -1,5 +1,10 @@
 import { PrismaClient } from '@prisma/client';
 
+// IMPORTANT STORAGE GUARDRAIL:
+// deepquill (Railway) is the canonical mutable datastore in production.
+// Avoid introducing production-critical business state reads/writes in agnes-next.
+// This client is retained for local/dev utilities and legacy non-canonical endpoints only.
+
 declare global {
   // eslint-disable-next-line no-var
   var prisma: PrismaClient | undefined;

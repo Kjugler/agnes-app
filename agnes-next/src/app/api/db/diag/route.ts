@@ -1,4 +1,4 @@
-﻿// Force Node runtime
+// Force Node runtime
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
@@ -7,6 +7,11 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 export async function GET() {
+  // P0 guardrail: do not expose or rely on agnes-next local DB diagnostics in production.
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Not Found' }, { status: 404 });
+  }
+
   try {
     const tables = (await prisma.$queryRawUnsafe(
       `SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`

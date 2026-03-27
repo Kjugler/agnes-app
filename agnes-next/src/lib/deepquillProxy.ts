@@ -3,6 +3,10 @@
  * 
  * This allows agnes-next to delegate Stripe/Mailchimp operations to deepquill
  * without maintaining SDK clients or secrets in agnes-next.
+ *
+ * Source-of-truth guardrail:
+ * deepquill is the canonical mutable datastore in production.
+ * Prefer proxying canonical business state to deepquill rather than local DB logic in agnes-next.
  */
 
 const API_BASE_URL = process.env.DEEPQUILL_URL || process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5055';
