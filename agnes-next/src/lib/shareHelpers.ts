@@ -2,7 +2,7 @@ import type { SharePlatform } from './shareAssets';
 import { getNextVariant } from './shareAssets';
 import { getNextTarget, type ShareTarget } from './shareTarget';
 import { buildShareCaption } from './shareCaption';
-import { PROTOCOL_CHALLENGE_PATH, TERMINAL_ENTRY_PATH } from './shareAssets';
+import { ENTRY_FRONT_DOOR } from '@/lib/entryFrontDoor';
 
 /**
  * Map platform names to associate handle field names
@@ -156,17 +156,16 @@ export function buildPlatformShareUrl(
 }
 
 /**
- * Get redirect path based on target
+ * Deep-link destination after share landing (if used). Routes through front door.
  */
 export function getRedirectPath(target: ShareTarget, refCode: string): string {
-  const basePath = target === 'terminal' ? TERMINAL_ENTRY_PATH : PROTOCOL_CHALLENGE_PATH;
   const params = new URLSearchParams({ ref: refCode });
-  
-  // A2: Include secret code for terminal target
   if (target === 'terminal') {
     params.set('secret', 'WhereIsJodyVernon');
+    params.set('v', 'terminal');
+  } else {
+    params.set('v', 'protocol');
   }
-  
-  return `${basePath}?${params.toString()}`;
+  return `${ENTRY_FRONT_DOOR}?${params.toString()}`;
 }
 

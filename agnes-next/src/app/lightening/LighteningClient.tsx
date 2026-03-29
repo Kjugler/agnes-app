@@ -9,10 +9,15 @@ import { useRouter, useSearchParams } from "next/navigation";
 import HelpButton from "@/components/HelpButton";
 import { writeContestEmail, readContestEmail } from "@/lib/identity";
 import CinematicVideo from "@/components/CinematicVideo";
-import { resolveVariantClient, setVariantCookieClient } from "@/lib/entryVariant";
+import {
+  resolveEntryFunnelClient,
+  setSeenVariantCookie,
+  setVariantCookieClient,
+} from "@/lib/entryVariant";
 import GlitchIntro from "@/components/terminal/GlitchIntro";
 
 const STRESS_TEST_MODE = process.env.NEXT_PUBLIC_STRESS_TEST_MODE === '1';
+const ENTRY_FUNNEL_DEBUG = process.env.NEXT_PUBLIC_ENTRY_FUNNEL_DEBUG === '1';
 
 export default function LighteningClient() {
   const router = useRouter();
@@ -87,11 +92,45 @@ export default function LighteningClient() {
 
   /**
    * Variant routing: ONLY called after video ends or Continue click.
-   * Precedence: ?v= > cookie > weighted random.
+   * See resolveEntryFunnelClient() in @/lib/entryVariant for precedence.
    */
   const handleContinue = () => {
-    const variant = resolveVariantClient();
+    if (ENTRY_FUNNEL_DEBUG && typeof window !== 'undefined') {
+      const sp = new URLSearchParams(window.location.search);
+      const cookieStr = document.cookie;
+      const entryCookie =
+        cookieStr.match(/(?:^|;\s*)entry_variant=([^;]+)/)?.[1]?.trim() ?? null;
+      const discovery = /(?:^|;\s*)terminal_discovery_complete=1(?:;|$)/.test(cookieStr);
+      const seenT = /(?:^|;\s*)seen_terminal=1(?:;|$)/.test(cookieStr);
+      const seenP = /(?:^|;\s*)seen_protocol=1(?:;|$)/.test(cookieStr);
+      const seenC = /(?:^|;\s*)seen_contest=1(?:;|$)/.test(cookieStr);
+      console.log('[ENTRY_FUNNEL:client:pre]', {
+        path: window.location.pathname,
+        queryV: sp.get('v'),
+        entry_variant_cookie: entryCookie,
+        seen_terminal: seenT,
+        seen_protocol: seenP,
+        seen_contest: seenC,
+        terminal_discovery_complete: discovery,
+        coarsePointer: window.matchMedia?.('(pointer: coarse)').matches,
+        innerWidth: window.innerWidth,
+      });
+    }
+
+    const resolution = resolveEntryFunnelClient();
+    const variant = resolution.variant;
     setVariantCookieClient(variant);
+    setSeenVariantCookie(variant);
+
+    if (ENTRY_FUNNEL_DEBUG && typeof window !== 'undefined') {
+      console.log('[ENTRY_FUNNEL:client:post]', {
+        chosenVariant: variant,
+        phase: resolution.phase,
+        decision: resolution.decision,
+        entry_variant_sticky_7d: true,
+        seen_cookie_updated: true,
+      });
+    }
 
     const params = new URLSearchParams(window.location.search);
     params.set('v', variant);

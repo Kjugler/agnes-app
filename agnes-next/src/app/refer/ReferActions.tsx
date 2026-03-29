@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import type { ReferVideoId } from '@/config/referVideos';
+import { ENTRY_FRONT_DOOR } from '@/lib/entryFrontDoor';
 
 interface ReferActionsProps {
   referralCode: string;
@@ -59,14 +60,19 @@ export default function ReferActions({ referralCode, videoId }: ReferActionsProp
     if (source) params.set('src', source);
 
     const qs = params.toString();
-    router.push(qs ? `/lightening?${qs}` : '/lightening');
+    router.push(qs ? `${ENTRY_FRONT_DOOR}?${qs}` : ENTRY_FRONT_DOOR);
   };
 
-  // 4. Win the Contest
+  // 4. Win the Contest — front door + explicit protocol variant (video id as `video` to avoid clashing with ?v=)
   const handleWinContest = () => {
-    // Jump straight to The Protocol Challenge page
-    const q = buildCodeQuery();
-    router.push(`/the-protocol-challenge?${q}`);
+    const params = new URLSearchParams();
+    if (referralCode) params.set('code', referralCode);
+    params.set('v', 'protocol');
+    params.set('video', videoId);
+    params.set('src', 'email');
+    const source = searchParams.get('src');
+    if (source) params.set('src', source);
+    router.push(`${ENTRY_FRONT_DOOR}?${params.toString()}`);
   };
 
   const buttonBaseStyle: React.CSSProperties = {

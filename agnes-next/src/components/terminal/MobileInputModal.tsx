@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 
+const MODAL_DEBUG = process.env.NEXT_PUBLIC_TERMINAL_MOBILE_DEBUG === '1';
+
 interface MobileInputModalProps {
   isOpen: boolean;
   prompt: string;
@@ -26,6 +28,11 @@ export default function MobileInputModal({
     if (isOpen && autoFocus && inputRef.current) {
       setTimeout(() => {
         inputRef.current?.focus();
+        if (MODAL_DEBUG) {
+          console.log('[TERMINAL_MOBILE]', 'secret-modal-open', {
+            focused: document.activeElement === inputRef.current,
+          });
+        }
       }, 100);
     }
   }, [isOpen, autoFocus]);
@@ -48,13 +55,15 @@ export default function MobileInputModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50"
+      className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center"
       style={{
         position: 'fixed',
         top: 0,
         left: 0,
         right: 0,
         bottom: 0,
+        // Above Jody (9999) and mobile action bar (10000) so the real <input> receives taps on iOS
+        zIndex: 10050,
       }}
       onClick={(e) => {
         e.stopPropagation();

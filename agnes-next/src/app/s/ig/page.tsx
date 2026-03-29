@@ -4,7 +4,7 @@ type SearchParams = Promise<{ to?: string; code?: string; v?: string; src?: stri
 
 export default async function Page({ searchParams }: { searchParams?: SearchParams }) {
   const sp = (await searchParams) ?? {};
-  const fallback = "/contest";
+  const fallback = "/start";
   const to = typeof sp.to === "string" && sp.to.startsWith("http") ? sp.to : fallback;
 
   return (

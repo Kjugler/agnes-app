@@ -57,10 +57,10 @@ export async function GET(request: NextRequest) {
     ></video>
     <div style="margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap;">
       <a
-        href="/contest/score"
+        href="${ref ? `/start?ref=${encodeURIComponent(ref)}` : '/start'}"
         style="background: #16a34a; color: #fff; padding: 10px 14px; border-radius: 10px; text-decoration: none; font-weight: 700;"
       >
-        See my score
+        Enter The Agnes Protocol
       </a>
       <a
         href="/buy"

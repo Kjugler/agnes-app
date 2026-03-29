@@ -26,7 +26,7 @@ export default function BadgeClient() {
         href: undefined as string | undefined,
         earned: earnedPurchase,
       },
-      { label: "Joined the Contest", pts: 250, href: "/contest", earned: false },
+      { label: "Joined the Contest", pts: 250, href: "/start", earned: false },
       { label: "Shared to X", pts: 100, href: "/share/x", earned: false },
       { label: "Shared to Instagram", pts: 100, href: "/share/ig", earned: false },
       { label: "Referred a Friend", pts: 200, href: "/contest/referral", earned: false },

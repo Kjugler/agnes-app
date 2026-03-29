@@ -17,6 +17,50 @@ type TerminalOutputWithClassNameProps = {
 
 const TerminalOutputWithClassName = TerminalOutput as unknown as React.ComponentType<TerminalOutputWithClassNameProps>;
 
+const TERMINAL_MOBILE_DEBUG = process.env.NEXT_PUBLIC_TERMINAL_MOBILE_DEBUG === '1';
+
+function logTerminalMobile(message: string, data?: Record<string, unknown>) {
+  if (TERMINAL_MOBILE_DEBUG) {
+    console.log('[TERMINAL_MOBILE]', message, data ?? {});
+  }
+}
+
+/** Real typing element from react-terminal-ui (not the prompt line div). */
+function getTerminalHiddenInput(): HTMLInputElement | null {
+  return document.querySelector<HTMLInputElement>('.terminal-hidden-input');
+}
+
+/**
+ * iOS Safari: focus in a direct user gesture; optional readOnly toggle helps stubborn cases.
+ */
+function focusTerminalHiddenInput(fromUserGesture: boolean): boolean {
+  const el = getTerminalHiddenInput();
+  if (!el) {
+    logTerminalMobile('focus:no-input', { fromUserGesture });
+    return false;
+  }
+  try {
+    if (fromUserGesture && typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+      el.readOnly = true;
+      el.focus({ preventScroll: true });
+      requestAnimationFrame(() => {
+        el.readOnly = false;
+        el.focus({ preventScroll: true });
+        logTerminalMobile('focus:ios-readonly-toggle', {
+          active: document.activeElement === el,
+        });
+      });
+      return true;
+    }
+    el.focus({ preventScroll: true });
+    logTerminalMobile('focus:direct', { active: document.activeElement === el });
+    return document.activeElement === el;
+  } catch (e) {
+    logTerminalMobile('focus:error', { err: String(e) });
+    return false;
+  }
+}
+
 type Phase = 'intro' | 'terminal1' | 'terminal2' | 'lightning';
 
 export default function TerminalEmulator() {
@@ -32,6 +76,7 @@ export default function TerminalEmulator() {
   const [isMobile, setIsMobile] = useState(false);
   const [showMobileSecretModal, setShowMobileSecretModal] = useState(false);
   const [simpleMode, setSimpleMode] = useState(false);
+  const [keyboardAssistUsed, setKeyboardAssistUsed] = useState(false);
 
   const introIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const terminalContainerRef = useRef<HTMLDivElement>(null);
@@ -57,6 +102,17 @@ export default function TerminalEmulator() {
       const isMobileDevice = forceMobile || isCoarsePointer || isSmallViewport;
 
       setIsMobile(isMobileDevice);
+
+      if (TERMINAL_MOBILE_DEBUG) {
+        logTerminalMobile('device-check', {
+          forceMobile,
+          isCoarsePointer,
+          isSmallViewport,
+          isMobileDevice,
+          innerWidth: viewportWidth,
+          ua: typeof navigator !== 'undefined' ? navigator.userAgent?.slice(0, 120) : '',
+        });
+      }
 
       if (typeof document !== 'undefined') {
         document.body.classList.toggle('mobile-terminal', isMobileDevice);
@@ -215,19 +271,14 @@ export default function TerminalEmulator() {
   }, [phase]);
 
   useEffect(() => {
-    const focusTerminalInput = () => {
-      const input = document.querySelector('.react-terminal-input');
-      if (input && input instanceof HTMLElement) {
-        input.focus();
-        return true;
-      }
-      return false;
-    };
+    const focusTerminalInput = () => focusTerminalHiddenInput(false);
 
     let attempts = 0;
     const maxAttempts = 5;
     const tryFocus = () => {
-      if (focusTerminalInput() || attempts >= maxAttempts) return;
+      const ok = focusTerminalInput();
+      logTerminalMobile('mount-focus-attempt', { attempt: attempts + 1, ok });
+      if (ok || attempts >= maxAttempts) return;
       attempts++;
       setTimeout(tryFocus, 200);
     };
@@ -238,7 +289,10 @@ export default function TerminalEmulator() {
       const target = e.target as HTMLElement;
       const jodyElement = target.closest('[style*="z-index: 9999"]');
       if (!jodyElement) {
-        setTimeout(focusTerminalInput, 50);
+        setTimeout(() => {
+          const ok = focusTerminalHiddenInput(false);
+          logTerminalMobile('container-click-focus', { ok });
+        }, 50);
       }
     };
 
@@ -292,9 +346,9 @@ export default function TerminalEmulator() {
     } else if (phase === 'terminal2' && !isDownloading && !showEmailModal) {
       setShowEmailModal(true);
     } else {
-      const input = document.querySelector('.react-terminal-input');
-      if (input && input instanceof HTMLElement) {
-        input.focus();
+      const input = getTerminalHiddenInput();
+      if (input) {
+        focusTerminalHiddenInput(true);
         input.dispatchEvent(
           new KeyboardEvent('keydown', {
             key: 'Enter',
@@ -499,9 +553,31 @@ export default function TerminalEmulator() {
         onEmailSubmitted={handleEmailSubmitted}
       />
 
-      {!showEmailModal && (
+      {/* Hide Jody while the secret modal is open — it used to sit above z-50 and steal taps on iOS */}
+      {!showEmailModal && !showMobileSecretModal && (
         <JodyAssistantTerminal variant="em1" autoShowDelayMs={4000} />
       )}
+
+      {/* z-index 10020: above action bar (10000), below secret modal (10050). User gesture → focus hidden input. */}
+      {isMobile &&
+        !showEmailModal &&
+        !showMobileSecretModal &&
+        !(phase === 'terminal2' && isDownloading) && (
+          <div className="mobile-terminal-keyboard-assist">
+            <button
+              type="button"
+              className="mobile-terminal-keyboard-assist-btn"
+              aria-label="Open keyboard for terminal input"
+              onClick={() => {
+                setKeyboardAssistUsed(true);
+                const ok = focusTerminalHiddenInput(true);
+                logTerminalMobile('keyboard-assist-tap', { ok, phase });
+              }}
+            >
+              Tap to open keyboard
+            </button>
+          </div>
+        )}
 
       {isMobile && !showEmailModal && (
         <div className="mobile-terminal-action-bar">
@@ -530,7 +606,7 @@ export default function TerminalEmulator() {
         </div>
       )}
 
-      {process.env.NODE_ENV === 'development' && (
+      {(process.env.NODE_ENV === 'development' || TERMINAL_MOBILE_DEBUG) && (
         <div
           style={{
             position: 'fixed',
@@ -541,12 +617,16 @@ export default function TerminalEmulator() {
             color: '#0f0',
             padding: '4px 6px',
             fontFamily: 'monospace',
-            fontSize: 12,
+            fontSize: 11,
             border: '1px solid #0f0',
             borderRadius: 6,
+            maxWidth: 'min(92vw, 280px)',
+            wordBreak: 'break-all',
           }}
         >
-          agnes-next • /terminal
+          {TERMINAL_MOBILE_DEBUG
+            ? `m:${isMobile ? '1' : '0'} secret:${showMobileSecretModal ? '1' : '0'} email:${showEmailModal ? '1' : '0'} assist:${keyboardAssistUsed ? '1' : '0'}`
+            : 'agnes-next • /terminal'}
         </div>
       )}
     </>
