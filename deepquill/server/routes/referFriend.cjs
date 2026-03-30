@@ -1,11 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const nodemailer = require('nodemailer');
 const { prisma } = require('../prisma.cjs');
 const { applyGlobalEmailBanner } = require('../../src/lib/emailBanner.cjs');
 const { normalizeEmail } = require('../../src/lib/normalize.cjs');
 const { normalizeReferralCode } = require('../../src/lib/normalize.cjs');
 const { ensureDatabaseUrl } = require('../prisma.cjs');
+const { getMailchimpClient } = require('../../lib/email/sendEmail.cjs');
 
 const {
   MAILCHIMP_TRANSACTIONAL_KEY,
@@ -100,25 +100,7 @@ function getReferrerDisplayName({ referrerFirstName, referrerLastName, referrerE
   return 'a friend';
 }
 
-// Only create transporter if Mandrill config is available
-let transporter = null;
-if (MAILCHIMP_TRANSACTIONAL_KEY && MAILCHIMP_FROM_EMAIL) {
-  transporter = nodemailer.createTransport({
-    host: 'smtp.mandrillapp.com',
-    port: 587,
-    secure: false,
-    auth: {
-      // Mandrill lets us use ANY username; the API key goes in `pass`.
-      user: 'DeepQuill LLC',
-      pass: MAILCHIMP_TRANSACTIONAL_KEY,
-    },
-  });
-  console.log('[REFER-FRIEND] Mandrill SMTP transport configured');
-} else {
-  console.warn(
-    '[REFER-FRIEND] Email service not configured – missing MAILCHIMP_TRANSACTIONAL_KEY or MAILCHIMP_FROM_EMAIL'
-  );
-}
+/** Outbound email: Mailchimp Transactional HTTPS API (same path as purchase emails). SMTP to smtp.mandrillapp.com often connection-times out from Railway. */
 
 router.post('/', async (req, res) => {
   try {
@@ -212,12 +194,20 @@ router.post('/', async (req, res) => {
     // Build video URL - always include if videoId exists
     const videoUrl = vidId ? `${siteRoot}/videos/${vidId}.mp4` : null;
 
-    if (!transporter) {
+    const mailchimpClient = getMailchimpClient();
+    if (!mailchimpClient) {
+      console.warn('[REFER-FRIEND] Mailchimp client unavailable (missing MAILCHIMP_TRANSACTIONAL_KEY)');
       return res.status(500).json({
         ok: false,
         error: 'Email service not configured'
       });
     }
+
+    console.log('[REFER-FRIEND] Email transport', {
+      transport: 'mailchimp_transactional_api',
+      provider: 'Mailchimp Transactional (HTTPS)',
+      fromConfigured: Boolean(MAILCHIMP_FROM_EMAIL),
+    });
 
     // 🔒 LOCKED COPY — Use canonical subject and body templates
     const baseSubject = REFERRAL_EMAIL_SUBJECT(referrerDisplayName);
@@ -249,17 +239,54 @@ router.post('/', async (req, res) => {
           subject: finalSubject || subject,
         });
 
-        // Use referrer name as "From" display name (fallback to DeepQuill LLC)
         const fromDisplayName = referrerDisplayName || 'DeepQuill LLC';
-        const fromEmail = MAILCHIMP_FROM_EMAIL || 'no-reply@theagnesprotocol.com';
-        
-        await transporter.sendMail({
-          from: `"${fromDisplayName}" <${fromEmail}>`,
+        const fromEmailAddr = MAILCHIMP_FROM_EMAIL || 'no-reply@theagnesprotocol.com';
+        const replyToAddr =
+          (referrerEmail && String(referrerEmail).trim()) ||
+          MAILCHIMP_FROM_EMAIL ||
+          'hello@theagnesprotocol.com';
+
+        const tSend0 = Date.now();
+        console.log('[REFER-FRIEND] messages.send start', {
           to: email,
-          subject: finalSubject || subject,
-          html: finalHtml || html,
-          replyTo: MAILCHIMP_FROM_EMAIL || 'hello@theagnesprotocol.com'
+          template: REFERRAL_TEMPLATE_VERSION,
         });
+
+        let emailResult;
+        try {
+          emailResult = await mailchimpClient.messages.send({
+            message: {
+              from_email: fromEmailAddr,
+              from_name: fromDisplayName,
+              to: [{ email, type: 'to' }],
+              subject: finalSubject || subject,
+              html: finalHtml || html,
+              headers: { 'Reply-To': replyToAddr },
+            },
+          });
+        } catch (sendErr) {
+          console.error('[REFER-FRIEND] messages.send HTTP error', {
+            to: email,
+            elapsedMs: Date.now() - tSend0,
+            message: sendErr.message,
+            code: sendErr.code,
+          });
+          throw sendErr;
+        }
+
+        const elapsedMs = Date.now() - tSend0;
+        const row = Array.isArray(emailResult) ? emailResult[0] : null;
+        console.log('[REFER-FRIEND] messages.send finished', {
+          to: email,
+          elapsedMs,
+          status: row?.status,
+          reject_reason: row?.reject_reason,
+          id: row?._id,
+        });
+
+        if (row && (row.status === 'rejected' || row.status === 'invalid')) {
+          throw new Error(row.reject_reason || row.status || 'Email rejected by provider');
+        }
 
         console.log('[refer-friend] Sent referral email to', email, 'for code', code);
 
