@@ -9,6 +9,7 @@ import { buildTrackingLink } from '@/lib/shareHelpers';
 import { readContestEmail } from '@/lib/identity';
 import { useDeviceProfile } from '@/hooks/useDeviceProfile';
 import type { ShareTarget } from '@/lib/shareTarget';
+import { getTrainingVideoSrc } from '@/lib/trainingVideoUrl';
 
 function InstructionsContent() {
   const params = useParams();
@@ -170,7 +171,11 @@ function InstructionsContent() {
           Training Video
         </div>
         <video
-          src={activeTab === 'ios' ? '/training/tt-instructions-ios.mp4' : '/training/tt-instructions-android.mp4'}
+          src={
+            activeTab === 'ios'
+              ? getTrainingVideoSrc('ttInstructionsIos')
+              : getTrainingVideoSrc('ttInstructionsAndroid')
+          }
           controls
           playsInline
           muted

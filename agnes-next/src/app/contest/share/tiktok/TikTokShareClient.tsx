@@ -9,6 +9,7 @@ import HelpButton from '@/components/HelpButton';
 import { buildShareCaption } from '@/lib/shareCaption';
 import { buildTrackingLink } from '@/lib/shareHelpers';
 import { getNextVariant, shareAssets } from '@/lib/shareAssets';
+import { getTrainingVideoSrc } from '@/lib/trainingVideoUrl';
 
 export default function TikTokShareClient() {
   const router = useRouter();
@@ -460,7 +461,7 @@ export default function TikTokShareClient() {
       <JodyTrainingModal
         isOpen={showTikTokTraining}
         onClose={() => setShowTikTokTraining(false)}
-        videoSrc="/training/jody-tiktok-training.mp4"
+        videoSrc={getTrainingVideoSrc('jodyTiktokTraining')}
         title="How to Post on TikTok"
         steps={[
           { text: <>On this page, click <strong>Copy caption</strong>.</> },

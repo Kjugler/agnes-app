@@ -9,6 +9,7 @@ import { buildTrackingLink } from '@/lib/shareHelpers';
 import { readContestEmail } from '@/lib/identity';
 import { useDeviceProfile } from '@/hooks/useDeviceProfile';
 import type { ShareTarget } from '@/lib/shareTarget';
+import { getTrainingVideoSrc } from '@/lib/trainingVideoUrl';
 
 function InstructionsContent() {
   const params = useParams();
@@ -169,7 +170,7 @@ function InstructionsContent() {
           Training Video
         </div>
         <video
-          src="/training/ig-instructions-ios.mp4"
+          src={getTrainingVideoSrc('igInstructionsIos')}
           controls
           playsInline
           muted

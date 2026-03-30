@@ -304,9 +304,9 @@ function InstructionsContent() {
             }}
           >
             Training video failed to load. Follow the written steps above — they&apos;re complete without the
-            video. If this keeps happening, ask support to confirm{' '}
-            <code style={{ fontSize: '0.8rem' }}>/training/</code> assets or{' '}
-            <code style={{ fontSize: '0.8rem' }}>NEXT_PUBLIC_TRAINING_VIDEO_BASE_URL</code> on the deployment.
+            video. If this keeps happening, ask support to confirm training video hosting (
+            <code style={{ fontSize: '0.8rem' }}>NEXT_PUBLIC_TRAINING_VIDEO_BASE_URL</code>
+            ) or local <code style={{ fontSize: '0.8rem' }}>public/training</code> on the deployment.
           </p>
         )}
       </div>

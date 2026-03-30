@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { getTrainingVideoSrc } from '@/lib/trainingVideoUrl';
 
 export type JodyVariant =
   | 'em1'
@@ -1052,7 +1053,7 @@ const IgTrainingModal: React.FC<IgTrainingModalProps> = ({ onClose }) => {
             }}
           >
             <video
-              src="/training/jody-ig-training.mp4"
+              src={getTrainingVideoSrc('jodyIgTraining')}
               controls
               style={{
                 width: '100%',

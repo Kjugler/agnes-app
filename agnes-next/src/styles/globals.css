@@ -40,3 +40,31 @@ a {
     color-scheme: dark;
   }
 }
+
+/* Sample chapter reader: many mobile browsers only show the first PDF page inside an iframe. */
+.chapter-reader-embed-host {
+  display: none;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+/* Prefer inline iframe only on larger viewports; many tablets still break multi-page PDF embeds below ~1024px. */
+@media (min-width: 1024px) {
+  .chapter-reader-embed-host {
+    display: flex;
+  }
+  .chapter-reader-mobile-panel {
+    display: none !important;
+  }
+}
+.chapter-reader-mobile-panel {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 1.25rem;
+  padding: 1rem max(12px, env(safe-area-inset-right)) 1rem max(12px, env(safe-area-inset-left));
+}

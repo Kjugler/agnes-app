@@ -6,6 +6,7 @@ import { readContestEmail, readAssociate } from '@/lib/identity';
 import { buildShareCaption } from '@/lib/shareCaption';
 import { buildTrackingLink } from '@/lib/shareHelpers';
 import { getNextVariant, shareAssets } from '@/lib/shareAssets';
+import { getTrainingVideoSrc } from '@/lib/trainingVideoUrl';
 import { JodyAssistant } from '@/components/JodyAssistant';
 import { JodyTrainingModal } from '@/components/JodyTrainingModal';
 import HelpButton from '@/components/HelpButton';
@@ -460,7 +461,7 @@ export default function TruthShareClient() {
           isOpen={showTruthTraining}
           onClose={() => setShowTruthTraining(false)}
           title="How to Post on Truth Social"
-          videoSrc="/training/jody-truth-training.mp4"
+          videoSrc={getTrainingVideoSrc('jodyTruthTraining')}
           steps={[
             { text: <>On this page, click <strong>Copy caption</strong> to copy the full Truth Social caption with your personal code and links.</> },
             { text: <>Click <strong>Download Truth Video</strong> to save the video to your device. It will usually go into your Downloads folder.</> },

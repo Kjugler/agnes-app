@@ -9,6 +9,7 @@ import { buildTrackingLink } from '@/lib/shareHelpers';
 import { readContestEmail } from '@/lib/identity';
 import { useDeviceProfile } from '@/hooks/useDeviceProfile';
 import type { ShareTarget } from '@/lib/shareTarget';
+import { getTrainingVideoSrc } from '@/lib/trainingVideoUrl';
 
 function InstructionsContent() {
   const params = useParams();
@@ -229,7 +230,11 @@ function InstructionsContent() {
           }}
         >
           <source
-            src={activeTab === 'ios' ? '/training/x-instructions-iPhone.mp4' : '/training/x-instructions-android.mp4'}
+            src={
+              activeTab === 'ios'
+                ? getTrainingVideoSrc('xInstructionsIos')
+                : getTrainingVideoSrc('xInstructionsAndroid')
+            }
             type="video/mp4"
           />
           Your browser does not support the video tag.

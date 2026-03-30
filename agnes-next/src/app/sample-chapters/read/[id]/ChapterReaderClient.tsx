@@ -110,6 +110,77 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
           {title}
         </span>
 
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end' }}>
+          <a
+            href={pdfUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              background: 'rgba(0, 255, 229, 0.12)',
+              border: '1px solid rgba(0, 255, 229, 0.6)',
+              color: '#00ffe5',
+              padding: '8px 16px',
+              fontSize: 14,
+              fontFamily: 'inherit',
+              textDecoration: 'none',
+              borderRadius: 6,
+              fontWeight: 600,
+            }}
+          >
+            Open full chapter
+          </a>
+          <a
+            href={pdfUrl}
+            download
+            target="_blank"
+            rel="noreferrer noopener"
+            style={{
+              background: 'transparent',
+              border: '1px solid rgba(0, 255, 229, 0.5)',
+              color: '#00ffe5',
+              padding: '8px 16px',
+              fontSize: 14,
+              fontFamily: 'inherit',
+              textDecoration: 'none',
+              borderRadius: 6,
+            }}
+          >
+            Download
+          </a>
+        </div>
+      </header>
+
+      {/* Mobile: embedded PDFs often only show page 1 — use Open full chapter / Download. Desktop: inline iframe. */}
+      <div className="chapter-reader-mobile-panel">
+        <p
+          style={{
+            fontSize: 15,
+            lineHeight: 1.55,
+            maxWidth: 420,
+            color: 'rgba(0, 255, 229, 0.88)',
+          }}
+        >
+          On phones and tablets, use <strong style={{ color: '#00ffe5' }}>Open full chapter</strong> so your
+          browser can show every page—scroll, search, zoom, and print from the viewer.
+        </p>
+        <a
+          href={pdfUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            background: 'rgba(0, 255, 229, 0.15)',
+            border: '2px solid #00ffe5',
+            color: '#00ffe5',
+            padding: '14px 24px',
+            fontSize: 16,
+            fontFamily: 'inherit',
+            textDecoration: 'none',
+            borderRadius: 8,
+            fontWeight: 700,
+          }}
+        >
+          Open full chapter
+        </a>
         <a
           href={pdfUrl}
           download
@@ -119,22 +190,20 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
             background: 'transparent',
             border: '1px solid rgba(0, 255, 229, 0.5)',
             color: '#00ffe5',
-            padding: '8px 16px',
+            padding: '10px 20px',
             fontSize: 14,
             fontFamily: 'inherit',
             textDecoration: 'none',
             borderRadius: 6,
           }}
         >
-          Download
+          Download PDF
         </a>
-      </header>
+      </div>
 
-      {/* PDF iframe - full remaining height */}
       <div
+        className="chapter-reader-embed-host"
         style={{
-          flex: 1,
-          minHeight: 0,
           padding: '0 max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left))',
           paddingBottom: 'max(12px, env(safe-area-inset-bottom))',
         }}
@@ -148,7 +217,6 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
             border: 'none',
             backgroundColor: '#fff',
           }}
-          className="pdfFrame"
         />
       </div>
     </div>
