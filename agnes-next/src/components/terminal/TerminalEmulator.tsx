@@ -31,7 +31,9 @@ function getTerminalHiddenInput(): HTMLInputElement | null {
 }
 
 /**
- * iOS Safari: focus in a direct user gesture; optional readOnly toggle helps stubborn cases.
+ * iOS Safari: focus in a direct user gesture; readOnly flip helps *initial* keyboard open only.
+ * Never run readOnly=true while the field already has focus — it blocks the software keyboard
+ * (no character echo, Enter submits empty) if the user scrolls/taps the terminal while typing.
  */
 function focusTerminalHiddenInput(
   fromUserGesture: boolean,
@@ -42,9 +44,18 @@ function focusTerminalHiddenInput(
     logTerminalMobile('focus:no-input', { fromUserGesture });
     return false;
   }
+  const isIOS =
+    typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const alreadyFocused = document.activeElement === el;
+
   try {
-    logTerminalMobile('focus:attempt', { fromUserGesture });
-    if (fromUserGesture && typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+    logTerminalMobile('focus:attempt', { fromUserGesture, alreadyFocused });
+    if (fromUserGesture && isIOS && alreadyFocused) {
+      el.focus({ preventScroll: true });
+      onIosFocusComplete?.(true);
+      return true;
+    }
+    if (fromUserGesture && isIOS && !alreadyFocused) {
       el.readOnly = true;
       el.focus({ preventScroll: true });
       requestAnimationFrame(() => {
@@ -53,6 +64,12 @@ function focusTerminalHiddenInput(
         const active = document.activeElement === el;
         logTerminalMobile('focus:ios-readonly-toggle', { active });
         onIosFocusComplete?.(active);
+        window.setTimeout(() => {
+          if (el.readOnly) {
+            el.readOnly = false;
+            logTerminalMobile('focus:ios-readonly-safety-clear', {});
+          }
+        }, 200);
       });
       return true;
     }
@@ -63,6 +80,7 @@ function focusTerminalHiddenInput(
     return active;
   } catch (e) {
     logTerminalMobile('focus:error', { err: String(e) });
+    el.readOnly = false;
     return false;
   }
 }
@@ -139,9 +157,9 @@ export default function TerminalEmulator() {
         document.body.classList.toggle('simple-mode', simpleMode && effectiveMobile);
       }
 
-      if (effectiveMobile && phase === 'intro' && isIntroComplete && !isAccessGranted) {
-        setShowMobileSecretModal(true);
-      } else if (!effectiveMobile || isAccessGranted) {
+      // Do not auto-open secret modal when intro completes — keeps Jody + terminal typing primary;
+      // user can open the modal from NEXT if they prefer that path.
+      if (!effectiveMobile || isAccessGranted) {
         setShowMobileSecretModal(false);
       }
     };
@@ -167,23 +185,13 @@ export default function TerminalEmulator() {
     };
   }, [simpleMode, isMobile]);
 
-  useEffect(() => {
-    if (isMobile && isIntroComplete && !isAccessGranted && phase === 'intro') {
-      setShowMobileSecretModal(true);
+  /** iOS often focuses the hidden input programmatically without opening the keyboard; never mark "satisfied" from focusin alone. */
+  const markAssistSatisfiedFromUserFocus = (active: boolean) => {
+    if (active) {
+      setTerminalKeyboardSatisfied(true);
+      logTerminalMobile('assist:keyboard-satisfied', { reason: 'user-gesture-focus' });
     }
-  }, [isMobile, isIntroComplete, isAccessGranted, phase]);
-
-  useEffect(() => {
-    const onFocusIn = (e: FocusEvent) => {
-      const t = e.target as HTMLElement;
-      if (t?.classList?.contains?.('terminal-hidden-input')) {
-        setTerminalKeyboardSatisfied(true);
-        logTerminalMobile('assist:keyboard-satisfied', { reason: 'focusin-hidden-input' });
-      }
-    };
-    document.addEventListener('focusin', onFocusIn, true);
-    return () => document.removeEventListener('focusin', onFocusIn, true);
-  }, []);
+  };
 
   useEffect(() => {
     if (!TERMINAL_MOBILE_DEBUG) return;
@@ -350,6 +358,32 @@ export default function TerminalEmulator() {
     tryFocus();
   }, []);
 
+  /**
+   * As soon as the intro finishes and the $ line is asking for the secret, try to raise the keyboard.
+   * This matches the product intent (input is expected immediately; Jody is extra help).
+   * iOS Safari often ignores programmatic focus until the user taps once — assist / tap-on-terminal stay the fallback.
+   */
+  useEffect(() => {
+    if (!isIntroComplete || isAccessGranted || phase !== 'intro') return;
+    if (showMobileSecretModal) return;
+
+    let attempts = 0;
+    const maxAttempts = 15;
+    const interval = window.setInterval(() => {
+      attempts += 1;
+      focusTerminalHiddenInput(false);
+      logTerminalMobile('prompt-ready-focus', {
+        attempt: attempts,
+        phase: phaseRef.current,
+      });
+      if (attempts >= maxAttempts) {
+        window.clearInterval(interval);
+      }
+    }, 200);
+
+    return () => window.clearInterval(interval);
+  }, [isIntroComplete, isAccessGranted, phase, showMobileSecretModal]);
+
   const handleEmailSubmitted = () => {
     // EmailModal redirects directly
   };
@@ -390,7 +424,7 @@ export default function TerminalEmulator() {
     } else {
       const input = getTerminalHiddenInput();
       if (input) {
-        focusTerminalHiddenInput(true);
+        focusTerminalHiddenInput(true, markAssistSatisfiedFromUserFocus);
         input.dispatchEvent(
           new KeyboardEvent('keydown', {
             key: 'Enter',
@@ -431,10 +465,14 @@ export default function TerminalEmulator() {
     ]);
 
     const normalizedInput = input.toLowerCase().trim();
+    const secretNoHash = normalizedInput.startsWith('#')
+      ? normalizedInput.slice(1)
+      : normalizedInput;
 
     if (
       normalizedInput === 'where is jody vernon' ||
-      normalizedInput === '#whereisjodyvernon'
+      normalizedInput === '#whereisjodyvernon' ||
+      secretNoHash === 'whereisjodyvernon'
     ) {
       if (showMobileSecretModal) setShowMobileSecretModal(false);
       if (introIntervalRef.current) {
@@ -582,6 +620,23 @@ export default function TerminalEmulator() {
           pointerEvents:
             isMobile && showMobileSecretModal ? 'none' : 'auto',
         }}
+        onPointerDownCapture={(e) => {
+          if (!isMobile || showEmailModal || showMobileSecretModal) return;
+          const target = e.target as HTMLElement;
+          if (target.closest?.('[style*="z-index: 9999"]')) return;
+          const inputEl = getTerminalHiddenInput();
+          if (inputEl && document.activeElement === inputEl) {
+            return;
+          }
+          focusTerminalHiddenInput(true, (active) => {
+            markAssistSatisfiedFromUserFocus(active);
+            logTerminalMobile('container-tap-focus', {
+              succeeded: active,
+              phase: phaseRef.current,
+              hiddenInputFound: !!getTerminalHiddenInput(),
+            });
+          });
+        }}
       >
         <Terminal
           name="THE CONTROL ROOM"
@@ -609,12 +664,12 @@ export default function TerminalEmulator() {
         onEmailSubmitted={handleEmailSubmitted}
       />
 
-      {/* Hide Jody while the secret modal is open — it used to sit above z-50 and steal taps on iOS */}
-      {!showEmailModal && !showMobileSecretModal && (
-        <JodyAssistantTerminal variant="em1" autoShowDelayMs={4000} />
+      {/* Jody stays for terminal 1 hints (z-index below secret modal when user opens it via NEXT). */}
+      {!showEmailModal && (
+        <JodyAssistantTerminal variant="em1" appearDelayMs={2000} />
       )}
 
-      {/* z-index 10020: above action bar (10000), below secret modal (10050). Shown until hidden input is focused or user typed (readiness), not only on first paint. */}
+      {/* z-index 10020: above action bar (10000), below secret modal (200000). Shown until user-gesture focus works or first char typed. */}
       {isMobile &&
         !showEmailModal &&
         !showMobileSecretModal &&
@@ -628,6 +683,7 @@ export default function TerminalEmulator() {
               onClick={() => {
                 setKeyboardAssistUsed(true);
                 focusTerminalHiddenInput(true, (active) => {
+                  markAssistSatisfiedFromUserFocus(active);
                   logTerminalMobile('keyboard-assist-tap', {
                     focusSucceeded: active,
                     phase: phaseRef.current,

@@ -12,22 +12,33 @@ const ICON_MAP: Record<string, string> = {
   ascension: '/jody-icons/jody-ascension.png',
 };
 
+/** em1: time each hint bubble stays visible (slow-reader friendly). */
+const EM1_HINT1_MS = 16_000;
+const EM1_HINT2_MS = 16_000;
+const EM1_HINT3_MS = 18_000;
+const EM1_IMAGE_MS = 14_000;
+
 interface JodyAssistantTerminalProps {
   variant?: string;
   message?: React.ReactNode;
+  /** em2 timing for bubble / cycle starts */
   autoShowDelayMs?: number;
+  /** em1 only: ms after mount before Jody (icon + hints) appears at all */
+  appearDelayMs?: number;
   defaultOpen?: boolean;
 }
 
 export default function JodyAssistantTerminal({
   variant = 'em1',
   autoShowDelayMs = 4000,
+  appearDelayMs = 0,
   defaultOpen = false,
 }: JodyAssistantTerminalProps) {
   const isEm1 = variant === 'em1';
   const isEm2 = variant === 'em2';
 
   const [phase, setPhase] = useState(0);
+  const [em1Revealed, setEm1Revealed] = useState(appearDelayMs <= 0);
   const [showBubbleEm2, setShowBubbleEm2] = useState(false);
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [isMobile, setIsMobile] = useState(false);
@@ -58,49 +69,57 @@ export default function JodyAssistantTerminal({
 
   useEffect(() => {
     if (!isEm1) return;
+    if (appearDelayMs <= 0) return;
+    const t = setTimeout(() => setEm1Revealed(true), appearDelayMs);
+    return () => clearTimeout(t);
+  }, [isEm1, appearDelayMs]);
+
+  useEffect(() => {
+    if (!isEm1) return;
 
     let timeouts: ReturnType<typeof setTimeout>[] = [];
     let cycleActive = true;
 
     const startCycle = () => {
       if (!cycleActive) return;
-
-      setPhase(0);
-
-      timeouts.push(
-        setTimeout(() => {
-          if (cycleActive) setPhase(1);
-        }, autoShowDelayMs)
-      );
+      setPhase(1);
+      const tTo2 = EM1_HINT1_MS;
+      const tTo3 = tTo2 + EM1_HINT2_MS;
+      const tTo4 = tTo3 + EM1_HINT3_MS;
+      const tLoop = tTo4 + EM1_IMAGE_MS;
 
       timeouts.push(
         setTimeout(() => {
           if (cycleActive) setPhase(2);
-        }, autoShowDelayMs + 3000)
+        }, tTo2)
       );
-
       timeouts.push(
         setTimeout(() => {
           if (cycleActive) setPhase(3);
-        }, autoShowDelayMs + 7000)
+        }, tTo3)
       );
-
+      timeouts.push(
+        setTimeout(() => {
+          if (cycleActive) setPhase(4);
+        }, tTo4)
+      );
       timeouts.push(
         setTimeout(() => {
           if (!cycleActive) return;
-          setPhase(0);
           startCycle();
-        }, autoShowDelayMs + 10000)
+        }, tLoop)
       );
     };
 
-    startCycle();
+    if (em1Revealed) {
+      startCycle();
+    }
 
     return () => {
       cycleActive = false;
       timeouts.forEach(clearTimeout);
     };
-  }, [isEm1, autoShowDelayMs]);
+  }, [isEm1, em1Revealed]);
 
   useEffect(() => {
     if (!isEm2) return;
@@ -268,9 +287,13 @@ export default function JodyAssistantTerminal({
       ? ICON_MAP.em1
       : ICON_MAP[variant] || ICON_MAP.em1;
 
+  if (isEm1 && !em1Revealed) {
+    return null;
+  }
+
   return (
     <>
-      {isEm1 && phase === 3 && (
+      {isEm1 && phase === 4 && (
         <div style={deepQuillImageStyle}>
           <img
             src="/jody-icons/jody-deepquill-post.png"
@@ -297,7 +320,7 @@ export default function JodyAssistantTerminal({
           }
         }}
       >
-        {isEm1 && (phase === 1 || phase === 2) && (
+        {isEm1 && (phase === 1 || phase === 2 || phase === 3) && (
           <div className="jody-bubble-container">
             <div style={bubbleStyle}>
               <button
@@ -307,21 +330,45 @@ export default function JodyAssistantTerminal({
               >
                 ×
               </button>
-              {phase === 1 ? (
-                <p style={{ margin: 0, marginBottom: 8 }}>
-                  <strong>Hi! I think I can help.</strong>
-                </p>
-              ) : (
+              {phase === 1 && (
                 <>
                   <p style={{ margin: 0, marginBottom: 8 }}>
-                    I&apos;m Jody. I&apos;ll be your concierge for this
-                    adventure.
+                    <strong>Hi — I&apos;m Jody.</strong>
+                  </p>
+                  <p style={{ margin: 0, marginBottom: 0 }}>
+                    If you&apos;re staring at that cursor and nothing makes sense, that&apos;s
+                    intentional — but you&apos;re not stuck. When the keyboard is open,{' '}
+                    <strong>type at the green prompt</strong> (the line with <strong>$</strong>). That&apos;s
+                    how this terminal listens.
+                  </p>
+                </>
+              )}
+              {phase === 2 && (
+                <>
+                  <p style={{ margin: 0, marginBottom: 8 }}>
+                    <strong>Fair nudge:</strong>
+                  </p>
+                  <p style={{ margin: 0, marginBottom: 0 }}>
+                    The clue sounds like a social hashtag. It starts with{' '}
+                    <strong>#where</strong>, it&apos;s about finding me, and it&apos;s typed{' '}
+                    <strong>as one word</strong> after the hash — no spaces.
+                  </p>
+                </>
+              )}
+              {phase === 3 && (
+                <>
+                  <p style={{ margin: 0, marginBottom: 8 }}>
+                    <strong>I&apos;ll say it plainly:</strong>
                   </p>
                   <p style={{ margin: 0, marginBottom: 8 }}>
-                    In this DeepQuill post, I think you&apos;ll find the secret
-                    code you&apos;re looking for:
+                    At the <strong>$</strong> prompt, type this and submit (return / enter):
                   </p>
-                  <div style={pillStyle}>#WhereIsJodyVernon</div>
+                  <div style={pillStyle}>#whereisjodyvernon</div>
+                  <p style={{ margin: '10px 0 0', fontSize: 13, opacity: 0.95 }}>
+                    If your phone drops the <strong>#</strong>,{' '}
+                    <strong>whereisjodyvernon</strong> works too. You can also tap{' '}
+                    <strong>NEXT</strong> below for a full-screen typing box.
+                  </p>
                 </>
               )}
               <div style={pointerStyle} />

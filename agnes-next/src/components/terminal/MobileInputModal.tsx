@@ -62,8 +62,8 @@ export default function MobileInputModal({
         left: 0,
         right: 0,
         bottom: 0,
-        // Above Jody (9999) and mobile action bar (10000) so the real <input> receives taps on iOS
-        zIndex: 10050,
+        // Above StressTestBanner (99999), Jody (9999), and mobile action bar (10000)
+        zIndex: 200000,
       }}
       onClick={(e) => {
         e.stopPropagation();
