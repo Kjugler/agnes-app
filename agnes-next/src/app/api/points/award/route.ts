@@ -45,6 +45,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const proxySecretTrimmed = process.env.INTERNAL_PROXY_SECRET?.trim() ?? '';
+    const proxyHeaders: Record<string, string> = {
+      'x-user-email': normalizedEmail,
+      'x-admin-key': process.env.ADMIN_KEY?.trim() || '',
+    };
+    if (proxySecretTrimmed) {
+      proxyHeaders['x-internal-proxy'] = proxySecretTrimmed;
+    }
+
+    if (process.env.SHARE_FLOW_DEBUG === '1') {
+      console.log('[points/award] proxy', {
+        path: '/api/points/award',
+        action: normalizedAction,
+        hasAdminKey: Boolean(process.env.ADMIN_KEY?.trim()),
+        hasInternalProxy: Boolean(proxySecretTrimmed),
+      });
+    }
+
     // Proxy to deepquill (canonical DB) - no local writes
     const { data, status } = await proxyJson('/api/points/award', req, {
       method: 'POST',
@@ -53,11 +71,19 @@ export async function POST(req: NextRequest) {
         action: normalizedAction,
         email: normalizedEmail,
       },
-      headers: {
-        'x-user-email': normalizedEmail,
-        'x-admin-key': process.env.ADMIN_KEY || '',
-      },
+      headers: proxyHeaders,
     });
+
+    if (process.env.SHARE_FLOW_DEBUG === '1') {
+      console.log('[points/award] upstream', {
+        status,
+        ok: data?.ok,
+        awarded: data?.awarded,
+        reason: data?.reason,
+        error: data?.error,
+        hint: data?.hint,
+      });
+    }
 
     if (status !== 200) {
       return NextResponse.json(

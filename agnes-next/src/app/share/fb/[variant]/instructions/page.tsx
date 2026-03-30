@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { buildShareCaption } from '@/lib/shareCaption';
 import { buildTrackingLink, buildFbPreviewUrl } from '@/lib/shareHelpers';
 import { readContestEmail } from '@/lib/identity';
+import { getFbInstructionsVideoSrc } from '@/lib/trainingVideoUrl';
 import { useDeviceProfile } from '@/hooks/useDeviceProfile';
 import type { ShareTarget } from '@/lib/shareTarget';
 
@@ -31,6 +32,7 @@ function InstructionsContent() {
   const initialTab: 'ios' | 'android' =
     deviceParam === 'android' ? 'android' : deviceParam === 'ios' ? 'ios' : 'ios';
   const [activeTab, setActiveTab] = useState<'ios' | 'android'>(initialTab);
+  const [videoLoadError, setVideoLoadError] = useState(false);
 
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : process.env.NEXT_PUBLIC_SITE_URL || '';
   const shareUrl = buildTrackingLink('fb', variant, refCode, target, baseUrl);
@@ -52,6 +54,10 @@ function InstructionsContent() {
       setActiveTab(/iPhone|iPad|iPod/.test(ua) ? 'ios' : 'android');
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    setVideoLoadError(false);
+  }, [activeTab]);
 
   useEffect(() => {
     const fetchUserInfo = async () => {
@@ -166,10 +172,20 @@ function InstructionsContent() {
           variant,
         }),
       });
+      const payload = await res.json().catch(() => ({}));
+      if (process.env.NEXT_PUBLIC_SHARE_FLOW_DEBUG === '1') {
+        console.log('[share/fb/instructions] claim response', {
+          status: res.status,
+          payload,
+        });
+      }
       if (res.ok) {
         setPointsAwarded(true);
       } else {
-        throw new Error('Award failed');
+        console.error('[share/fb/instructions] Award failed', res.status, payload);
+        throw new Error(
+          typeof payload?.error === 'string' ? payload.error : 'Award failed'
+        );
       }
     } catch (err) {
       console.error('[instructions] Award failed', err);
@@ -261,9 +277,12 @@ function InstructionsContent() {
       <div style={{ marginBottom: '2rem' }}>
         <video
           key={activeTab}
-          src={activeTab === 'ios' ? '/training/fb-instructions-iPhone.mp4' : '/training/fb-instructions-android.mp4'}
+          src={getFbInstructionsVideoSrc(activeTab === 'ios' ? 'ios' : 'android')}
           controls
           playsInline
+          preload="metadata"
+          onError={() => setVideoLoadError(true)}
+          onLoadedData={() => setVideoLoadError(false)}
           style={{
             width: '100%',
             maxWidth: 400,
@@ -274,6 +293,22 @@ function InstructionsContent() {
         >
           Your browser does not support the video tag.
         </video>
+        {videoLoadError && (
+          <p
+            style={{
+              fontSize: '0.9rem',
+              color: '#b45309',
+              textAlign: 'center',
+              marginTop: '0.75rem',
+              lineHeight: 1.5,
+            }}
+          >
+            Training video failed to load. Follow the written steps above — they&apos;re complete without the
+            video. If this keeps happening, ask support to confirm{' '}
+            <code style={{ fontSize: '0.8rem' }}>/training/</code> assets or{' '}
+            <code style={{ fontSize: '0.8rem' }}>NEXT_PUBLIC_TRAINING_VIDEO_BASE_URL</code> on the deployment.
+          </p>
+        )}
       </div>
 
       {/* Section: Steps (device-aware) */}

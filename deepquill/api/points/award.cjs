@@ -93,18 +93,41 @@ const ACTION_MAP = {
   signup: { type: 'SIGNUP_BONUS', points: 100 },
 };
 
+function getInternalProxySecretTrimmed() {
+  const raw = process.env.INTERNAL_PROXY_SECRET;
+  if (raw == null) return '';
+  return String(raw).trim();
+}
+
 module.exports = async (req, res) => {
-  // Guard: Only allow in development or with admin key
+  // Guard: dev OR valid ADMIN_KEY OR valid INTERNAL_PROXY (agnes-next proxy — same pattern as other proxied routes)
   const isDev = process.env.NODE_ENV === 'development';
   const adminKey = req.headers['x-admin-key'];
-  const expectedKey = process.env.ADMIN_KEY;
+  const expectedAdminKey = process.env.ADMIN_KEY ? String(process.env.ADMIN_KEY).trim() : '';
+  const proxyExpected = getInternalProxySecretTrimmed();
+  const proxyProvided = String(req.headers['x-internal-proxy'] || '').trim();
+  const adminOk = Boolean(expectedAdminKey) && adminKey === expectedAdminKey;
+  const proxyOk = Boolean(proxyExpected) && proxyProvided === proxyExpected;
 
-  if (!isDev && (!expectedKey || adminKey !== expectedKey)) {
-    const hint = !expectedKey
-      ? 'Set ADMIN_KEY in deepquill env. Agnes-next must also set ADMIN_KEY to the same value.'
-      : 'Provide valid x-admin-key header (same as ADMIN_KEY env).';
+  if (process.env.SHARE_FLOW_DEBUG === '1') {
+    console.log('[api/points/award] auth', {
+      isDev,
+      adminOk,
+      proxyOk,
+      hasAdminKeyEnv: Boolean(expectedAdminKey),
+      hasInternalProxyEnv: Boolean(proxyExpected),
+    });
+  }
+
+  if (!isDev && !adminOk && !proxyOk) {
+    const hint =
+      !expectedAdminKey && !proxyExpected
+        ? 'Set ADMIN_KEY (and x-admin-key from agnes-next) or INTERNAL_PROXY_SECRET (and x-internal-proxy) on both services.'
+        : !adminOk && expectedAdminKey
+          ? 'Invalid or missing x-admin-key.'
+          : 'Invalid or missing x-internal-proxy.';
     return res.status(403).json({
-      error: 'Forbidden - Development only or valid x-admin-key required',
+      error: 'Forbidden - Development only or valid x-admin-key / internal proxy required',
       hint,
     });
   }
