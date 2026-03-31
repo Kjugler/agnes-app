@@ -25,6 +25,18 @@ function logTerminalMobile(message: string, data?: Record<string, unknown>) {
   }
 }
 
+function isSecretCode(input: string) {
+  const normalizedInput = input.toLowerCase().trim();
+  const secretNoHash = normalizedInput.startsWith('#')
+    ? normalizedInput.slice(1)
+    : normalizedInput;
+  return (
+    normalizedInput === 'where is jody vernon' ||
+    normalizedInput === '#whereisjodyvernon' ||
+    secretNoHash === 'whereisjodyvernon'
+  );
+}
+
 /** Real typing element from react-terminal-ui (not the prompt line div). */
 function getTerminalHiddenInput(): HTMLInputElement | null {
   return document.querySelector<HTMLInputElement>('.terminal-hidden-input');
@@ -379,6 +391,14 @@ export default function TerminalEmulator() {
       ]);
       if (isMobile) setShowMobileSecretModal(true);
     } else if (phase === 'intro' && isIntroComplete && !isAccessGranted) {
+      // iOS fallback: NEXT submits what is currently typed in the hidden terminal input.
+      const hiddenInput = getTerminalHiddenInput();
+      const rawTyped = hiddenInput?.value ?? '';
+      const typed = rawTyped.trim();
+      if (typed.length > 0) {
+        handleInput(rawTyped);
+        return;
+      }
       setShowMobileSecretModal(true);
     } else if (phase === 'terminal1' && isAccessGranted) {
       setPhase('terminal2');
@@ -426,16 +446,7 @@ export default function TerminalEmulator() {
       </TerminalOutputWithClassName>,
     ]);
 
-    const normalizedInput = input.toLowerCase().trim();
-    const secretNoHash = normalizedInput.startsWith('#')
-      ? normalizedInput.slice(1)
-      : normalizedInput;
-
-    if (
-      normalizedInput === 'where is jody vernon' ||
-      normalizedInput === '#whereisjodyvernon' ||
-      secretNoHash === 'whereisjodyvernon'
-    ) {
+    if (isSecretCode(input)) {
       if (showMobileSecretModal) setShowMobileSecretModal(false);
       if (introIntervalRef.current) {
         clearInterval(introIntervalRef.current);
