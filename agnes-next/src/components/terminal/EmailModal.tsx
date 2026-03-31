@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { subscribeEmail } from '@/lib/terminal/subscribeEmail';
-import JodyAssistantTerminal from './JodyAssistantTerminal';
+import JodyAssistantTerminal, { JodyMobilePeekStrip } from './JodyAssistantTerminal';
 
 interface EmailModalProps {
   isOpen: boolean;
@@ -14,11 +14,28 @@ interface EmailModalProps {
 /**
  * Terminal 2 — IBM registration host. Jody: same bottom-right bubble + circle as contest/share (em2).
  */
+function useTerminal2LayoutMobile() {
+  const [layoutMobile, setLayoutMobile] = useState(false);
+  useEffect(() => {
+    const q = () => {
+      if (typeof window === 'undefined') return;
+      setLayoutMobile(
+        window.matchMedia('(pointer: coarse)').matches || window.innerWidth <= 520
+      );
+    };
+    q();
+    window.addEventListener('resize', q);
+    return () => window.removeEventListener('resize', q);
+  }, []);
+  return layoutMobile;
+}
+
 export default function EmailModal({ isOpen, onEmailSubmitted }: EmailModalProps) {
   const [email, setEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState('');
   const [mounted, setMounted] = useState(false);
+  const layoutMobile = useTerminal2LayoutMobile();
 
   useEffect(() => {
     setMounted(true);
@@ -140,7 +157,7 @@ export default function EmailModal({ isOpen, onEmailSubmitted }: EmailModalProps
           minHeight: '100vh',
           boxSizing: 'border-box',
           padding: 'clamp(16px, 4vw, 48px)',
-          paddingBottom: 'max(160px, 28vh)',
+          paddingBottom: layoutMobile ? 'clamp(24px, 6vh, 48px)' : 'max(160px, 28vh)',
           border: '2px solid #00ff66',
           margin: '12px',
           boxShadow: 'inset 0 0 40px rgba(0, 255, 102, 0.06)',
@@ -157,7 +174,9 @@ export default function EmailModal({ isOpen, onEmailSubmitted }: EmailModalProps
 
         <div style={{ maxWidth: 560 }}>
           <p style={{ lineHeight: 1.6, marginBottom: '1.25rem', fontSize: 'clamp(12px, 2.6vw, 14px)', opacity: 0.9 }}>
-            Concierge Jody is standing by (bottom right) if you want the human version of what happens next. On this host: enter your email, submit once, and you&apos;re through.
+            {layoutMobile
+              ? 'Scroll below for a short note from Jody. On this host: enter your email, submit once, and you&apos;re through.'
+              : 'Concierge Jody is standing by (bottom right) if you want the human version of what happens next. On this host: enter your email, submit once, and you&apos;re through.'}
           </p>
 
           <form onSubmit={handleSubmit}>
@@ -230,11 +249,19 @@ export default function EmailModal({ isOpen, onEmailSubmitted }: EmailModalProps
             <div>REDACTED REQUESTS (SIMULATED) ..... 171,927</div>
             <div>CLEARANCE RATE (SIMULATED) ....... 41.6%</div>
           </div>
+
+          {layoutMobile && (
+            <>
+              <JodyMobilePeekStrip variant="em2" />
+              <JodyAssistantTerminal variant="em2" layoutMode="inline-mobile" />
+            </>
+          )}
         </div>
       </div>
 
-      {/* Brand-consistent: bottom-right circle + bubble (same pattern as contest / share help) */}
-      <JodyAssistantTerminal variant="em2" autoShowDelayMs={1200} defaultOpen={false} />
+      {!layoutMobile && (
+        <JodyAssistantTerminal variant="em2" autoShowDelayMs={1200} defaultOpen={false} />
+      )}
     </div>
   );
 

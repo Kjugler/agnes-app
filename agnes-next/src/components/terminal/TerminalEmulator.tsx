@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Terminal, { ColorMode, TerminalOutput } from 'react-terminal-ui';
 import EmailModal from './EmailModal';
-import JodyAssistantTerminal from './JodyAssistantTerminal';
+import JodyAssistantTerminal, { JodyMobilePeekStrip } from './JodyAssistantTerminal';
 import MobileInputModal from './MobileInputModal';
 import { subscribeEmail } from '@/lib/terminal/subscribeEmail';
 import './TerminalEmulator.css';
@@ -608,46 +608,61 @@ export default function TerminalEmulator() {
     );
   }
 
+  const terminalShell = (
+    <div
+      ref={terminalContainerRef}
+      className={`terminal-container ${phase === 'terminal2' ? 'terminal2-root' : ''}`}
+      style={{
+        width: '100%',
+        height: isMobile && !showEmailModal ? '100%' : '100vh',
+        flex: isMobile && !showEmailModal ? '1 1 auto' : undefined,
+        minHeight: isMobile && !showEmailModal ? 0 : undefined,
+        display: showEmailModal ? 'none' : 'block',
+        pointerEvents: isMobile && showMobileSecretModal ? 'none' : 'auto',
+      }}
+      onPointerDownCapture={(e) => {
+        if (!isMobile || showEmailModal || showMobileSecretModal) return;
+        const target = e.target as HTMLElement;
+        if (target.closest?.('.jody-assistant-container')) return;
+        const inputEl = getTerminalHiddenInput();
+        if (inputEl && document.activeElement === inputEl) {
+          return;
+        }
+        focusTerminalHiddenInput(true, (active) => {
+          markAssistSatisfiedFromUserFocus(active);
+          logTerminalMobile('container-tap-focus', {
+            succeeded: active,
+            phase: phaseRef.current,
+            hiddenInputFound: !!getTerminalHiddenInput(),
+          });
+        });
+      }}
+    >
+      <Terminal
+        name="THE CONTROL ROOM"
+        colorMode={ColorMode.Dark}
+        onInput={handleInput}
+        prompt="$"
+        height={isMobile && !showEmailModal ? '100%' : '100vh'}
+      >
+        {lineData}
+      </Terminal>
+    </div>
+  );
+
   return (
     <>
-      <div
-        ref={terminalContainerRef}
-        className={`terminal-container ${phase === 'terminal2' ? 'terminal2-root' : ''}`}
-        style={{
-          width: '100%',
-          height: '100vh',
-          display: showEmailModal ? 'none' : 'block',
-          pointerEvents:
-            isMobile && showMobileSecretModal ? 'none' : 'auto',
-        }}
-        onPointerDownCapture={(e) => {
-          if (!isMobile || showEmailModal || showMobileSecretModal) return;
-          const target = e.target as HTMLElement;
-          if (target.closest?.('[style*="z-index: 9999"]')) return;
-          const inputEl = getTerminalHiddenInput();
-          if (inputEl && document.activeElement === inputEl) {
-            return;
-          }
-          focusTerminalHiddenInput(true, (active) => {
-            markAssistSatisfiedFromUserFocus(active);
-            logTerminalMobile('container-tap-focus', {
-              succeeded: active,
-              phase: phaseRef.current,
-              hiddenInputFound: !!getTerminalHiddenInput(),
-            });
-          });
-        }}
-      >
-        <Terminal
-          name="THE CONTROL ROOM"
-          colorMode={ColorMode.Dark}
-          onInput={handleInput}
-          prompt="$"
-          height="100vh"
-        >
-          {lineData}
-        </Terminal>
-      </div>
+      {isMobile && !showEmailModal ? (
+        <div className="mobile-terminal-scroll-root">
+          <div className="mobile-terminal-first-screen">
+            {terminalShell}
+            <JodyMobilePeekStrip variant="em1" />
+          </div>
+          <JodyAssistantTerminal variant="em1" layoutMode="inline-mobile" />
+        </div>
+      ) : (
+        terminalShell
+      )}
 
       <MobileInputModal
         isOpen={showMobileSecretModal}
@@ -664,8 +679,8 @@ export default function TerminalEmulator() {
         onEmailSubmitted={handleEmailSubmitted}
       />
 
-      {/* Jody stays for terminal 1 hints (z-index below secret modal when user opens it via NEXT). */}
-      {!showEmailModal && (
+      {/* Desktop / tablet: fixed bottom-right Jody. Mobile: inline scroll layout above. */}
+      {!showEmailModal && !isMobile && (
         <JodyAssistantTerminal variant="em1" appearDelayMs={2000} />
       )}
 

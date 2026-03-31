@@ -158,6 +158,31 @@
   overflow: hidden !important;
 }
 
+/* Mobile: scroll page = terminal viewport + peek strip + Jody article (no fixed overlay). */
+.mobile-terminal .mobile-terminal-scroll-root {
+  height: 100vh !important;
+  height: 100dvh !important;
+  max-height: 100vh !important;
+  max-height: 100dvh !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  display: block !important;
+}
+
+.mobile-terminal .mobile-terminal-first-screen {
+  min-height: calc(100svh - 100px) !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.mobile-terminal .mobile-terminal-scroll-root .terminal-container {
+  height: auto !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+}
+
 .mobile-terminal .terminal-container .terminal,
 .mobile-terminal .terminal-container .react-terminal-ui {
   flex: 1 !important;
