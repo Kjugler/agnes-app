@@ -18,11 +18,6 @@ const EM1_HINT2_MS = 16_000;
 const EM1_HINT3_MS = 18_000;
 const EM1_IMAGE_MS = 14_000;
 
-/** First Jody line waits briefly so the scroll cue reads alone (cinematic, one beat at a time). */
-const INLINE_FIRST_BEAT_MS = 720;
-const INLINE_BUBBLE_DWELL_MS = 2_500;
-const INLINE_BUBBLE_FADE_MS = 320;
-
 export type JodyTerminalLayoutMode = 'fixed' | 'inline-mobile';
 
 interface JodyAssistantTerminalProps {
@@ -175,50 +170,10 @@ const pillStyle: React.CSSProperties = {
 };
 
 function InlineMobileEm1() {
-  const [activeBubble, setActiveBubble] = useState<0 | 1 | null>(null);
-  const [bubbleVisible, setBubbleVisible] = useState(false);
-  const [showImage, setShowImage] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
-
-    const runSequence = async () => {
-      await sleep(INLINE_FIRST_BEAT_MS);
-      if (cancelled) return;
-
-      setActiveBubble(0);
-      setBubbleVisible(true);
-      await sleep(INLINE_BUBBLE_DWELL_MS);
-      if (cancelled) return;
-
-      setBubbleVisible(false);
-      await sleep(INLINE_BUBBLE_FADE_MS);
-      if (cancelled) return;
-
-      setActiveBubble(1);
-      setBubbleVisible(true);
-      await sleep(INLINE_BUBBLE_DWELL_MS);
-      if (cancelled) return;
-
-      setBubbleVisible(false);
-      await sleep(INLINE_BUBBLE_FADE_MS);
-      if (cancelled) return;
-
-      setActiveBubble(null);
-      setShowImage(true);
-    };
-
-    void runSequence();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   return (
     <section
       aria-label="Hints from Jody"
-      className="jody-terminal-mobile-article"
+      className="jody-terminal-mobile-article jody-terminal-mobile-article--keyboard-peek"
       style={{
         padding:
           '12px 16px max(32px, calc(16px + env(safe-area-inset-bottom, 0px)))',
@@ -229,79 +184,65 @@ function InlineMobileEm1() {
         gap: 18,
       }}
     >
-      {activeBubble !== null && (
-        <div
+      <JodySaysRowEm1>
+        <p style={{ margin: 0, marginBottom: 6 }}>
+          <strong>Fair nudge:</strong>
+        </p>
+        <p style={{ margin: 0, marginBottom: 6 }}>
+          The trail sounds like something you&apos;d tag on social. It starts with <strong>#where</strong>,
+          it&apos;s about finding me, and after the hash it&apos;s <strong>one word</strong> — no spaces.
+        </p>
+        <p style={{ margin: 0, fontSize: 12, opacity: 0.88 }}>
+          Some hunters chase a name that way — single track, single word. You&apos;ll know it when you type it.
+        </p>
+      </JodySaysRowEm1>
+
+      <JodySaysRowEm1>
+        <p style={{ margin: 0, marginBottom: 6 }}>
+          <strong>Sharper vector:</strong>
+        </p>
+        <p style={{ margin: 0, marginBottom: 8 }}>
+          At the <strong>$</strong> prompt, enter this and send it (return / enter):
+        </p>
+        <div style={{ ...pillStyle, fontSize: 12 }}>#whereisjodyvernon</div>
+        <p style={{ margin: '10px 0 0', fontSize: 12, opacity: 0.9 }}>
+          If your device eats the hash, <strong>whereisjodyvernon</strong> alone still works. Prefer a big
+          typing field? Use <strong>NEXT</strong> tucked right under the line.
+        </p>
+      </JodySaysRowEm1>
+
+      <div style={{ marginTop: 4 }}>
+        <p
           style={{
-            opacity: bubbleVisible ? 1 : 0,
-            transform: bubbleVisible ? 'translateY(0)' : 'translateY(4px)',
-            transition: `opacity ${INLINE_BUBBLE_FADE_MS}ms ease, transform ${INLINE_BUBBLE_FADE_MS}ms ease`,
+            margin: '0 0 8px 4px',
+            fontSize: 11,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            color: 'rgba(167, 139, 250, 0.65)',
+            fontFamily: 'ui-sans-serif, system-ui, sans-serif',
           }}
         >
-          {activeBubble === 0 ? (
-            <JodySaysRowEm1>
-              <p style={{ margin: 0, marginBottom: 6 }}>
-                <strong>Fair nudge:</strong>
-              </p>
-              <p style={{ margin: 0, marginBottom: 6 }}>
-                The trail sounds like something you&apos;d tag on social. It starts with <strong>#where</strong>,
-                it&apos;s about finding me, and after the hash it&apos;s <strong>one word</strong> — no spaces.
-              </p>
-              <p style={{ margin: 0, fontSize: 12, opacity: 0.88 }}>
-                Some hunters chase a name that way — single track, single word. You&apos;ll know it when you type it.
-              </p>
-            </JodySaysRowEm1>
-          ) : (
-            <JodySaysRowEm1>
-              <p style={{ margin: 0, marginBottom: 6 }}>
-                <strong>Sharper vector:</strong>
-              </p>
-              <p style={{ margin: 0, marginBottom: 8 }}>
-                At the <strong>$</strong> prompt, enter this and send it (return / enter):
-              </p>
-              <div style={{ ...pillStyle, fontSize: 12 }}>#whereisjodyvernon</div>
-              <p style={{ margin: '10px 0 0', fontSize: 12, opacity: 0.9 }}>
-                If your device eats the hash, <strong>whereisjodyvernon</strong> alone still works. Prefer a big
-                typing field? Use <strong>NEXT</strong> tucked right under the line.
-              </p>
-            </JodySaysRowEm1>
-          )}
-        </div>
-      )}
-
-      {showImage && (
-        <div style={{ marginTop: 4 }}>
-          <p
-            style={{
-              margin: '0 0 8px 4px',
-              fontSize: 11,
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
-              color: 'rgba(167, 139, 250, 0.65)',
-              fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+          From the field
+        </p>
+        <div
+          style={{
+            borderRadius: 12,
+            overflow: 'hidden',
+            boxShadow: '0 8px 22px rgba(0, 0, 0, 0.3)',
+            border: '1px solid rgba(255,255,255,0.06)',
+          }}
+        >
+          <img
+            src="/jody-icons/jody-deepquill-post.png"
+            alt="DeepQuill post with #WhereIsJodyVernon"
+            style={{ width: '100%', display: 'block', verticalAlign: 'top' }}
+            loading="lazy"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = 'none';
             }}
-          >
-            From the field
-          </p>
-          <div
-            style={{
-              borderRadius: 12,
-              overflow: 'hidden',
-              boxShadow: '0 8px 22px rgba(0, 0, 0, 0.3)',
-              border: '1px solid rgba(255,255,255,0.06)',
-            }}
-          >
-            <img
-              src="/jody-icons/jody-deepquill-post.png"
-              alt="DeepQuill post with #WhereIsJodyVernon"
-              style={{ width: '100%', display: 'block', verticalAlign: 'top' }}
-              loading="lazy"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = 'none';
-              }}
-            />
-          </div>
+          />
         </div>
-      )}
+      </div>
     </section>
   );
 }

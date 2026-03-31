@@ -622,6 +622,7 @@ export default function TerminalEmulator() {
               </button>
             </div>
           </div>
+          <JodyMobileScrollCue variant="em1" />
           <div className="mobile-terminal-utility-row">
             <div className="mobile-terminal-progress">{getStepIndicator()}</div>
             <button
@@ -634,7 +635,6 @@ export default function TerminalEmulator() {
               {simpleMode ? 'FULL' : 'SIMPLE'}
             </button>
           </div>
-          <JodyMobileScrollCue variant="em1" />
         </>
       ) : (
         <Terminal
@@ -656,8 +656,8 @@ export default function TerminalEmulator() {
         <div className="mobile-terminal-scroll-root">
           <div className="mobile-terminal-first-screen">
             <div className="mobile-terminal-column">{terminalShell}</div>
+            <JodyAssistantTerminal variant="em1" layoutMode="inline-mobile" />
           </div>
-          <JodyAssistantTerminal variant="em1" layoutMode="inline-mobile" />
         </div>
       ) : (
         terminalShell
