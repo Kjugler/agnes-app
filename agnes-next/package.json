@@ -15,6 +15,7 @@
   "dependencies": {
     "@mailchimp/mailchimp_transactional": "^1.1.2",
     "@prisma/client": "^6.19.0",
+    "@vercel/blob": "^2.3.2",
     "canvas-confetti": "^1.9.4",
     "next": "15.5.13",
     "nodemailer": "^7.0.11",

@@ -83,6 +83,20 @@ export function getMediaSource(
     };
   }
 
+  // Vercel Blob Signal uploads (path contains /signals/) — treat as direct video
+  try {
+    const u = new URL(url);
+    if (
+      u.protocol === 'https:' &&
+      u.hostname.endsWith('.public.blob.vercel-storage.com') &&
+      /\/signals\//i.test(u.pathname)
+    ) {
+      return { kind: 'direct', type: 'video', url };
+    }
+  } catch {
+    /* ignore */
+  }
+
   // 2. Only then consider direct files (by URL pattern or mediaType hint)
   const hint = (mediaTypeHint || '').toLowerCase();
   if (hint === 'image' || isDirectImageUrl(url)) {

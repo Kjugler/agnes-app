@@ -11,6 +11,10 @@ type SignalComposerProps = {
 type SubmitState = 'idle' | 'submitting' | 'approved' | 'held' | 'error';
 
 type MediaTypeOption = 'none' | 'video' | 'image';
+type VideoAttachMode = 'upload' | 'url';
+
+const MAX_VIDEO_BYTES = 80 * 1024 * 1024;
+const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/webm'];
 
 function isValidMediaUrl(url: string): boolean {
   try {
@@ -25,7 +29,9 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
   const router = useRouter();
   const [text, setText] = useState('');
   const [mediaType, setMediaType] = useState<MediaTypeOption>('none');
+  const [videoAttachMode, setVideoAttachMode] = useState<VideoAttachMode>('upload');
   const [mediaUrl, setMediaUrl] = useState('');
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [submitState, setSubmitState] = useState<SubmitState>('idle');
   const [error, setError] = useState<string | null>(null);
 
@@ -34,11 +40,54 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
     if (isOpen) {
       setText('');
       setMediaType('none');
+      setVideoAttachMode('upload');
       setMediaUrl('');
+      setUploadProgress(null);
       setSubmitState('idle');
       setError(null);
     }
   }, [isOpen]);
+
+  const handleVideoFile = async (file: File | null) => {
+    if (!file) return;
+    setError(null);
+    if (!ALLOWED_VIDEO_TYPES.includes(file.type)) {
+      setError('Use MP4 or WebM only.');
+      return;
+    }
+    if (file.size > MAX_VIDEO_BYTES) {
+      setError('Video must be 80 MB or smaller.');
+      return;
+    }
+    setUploadProgress(0);
+    try {
+      const ctx = await fetch('/api/signal/upload-context');
+      const ctxJson = await ctx.json().catch(() => ({}));
+      if (!ctx.ok) {
+        throw new Error(
+          ctxJson.error === 'UNAUTHORIZED' ? 'Sign in to upload video.' : 'Could not start upload.'
+        );
+      }
+      const userId = ctxJson.userId as string;
+      const ext = file.type === 'video/webm' ? 'webm' : 'mp4';
+      const pathname = `signals/${userId}/${crypto.randomUUID()}.${ext}`;
+      const { upload } = await import('@vercel/blob/client');
+      const result = await upload(pathname, file, {
+        access: 'public',
+        handleUploadUrl: '/api/signal/media-upload',
+        multipart: file.size > 4 * 1024 * 1024,
+        onUploadProgress: ({ percentage }) => setUploadProgress(percentage),
+      });
+      setMediaUrl(result.url);
+      setUploadProgress(100);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Upload failed';
+      setError(message);
+      setUploadProgress(null);
+    } finally {
+      window.setTimeout(() => setUploadProgress(null), 600);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -47,10 +96,21 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
     setError(null);
 
     // Validate media when selected
-    if (mediaType !== 'none') {
+    if (mediaType === 'image') {
       const url = mediaUrl.trim();
       if (!url) {
-        setError('Please enter a media URL');
+        setError('Please enter an image URL or choose Upload for video');
+        return;
+      }
+      if (!isValidMediaUrl(url)) {
+        setError('Media URL must start with http:// or https://');
+        return;
+      }
+    }
+    if (mediaType === 'video') {
+      const url = mediaUrl.trim();
+      if (!url) {
+        setError(videoAttachMode === 'upload' ? 'Upload a video file first' : 'Enter a video URL or upload a file');
         return;
       }
       if (!isValidMediaUrl(url)) {
@@ -88,6 +148,8 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
           setText('');
           setMediaType('none');
           setMediaUrl('');
+          setVideoAttachMode('upload');
+          setUploadProgress(null);
           setTimeout(() => {
             onClose();
             router.refresh();
@@ -104,10 +166,10 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
 
   const textValid = text.trim().length >= 3 && text.trim().length <= 240;
   const mediaValid =
-    mediaType === 'none' ||
-    (mediaUrl.trim() && isValidMediaUrl(mediaUrl.trim()));
+    mediaType === 'none' || !!(mediaUrl.trim() && isValidMediaUrl(mediaUrl.trim()));
   const isValid = textValid && mediaValid;
-  const canSubmit = isValid && submitState === 'idle';
+  const uploadBusy = uploadProgress !== null && uploadProgress < 100;
+  const canSubmit = isValid && submitState === 'idle' && !uploadBusy;
   const isDisabled = submitState === 'held' || submitState === 'submitting' || submitState === 'approved';
 
   return (
@@ -288,9 +350,12 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
                 <select
                   value={mediaType}
                   onChange={(e) => {
-                    setMediaType(e.target.value as MediaTypeOption);
+                    const v = e.target.value as MediaTypeOption;
+                    setMediaType(v);
                     setError(null);
-                    if (e.target.value === 'none') setMediaUrl('');
+                    setMediaUrl('');
+                    setUploadProgress(null);
+                    if (v === 'video') setVideoAttachMode('upload');
                   }}
                   disabled={isDisabled}
                   style={{
@@ -305,10 +370,10 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
                   }}
                 >
                   <option value="none">None</option>
-                  <option value="image">Image</option>
+                  <option value="image">Image (URL)</option>
                   <option value="video">Video</option>
                 </select>
-                {mediaType !== 'none' && (
+                {mediaType === 'image' && (
                   <input
                     type="url"
                     value={mediaUrl}
@@ -316,7 +381,7 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
                       setMediaUrl(e.target.value);
                       setError(null);
                     }}
-                    placeholder="https://..."
+                    placeholder="https://... (image URL)"
                     disabled={isDisabled}
                     style={{
                       flex: 1,
@@ -330,6 +395,111 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
                       fontSize: '0.9em',
                     }}
                   />
+                )}
+                {mediaType === 'video' && (
+                  <div style={{ flex: '1 1 100%', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        disabled={isDisabled}
+                        onClick={() => {
+                          setVideoAttachMode('upload');
+                          setMediaUrl('');
+                          setError(null);
+                        }}
+                        style={{
+                          padding: '0.4rem 0.75rem',
+                          backgroundColor: videoAttachMode === 'upload' ? '#00ffe0' : '#0a0e27',
+                          color: videoAttachMode === 'upload' ? '#000' : '#e0e0e0',
+                          border: '1px solid #1a1f3a',
+                          borderRadius: 4,
+                          cursor: isDisabled ? 'not-allowed' : 'pointer',
+                          fontFamily: '"Courier New", monospace',
+                          fontSize: '0.85em',
+                        }}
+                      >
+                        Upload file
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isDisabled}
+                        onClick={() => {
+                          setVideoAttachMode('url');
+                          setMediaUrl('');
+                          setError(null);
+                        }}
+                        style={{
+                          padding: '0.4rem 0.75rem',
+                          backgroundColor: videoAttachMode === 'url' ? '#00ffe0' : '#0a0e27',
+                          color: videoAttachMode === 'url' ? '#000' : '#e0e0e0',
+                          border: '1px solid #1a1f3a',
+                          borderRadius: 4,
+                          cursor: isDisabled ? 'not-allowed' : 'pointer',
+                          fontFamily: '"Courier New", monospace',
+                          fontSize: '0.85em',
+                        }}
+                      >
+                        Paste link
+                      </button>
+                    </div>
+                    {videoAttachMode === 'upload' && (
+                      <>
+                        <label
+                          style={{
+                            display: 'inline-block',
+                            padding: '0.5rem 0.75rem',
+                            backgroundColor: '#1a1f3a',
+                            border: '1px solid #2a3a4a',
+                            borderRadius: 4,
+                            cursor: isDisabled ? 'not-allowed' : 'pointer',
+                            fontSize: '0.85em',
+                            color: '#e0e0e0',
+                          }}
+                        >
+                          Choose video (MP4 / WebM, max 80 MB)
+                          <input
+                            type="file"
+                            accept="video/mp4,video/webm,.mp4,.webm"
+                            disabled={isDisabled || uploadBusy}
+                            style={{ display: 'none' }}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0] ?? null;
+                              void handleVideoFile(f);
+                              e.target.value = '';
+                            }}
+                          />
+                        </label>
+                        {uploadProgress !== null && uploadProgress < 100 && (
+                          <span style={{ fontSize: '0.8em', color: '#888' }}>Uploading… {uploadProgress}%</span>
+                        )}
+                        {!!mediaUrl && videoAttachMode === 'upload' && (
+                          <span style={{ fontSize: '0.8em', color: '#00ffe0' }}>Video ready — send when you&apos;re done writing.</span>
+                        )}
+                      </>
+                    )}
+                    {videoAttachMode === 'url' && (
+                      <input
+                        type="url"
+                        value={mediaUrl}
+                        onChange={(e) => {
+                          setMediaUrl(e.target.value);
+                          setError(null);
+                        }}
+                        placeholder="https://... (YouTube, Vimeo, or direct MP4)"
+                        disabled={isDisabled}
+                        style={{
+                          width: '100%',
+                          padding: '0.5rem 0.75rem',
+                          backgroundColor: '#0a0e27',
+                          border: '1px solid #1a1f3a',
+                          borderRadius: 4,
+                          color: isDisabled ? '#666' : '#e0e0e0',
+                          fontFamily: '"Courier New", monospace',
+                          fontSize: '0.9em',
+                        }}
+                      />
+                    )}
+                  </div>
                 )}
               </div>
             </div>

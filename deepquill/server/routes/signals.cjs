@@ -25,6 +25,19 @@ function isValidMediaUrl(url) {
   }
 }
 
+/** First-party Signal video uploads (Vercel Blob); held for moderation during beta. */
+function isFirstPartyUploadedMediaUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  try {
+    const u = new URL(url.trim());
+    if (u.protocol !== 'https:') return false;
+    if (!u.hostname.endsWith('.public.blob.vercel-storage.com')) return false;
+    return u.pathname.includes('/signals/');
+  } catch {
+    return false;
+  }
+}
+
 function containsLink(text) {
   if (!text || typeof text !== 'string') return false;
   const lower = text.toLowerCase();
@@ -61,6 +74,20 @@ router.get('/signal/events', async (req, res) => {
   } catch (err) {
     console.error('[signal/events] Error', err);
     res.status(500).json({ ok: false, error: err?.message || 'Unknown error' });
+  }
+});
+
+// GET /api/signal/upload-auth — used by agnes-next Vercel Blob client upload (cookie auth)
+router.get('/signal/upload-auth', async (req, res) => {
+  try {
+    const user = await resolveUserByEmail(req);
+    if (!user) {
+      return res.status(401).json({ ok: false, error: 'UNAUTHORIZED' });
+    }
+    return res.json({ ok: true, userId: user.id });
+  } catch (err) {
+    console.error('[signal/upload-auth] Error', err);
+    return res.status(500).json({ ok: false, error: err?.message || 'Unknown error' });
   }
 });
 
@@ -354,6 +381,12 @@ router.post('/signal/create', async (req, res) => {
     } else if (hasProfanity) {
       status = 'HELD';
       heldReason = 'PROFANITY';
+    }
+
+    // Beta: uploaded videos always held for review (even for purchasers)
+    if (mediaUrl && isFirstPartyUploadedMediaUrl(mediaUrl)) {
+      status = 'HELD';
+      heldReason = 'MEDIA_UPLOAD';
     }
 
     const AUTO_APPROVE = process.env.NODE_ENV === 'development' && process.env.AUTO_APPROVE_USER_CONTENT === 'true';
