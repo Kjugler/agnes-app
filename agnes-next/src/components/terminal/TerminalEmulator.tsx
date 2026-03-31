@@ -601,6 +601,18 @@ export default function TerminalEmulator() {
     >
       {isMobile && !showEmailModal ? (
         <>
+          <div className="mobile-terminal-utility-row mobile-terminal-utility-row--top">
+            <div className="mobile-terminal-progress">{getStepIndicator()}</div>
+            <button
+              type="button"
+              onClick={() => setSimpleMode(!simpleMode)}
+              className="mobile-terminal-simple-toggle"
+              aria-label="Toggle Simple Mode"
+              title={simpleMode ? 'Show full terminal' : 'Show simplified view'}
+            >
+              {simpleMode ? 'FULL' : 'SIMPLE'}
+            </button>
+          </div>
           <div className="mobile-terminal-terminal-body">
             <Terminal
               name="THE CONTROL ROOM"
@@ -623,18 +635,6 @@ export default function TerminalEmulator() {
             </div>
           </div>
           <JodyMobileScrollCue variant="em1" />
-          <div className="mobile-terminal-utility-row">
-            <div className="mobile-terminal-progress">{getStepIndicator()}</div>
-            <button
-              type="button"
-              onClick={() => setSimpleMode(!simpleMode)}
-              className="mobile-terminal-simple-toggle"
-              aria-label="Toggle Simple Mode"
-              title={simpleMode ? 'Show full terminal' : 'Show simplified view'}
-            >
-              {simpleMode ? 'FULL' : 'SIMPLE'}
-            </button>
-          </div>
         </>
       ) : (
         <Terminal

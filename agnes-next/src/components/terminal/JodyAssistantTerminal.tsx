@@ -257,14 +257,18 @@ function InlineMobileEm2() {
 
   if (!visible) {
     return (
-      <section className="jody-terminal-mobile-article" aria-label="Note from Jody" style={{ minHeight: 24 }} />
+      <section
+        className="jody-terminal-mobile-article jody-terminal-mobile-article--keyboard-peek"
+        aria-label="Note from Jody"
+        style={{ minHeight: 24 }}
+      />
     );
   }
 
   return (
     <section
       aria-label="Note from Jody"
-      className="jody-terminal-mobile-article"
+      className="jody-terminal-mobile-article jody-terminal-mobile-article--keyboard-peek"
       style={{
         padding:
           '8px 16px max(48px, calc(24px + env(safe-area-inset-bottom, 0px)))',

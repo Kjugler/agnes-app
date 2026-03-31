@@ -358,20 +358,27 @@
   padding-bottom: 12px !important;
 }
 
-/* Scroll cue directly under NEXT (tight stack). */
+/* Scroll cue directly under NEXT; ~1in breathing room before Jody hints (keyboard veil). */
 .mobile-terminal .jody-terminal-mobile-scroll-cue {
-  padding: 4px 14px 6px !important;
+  padding: 4px 14px 8px !important;
+  margin-bottom: 1in !important;
 }
 
-/* Nudge stacked hints toward the keyboard band (tune on device if overlap with chrome). */
+.mobile-terminal-utility-row--top {
+  border-top: none !important;
+  border-bottom: 1px solid rgba(0, 255, 102, 0.16) !important;
+}
+
+/* Hints sit lower so keys can wash over them; no negative margin (avoids colliding with cue). */
 .mobile-terminal .jody-terminal-mobile-article--keyboard-peek {
-  margin-top: -12vh !important;
+  margin-top: 0 !important;
+  padding-top: min(14vh, 120px) !important;
   position: relative !important;
 }
 
 @media (max-height: 620px) {
   .mobile-terminal .jody-terminal-mobile-article--keyboard-peek {
-    margin-top: -8vh !important;
+    padding-top: min(10vh, 72px) !important;
   }
 }
 

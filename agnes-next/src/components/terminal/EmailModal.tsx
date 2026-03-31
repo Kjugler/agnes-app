@@ -237,6 +237,8 @@ export default function EmailModal({ isOpen, onEmailSubmitted }: EmailModalProps
 
           {layoutMobile && <JodyMobileScrollCue variant="em2" />}
 
+          {layoutMobile && <JodyAssistantTerminal variant="em2" layoutMode="inline-mobile" />}
+
           <div
             style={{
               marginTop: '2rem',
@@ -251,8 +253,6 @@ export default function EmailModal({ isOpen, onEmailSubmitted }: EmailModalProps
             <div>REDACTED REQUESTS (SIMULATED) ..... 171,927</div>
             <div>CLEARANCE RATE (SIMULATED) ....... 41.6%</div>
           </div>
-
-          {layoutMobile && <JodyAssistantTerminal variant="em2" layoutMode="inline-mobile" />}
         </div>
       </div>
 
