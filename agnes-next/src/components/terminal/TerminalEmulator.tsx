@@ -100,10 +100,6 @@ export default function TerminalEmulator() {
   const [isMobile, setIsMobile] = useState(false);
   const [showMobileSecretModal, setShowMobileSecretModal] = useState(false);
   const [simpleMode, setSimpleMode] = useState(false);
-  const [keyboardAssistUsed, setKeyboardAssistUsed] = useState(false);
-  /** Hidden input focused or user typed in terminal — assist stays until this is true (then re-open only after reset). */
-  const [terminalKeyboardSatisfied, setTerminalKeyboardSatisfied] = useState(false);
-
   const introIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const terminalContainerRef = useRef<HTMLDivElement>(null);
   const downloadIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -185,47 +181,18 @@ export default function TerminalEmulator() {
     };
   }, [simpleMode, isMobile]);
 
-  /** iOS often focuses the hidden input programmatically without opening the keyboard; never mark "satisfied" from focusin alone. */
-  const markAssistSatisfiedFromUserFocus = (active: boolean) => {
-    if (active) {
-      setTerminalKeyboardSatisfied(true);
-      logTerminalMobile('assist:keyboard-satisfied', { reason: 'user-gesture-focus' });
-    }
-  };
-
   useEffect(() => {
     if (!TERMINAL_MOBILE_DEBUG) return;
     const typingBlockedByOverlay = showMobileSecretModal || showEmailModal;
     const typingNotRequired =
       phase === 'lightning' || (phase === 'terminal2' && isDownloading);
-    const assistWouldShow =
-      isMobile &&
-      !showEmailModal &&
-      !showMobileSecretModal &&
-      !(phase === 'terminal2' && isDownloading) &&
-      !terminalKeyboardSatisfied;
-    let hideReason = '';
-    if (!isMobile) hideReason = 'not-mobile';
-    else if (showEmailModal) hideReason = 'email-modal';
-    else if (showMobileSecretModal) hideReason = 'secret-modal';
-    else if (phase === 'terminal2' && isDownloading) hideReason = 'terminal2-downloading';
-    else if (terminalKeyboardSatisfied) hideReason = 'keyboard-satisfied';
     logTerminalMobile('assist:state', {
-      assistVisible: assistWouldShow,
-      assistHiddenReason: assistWouldShow ? undefined : hideReason,
       phase,
       typingBlockedByOverlay,
       typingNotRequired,
       hiddenInputInDom: typeof document !== 'undefined' ? !!getTerminalHiddenInput() : false,
     });
-  }, [
-    isMobile,
-    showEmailModal,
-    showMobileSecretModal,
-    phase,
-    isDownloading,
-    terminalKeyboardSatisfied,
-  ]);
+  }, [isMobile, showEmailModal, showMobileSecretModal, phase, isDownloading]);
 
   const introMessages = [
     'VERIFYING SECURITY ID...',
@@ -424,7 +391,7 @@ export default function TerminalEmulator() {
     } else {
       const input = getTerminalHiddenInput();
       if (input) {
-        focusTerminalHiddenInput(true, markAssistSatisfiedFromUserFocus);
+        focusTerminalHiddenInput(true);
         input.dispatchEvent(
           new KeyboardEvent('keydown', {
             key: 'Enter',
@@ -446,14 +413,9 @@ export default function TerminalEmulator() {
 
   const handleInput = (input: string) => {
     if (input.length > 0) {
-      setTerminalKeyboardSatisfied((prev) => {
-        if (!prev) {
-          logTerminalMobile('assist:keyboard-satisfied', {
-            reason: 'first-char-typed',
-            phase: phaseRef.current,
-          });
-        }
-        return true;
+      logTerminalMobile('assist:keyboard-satisfied', {
+        reason: 'first-char-typed',
+        phase: phaseRef.current,
       });
     }
 
@@ -529,7 +491,6 @@ export default function TerminalEmulator() {
         setAttemptCount(0);
         setIsSecondAttempt(false);
         setIsAccessGranted(false);
-        setTerminalKeyboardSatisfied(false);
         logTerminalMobile('assist:reset', { reason: 'intro-retry-after-fail' });
         runIntroAnimation();
       }, 3000);
@@ -629,7 +590,6 @@ export default function TerminalEmulator() {
           return;
         }
         focusTerminalHiddenInput(true, (active) => {
-          markAssistSatisfiedFromUserFocus(active);
           logTerminalMobile('container-tap-focus', {
             succeeded: active,
             phase: phaseRef.current,
@@ -655,7 +615,31 @@ export default function TerminalEmulator() {
       {isMobile && !showEmailModal ? (
         <div className="mobile-terminal-scroll-root">
           <div className="mobile-terminal-first-screen">
-            {terminalShell}
+            <div className="mobile-terminal-column">
+              {terminalShell}
+              <div className="mobile-terminal-inline-controls">
+                <div className="mobile-terminal-progress">{getStepIndicator()}</div>
+                <div className="mobile-terminal-actions">
+                  <button
+                    type="button"
+                    onClick={handleNextClick}
+                    className="mobile-terminal-next-btn"
+                    aria-label="Next"
+                  >
+                    NEXT
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSimpleMode(!simpleMode)}
+                    className="mobile-terminal-simple-toggle"
+                    aria-label="Toggle Simple Mode"
+                    title={simpleMode ? 'Show full terminal' : 'Show simplified view'}
+                  >
+                    {simpleMode ? 'FULL' : 'SIMPLE'}
+                  </button>
+                </div>
+              </div>
+            </div>
             <JodyMobilePeekStrip variant="em1" />
           </div>
           <JodyAssistantTerminal variant="em1" layoutMode="inline-mobile" />
@@ -684,60 +668,6 @@ export default function TerminalEmulator() {
         <JodyAssistantTerminal variant="em1" appearDelayMs={2000} />
       )}
 
-      {/* z-index 10020: above action bar (10000), below secret modal (200000). Shown until user-gesture focus works or first char typed. */}
-      {isMobile &&
-        !showEmailModal &&
-        !showMobileSecretModal &&
-        !(phase === 'terminal2' && isDownloading) &&
-        !terminalKeyboardSatisfied && (
-          <div className="mobile-terminal-keyboard-assist">
-            <button
-              type="button"
-              className="mobile-terminal-keyboard-assist-btn"
-              aria-label="Open keyboard for terminal input"
-              onClick={() => {
-                setKeyboardAssistUsed(true);
-                focusTerminalHiddenInput(true, (active) => {
-                  markAssistSatisfiedFromUserFocus(active);
-                  logTerminalMobile('keyboard-assist-tap', {
-                    focusSucceeded: active,
-                    phase: phaseRef.current,
-                  });
-                });
-              }}
-            >
-              Tap to open keyboard
-            </button>
-          </div>
-        )}
-
-      {isMobile && !showEmailModal && (
-        <div className="mobile-terminal-action-bar">
-          <div className="mobile-terminal-progress">
-            {getStepIndicator()}
-          </div>
-          <div className="mobile-terminal-actions">
-            <button
-              type="button"
-              onClick={handleNextClick}
-              className="mobile-terminal-next-btn"
-              aria-label="Next"
-            >
-              NEXT
-            </button>
-            <button
-              type="button"
-              onClick={() => setSimpleMode(!simpleMode)}
-              className="mobile-terminal-simple-toggle"
-              aria-label="Toggle Simple Mode"
-              title={simpleMode ? 'Show full terminal' : 'Show simplified view'}
-            >
-              {simpleMode ? 'FULL' : 'SIMPLE'}
-            </button>
-          </div>
-        </div>
-      )}
-
       {(process.env.NODE_ENV === 'development' || TERMINAL_MOBILE_DEBUG) && (
         <div
           style={{
@@ -757,7 +687,7 @@ export default function TerminalEmulator() {
           }}
         >
           {TERMINAL_MOBILE_DEBUG
-            ? `m:${isMobile ? '1' : '0'} sec:${showMobileSecretModal ? '1' : '0'} em:${showEmailModal ? '1' : '0'} sat:${terminalKeyboardSatisfied ? '1' : '0'} key:${keyboardAssistUsed ? '1' : '0'}`
+            ? `m:${isMobile ? '1' : '0'} sec:${showMobileSecretModal ? '1' : '0'} em:${showEmailModal ? '1' : '0'}`
             : 'agnes-next • /terminal'}
         </div>
       )}

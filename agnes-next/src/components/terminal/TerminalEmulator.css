@@ -171,7 +171,15 @@
 }
 
 .mobile-terminal .mobile-terminal-first-screen {
-  min-height: calc(100svh - 100px) !important;
+  min-height: 100svh !important;
+  min-height: 100dvh !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.mobile-terminal .mobile-terminal-column {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
   display: flex !important;
   flex-direction: column !important;
 }
@@ -181,6 +189,31 @@
   flex: 1 1 auto !important;
   min-height: 0 !important;
   max-height: none !important;
+}
+
+/* NEXT / SIMPLE directly under the terminal (replaces fixed bottom bar). */
+.mobile-terminal-inline-controls {
+  flex-shrink: 0 !important;
+  background: #000 !important;
+  border-top: 1px solid rgba(0, 255, 102, 0.28) !important;
+  padding: 10px 16px 12px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+}
+
+.mobile-terminal-inline-controls .mobile-terminal-progress {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace !important;
+  font-size: 11px !important;
+  color: rgba(0, 255, 102, 0.6) !important;
+  text-align: center !important;
+  letter-spacing: 0.1em !important;
+}
+
+.mobile-terminal-inline-controls .mobile-terminal-actions {
+  display: flex !important;
+  gap: 8px !important;
+  align-items: center !important;
 }
 
 .mobile-terminal .terminal-container .terminal,
@@ -212,55 +245,7 @@
   padding: 12px 16px !important;
 }
 
-/* Above NEXT/SIMPLE bar (10000), below secret modal (10050). Container does not capture taps except button. */
-.mobile-terminal-keyboard-assist {
-  position: fixed !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: calc(100px + env(safe-area-inset-bottom, 0px)) !important;
-  z-index: 10020 !important;
-  display: flex !important;
-  justify-content: center !important;
-  padding: 0 12px !important;
-  pointer-events: none !important;
-}
-
-.mobile-terminal-keyboard-assist-btn {
-  pointer-events: auto !important;
-  width: 100% !important;
-  max-width: 320px !important;
-  padding: 10px 16px !important;
-  font-size: 15px !important;
-  font-weight: 600 !important;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace !important;
-  color: #000 !important;
-  background: rgba(0, 255, 102, 0.92) !important;
-  border: 1px solid rgba(0, 255, 102, 0.5) !important;
-  border-radius: 10px !important;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45) !important;
-  -webkit-tap-highlight-color: transparent !important;
-  min-height: 44px !important;
-}
-
-.mobile-terminal-keyboard-assist-btn:active {
-  background: #00cc52 !important;
-}
-
-.mobile-terminal-action-bar {
-  position: fixed !important;
-  bottom: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  background: #000 !important;
-  border-top: 1px solid rgba(0, 255, 102, 0.3) !important;
-  padding: 12px 16px !important;
-  z-index: 10000 !important;
-  display: flex !important;
-  flex-direction: column !important;
-  gap: 8px !important;
-  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.5) !important;
-}
-
+/* Standalone progress/actions (e.g. if reused outside inline-controls) */
 .mobile-terminal-progress {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace !important;
   font-size: 11px !important;
@@ -319,7 +304,7 @@
 }
 
 .mobile-terminal .terminal-container .react-terminal-wrapper {
-  padding-bottom: 100px !important;
+  padding-bottom: 12px !important;
 }
 
 .mobile-terminal .jody-assistant-container {

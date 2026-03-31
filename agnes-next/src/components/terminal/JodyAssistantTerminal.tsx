@@ -12,11 +12,16 @@ const ICON_MAP: Record<string, string> = {
   ascension: '/jody-icons/jody-ascension.png',
 };
 
-/** em1: time each hint bubble stays visible (slow-reader friendly). Desktop fixed layout only. */
+/** em1: time each hint bubble stays visible (slow-reader friendly). Desktop fixed layout. */
 const EM1_HINT1_MS = 16_000;
 const EM1_HINT2_MS = 16_000;
 const EM1_HINT3_MS = 18_000;
 const EM1_IMAGE_MS = 14_000;
+
+/** Inline mobile: pause before revealing the next stacked bubble (same pacing). */
+const INLINE_STACK_MS_1 = EM1_HINT1_MS;
+const INLINE_STACK_MS_2 = EM1_HINT3_MS;
+const INLINE_STACK_MS_3 = EM1_IMAGE_MS;
 
 export type JodyTerminalLayoutMode = 'fixed' | 'inline-mobile';
 
@@ -29,13 +34,16 @@ interface JodyAssistantTerminalProps {
   appearDelayMs?: number;
   defaultOpen?: boolean;
   /**
-   * Mobile terminal: document-flow hints — no fixed overlay, no timers, scroll reveal.
+   * Mobile terminal: document-flow hints — no fixed overlay; em1 stacks timed bubbles in-page.
    * Desktop always uses `fixed` (default).
    */
   layoutMode?: JodyTerminalLayoutMode;
 }
 
-/** ~8% of a typical bubble — peek strip at bottom of first screen; no character, curiosity only. */
+/**
+ * Peek strip at bottom of first screen: shows a sliver of Jody’s first hint (em1) so users discover scroll.
+ * No avatar — text is clipped to ~2 lines max.
+ */
 export function JodyMobilePeekStrip({ variant }: { variant: 'em1' | 'em2' }) {
   return (
     <div
@@ -43,30 +51,48 @@ export function JodyMobilePeekStrip({ variant }: { variant: 'em1' | 'em2' }) {
       aria-hidden="true"
       style={{
         flexShrink: 0,
-        height: 32,
-        maxHeight: '10vh',
-        marginTop: 'auto',
+        minHeight: 44,
+        maxHeight: '12vh',
         borderRadius: '16px 16px 0 0',
-        background: 'linear-gradient(180deg, rgba(255,59,224,0.55) 0%, rgba(161,0,255,0.85) 100%)',
+        background: 'linear-gradient(180deg, rgba(255,59,224,0.55) 0%, rgba(161,0,255,0.88) 100%)',
         boxShadow: '0 -4px 20px rgba(161, 0, 255, 0.25)',
         pointerEvents: 'none',
         position: 'relative',
         overflow: 'hidden',
+        padding: '8px 14px 22px',
       }}
     >
       <div
         style={{
           position: 'absolute',
           left: '50%',
-          top: 4,
+          top: 6,
           transform: 'translateX(-50%)',
-          width: 48,
+          width: 40,
           height: 3,
           borderRadius: 2,
           background: 'rgba(255,255,255,0.35)',
-          opacity: 0.9,
         }}
       />
+      {variant === 'em1' ? (
+        <p
+          style={{
+            margin: '14px 0 0',
+            fontSize: 11,
+            lineHeight: 1.35,
+            color: 'rgba(255,255,255,0.92)',
+            maxHeight: '2.7em',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+          }}
+        >
+          <strong>Fair nudge:</strong> sounds like a hashtag — starts with <strong>#where</strong>, one word, no
+          spaces…
+        </p>
+      ) : null}
       <span
         style={{
           position: 'absolute',
@@ -74,14 +100,14 @@ export function JodyMobilePeekStrip({ variant }: { variant: 'em1' | 'em2' }) {
           left: 0,
           right: 0,
           textAlign: 'center',
-          fontSize: 10,
-          letterSpacing: '0.2em',
+          fontSize: 9,
+          letterSpacing: '0.18em',
           textTransform: 'uppercase',
-          color: 'rgba(255,255,255,0.45)',
+          color: 'rgba(255,255,255,0.5)',
           fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
         }}
       >
-        {variant === 'em1' ? 'Scroll —' : 'More —'}
+        {variant === 'em1' ? 'Scroll for more —' : 'More below —'}
       </span>
     </div>
   );
@@ -110,13 +136,31 @@ const pillStyle: React.CSSProperties = {
 };
 
 function InlineMobileEm1() {
+  const [showCodeHint, setShowCodeHint] = useState(false);
+  const [showImage, setShowImage] = useState(false);
+  const [showIcon, setShowIcon] = useState(false);
+
+  useEffect(() => {
+    const t1 = window.setTimeout(() => setShowCodeHint(true), INLINE_STACK_MS_1);
+    const t2 = window.setTimeout(() => setShowImage(true), INLINE_STACK_MS_1 + INLINE_STACK_MS_2);
+    const t3 = window.setTimeout(
+      () => setShowIcon(true),
+      INLINE_STACK_MS_1 + INLINE_STACK_MS_2 + INLINE_STACK_MS_3
+    );
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(t3);
+    };
+  }, []);
+
   return (
     <section
       aria-label="Hints from Jody"
       className="jody-terminal-mobile-article"
       style={{
         padding:
-          '8px 16px max(120px, calc(100px + env(safe-area-inset-bottom, 0px)))',
+          '8px 16px max(32px, calc(16px + env(safe-area-inset-bottom, 0px)))',
         maxWidth: 560,
         margin: '0 auto',
         display: 'flex',
@@ -126,17 +170,6 @@ function InlineMobileEm1() {
     >
       <div style={{ ...bubbleGradient }}>
         <p style={{ margin: 0, marginBottom: 8 }}>
-          <strong>Hi — I&apos;m Jody.</strong>
-        </p>
-        <p style={{ margin: 0 }}>
-          If you&apos;re staring at that cursor and nothing makes sense, that&apos;s intentional — but
-          you&apos;re not stuck. When the keyboard is open, <strong>type at the green prompt</strong> (the
-          line with <strong>$</strong>). That&apos;s how this terminal listens.
-        </p>
-      </div>
-
-      <div style={{ ...bubbleGradient }}>
-        <p style={{ margin: 0, marginBottom: 8 }}>
           <strong>Fair nudge:</strong>
         </p>
         <p style={{ margin: 0, marginBottom: 8 }}>
@@ -144,68 +177,74 @@ function InlineMobileEm1() {
           finding me, and it&apos;s typed <strong>as one word</strong> after the hash — no spaces.
         </p>
         <p style={{ margin: 0, fontSize: 13, opacity: 0.92 }}>
-          Some hunters look for a name on a tag — one trail, one word, no spaces between. You know the
-          kind of trail I mean.
+          Some hunters look for a name on a tag — one trail, one word, no spaces between. You know the kind of
+          trail I mean.
         </p>
       </div>
 
-      <div style={{ ...bubbleGradient }}>
-        <p style={{ margin: 0, marginBottom: 8 }}>
-          <strong>If you want the direct line:</strong>
-        </p>
-        <p style={{ margin: 0, marginBottom: 8 }}>
-          At the <strong>$</strong> prompt, type this and submit (return / enter):
-        </p>
-        <div style={pillStyle}>#whereisjodyvernon</div>
-        <p style={{ margin: '10px 0 0', fontSize: 13, opacity: 0.95 }}>
-          If your phone drops the <strong>#</strong>, <strong>whereisjodyvernon</strong> works too. You can
-          also tap <strong>NEXT</strong> below for a full-screen typing box.
-        </p>
-      </div>
+      {showCodeHint && (
+        <div style={{ ...bubbleGradient }}>
+          <p style={{ margin: 0, marginBottom: 8 }}>
+            <strong>If you want the direct line:</strong>
+          </p>
+          <p style={{ margin: 0, marginBottom: 8 }}>
+            At the <strong>$</strong> prompt, type this and submit (return / enter):
+          </p>
+          <div style={pillStyle}>#whereisjodyvernon</div>
+          <p style={{ margin: '10px 0 0', fontSize: 13, opacity: 0.95 }}>
+            If your phone drops the <strong>#</strong>, <strong>whereisjodyvernon</strong> works too. For a
+            full-screen typing box, use <strong>NEXT</strong> right under the prompt.
+          </p>
+        </div>
+      )}
 
-      <div
-        style={{
-          borderRadius: 12,
-          overflow: 'hidden',
-          boxShadow: '0 12px 28px rgba(0, 0, 0, 0.35)',
-        }}
-      >
-        <img
-          src="/jody-icons/jody-deepquill-post.png"
-          alt="DeepQuill post with #WhereIsJodyVernon"
-          style={{ width: '100%', display: 'block', verticalAlign: 'top' }}
-          loading="lazy"
-          onError={(e) => {
-            (e.target as HTMLImageElement).style.display = 'none';
-          }}
-        />
-      </div>
-
-      <div
-        style={{
-          width: 64,
-          height: 64,
-          borderRadius: '9999px',
-          overflow: 'hidden',
-          boxShadow: '0 0 18px rgba(255, 59, 224, 0.55)',
-          alignSelf: 'center',
-          marginTop: 8,
-        }}
-      >
-        <img
-          src={ICON_MAP.em1}
-          alt=""
+      {showImage && (
+        <div
           style={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
-            objectPosition: 'center 25%',
-            display: 'block',
-            transform: 'translateY(4px)',
+            borderRadius: 12,
+            overflow: 'hidden',
+            boxShadow: '0 12px 28px rgba(0, 0, 0, 0.35)',
           }}
-          loading="lazy"
-        />
-      </div>
+        >
+          <img
+            src="/jody-icons/jody-deepquill-post.png"
+            alt="DeepQuill post with #WhereIsJodyVernon"
+            style={{ width: '100%', display: 'block', verticalAlign: 'top' }}
+            loading="lazy"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = 'none';
+            }}
+          />
+        </div>
+      )}
+
+      {showIcon && (
+        <div
+          style={{
+            width: 64,
+            height: 64,
+            borderRadius: '9999px',
+            overflow: 'hidden',
+            boxShadow: '0 0 18px rgba(255, 59, 224, 0.55)',
+            alignSelf: 'center',
+            marginTop: 8,
+          }}
+        >
+          <img
+            src={ICON_MAP.em1}
+            alt=""
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              objectPosition: 'center 25%',
+              display: 'block',
+              transform: 'translateY(4px)',
+            }}
+            loading="lazy"
+          />
+        </div>
+      )}
     </section>
   );
 }
