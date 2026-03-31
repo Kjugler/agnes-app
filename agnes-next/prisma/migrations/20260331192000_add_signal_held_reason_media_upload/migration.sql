@@ -1,0 +1,1 @@
+-- SignalHeldReason.MEDIA_UPLOAD is application-level validation only on SQLite (heldReason column is TEXT).

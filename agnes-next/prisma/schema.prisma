@@ -319,6 +319,7 @@ enum SignalHeldReason {
   CLAIM
   LINK
   OTHER
+  MEDIA_UPLOAD
 }
 
 enum SignalType {
