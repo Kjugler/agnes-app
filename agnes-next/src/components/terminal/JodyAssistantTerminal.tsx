@@ -18,10 +18,11 @@ const EM1_HINT2_MS = 16_000;
 const EM1_HINT3_MS = 18_000;
 const EM1_IMAGE_MS = 14_000;
 
-/** Inline mobile: pause before revealing the next stacked bubble (same pacing). */
+/** Inline mobile: pause before revealing the next message from Jody (same pacing as desktop hints). */
 const INLINE_STACK_MS_1 = EM1_HINT1_MS;
 const INLINE_STACK_MS_2 = EM1_HINT3_MS;
-const INLINE_STACK_MS_3 = EM1_IMAGE_MS;
+/** First Jody line waits briefly so the scroll cue reads alone (cinematic, one beat at a time). */
+const INLINE_FIRST_BEAT_MS = 720;
 
 export type JodyTerminalLayoutMode = 'fixed' | 'inline-mobile';
 
@@ -41,77 +42,71 @@ interface JodyAssistantTerminalProps {
 }
 
 /**
- * Peek strip at bottom of first screen: shows a sliver of Jody’s first hint (em1) so users discover scroll.
- * No avatar — text is clipped to ~2 lines max.
+ * Below NEXT: thin directional cue (not a hint bubble). Lighter than IBM mono body.
  */
-export function JodyMobilePeekStrip({ variant }: { variant: 'em1' | 'em2' }) {
+export function JodyMobileScrollCue({ variant }: { variant: 'em1' | 'em2' }) {
+  const copy =
+    variant === 'em1'
+      ? 'More below — scroll when you’re ready.'
+      : 'A short note below — scroll on.';
   return (
     <div
-      className="jody-terminal-mobile-peek"
+      className="jody-terminal-mobile-scroll-cue"
       aria-hidden="true"
       style={{
         flexShrink: 0,
-        minHeight: 44,
-        maxHeight: '12vh',
-        borderRadius: '16px 16px 0 0',
-        background: 'linear-gradient(180deg, rgba(255,59,224,0.55) 0%, rgba(161,0,255,0.88) 100%)',
-        boxShadow: '0 -4px 20px rgba(161, 0, 255, 0.25)',
+        padding: '8px 20px 10px',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 4,
         pointerEvents: 'none',
-        position: 'relative',
-        overflow: 'hidden',
-        padding: '8px 14px 22px',
+        background: 'linear-gradient(180deg, rgba(0, 0, 0, 0.25) 0%, rgba(0, 0, 0, 0) 100%)',
       }}
     >
-      <div
-        style={{
-          position: 'absolute',
-          left: '50%',
-          top: 6,
-          transform: 'translateX(-50%)',
-          width: 40,
-          height: 3,
-          borderRadius: 2,
-          background: 'rgba(255,255,255,0.35)',
-        }}
-      />
-      {variant === 'em1' ? (
-        <p
-          style={{
-            margin: '14px 0 0',
-            fontSize: 11,
-            lineHeight: 1.35,
-            color: 'rgba(255,255,255,0.92)',
-            maxHeight: '2.7em',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical',
-          }}
-        >
-          <strong>Fair nudge:</strong> sounds like a hashtag — starts with <strong>#where</strong>, one word, no
-          spaces…
-        </p>
-      ) : null}
       <span
         style={{
-          position: 'absolute',
-          bottom: 6,
-          left: 0,
-          right: 0,
-          textAlign: 'center',
-          fontSize: 9,
-          letterSpacing: '0.18em',
-          textTransform: 'uppercase',
-          color: 'rgba(255,255,255,0.5)',
-          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+          fontSize: 15,
+          lineHeight: 1,
+          color: 'rgba(74, 222, 128, 0.45)',
+          fontWeight: 200,
+          transform: 'scaleY(1.15)',
         }}
       >
-        {variant === 'em1' ? 'Scroll for more —' : 'More below —'}
+        ↓
       </span>
+      <p
+        style={{
+          margin: 0,
+          fontSize: 12,
+          lineHeight: 1.4,
+          letterSpacing: '0.03em',
+          color: 'rgba(134, 239, 172, 0.72)',
+          fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+          fontWeight: 400,
+          fontStyle: 'normal',
+          textAlign: 'center',
+          maxWidth: 260,
+        }}
+      >
+        {copy}
+      </p>
     </div>
   );
 }
+
+/** Softer, cinematic bubbles for mobile scroll hints (not harsh magenta slabs). */
+const bubbleSubtle: React.CSSProperties = {
+  background: 'linear-gradient(146deg, rgba(120, 45, 120, 0.65), rgba(85, 32, 110, 0.78))',
+  color: '#faf5ff',
+  borderRadius: 14,
+  padding: '12px 14px 14px',
+  boxShadow: '0 6px 20px rgba(0, 0, 0, 0.28)',
+  fontSize: 13,
+  lineHeight: 1.5,
+  border: '1px solid rgba(255, 255, 255, 0.1)',
+  position: 'relative',
+};
 
 const bubbleGradient: React.CSSProperties = {
   background: 'linear-gradient(135deg, #ff3be0, #a100ff)',
@@ -123,6 +118,51 @@ const bubbleGradient: React.CSSProperties = {
   lineHeight: 1.45,
   position: 'relative',
 };
+
+function JodySaysRowEm1({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+      <img
+        src={ICON_MAP.em1}
+        alt="Jody"
+        width={44}
+        height={44}
+        style={{
+          borderRadius: '50%',
+          objectFit: 'cover',
+          objectPosition: 'center 25%',
+          flexShrink: 0,
+          boxShadow: '0 0 12px rgba(255, 59, 224, 0.32)',
+          transform: 'translateY(2px)',
+        }}
+        loading="lazy"
+      />
+      <div style={{ ...bubbleSubtle, flex: 1, minWidth: 0 }}>{children}</div>
+    </div>
+  );
+}
+
+function JodySaysRowEm2({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+      <img
+        src={ICON_MAP.em2}
+        alt="Jody"
+        width={44}
+        height={44}
+        style={{
+          borderRadius: '50%',
+          objectFit: 'cover',
+          objectPosition: 'center 16%',
+          flexShrink: 0,
+          boxShadow: '0 0 12px rgba(255, 59, 224, 0.28)',
+        }}
+        loading="lazy"
+      />
+      <div style={{ ...bubbleSubtle, flex: 1, minWidth: 0 }}>{children}</div>
+    </div>
+  );
+}
 
 const pillStyle: React.CSSProperties = {
   display: 'inline-block',
@@ -136,21 +176,21 @@ const pillStyle: React.CSSProperties = {
 };
 
 function InlineMobileEm1() {
+  const [showFairNudge, setShowFairNudge] = useState(false);
   const [showCodeHint, setShowCodeHint] = useState(false);
   const [showImage, setShowImage] = useState(false);
-  const [showIcon, setShowIcon] = useState(false);
 
   useEffect(() => {
-    const t1 = window.setTimeout(() => setShowCodeHint(true), INLINE_STACK_MS_1);
-    const t2 = window.setTimeout(() => setShowImage(true), INLINE_STACK_MS_1 + INLINE_STACK_MS_2);
-    const t3 = window.setTimeout(
-      () => setShowIcon(true),
-      INLINE_STACK_MS_1 + INLINE_STACK_MS_2 + INLINE_STACK_MS_3
+    const t0 = window.setTimeout(() => setShowFairNudge(true), INLINE_FIRST_BEAT_MS);
+    const t1 = window.setTimeout(() => setShowCodeHint(true), INLINE_FIRST_BEAT_MS + INLINE_STACK_MS_1);
+    const t2 = window.setTimeout(
+      () => setShowImage(true),
+      INLINE_FIRST_BEAT_MS + INLINE_STACK_MS_1 + INLINE_STACK_MS_2
     );
     return () => {
+      window.clearTimeout(t0);
       window.clearTimeout(t1);
       window.clearTimeout(t2);
-      window.clearTimeout(t3);
     };
   }, []);
 
@@ -160,124 +200,118 @@ function InlineMobileEm1() {
       className="jody-terminal-mobile-article"
       style={{
         padding:
-          '8px 16px max(32px, calc(16px + env(safe-area-inset-bottom, 0px)))',
+          '12px 16px max(32px, calc(16px + env(safe-area-inset-bottom, 0px)))',
         maxWidth: 560,
         margin: '0 auto',
         display: 'flex',
         flexDirection: 'column',
-        gap: 16,
+        gap: 18,
       }}
     >
-      <div style={{ ...bubbleGradient }}>
-        <p style={{ margin: 0, marginBottom: 8 }}>
-          <strong>Fair nudge:</strong>
-        </p>
-        <p style={{ margin: 0, marginBottom: 8 }}>
-          The clue sounds like a social hashtag. It starts with <strong>#where</strong>, it&apos;s about
-          finding me, and it&apos;s typed <strong>as one word</strong> after the hash — no spaces.
-        </p>
-        <p style={{ margin: 0, fontSize: 13, opacity: 0.92 }}>
-          Some hunters look for a name on a tag — one trail, one word, no spaces between. You know the kind of
-          trail I mean.
-        </p>
-      </div>
+      {showFairNudge && (
+        <JodySaysRowEm1>
+          <p style={{ margin: 0, marginBottom: 6 }}>
+            <strong>Fair nudge:</strong>
+          </p>
+          <p style={{ margin: 0, marginBottom: 6 }}>
+            The trail sounds like something you&apos;d tag on social. It starts with <strong>#where</strong>,
+            it&apos;s about finding me, and after the hash it&apos;s <strong>one word</strong> — no spaces.
+          </p>
+          <p style={{ margin: 0, fontSize: 12, opacity: 0.88 }}>
+            Some hunters chase a name that way — single track, single word. You&apos;ll know it when you type it.
+          </p>
+        </JodySaysRowEm1>
+      )}
 
       {showCodeHint && (
-        <div style={{ ...bubbleGradient }}>
-          <p style={{ margin: 0, marginBottom: 8 }}>
-            <strong>If you want the direct line:</strong>
+        <JodySaysRowEm1>
+          <p style={{ margin: 0, marginBottom: 6 }}>
+            <strong>Sharper vector:</strong>
           </p>
           <p style={{ margin: 0, marginBottom: 8 }}>
-            At the <strong>$</strong> prompt, type this and submit (return / enter):
+            At the <strong>$</strong> prompt, enter this and send it (return / enter):
           </p>
-          <div style={pillStyle}>#whereisjodyvernon</div>
-          <p style={{ margin: '10px 0 0', fontSize: 13, opacity: 0.95 }}>
-            If your phone drops the <strong>#</strong>, <strong>whereisjodyvernon</strong> works too. For a
-            full-screen typing box, use <strong>NEXT</strong> right under the prompt.
+          <div style={{ ...pillStyle, fontSize: 12 }}>#whereisjodyvernon</div>
+          <p style={{ margin: '10px 0 0', fontSize: 12, opacity: 0.9 }}>
+            If your device eats the hash, <strong>whereisjodyvernon</strong> alone still works. Prefer a big
+            typing field? Use <strong>NEXT</strong> tucked right under the line.
           </p>
-        </div>
+        </JodySaysRowEm1>
       )}
 
       {showImage && (
-        <div
-          style={{
-            borderRadius: 12,
-            overflow: 'hidden',
-            boxShadow: '0 12px 28px rgba(0, 0, 0, 0.35)',
-          }}
-        >
-          <img
-            src="/jody-icons/jody-deepquill-post.png"
-            alt="DeepQuill post with #WhereIsJodyVernon"
-            style={{ width: '100%', display: 'block', verticalAlign: 'top' }}
-            loading="lazy"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = 'none';
-            }}
-          />
-        </div>
-      )}
-
-      {showIcon && (
-        <div
-          style={{
-            width: 64,
-            height: 64,
-            borderRadius: '9999px',
-            overflow: 'hidden',
-            boxShadow: '0 0 18px rgba(255, 59, 224, 0.55)',
-            alignSelf: 'center',
-            marginTop: 8,
-          }}
-        >
-          <img
-            src={ICON_MAP.em1}
-            alt=""
+        <div style={{ marginTop: 4 }}>
+          <p
             style={{
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover',
-              objectPosition: 'center 25%',
-              display: 'block',
-              transform: 'translateY(4px)',
+              margin: '0 0 8px 4px',
+              fontSize: 11,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              color: 'rgba(167, 139, 250, 0.65)',
+              fontFamily: 'ui-sans-serif, system-ui, sans-serif',
             }}
-            loading="lazy"
-          />
+          >
+            From the field
+          </p>
+          <div
+            style={{
+              borderRadius: 12,
+              overflow: 'hidden',
+              boxShadow: '0 8px 22px rgba(0, 0, 0, 0.3)',
+              border: '1px solid rgba(255,255,255,0.06)',
+            }}
+          >
+            <img
+              src="/jody-icons/jody-deepquill-post.png"
+              alt="DeepQuill post with #WhereIsJodyVernon"
+              style={{ width: '100%', display: 'block', verticalAlign: 'top' }}
+              loading="lazy"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = 'none';
+              }}
+            />
+          </div>
         </div>
       )}
     </section>
   );
 }
 
-/** Terminal 2 — softer copy, same visual family; no timers, no overlay. */
+/** Terminal 2 — single beat from Jody after scroll; soft, one bubble. */
 function InlineMobileEm2() {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const t = window.setTimeout(() => setVisible(true), 420);
+    return () => window.clearTimeout(t);
+  }, []);
+
+  if (!visible) {
+    return (
+      <section className="jody-terminal-mobile-article" aria-label="Note from Jody" style={{ minHeight: 24 }} />
+    );
+  }
+
   return (
     <section
       aria-label="Note from Jody"
       className="jody-terminal-mobile-article"
       style={{
         padding:
-          '12px 16px max(48px, calc(24px + env(safe-area-inset-bottom, 0px)))',
+          '8px 16px max(48px, calc(24px + env(safe-area-inset-bottom, 0px)))',
         maxWidth: 560,
         margin: '0 auto',
       }}
     >
-      <div
-        style={{
-          ...bubbleGradient,
-          fontSize: 13,
-          lineHeight: 1.5,
-        }}
-      >
-        <div style={{ fontWeight: 600, marginBottom: 8 }}>Hey — you made it.</div>
+      <JodySaysRowEm2>
+        <div style={{ fontWeight: 600, marginBottom: 6 }}>Hey — you made it.</div>
         <p style={{ margin: '0 0 8px' }}>
-          This step is dull on purpose: your email is only so we can <strong>attach your score</strong>,{' '}
+          Quiet step on purpose: email only so we can <strong>attach your score</strong>,{' '}
           <strong>confirm prizes</strong>, and send your <strong>redacted-chapter access key</strong>.
         </p>
-        <p style={{ margin: 0, opacity: 0.95 }}>
-          We don&apos;t sell your information. Submit once — then you&apos;re through.
+        <p style={{ margin: 0, opacity: 0.92, fontSize: 12 }}>
+          We don&apos;t sell your information. Submit once — you&apos;re through.
         </p>
-      </div>
+      </JodySaysRowEm2>
     </section>
   );
 }

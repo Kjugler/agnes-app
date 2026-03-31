@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { subscribeEmail } from '@/lib/terminal/subscribeEmail';
-import JodyAssistantTerminal, { JodyMobilePeekStrip } from './JodyAssistantTerminal';
+import JodyAssistantTerminal, { JodyMobileScrollCue } from './JodyAssistantTerminal';
 
 interface EmailModalProps {
   isOpen: boolean;
@@ -235,6 +235,8 @@ export default function EmailModal({ isOpen, onEmailSubmitted }: EmailModalProps
             </button>
           </form>
 
+          {layoutMobile && <JodyMobileScrollCue variant="em2" />}
+
           <div
             style={{
               marginTop: '2rem',
@@ -250,12 +252,7 @@ export default function EmailModal({ isOpen, onEmailSubmitted }: EmailModalProps
             <div>CLEARANCE RATE (SIMULATED) ....... 41.6%</div>
           </div>
 
-          {layoutMobile && (
-            <>
-              <JodyMobilePeekStrip variant="em2" />
-              <JodyAssistantTerminal variant="em2" layoutMode="inline-mobile" />
-            </>
-          )}
+          {layoutMobile && <JodyAssistantTerminal variant="em2" layoutMode="inline-mobile" />}
         </div>
       </div>
 

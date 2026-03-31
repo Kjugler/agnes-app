@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Terminal, { ColorMode, TerminalOutput } from 'react-terminal-ui';
 import EmailModal from './EmailModal';
-import JodyAssistantTerminal, { JodyMobilePeekStrip } from './JodyAssistantTerminal';
+import JodyAssistantTerminal, { JodyMobileScrollCue } from './JodyAssistantTerminal';
 import MobileInputModal from './MobileInputModal';
 import { subscribeEmail } from '@/lib/terminal/subscribeEmail';
 import './TerminalEmulator.css';
@@ -578,7 +578,8 @@ export default function TerminalEmulator() {
         height: isMobile && !showEmailModal ? '100%' : '100vh',
         flex: isMobile && !showEmailModal ? '1 1 auto' : undefined,
         minHeight: isMobile && !showEmailModal ? 0 : undefined,
-        display: showEmailModal ? 'none' : 'block',
+        display: showEmailModal ? 'none' : isMobile && !showEmailModal ? 'flex' : 'block',
+        flexDirection: isMobile && !showEmailModal ? 'column' : undefined,
         pointerEvents: isMobile && showMobileSecretModal ? 'none' : 'auto',
       }}
       onPointerDownCapture={(e) => {
@@ -598,15 +599,54 @@ export default function TerminalEmulator() {
         });
       }}
     >
-      <Terminal
-        name="THE CONTROL ROOM"
-        colorMode={ColorMode.Dark}
-        onInput={handleInput}
-        prompt="$"
-        height={isMobile && !showEmailModal ? '100%' : '100vh'}
-      >
-        {lineData}
-      </Terminal>
+      {isMobile && !showEmailModal ? (
+        <>
+          <div className="mobile-terminal-terminal-body">
+            <Terminal
+              name="THE CONTROL ROOM"
+              colorMode={ColorMode.Dark}
+              onInput={handleInput}
+              prompt="$"
+              height="100%"
+            >
+              {lineData}
+            </Terminal>
+          </div>
+          <div className="mobile-terminal-inline-controls">
+            <div className="mobile-terminal-progress">{getStepIndicator()}</div>
+            <div className="mobile-terminal-actions">
+              <button
+                type="button"
+                onClick={handleNextClick}
+                className="mobile-terminal-next-btn"
+                aria-label="Next"
+              >
+                NEXT
+              </button>
+              <button
+                type="button"
+                onClick={() => setSimpleMode(!simpleMode)}
+                className="mobile-terminal-simple-toggle"
+                aria-label="Toggle Simple Mode"
+                title={simpleMode ? 'Show full terminal' : 'Show simplified view'}
+              >
+                {simpleMode ? 'FULL' : 'SIMPLE'}
+              </button>
+            </div>
+          </div>
+          <JodyMobileScrollCue variant="em1" />
+        </>
+      ) : (
+        <Terminal
+          name="THE CONTROL ROOM"
+          colorMode={ColorMode.Dark}
+          onInput={handleInput}
+          prompt="$"
+          height="100vh"
+        >
+          {lineData}
+        </Terminal>
+      )}
     </div>
   );
 
@@ -615,32 +655,7 @@ export default function TerminalEmulator() {
       {isMobile && !showEmailModal ? (
         <div className="mobile-terminal-scroll-root">
           <div className="mobile-terminal-first-screen">
-            <div className="mobile-terminal-column">
-              {terminalShell}
-              <div className="mobile-terminal-inline-controls">
-                <div className="mobile-terminal-progress">{getStepIndicator()}</div>
-                <div className="mobile-terminal-actions">
-                  <button
-                    type="button"
-                    onClick={handleNextClick}
-                    className="mobile-terminal-next-btn"
-                    aria-label="Next"
-                  >
-                    NEXT
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSimpleMode(!simpleMode)}
-                    className="mobile-terminal-simple-toggle"
-                    aria-label="Toggle Simple Mode"
-                    title={simpleMode ? 'Show full terminal' : 'Show simplified view'}
-                  >
-                    {simpleMode ? 'FULL' : 'SIMPLE'}
-                  </button>
-                </div>
-              </div>
-            </div>
-            <JodyMobilePeekStrip variant="em1" />
+            <div className="mobile-terminal-column">{terminalShell}</div>
           </div>
           <JodyAssistantTerminal variant="em1" layoutMode="inline-mobile" />
         </div>

@@ -158,7 +158,16 @@
   overflow: hidden !important;
 }
 
-/* Mobile: scroll page = terminal viewport + peek strip + Jody article (no fixed overlay). */
+/* Mobile: terminal body fills column; NEXT + scroll cue stack under prompt (no fixed overlay). */
+.mobile-terminal .mobile-terminal-terminal-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+/* Mobile: scroll page = terminal column + Jody article below the fold. */
 .mobile-terminal .mobile-terminal-scroll-root {
   height: 100vh !important;
   height: 100dvh !important;
