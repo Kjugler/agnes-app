@@ -611,28 +611,28 @@ export default function TerminalEmulator() {
             >
               {lineData}
             </Terminal>
-          </div>
-          <div className="mobile-terminal-inline-controls">
-            <div className="mobile-terminal-progress">{getStepIndicator()}</div>
-            <div className="mobile-terminal-actions">
+            <div className="mobile-terminal-next-adjacent-row">
               <button
                 type="button"
                 onClick={handleNextClick}
-                className="mobile-terminal-next-btn"
+                className="mobile-terminal-next-btn mobile-terminal-next-btn-adjacent"
                 aria-label="Next"
               >
                 NEXT
               </button>
-              <button
-                type="button"
-                onClick={() => setSimpleMode(!simpleMode)}
-                className="mobile-terminal-simple-toggle"
-                aria-label="Toggle Simple Mode"
-                title={simpleMode ? 'Show full terminal' : 'Show simplified view'}
-              >
-                {simpleMode ? 'FULL' : 'SIMPLE'}
-              </button>
             </div>
+          </div>
+          <div className="mobile-terminal-utility-row">
+            <div className="mobile-terminal-progress">{getStepIndicator()}</div>
+            <button
+              type="button"
+              onClick={() => setSimpleMode(!simpleMode)}
+              className="mobile-terminal-simple-toggle"
+              aria-label="Toggle Simple Mode"
+              title={simpleMode ? 'Show full terminal' : 'Show simplified view'}
+            >
+              {simpleMode ? 'FULL' : 'SIMPLE'}
+            </button>
           </div>
           <JodyMobileScrollCue variant="em1" />
         </>
