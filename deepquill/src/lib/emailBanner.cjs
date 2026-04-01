@@ -13,21 +13,60 @@ const EMAIL_CONTEST_BANNER_TEXT = EMAIL_CONTEST_BANNER_ENV && EMAIL_CONTEST_BANN
 const EMAIL_CONTEST_BANNER = STRESS_TEST_MODE || EMAIL_CONTEST_BANNER_LEGACY;
 const EMAIL_CONTEST_BANNER_MODE = process.env.EMAIL_CONTEST_BANNER_MODE || 'test';
 
-// Short, tasteful banner — not dominate
+const EMAIL_BETA_BANNER_MARKER = '<!--agnes-email-beta-banner-->';
+
+// Jody bubble palette: linear-gradient(135deg, #ff3be0, #a100ff) — see agnes-next JodyAssistantTerminal
 const BANNER_HTML = `
-<p style="margin: 0 0 16px 0; padding: 12px 16px; background-color: #f8f9fa; border-left: 4px solid #6c757d; font-size: 13px; line-height: 1.5; color: #495057; font-family: Arial, Helvetica, sans-serif;">
-  Public beta stress test: purchases are simulated. No real charges or deliveries will occur.
-</p>
+${EMAIL_BETA_BANNER_MARKER}
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 18px 0;max-width:100%;border-collapse:collapse;">
+  <tr>
+    <td style="background-color:#a100ff;background-image:linear-gradient(135deg,#ff3be0 0%,#a100ff 100%);padding:16px 18px;border-radius:8px;font-family:Arial,Helvetica,sans-serif;">
+      <p style="margin:0 0 8px 0;font-size:15px;font-weight:bold;color:#ffffff;line-height:1.35;">
+        🟣 LIVE BETA CONTEST ACTIVE
+      </p>
+      <p style="margin:0 0 6px 0;font-size:14px;color:#faf5ff;line-height:1.45;">
+        Earn points. Invite friends. Win cash and prizes.
+      </p>
+      <p style="margin:0 0 10px 0;font-size:14px;color:#faf5ff;line-height:1.45;">
+        Top 15% unlock The Quiet Reveal.
+      </p>
+      <p style="margin:0;font-size:11px;line-height:1.45;color:#e9d5ff;">
+        (All purchases are simulated)
+      </p>
+    </td>
+  </tr>
+</table>
 `;
 
-const BANNER_TEXT = `Public beta stress test: purchases are simulated. No real charges or deliveries will occur.
+const BANNER_TEXT = `🟣 LIVE BETA CONTEST ACTIVE
+Earn points. Invite friends. Win cash and prizes.
+Top 15% unlock The Quiet Reveal.
+(All purchases are simulated)
+
 
 `;
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 
 function getBannerContent() {
   if (EMAIL_CONTEST_BANNER_TEXT) {
+    const safe = escapeHtml(EMAIL_CONTEST_BANNER_TEXT);
     return {
-      html: `<p style="margin: 0 0 16px 0; padding: 12px 16px; background-color: #f8f9fa; border-left: 4px solid #6c757d; font-size: 13px; line-height: 1.5; color: #495057;"><strong>${EMAIL_CONTEST_BANNER_TEXT}</strong></p>`,
+      html: `
+${EMAIL_BETA_BANNER_MARKER}
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 18px 0;max-width:100%;border-collapse:collapse;">
+  <tr>
+    <td style="background-color:#a100ff;background-image:linear-gradient(135deg,#ff3be0 0%,#a100ff 100%);padding:16px 18px;border-radius:8px;font-family:Arial,Helvetica,sans-serif;">
+      <p style="margin:0;font-size:14px;line-height:1.5;color:#faf5ff;"><strong>${safe}</strong></p>
+    </td>
+  </tr>
+</table>`,
       text: `${EMAIL_CONTEST_BANNER_TEXT}\n\n`,
     };
   }
@@ -72,7 +111,12 @@ function applyGlobalEmailBanner({ html, text, subject }) {
   }
 
   // Prefix subject with [PUBLIC BETA TEST] if not already present
-  if (subject && !subject.includes('[PUBLIC BETA TEST]') && !subject.includes('[PUBLIC STRESS TEST]')) {
+  if (
+    subject &&
+    !subject.includes('[PUBLIC BETA TEST]') &&
+    !subject.includes('[PUBLIC STRESS TEST]') &&
+    !subject.includes('[TEST CONTEST]')
+  ) {
     result.subject = `[PUBLIC BETA TEST] ${subject}`;
   }
 

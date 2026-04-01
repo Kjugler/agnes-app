@@ -4,15 +4,37 @@
 
 import { shouldApplyEmailTestBanner } from './emailConfig';
 
-// Short, tasteful banner — not dominate
+/** Stable marker for dedupe (must not appear in normal email bodies). */
+export const EMAIL_BETA_BANNER_MARKER = '<!--agnes-email-beta-banner-->';
+
+// Jody bubble palette (see JodyAssistantTerminal bubbleGradient): #ff3be0 → #a100ff
 const BANNER_HTML = `
-<p style="margin: 0 0 16px 0; padding: 12px 16px; background-color: #f8f9fa; border-left: 4px solid #6c757d; font-size: 13px; line-height: 1.5; color: #495057; font-family: Arial, Helvetica, sans-serif;">
-  Public beta stress test: purchases are simulated. No real charges or deliveries will occur.
-</p>
+${EMAIL_BETA_BANNER_MARKER}
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 18px 0;max-width:100%;border-collapse:collapse;">
+  <tr>
+    <td style="background-color:#a100ff;background-image:linear-gradient(135deg,#ff3be0 0%,#a100ff 100%);padding:16px 18px;border-radius:8px;font-family:Arial,Helvetica,sans-serif;">
+      <p style="margin:0 0 8px 0;font-size:15px;font-weight:bold;color:#ffffff;line-height:1.35;">
+        🟣 LIVE BETA CONTEST ACTIVE
+      </p>
+      <p style="margin:0 0 6px 0;font-size:14px;color:#faf5ff;line-height:1.45;">
+        Earn points. Invite friends. Win cash and prizes.
+      </p>
+      <p style="margin:0 0 10px 0;font-size:14px;color:#faf5ff;line-height:1.45;">
+        Top 15% unlock The Quiet Reveal.
+      </p>
+      <p style="margin:0;font-size:11px;line-height:1.45;color:#e9d5ff;">
+        (All purchases are simulated)
+      </p>
+    </td>
+  </tr>
+</table>
 `;
 
-// Plain text banner
-const BANNER_TEXT = `Public beta stress test: purchases are simulated. No real charges or deliveries will occur.
+const BANNER_TEXT = `🟣 LIVE BETA CONTEST ACTIVE
+Earn points. Invite friends. Win cash and prizes.
+Top 15% unlock The Quiet Reveal.
+(All purchases are simulated)
+
 
 `;
 
@@ -37,10 +59,18 @@ export function applyGlobalEmailBanner({ html, text, subject }: ApplyBannerParam
     return { html, text, subject };
   }
 
-  // Guard against double-injection
+  // Guard against double-injection (current + legacy banner strings)
   const hasBannerMarker =
-    (html && (html.includes('Public beta stress test') || html.includes('PUBLIC STRESS TEST ACTIVE') || html.includes('PUBLIC BETA TEST'))) ||
-    (text && (text.includes('Public beta stress test') || text.includes('[PUBLIC BETA TEST]')));
+    (html &&
+      (html.includes(EMAIL_BETA_BANNER_MARKER) ||
+        html.includes('LIVE BETA CONTEST ACTIVE') ||
+        html.includes('Public beta stress test') ||
+        html.includes('PUBLIC STRESS TEST ACTIVE') ||
+        html.includes('PUBLIC BETA TEST'))) ||
+    (text &&
+      (text.includes('LIVE BETA CONTEST ACTIVE') ||
+        text.includes('Public beta stress test') ||
+        text.includes('[PUBLIC BETA TEST]')));
 
   if (hasBannerMarker) {
     console.log('[emailBanner] Banner already present, skipping injection');
@@ -54,9 +84,8 @@ export function applyGlobalEmailBanner({ html, text, subject }: ApplyBannerParam
     result.html = BANNER_HTML + html;
   }
 
-  // Inject text banner if text body exists (divider already included in BANNER_TEXT)
   if (text) {
-    result.text = BANNER_TEXT + '\n\n' + text;
+    result.text = BANNER_TEXT + text;
   }
 
   // Add [PUBLIC BETA TEST] prefix to subject if not already present
