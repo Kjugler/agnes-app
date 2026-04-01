@@ -4,6 +4,7 @@ const { prisma } = require('../prisma.cjs');
 const { applyGlobalEmailBanner } = require('../../src/lib/emailBanner.cjs');
 const { normalizeEmail } = require('../../src/lib/normalize.cjs');
 const { normalizeReferralCode } = require('../../src/lib/normalize.cjs');
+const { isSelfReferral, normalizeIdentityEmail } = require('../../src/lib/selfReferralGuards.cjs');
 const { ensureDatabaseUrl } = require('../prisma.cjs');
 const { getMailchimpClient } = require('../../lib/email/sendEmail.cjs');
 
@@ -337,24 +338,42 @@ router.post('/', async (req, res) => {
                 });
               }
 
-              // Update lastReferral fields
-              await prisma.user.update({
-                where: { id: recipientUser.id },
-                data: {
-                  lastReferredByUserId: referrerUserId,
-                  lastReferralCode: referrerReferralCode,
-                  lastReferralAt: new Date(),
-                  lastReferralSource: 'email',
-                  lastReferralEmail: normalizedFriendEmail,
-                },
+              const isSelf = isSelfReferral({
+                buyerEmail: normalizedFriendEmail,
+                sponsorEmail: (referrerEmail && normalizeEmail(referrerEmail)) || null,
+                buyerUserId: recipientUser.id,
+                sponsorUserId: referrerUserId,
               });
 
-              console.log('[REFER-FRIEND] Updated lastReferral for recipient', {
-                recipientEmail: normalizedFriendEmail,
-                recipientUserId: recipientUser.id,
-                referrerUserId,
-                referrerReferralCode,
-              });
+              if (isSelf) {
+                console.warn('[SELF_REFERRAL_GUARD] self_referral_blocked_at_creation', {
+                  buyerUserId: recipientUser.id,
+                  buyerEmail: normalizeIdentityEmail(normalizedFriendEmail),
+                  sponsorUserId: referrerUserId,
+                  sponsorEmail: normalizeIdentityEmail(referrerEmail || null),
+                  source: 'referFriend.email_send',
+                  referralCode: normalizeReferralCode(code),
+                });
+              } else {
+                // Update lastReferral fields
+                await prisma.user.update({
+                  where: { id: recipientUser.id },
+                  data: {
+                    lastReferredByUserId: referrerUserId,
+                    lastReferralCode: referrerReferralCode,
+                    lastReferralAt: new Date(),
+                    lastReferralSource: 'email',
+                    lastReferralEmail: normalizedFriendEmail,
+                  },
+                });
+
+                console.log('[REFER-FRIEND] Updated lastReferral for recipient', {
+                  recipientEmail: normalizedFriendEmail,
+                  recipientUserId: recipientUser.id,
+                  referrerUserId,
+                  referrerReferralCode,
+                });
+              }
             }
           } catch (updateErr) {
             // Non-blocking: log but don't fail email send

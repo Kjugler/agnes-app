@@ -18,6 +18,7 @@ const { stripe } = require('../src/lib/stripe.cjs');
 // Import Prisma for user lookup and discount code persistence
 const { prisma, ensureDatabaseUrl } = require('../server/prisma.cjs');
 const { normalizeEmail, normalizeReferralCode } = require('../src/lib/normalize.cjs');
+const { isSelfOwnedCode, normalizeIdentityEmail } = require('../src/lib/selfReferralGuards.cjs');
 
 // Part B1: Referral attribution window (30 days)
 const REFERRAL_ATTRIBUTION_WINDOW_DAYS = 30;
@@ -78,6 +79,7 @@ async function isValidAssociatePublisherRef(ref) {
         },
         select: {
           id: true,
+          email: true,
           code: true,
           referralCode: true,
         },
@@ -94,6 +96,7 @@ async function isValidAssociatePublisherRef(ref) {
           valid: true,
           method: 'database',
           referrerUserId: refUser.id,
+          referrerEmail: refUser.email || null,
         };
       }
     } catch (dbErr) {
@@ -296,6 +299,28 @@ module.exports = async function handler(req, res) {
       }
     }
     
+    function isSelfOwnedDiscountCandidate(codeValidation, sourceLabel, codeValue) {
+      if (!codeValidation?.valid) return false;
+      if (!user) return false;
+      const blocked = isSelfOwnedCode({
+        buyerEmail: user.email || customerEmail || null,
+        ownerEmail: codeValidation.referrerEmail || null,
+        buyerUserId: user.id || null,
+        ownerUserId: codeValidation.referrerUserId || null,
+      });
+      if (blocked) {
+        console.warn('[SELF_REFERRAL_GUARD] self_owned_code_blocked_at_checkout', {
+          buyerUserId: user.id || null,
+          buyerEmail: normalizeIdentityEmail(user.email || customerEmail || null),
+          ownerUserId: codeValidation.referrerUserId || null,
+          ownerEmail: normalizeIdentityEmail(codeValidation.referrerEmail || null),
+          code: normalizeReferralCode(codeValue || '') || null,
+          source: sourceLabel,
+        });
+      }
+      return blocked;
+    }
+
     // Part B2: Determine discount code priority: explicit ref > latest active referral > stored preferredDiscountCode > none
     const refRaw = req.body?.ref || req.body?.referralCode || '';
     // Filter out placeholder values like '...' or empty strings
@@ -332,7 +357,7 @@ module.exports = async function handler(req, res) {
     // When request code is invalid, fall back to persisted valid code so Stripe discount aligns with webhook attribution.
     if (requestCode) {
       const requestValid = await isValidAssociatePublisherRef(requestCode);
-      if (requestValid.valid) {
+      if (requestValid.valid && !isSelfOwnedDiscountCandidate(requestValid, 'request', requestCode)) {
         discountCodeToUse = requestCode;
         discountCodeSource = 'request';
         console.log('[CHECKOUT_DISCOUNT] Using code from request', { code: discountCodeToUse });
@@ -340,7 +365,7 @@ module.exports = async function handler(req, res) {
         // Request code invalid - fall back to persisted valid code (aligns Stripe with webhook attribution)
         if (activeLastReferral) {
           const refValid = await isValidAssociatePublisherRef(activeLastReferral.code);
-          if (refValid.valid) {
+          if (refValid.valid && !isSelfOwnedDiscountCandidate(refValid, 'last_referral_fallback', activeLastReferral.code)) {
             discountCodeToUse = activeLastReferral.code;
             discountCodeSource = 'last_referral_fallback';
             console.log('[CHECKOUT_DISCOUNT] Request code invalid, using persisted lastReferral', {
@@ -350,7 +375,7 @@ module.exports = async function handler(req, res) {
             });
           } else if (user?.preferredDiscountCode) {
             const prefValid = await isValidAssociatePublisherRef(user.preferredDiscountCode);
-            if (prefValid.valid) {
+            if (prefValid.valid && !isSelfOwnedDiscountCandidate(prefValid, 'stored_fallback', user.preferredDiscountCode)) {
               discountCodeToUse = user.preferredDiscountCode;
               discountCodeSource = 'stored_fallback';
               console.log('[CHECKOUT_DISCOUNT] Request and lastReferral invalid, using preferredDiscountCode', {
@@ -362,7 +387,7 @@ module.exports = async function handler(req, res) {
           }
         } else if (user?.preferredDiscountCode) {
           const prefValid = await isValidAssociatePublisherRef(user.preferredDiscountCode);
-          if (prefValid.valid) {
+          if (prefValid.valid && !isSelfOwnedDiscountCandidate(prefValid, 'stored_fallback', user.preferredDiscountCode)) {
             discountCodeToUse = user.preferredDiscountCode;
             discountCodeSource = 'stored_fallback';
             console.log('[CHECKOUT_DISCOUNT] Request code invalid, using preferredDiscountCode', {
@@ -377,18 +402,34 @@ module.exports = async function handler(req, res) {
         }
       }
     } else if (activeLastReferral) {
-      discountCodeToUse = activeLastReferral.code;
-      discountCodeSource = 'last_referral';
-      console.log('[CHECKOUT_DISCOUNT] Using active lastReferral', {
-        code: discountCodeToUse,
-        source: activeLastReferral.source,
-        ageDays: activeLastReferral.ageDays,
-        userId: user.id,
-      });
+      const activeRefValid = await isValidAssociatePublisherRef(activeLastReferral.code);
+      if (activeRefValid.valid && !isSelfOwnedDiscountCandidate(activeRefValid, 'last_referral', activeLastReferral.code)) {
+        discountCodeToUse = activeLastReferral.code;
+        discountCodeSource = 'last_referral';
+        console.log('[CHECKOUT_DISCOUNT] Using active lastReferral', {
+          code: discountCodeToUse,
+          source: activeLastReferral.source,
+          ageDays: activeLastReferral.ageDays,
+          userId: user.id,
+        });
+      } else {
+        console.log('[CHECKOUT_DISCOUNT] Skipping active lastReferral (invalid or self-owned)', {
+          code: activeLastReferral.code,
+          userId: user?.id || null,
+        });
+      }
     } else if (user?.preferredDiscountCode) {
-      discountCodeToUse = user.preferredDiscountCode;
-      discountCodeSource = 'stored';
-      console.log('[CHECKOUT_DISCOUNT] Using stored preferredDiscountCode', { code: discountCodeToUse, userId: user.id });
+      const prefValid = await isValidAssociatePublisherRef(user.preferredDiscountCode);
+      if (prefValid.valid && !isSelfOwnedDiscountCandidate(prefValid, 'stored', user.preferredDiscountCode)) {
+        discountCodeToUse = user.preferredDiscountCode;
+        discountCodeSource = 'stored';
+        console.log('[CHECKOUT_DISCOUNT] Using stored preferredDiscountCode', { code: discountCodeToUse, userId: user.id });
+      } else {
+        console.log('[CHECKOUT_DISCOUNT] Skipping stored preferredDiscountCode (invalid or self-owned)', {
+          code: user.preferredDiscountCode,
+          userId: user?.id || null,
+        });
+      }
     } else {
       discountCodeToUse = null;
       discountCodeSource = 'none';
@@ -404,9 +445,18 @@ module.exports = async function handler(req, res) {
       appliedDiscount = refValidationResult.valid;
       
       if (appliedDiscount) {
+        const selfOwnedAtValidation = isSelfOwnedDiscountCandidate(refValidationResult, 'final_validation', discountCodeToUse);
+        if (selfOwnedAtValidation) {
+          appliedDiscount = false;
+          refValidationResult.valid = false;
+          refValidationResult.reason = 'self_owned_code_blocked';
+        }
+      }
+
+      if (appliedDiscount) {
         refValidationResult.reason = `valid_${refValidationResult.method}`;
       } else {
-        refValidationResult.reason = 'invalid_format_or_not_in_allowlist';
+        refValidationResult.reason = refValidationResult.reason || 'invalid_format_or_not_in_allowlist';
       }
       
       console.log('[CHECKOUT_DISCOUNT] Validation result', {
@@ -468,7 +518,7 @@ module.exports = async function handler(req, res) {
 
     // Add product, ref, and tracking params to metadata
     metadata.product = product;
-    if (discountCodeToUse) {
+    if (discountCodeToUse && appliedDiscount) {
       metadata.ref = discountCodeToUse.toUpperCase();
       metadata.ref_valid = appliedDiscount ? 'true' : 'false';
     }

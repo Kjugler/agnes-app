@@ -10,6 +10,7 @@ const { buildPurchaseConfirmationEmail } = require('../src/lib/purchaseEmail.cjs
 const { buildReferrerCommissionEmail } = require('../src/lib/referrerCommissionEmail.cjs');
 const { applyGlobalEmailBanner } = require('../src/lib/emailBanner.cjs');
 const { normalizeEmail, normalizeReferralCode, extractNameFromEmail } = require('../src/lib/normalize.cjs');
+const { isSelfReferral, normalizeIdentityEmail } = require('../src/lib/selfReferralGuards.cjs');
 const envConfig = require('../src/config/env.cjs');
 const { awardPurchaseDailyPoints, awardReferralSponsorPoints } = require('../lib/points/awardPoints.cjs');
 const { recordLedgerEntry } = require('../lib/ledger/recordLedger.cjs');
@@ -1556,14 +1557,32 @@ router.post(
                   const referralAgeMs = Date.now() - new Date(buyerWithReferral.lastReferralAt).getTime();
                   
                   if (referralAgeMs <= REFERRAL_ATTRIBUTION_WINDOW_MS) {
-                    referralCodeToUse = buyerWithReferral.lastReferralCode;
-                    referralSource = 'buyer_last_referral';
-                    console.log('[ATTRIBUTION_REFERRER] Using buyer lastReferral', {
-                      referralCode: referralCodeToUse,
-                      ageDays: Math.floor(referralAgeMs / (24 * 60 * 60 * 1000)),
-                      source: buyerWithReferral.lastReferralSource,
-                      sessionId: session.id,
+                    const isSelfFromStoredReferral = isSelfReferral({
+                      buyerEmail: buyerUser?.email || customerEmail || null,
+                      sponsorEmail: null,
+                      buyerUserId: buyerUser?.id || null,
+                      sponsorUserId: buyerWithReferral.lastReferredByUserId || null,
                     });
+                    if (isSelfFromStoredReferral) {
+                      console.warn('[SELF_REFERRAL_GUARD] self_referral_blocked_at_post_purchase', {
+                        buyerUserId: buyerUser?.id || null,
+                        buyerEmail: normalizeIdentityEmail(buyerUser?.email || customerEmail || null),
+                        sponsorUserId: buyerWithReferral.lastReferredByUserId || null,
+                        sponsorEmail: null,
+                        referralCode: normalizeReferralCode(buyerWithReferral.lastReferralCode) || null,
+                        source: 'buyer_last_referral',
+                        sessionId: session.id,
+                      });
+                    } else {
+                      referralCodeToUse = buyerWithReferral.lastReferralCode;
+                      referralSource = 'buyer_last_referral';
+                      console.log('[ATTRIBUTION_REFERRER] Using buyer lastReferral', {
+                        referralCode: referralCodeToUse,
+                        ageDays: Math.floor(referralAgeMs / (24 * 60 * 60 * 1000)),
+                        source: buyerWithReferral.lastReferralSource,
+                        sessionId: session.id,
+                      });
+                    }
                   } else {
                     console.log('[ATTRIBUTION_REFERRER] Buyer lastReferral expired', {
                       referralCode: buyerWithReferral.lastReferralCode,
@@ -2204,6 +2223,27 @@ async function processReferralCommission({ referrerCode, buyerEmail, buyerUserId
       referrerCode: normalizedReferrerCode,
     });
     return; // Can't send email without address
+  }
+
+  const buyerNormalizedEmail = normalizeIdentityEmail(buyerEmail || null);
+  const referrerNormalizedEmail = normalizeIdentityEmail(referrerEmail || null);
+  const blockedSelfReferral = isSelfReferral({
+    buyerEmail: buyerNormalizedEmail || null,
+    sponsorEmail: referrerNormalizedEmail || null,
+    buyerUserId: buyerUserId || null,
+    sponsorUserId: referrer.id || null,
+  });
+  if (blockedSelfReferral) {
+    console.warn('[SELF_REFERRAL_GUARD] self_referral_blocked_at_post_purchase', {
+      buyerUserId: buyerUserId || null,
+      buyerEmail: buyerNormalizedEmail || null,
+      sponsorUserId: referrer.id || null,
+      sponsorEmail: referrerNormalizedEmail || null,
+      referralCode: normalizedReferrerCode,
+      sessionId,
+      purchaseId: purchaseId || null,
+    });
+    return;
   }
 
   // Constants (Math Mode v2)

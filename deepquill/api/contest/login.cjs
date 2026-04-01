@@ -5,6 +5,7 @@
 const { prisma } = require('../../server/prisma.cjs');
 const { normalizeEmail, extractNameFromEmail } = require('../../src/lib/normalize.cjs');
 const { normalizeReferralCode } = require('../../src/lib/normalize.cjs');
+const { isSelfReferral, normalizeIdentityEmail } = require('../../src/lib/selfReferralGuards.cjs');
 const { recordLedgerEntry } = require('../../lib/ledger/recordLedger.cjs');
 const { ensureDatabaseUrl } = require('../../server/prisma.cjs');
 const { customAlphabet } = require('nanoid');
@@ -147,8 +148,13 @@ async function handleContestLogin(req, res) {
             },
           });
 
-          if (referrerUser && referrerUser.id !== user.id) {
-            // Don't allow self-referral
+          const selfReferral = isSelfReferral({
+            buyerEmail: user.email,
+            sponsorEmail: null,
+            buyerUserId: user.id,
+            sponsorUserId: referrerUser?.id || null,
+          });
+          if (referrerUser && !selfReferral) {
             referrerUserId = referrerUser.id;
             referrerReferralCode = referrerUser.referralCode || referrerUser.code;
 
@@ -170,6 +176,15 @@ async function handleContestLogin(req, res) {
               referrerUserId,
               referrerReferralCode,
               source: 'link',
+            });
+          } else if (referrerUser && selfReferral) {
+            console.warn('[SELF_REFERRAL_GUARD] self_referral_blocked_at_creation', {
+              buyerUserId: user.id,
+              buyerEmail: normalizeIdentityEmail(user.email),
+              sponsorUserId: referrerUser.id,
+              sponsorEmail: null,
+              source: 'contest_login.ref_link',
+              referralCode: normalizedRefCode,
             });
           }
         }
