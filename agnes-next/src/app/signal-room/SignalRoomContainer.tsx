@@ -3,6 +3,7 @@
 import React, { useState, useCallback } from 'react';
 import SignalRoomHeader from './SignalRoomHeader';
 import SignalRoomClient from './SignalRoomClient';
+import type { DailySummaryBulletin } from './dailySummaryTypes';
 
 type SignalData = {
   id: string;
@@ -34,9 +35,14 @@ type SignalData = {
 type SignalRoomContainerProps = {
   signals: SignalData[];
   isInitializing: boolean;
+  initialDailySummary?: DailySummaryBulletin | null;
 };
 
-export default function SignalRoomContainer({ signals, isInitializing }: SignalRoomContainerProps) {
+export default function SignalRoomContainer({
+  signals,
+  isInitializing,
+  initialDailySummary = null,
+}: SignalRoomContainerProps) {
   const [feedRefreshTrigger, setFeedRefreshTrigger] = useState(0);
   const handleReviewSubmitted = useCallback(() => {
     setFeedRefreshTrigger((t) => t + 1);
@@ -77,10 +83,11 @@ export default function SignalRoomContainer({ signals, isInitializing }: SignalR
           </div>
         </div>
       ) : (
+        {/* Stable key: do not key off signals[0] — that remounted the client on every new top post and cleared bulletin state */}
         <SignalRoomClient
-          key={signals[0]?.id ?? 'empty'}
           signals={signals}
           feedRefreshTrigger={feedRefreshTrigger}
+          initialDailySummary={initialDailySummary}
         />
       )}
     </div>

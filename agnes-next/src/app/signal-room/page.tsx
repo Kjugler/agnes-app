@@ -4,6 +4,7 @@ import { normalizeEmail } from '@/lib/email';
 import { hasSignalRoomAccess, getSignalRoomAccessMode, SIGNAL_ROOM_ACCESS_COOKIE } from '@/lib/signal-room-access';
 import { getActiveBroadcastConfig } from '@/lib/signal-room-broadcast';
 import SignalRoomContainer from './SignalRoomContainer';
+import type { DailySummaryBulletin } from './dailySummaryTypes';
 import SignalRoomHeader from './SignalRoomHeader';
 import SignalRoomGateView from './SignalRoomGateView';
 
@@ -74,6 +75,19 @@ async function fetchInitialSignalsFromDeepquill(cookieHeader: string): Promise<{
   }
 }
 
+/** Latest daily contest summary (same JSON as GET /api/contest/daily-summary) for SSR bulletin card. */
+async function fetchDailySummaryFromDeepquill(): Promise<DailySummaryBulletin | null> {
+  try {
+    const res = await fetch(`${getDeepquillBase()}/api/contest/daily-summary`, { cache: 'no-store' });
+    const data = await res.json();
+    if (data?.ok && data.summary) return data.summary as DailySummaryBulletin;
+    return null;
+  } catch (err) {
+    console.error('[SignalRoom] Failed to fetch daily summary from deepquill:', err);
+    return null;
+  }
+}
+
 export default async function SignalRoomPage() {
   // Get current user email for acknowledge status and access check
   const cookieStore = await cookies();
@@ -117,9 +131,12 @@ export default async function SignalRoomPage() {
     );
   }
 
-  // Fetch initial signals from deepquill (same source as creates and load-more)
+  // Fetch initial signals + latest daily summary in parallel (bulletin must render without waiting on client JS)
   const cookieHeader = cookieStore.getAll().map((c) => `${c.name}=${c.value}`).join('; ');
-  const { ok, signals: rawSignals } = await fetchInitialSignalsFromDeepquill(cookieHeader);
+  const [{ ok, signals: rawSignals }, initialDailySummary] = await Promise.all([
+    fetchInitialSignalsFromDeepquill(cookieHeader),
+    fetchDailySummaryFromDeepquill(),
+  ]);
   const signalsData = ok && Array.isArray(rawSignals)
     ? rawSignals.map((s) => ({
         id: s.id,
@@ -153,7 +170,11 @@ export default async function SignalRoomPage() {
   const isInitializing = !ok;
 
   return (
-    <SignalRoomContainer signals={signalsData} isInitializing={isInitializing} />
+    <SignalRoomContainer
+      signals={signalsData}
+      isInitializing={isInitializing}
+      initialDailySummary={initialDailySummary}
+    />
   );
 }
 

@@ -8,6 +8,7 @@ import EditSignalModal from './EditSignalModal';
 import EditReviewModal from './EditReviewModal';
 import SignalMedia from './SignalMedia';
 import RibbonTicker from './RibbonTicker';
+import type { DailySummaryBulletin } from './dailySummaryTypes';
 
 function formatRelativeTime(date: Date | string): string {
   const now = new Date();
@@ -132,30 +133,22 @@ function signalHasHeroMedia(s: SignalData): boolean {
   return !!(s.mediaUrl && (s.mediaType === 'video' || s.mediaType === 'image'));
 }
 
-type DailySummaryApi = {
-  summaryDate: string;
-  first: { name: string; dailyPoints: number | null };
-  second: { name: string; dailyPoints: number | null };
-  third: { name: string; dailyPoints: number | null };
-  contestantCount: number;
-  liveLeader: { name: string | null; totalPoints: number | null };
-  cashChallenge: {
-    winnerDisplayName: string | null;
-    claimInstructions: string | null;
-    claimed: boolean;
-  };
-};
-
 type SignalRoomClientProps = {
   signals: SignalData[];
   feedRefreshTrigger?: number;
+  /** Server-fetched latest summary so the bulletin renders on first paint (not only after client fetch). */
+  initialDailySummary?: DailySummaryBulletin | null;
 };
 
-export default function SignalRoomClient({ signals: initialSignals, feedRefreshTrigger = 0 }: SignalRoomClientProps) {
+export default function SignalRoomClient({
+  signals: initialSignals,
+  feedRefreshTrigger = 0,
+  initialDailySummary = null,
+}: SignalRoomClientProps) {
   const router = useRouter();
   const [signals, setSignals] = useState(initialSignals);
   const [reviews, setReviews] = useState<ReviewData[]>([]);
-  const [dailySummary, setDailySummary] = useState<DailySummaryApi | null>(null);
+  const [dailySummary, setDailySummary] = useState<DailySummaryBulletin | null>(initialDailySummary ?? null);
   const [replyModalSignalId, setReplyModalSignalId] = useState<string | null>(null);
   const [editSignal, setEditSignal] = useState<SignalData | null>(null);
   const [editReview, setEditReview] = useState<ReviewData | null>(null);
@@ -178,15 +171,26 @@ export default function SignalRoomClient({ signals: initialSignals, feedRefreshT
       .catch(() => {});
   }, [feedRefreshTrigger]);
 
+  // Refresh bulletin after job runs / navigation; 5m poll picks up new day without full reload
   useEffect(() => {
-    fetch('/api/contest/daily-summary', { cache: 'no-store' })
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.ok && d.summary) {
-          setDailySummary(d.summary);
-        }
-      })
-      .catch(() => {});
+    let cancelled = false;
+    const load = () => {
+      fetch('/api/contest/daily-summary', { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((d) => {
+          if (cancelled) return;
+          if (d.ok && d.summary) {
+            setDailySummary(d.summary as DailySummaryBulletin);
+          }
+        })
+        .catch(() => {});
+    };
+    load();
+    const interval = window.setInterval(load, 5 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
   }, [feedRefreshTrigger]);
 
   const feedItems: FeedItem[] = useMemo(
