@@ -14,6 +14,20 @@ export function buildRibbonTickerText(events: SignalRibbonEvent[]): string {
   return events.map((e) => e.eventText).join(' • ');
 }
 
+/**
+ * One continuous stream: canonical signal events (incl. daily contest line) + optional extra phrases
+ * (motivational, live stats, etc.), same separator as the rest of the ribbon.
+ */
+export function mergeRibbonTickerSegments(
+  events: SignalRibbonEvent[],
+  extraSegments: string[] | undefined
+): string {
+  const base = buildRibbonTickerText(events);
+  const extras = (extraSegments ?? []).map((s) => String(s).trim()).filter(Boolean);
+  if (extras.length === 0) return base;
+  return [base, ...extras].join(' • ');
+}
+
 /** Synthetic row prepended by deepquill when a DailyContestSummary exists. */
 export function extractDailyContestRibbonLine(events: SignalRibbonEvent[]): string | null {
   const first = events[0];

@@ -19,7 +19,7 @@ import {
 } from '@/lib/identity';
 import RequestAccessModal from '@/components/auth/RequestAccessModal';
 import BetaContestRules from '@/components/BetaContestRules';
-import { extractDailyContestRibbonLine, type SignalRibbonEvent } from '@/lib/signalRibbonFeed';
+import SiteRibbonTicker from '@/components/SiteRibbonTicker';
 
 declare global {
   interface Window {
@@ -75,9 +75,6 @@ export default function ContestClient() {
     booksClaimed: number;
   } | null>(null);
   const [liveStatsHighlight, setLiveStatsHighlight] = useState<Set<string>>(new Set());
-  const [bannerIndex, setBannerIndex] = useState(0);
-  /** Same source as Signal Room / Protocol ribbons: GET /api/signal/events (daily summary prepended server-side). */
-  const [dailyContestRibbonLine, setDailyContestRibbonLine] = useState<string | null>(null);
   const [showTerminalUnlockPanel, setShowTerminalUnlockPanel] = useState(false);
   const [terminalDiscoveryBannerActive, setTerminalDiscoveryBannerActive] = useState(false);
   const [terminalDiscoveryJustAwarded, setTerminalDiscoveryJustAwarded] = useState<boolean | null>(null);
@@ -484,32 +481,6 @@ export default function ContestClient() {
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, []);
-
-  // Ribbon parity with Signal Room: same merged SignalEvent feed (includes daily contest line when present).
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/signal/events', { cache: 'no-store' })
-      .then((r) => r.json())
-      .then((d) => {
-        if (cancelled || !d?.ok || !Array.isArray(d.events)) return;
-        const line = extractDailyContestRibbonLine(d.events as SignalRibbonEvent[]);
-        setDailyContestRibbonLine(line);
-      })
-      .catch(() => {});
-    const t = setInterval(() => {
-      fetch('/api/signal/events', { cache: 'no-store' })
-        .then((r) => r.json())
-        .then((d) => {
-          if (!d?.ok || !Array.isArray(d.events)) return;
-          setDailyContestRibbonLine(extractDailyContestRibbonLine(d.events as SignalRibbonEvent[]));
-        })
-        .catch(() => {});
-    }, 60000);
-    return () => {
-      cancelled = true;
-      clearInterval(t);
-    };
   }, []);
 
   // Poll live stats every 30s
@@ -942,37 +913,31 @@ export default function ContestClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, buttons]);
 
-  // Dynamic banner messages: motivational + live metrics (only when > 0)
-  const bannerMessages = useMemo(() => {
-    const msgs = [...BANNER_MOTIVATIONAL];
+  /** Motivational + live stats + terminal flash — merged into the same ticker as `/api/signal/events` (SiteRibbonTicker). */
+  const ribbonExtraSegments = useMemo(() => {
+    const segs: string[] = [...BANNER_MOTIVATIONAL];
+    if (terminalDiscoveryBannerActive) {
+      segs.unshift('⚡ Hidden terminal discovered — bonus points awarded');
+    }
     if (liveStats) {
       if (liveStats.currentLeaderPoints > 0 && liveStats.currentLeaderName) {
-        msgs.push(`⚡ Current leader: ${liveStats.currentLeaderName} — ${liveStats.currentLeaderPoints.toLocaleString()} pts`);
+        segs.push(`⚡ Current leader: ${liveStats.currentLeaderName} — ${liveStats.currentLeaderPoints.toLocaleString()} pts`);
       }
       if (liveStats.playersExploring > 0) {
-        msgs.push(`⚡ ${liveStats.playersExploring} players exploring the system`);
+        segs.push(`⚡ ${liveStats.playersExploring} players exploring the system`);
       }
       if (liveStats.friendsSavedCents > 0) {
-        msgs.push(`⚡ Friends have saved $${(liveStats.friendsSavedCents / 100).toFixed(0)} through shared links`);
+        segs.push(`⚡ Friends have saved $${(liveStats.friendsSavedCents / 100).toFixed(0)} through shared links`);
       }
       if (liveStats.associateRewardsCents > 0) {
-        msgs.push(`⚡ Associate publishers have earned $${(liveStats.associateRewardsCents / 100).toFixed(0)} in rewards`);
+        segs.push(`⚡ Associate publishers have earned $${(liveStats.associateRewardsCents / 100).toFixed(0)} in rewards`);
       }
       if (liveStats.booksClaimed > 0) {
-        msgs.push(`⚡ ${liveStats.booksClaimed} books claimed through the system`);
+        segs.push(`⚡ ${liveStats.booksClaimed} books claimed through the system`);
       }
     }
-    return msgs;
-  }, [liveStats]);
-
-  // Banner rotation: 2.5s per message, smooth fade
-  useEffect(() => {
-    if (bannerMessages.length === 0) return;
-    const interval = setInterval(() => {
-      setBannerIndex((prev) => (prev + 1) % bannerMessages.length);
-    }, 2500);
-    return () => clearInterval(interval);
-  }, [bannerMessages.length]);
+    return segs;
+  }, [liveStats, terminalDiscoveryBannerActive]);
 
   const handleChangeAccount = useCallback(async () => {
     associateStatusForEmailRef.current = null;
@@ -1521,65 +1486,11 @@ export default function ContestClient() {
         </div>
       )}
 
-      {/* DYNAMIC RUNNING BANNER: daily contest (fixed line) + motivation + live metrics */}
-      {(dailyContestRibbonLine || bannerMessages.length > 0) && (
-        <div
-          style={{
-            backgroundColor: 'rgba(0, 255, 224, 0.12)',
-            borderTop: '1px solid rgba(0, 255, 224, 0.3)',
-            color: '#00ffe0',
-            position: 'fixed',
-            bottom: 0,
-            width: '100%',
-            padding: dailyContestRibbonLine ? '0.35rem 1rem 0.5rem' : '0.6rem 1rem',
-            fontWeight: 600,
-            zIndex: 1000,
-            textAlign: 'center',
-            minHeight: 44,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: dailyContestRibbonLine ? 6 : 0,
-        }}
-      >
-        {dailyContestRibbonLine && (
-          <p
-            style={{
-              margin: 0,
-              fontSize: '0.82rem',
-              lineHeight: 1.35,
-              color: '#b5fff4',
-              fontWeight: 600,
-              maxWidth: 960,
-            }}
-          >
-            {dailyContestRibbonLine}
-          </p>
-        )}
-        {bannerMessages.length > 0 && (
-          <p
-            key={bannerIndex}
-            style={{
-              margin: 0,
-              fontSize: '0.95rem',
-              animation: 'contestBannerFade 0.5s ease',
-            }}
-          >
-            {terminalDiscoveryBannerActive
-              ? '⚡ Hidden terminal discovered — bonus points awarded'
-              : bannerMessages[bannerIndex]}
-          </p>
-        )}
-      </div>
-      )}
+      {/* Unified ribbon: same continuous ticker as Signal Room / Protocol — signal events + motivational + live stats */}
+      <SiteRibbonTicker extraSegments={ribbonExtraSegments} pollIntervalMs={60000} />
 
       {/* ANIMATIONS */}
       <style jsx global>{`
-        @keyframes contestBannerFade {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
         @keyframes liveStatPulse {
           0% { opacity: 1; box-shadow: 0 0 0 rgba(0, 255, 224, 0); }
           50% { opacity: 1; box-shadow: 0 0 12px rgba(0, 255, 224, 0.5); }

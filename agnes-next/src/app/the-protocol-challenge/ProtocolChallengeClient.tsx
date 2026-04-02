@@ -6,7 +6,7 @@ import { clearIdentityStorage } from '@/lib/identity';
 import { readContestEmail } from '@/lib/identity';
 import CinematicVideo from '@/components/CinematicVideo';
 import GlitchIntro from '@/components/GlitchIntro';
-import { buildRibbonTickerText } from '@/lib/signalRibbonFeed';
+import SiteRibbonTicker from '@/components/SiteRibbonTicker';
 import styles from './protocol-challenge.module.css';
 
 export default function ProtocolChallengeClient() {
@@ -16,18 +16,6 @@ export default function ProtocolChallengeClient() {
   const [entryVariantSource, setEntryVariantSource] = useState<string>('unknown');
   const [isButtonHovered, setIsButtonHovered] = useState(false);
   const [showIntro, setShowIntro] = useState(true); // ✅ Protocol Challenge: intro ALWAYS plays
-  const [ribbonTickerText, setRibbonTickerText] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch('/api/signal/events')
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.ok && Array.isArray(d.events) && d.events.length > 0) {
-          setRibbonTickerText(buildRibbonTickerText(d.events));
-        }
-      })
-      .catch(() => {});
-  }, []);
 
   // E4: Get variant for dev display
   useEffect(() => {
@@ -71,33 +59,6 @@ export default function ProtocolChallengeClient() {
       window.history.replaceState({}, '', newUrl);
     }
   }, []);
-
-  // Inject ticker animation CSS directly to ensure it works
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    // Check if style already exists
-    if (!document.getElementById('protocol-ticker-style')) {
-      const style = document.createElement('style');
-      style.id = 'protocol-ticker-style';
-      style.textContent = `
-        @keyframes ticker {
-          0% {
-            transform: translateX(0);
-          }
-          100% {
-            transform: translateX(-100%);
-          }
-        }
-        .ticker-text {
-          animation: ticker 20s linear infinite !important;
-        }
-      `;
-      document.head.appendChild(style);
-    }
-  }, []);
-
-
 
   // Dev badge: show entry variant and URL params
   useEffect(() => {
@@ -158,7 +119,14 @@ export default function ProtocolChallengeClient() {
         />
       )}
       
-      <div className={styles.page} style={{ opacity: showIntro ? 0 : 1, transition: 'opacity 300ms ease-in' }}>
+      <div
+        className={styles.page}
+        style={{
+          opacity: showIntro ? 0 : 1,
+          transition: 'opacity 300ms ease-in',
+          paddingBottom: '3rem',
+        }}
+      >
       {/* Dev-only badge: show entry variant and URL params */}
       {process.env.NODE_ENV === 'development' && (
         <div
@@ -245,14 +213,9 @@ export default function ProtocolChallengeClient() {
           mode="inline"
         />
       </div>
+      </div>
 
-      <div className={styles.banner}>
-        <span className={styles.tickerText}>
-          {ribbonTickerText ??
-            'Agnes Protocol tops banned book list — again. ⚡ Tiana M. just earned 3,450 points. ⚡ Nate R. entered the contest from Tucson. ⚡'}
-        </span>
-      </div>
-      </div>
+      <SiteRibbonTicker />
     </>
   );
 }

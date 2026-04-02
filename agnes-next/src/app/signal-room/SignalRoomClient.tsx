@@ -987,14 +987,6 @@ export default function SignalRoomClient({ signals: initialSignals, feedRefreshT
 
       {/* Animations */}
       <style jsx global>{`
-        @keyframes ticker {
-          0% {
-            transform: translateX(0%);
-          }
-          100% {
-            transform: translateX(-100%);
-          }
-        }
         @keyframes pulse {
           0%, 100% {
             opacity: 1;
