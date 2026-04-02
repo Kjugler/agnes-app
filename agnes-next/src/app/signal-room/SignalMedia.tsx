@@ -64,6 +64,22 @@ export default function SignalMedia({ mediaType, mediaUrl, variant = 'default' }
         />
       );
     }
+    if (source.type === 'pdf') {
+      return (
+        <iframe
+          src={source.url}
+          title="PDF attachment"
+          style={{
+            width: '100%',
+            minHeight: isFeatured ? 520 : 420,
+            border: 'none',
+            borderRadius,
+            marginTop,
+            backgroundColor: '#0a0e27',
+          }}
+        />
+      );
+    }
     if (source.type === 'audio') {
       return (
         <audio

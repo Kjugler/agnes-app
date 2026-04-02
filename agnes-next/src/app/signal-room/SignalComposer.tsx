@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { validateDocumentPasteUrl } from '@/lib/signalDocumentUrl';
 
 type SignalComposerProps = {
   isOpen: boolean;
@@ -10,11 +11,21 @@ type SignalComposerProps = {
 
 type SubmitState = 'idle' | 'submitting' | 'approved' | 'held' | 'error';
 
-type MediaTypeOption = 'none' | 'video' | 'image';
-type VideoAttachMode = 'upload' | 'url';
+type MediaTypeOption = 'none' | 'video' | 'image' | 'document';
+type AttachMode = 'upload' | 'url';
 
 const MAX_VIDEO_BYTES = 80 * 1024 * 1024;
 const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/webm'];
+
+const MAX_DOCUMENT_BYTES = 50 * 1024 * 1024;
+const ALLOWED_DOCUMENT_TYPES = ['application/pdf', 'image/png', 'image/jpeg'] as const;
+
+function documentExtForMime(mime: string): string | null {
+  if (mime === 'application/pdf') return 'pdf';
+  if (mime === 'image/png') return 'png';
+  if (mime === 'image/jpeg') return 'jpg';
+  return null;
+}
 
 function isValidMediaUrl(url: string): boolean {
   try {
@@ -29,7 +40,8 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
   const router = useRouter();
   const [text, setText] = useState('');
   const [mediaType, setMediaType] = useState<MediaTypeOption>('none');
-  const [videoAttachMode, setVideoAttachMode] = useState<VideoAttachMode>('upload');
+  /** Shared by Video and Document rows (upload vs paste link). */
+  const [attachMode, setAttachMode] = useState<AttachMode>('upload');
   const [mediaUrl, setMediaUrl] = useState('');
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [submitState, setSubmitState] = useState<SubmitState>('idle');
@@ -40,7 +52,7 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
     if (isOpen) {
       setText('');
       setMediaType('none');
-      setVideoAttachMode('upload');
+      setAttachMode('upload');
       setMediaUrl('');
       setUploadProgress(null);
       setSubmitState('idle');
@@ -89,6 +101,52 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
     }
   };
 
+  const handleDocumentFile = async (file: File | null) => {
+    if (!file) return;
+    setError(null);
+    const allowedMime = new Set<string>(ALLOWED_DOCUMENT_TYPES);
+    if (!allowedMime.has(file.type)) {
+      setError('Use PDF, PNG, or JPG only.');
+      return;
+    }
+    if (file.size > MAX_DOCUMENT_BYTES) {
+      setError('File must be 50 MB or smaller.');
+      return;
+    }
+    const ext = documentExtForMime(file.type);
+    if (!ext) {
+      setError('Unsupported file type.');
+      return;
+    }
+    setUploadProgress(0);
+    try {
+      const ctx = await fetch('/api/signal/upload-context');
+      const ctxJson = await ctx.json().catch(() => ({}));
+      if (!ctx.ok) {
+        throw new Error(
+          ctxJson.error === 'UNAUTHORIZED' ? 'Sign in to upload documents.' : 'Could not start upload.'
+        );
+      }
+      const userId = ctxJson.userId as string;
+      const pathname = `signals/${userId}/${crypto.randomUUID()}.${ext}`;
+      const { upload } = await import('@vercel/blob/client');
+      const result = await upload(pathname, file, {
+        access: 'public',
+        handleUploadUrl: '/api/signal/media-upload',
+        multipart: file.size > 4 * 1024 * 1024,
+        onUploadProgress: ({ percentage }) => setUploadProgress(percentage),
+      });
+      setMediaUrl(result.url);
+      setUploadProgress(100);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Upload failed';
+      setError(message);
+      setUploadProgress(null);
+    } finally {
+      window.setTimeout(() => setUploadProgress(null), 600);
+    }
+  };
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -110,11 +168,23 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
     if (mediaType === 'video') {
       const url = mediaUrl.trim();
       if (!url) {
-        setError(videoAttachMode === 'upload' ? 'Upload a video file first' : 'Enter a video URL or upload a file');
+        setError(attachMode === 'upload' ? 'Upload a video file first' : 'Enter a video URL or upload a file');
         return;
       }
       if (!isValidMediaUrl(url)) {
         setError('Media URL must start with http:// or https://');
+        return;
+      }
+    }
+    if (mediaType === 'document') {
+      const url = mediaUrl.trim();
+      if (!url) {
+        setError(attachMode === 'upload' ? 'Upload a PDF or image first' : 'Paste a direct link to a PDF or image file');
+        return;
+      }
+      const docCheck = validateDocumentPasteUrl(url);
+      if (!docCheck.ok) {
+        setError(docCheck.error);
         return;
       }
     }
@@ -123,7 +193,7 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
 
     try {
       const body: Record<string, unknown> = { text: text.trim() };
-      if (mediaType === 'video' || mediaType === 'image') {
+      if (mediaType === 'video' || mediaType === 'image' || mediaType === 'document') {
         body.mediaType = mediaType;
         body.mediaUrl = mediaUrl.trim();
       }
@@ -148,7 +218,7 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
           setText('');
           setMediaType('none');
           setMediaUrl('');
-          setVideoAttachMode('upload');
+          setAttachMode('upload');
           setUploadProgress(null);
           setTimeout(() => {
             onClose();
@@ -165,8 +235,15 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
   };
 
   const textValid = text.trim().length >= 3 && text.trim().length <= 240;
-  const mediaValid =
-    mediaType === 'none' || !!(mediaUrl.trim() && isValidMediaUrl(mediaUrl.trim()));
+  const mediaValid = (() => {
+    if (mediaType === 'none') return true;
+    const url = mediaUrl.trim();
+    if (!url) return false;
+    if (mediaType === 'document' && attachMode === 'url') {
+      return validateDocumentPasteUrl(url).ok;
+    }
+    return isValidMediaUrl(url);
+  })();
   const isValid = textValid && mediaValid;
   const uploadBusy = uploadProgress !== null && uploadProgress < 100;
   const canSubmit = isValid && submitState === 'idle' && !uploadBusy;
@@ -355,7 +432,7 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
                     setError(null);
                     setMediaUrl('');
                     setUploadProgress(null);
-                    if (v === 'video') setVideoAttachMode('upload');
+                    if (v === 'video' || v === 'document') setAttachMode('upload');
                   }}
                   disabled={isDisabled}
                   style={{
@@ -372,6 +449,7 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
                   <option value="none">None</option>
                   <option value="image">Image (URL)</option>
                   <option value="video">Video</option>
+                  <option value="document">Document (PDF / PNG / JPG)</option>
                 </select>
                 {mediaType === 'image' && (
                   <input
@@ -403,14 +481,14 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
                         type="button"
                         disabled={isDisabled}
                         onClick={() => {
-                          setVideoAttachMode('upload');
+                          setAttachMode('upload');
                           setMediaUrl('');
                           setError(null);
                         }}
                         style={{
                           padding: '0.4rem 0.75rem',
-                          backgroundColor: videoAttachMode === 'upload' ? '#00ffe0' : '#0a0e27',
-                          color: videoAttachMode === 'upload' ? '#000' : '#e0e0e0',
+                          backgroundColor: attachMode === 'upload' ? '#00ffe0' : '#0a0e27',
+                          color: attachMode === 'upload' ? '#000' : '#e0e0e0',
                           border: '1px solid #1a1f3a',
                           borderRadius: 4,
                           cursor: isDisabled ? 'not-allowed' : 'pointer',
@@ -424,14 +502,14 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
                         type="button"
                         disabled={isDisabled}
                         onClick={() => {
-                          setVideoAttachMode('url');
+                          setAttachMode('url');
                           setMediaUrl('');
                           setError(null);
                         }}
                         style={{
                           padding: '0.4rem 0.75rem',
-                          backgroundColor: videoAttachMode === 'url' ? '#00ffe0' : '#0a0e27',
-                          color: videoAttachMode === 'url' ? '#000' : '#e0e0e0',
+                          backgroundColor: attachMode === 'url' ? '#00ffe0' : '#0a0e27',
+                          color: attachMode === 'url' ? '#000' : '#e0e0e0',
                           border: '1px solid #1a1f3a',
                           borderRadius: 4,
                           cursor: isDisabled ? 'not-allowed' : 'pointer',
@@ -442,7 +520,7 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
                         Paste link
                       </button>
                     </div>
-                    {videoAttachMode === 'upload' && (
+                    {attachMode === 'upload' && (
                       <>
                         <label
                           style={{
@@ -472,12 +550,12 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
                         {uploadProgress !== null && uploadProgress < 100 && (
                           <span style={{ fontSize: '0.8em', color: '#888' }}>Uploading… {uploadProgress}%</span>
                         )}
-                        {!!mediaUrl && videoAttachMode === 'upload' && (
+                        {!!mediaUrl && attachMode === 'upload' && (
                           <span style={{ fontSize: '0.8em', color: '#00ffe0' }}>Video ready — send when you&apos;re done writing.</span>
                         )}
                       </>
                     )}
-                    {videoAttachMode === 'url' && (
+                    {attachMode === 'url' && (
                       <input
                         type="url"
                         value={mediaUrl}
@@ -498,6 +576,120 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
                           fontSize: '0.9em',
                         }}
                       />
+                    )}
+                  </div>
+                )}
+                {mediaType === 'document' && (
+                  <div style={{ flex: '1 1 100%', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        disabled={isDisabled}
+                        onClick={() => {
+                          setAttachMode('upload');
+                          setMediaUrl('');
+                          setError(null);
+                        }}
+                        style={{
+                          padding: '0.4rem 0.75rem',
+                          backgroundColor: attachMode === 'upload' ? '#00ffe0' : '#0a0e27',
+                          color: attachMode === 'upload' ? '#000' : '#e0e0e0',
+                          border: '1px solid #1a1f3a',
+                          borderRadius: 4,
+                          cursor: isDisabled ? 'not-allowed' : 'pointer',
+                          fontFamily: '"Courier New", monospace',
+                          fontSize: '0.85em',
+                        }}
+                      >
+                        Upload file
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isDisabled}
+                        onClick={() => {
+                          setAttachMode('url');
+                          setMediaUrl('');
+                          setError(null);
+                        }}
+                        style={{
+                          padding: '0.4rem 0.75rem',
+                          backgroundColor: attachMode === 'url' ? '#00ffe0' : '#0a0e27',
+                          color: attachMode === 'url' ? '#000' : '#e0e0e0',
+                          border: '1px solid #1a1f3a',
+                          borderRadius: 4,
+                          cursor: isDisabled ? 'not-allowed' : 'pointer',
+                          fontFamily: '"Courier New", monospace',
+                          fontSize: '0.85em',
+                        }}
+                      >
+                        Paste link
+                      </button>
+                    </div>
+                    {attachMode === 'upload' && (
+                      <>
+                        <label
+                          style={{
+                            display: 'inline-block',
+                            padding: '0.5rem 0.75rem',
+                            backgroundColor: '#1a1f3a',
+                            border: '1px solid #2a3a4a',
+                            borderRadius: 4,
+                            cursor: isDisabled ? 'not-allowed' : 'pointer',
+                            fontSize: '0.85em',
+                            color: '#e0e0e0',
+                          }}
+                        >
+                          Choose file (PDF, PNG, JPG — max 50 MB)
+                          <input
+                            type="file"
+                            accept="application/pdf,image/png,image/jpeg,.pdf,.png,.jpg,.jpeg"
+                            disabled={isDisabled || uploadBusy}
+                            style={{ display: 'none' }}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0] ?? null;
+                              void handleDocumentFile(f);
+                              e.target.value = '';
+                            }}
+                          />
+                        </label>
+                        {uploadProgress !== null && uploadProgress < 100 && (
+                          <span style={{ fontSize: '0.8em', color: '#888' }}>Uploading… {uploadProgress}%</span>
+                        )}
+                        {!!mediaUrl && attachMode === 'upload' && (
+                          <span style={{ fontSize: '0.8em', color: '#00ffe0' }}>
+                            Document ready — send when you&apos;re done writing.
+                          </span>
+                        )}
+                      </>
+                    )}
+                    {attachMode === 'url' && (
+                      <>
+                        <input
+                          type="url"
+                          value={mediaUrl}
+                          onChange={(e) => {
+                            setMediaUrl(e.target.value);
+                            setError(null);
+                          }}
+                          placeholder="https://… direct .pdf or .png / .jpg (not Google Drive /view)"
+                          disabled={isDisabled}
+                          style={{
+                            width: '100%',
+                            padding: '0.5rem 0.75rem',
+                            backgroundColor: '#0a0e27',
+                            border: '1px solid #1a1f3a',
+                            borderRadius: 4,
+                            color: isDisabled ? '#666' : '#e0e0e0',
+                            fontFamily: '"Courier New", monospace',
+                            fontSize: '0.9em',
+                          }}
+                        />
+                        <p style={{ margin: 0, fontSize: '0.75rem', color: '#888', lineHeight: 1.4 }}>
+                          Paste links must point <strong>directly</strong> to a file (URL ends in .pdf, .png, .jpg). Viewer
+                          pages (e.g. Google Drive “open” links) cannot be embedded — use a direct asset URL or upload the
+                          file.
+                        </p>
+                      </>
                     )}
                   </div>
                 )}

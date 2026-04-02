@@ -6,8 +6,10 @@ export const runtime = 'nodejs';
 const API_BASE_URL =
   process.env.DEEPQUILL_URL || process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5055';
 
-/** Beta limit: ~80 MB (client multipart used above ~4.5 MB anyway) */
+/** Video */
 const MAX_VIDEO_BYTES = 80 * 1024 * 1024;
+/** PDF + images (Signal document attachments) */
+const MAX_DOCUMENT_BYTES = 50 * 1024 * 1024;
 
 async function resolveUploadUserId(request: NextRequest): Promise<string | null> {
   const cookie = request.headers.get('cookie') || '';
@@ -25,16 +27,27 @@ function validatePathname(pathname: string, userId: string) {
   if (!pathname.startsWith(prefix)) {
     throw new Error('Invalid upload path');
   }
-  if (!/\.(mp4|webm)$/i.test(pathname)) {
-    throw new Error('Only .mp4 or .webm uploads are allowed');
+  const allowed = /\.(mp4|webm|pdf|png|jpg|jpeg)$/i.test(pathname);
+  if (!allowed) {
+    throw new Error('Only .mp4, .webm, .pdf, .png, .jpg, or .jpeg uploads are allowed');
   }
 }
+
+function maxBytesForPathname(pathname: string): number {
+  if (/\.(pdf|png|jpg|jpeg)$/i.test(pathname)) {
+    return MAX_DOCUMENT_BYTES;
+  }
+  return MAX_VIDEO_BYTES;
+}
+
+const VIDEO_TYPES = ['video/mp4', 'video/webm'] as const;
+const DOCUMENT_TYPES = ['application/pdf', 'image/png', 'image/jpeg'] as const;
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   if (!token) {
     return NextResponse.json(
-      { error: 'Video uploads are not configured (missing BLOB_READ_WRITE_TOKEN)' },
+      { error: 'Media uploads are not configured (missing BLOB_READ_WRITE_TOKEN)' },
       { status: 503 }
     );
   }
@@ -54,12 +67,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       onBeforeGenerateToken: async (pathname /* , clientPayload, multipart */) => {
         const userId = await resolveUploadUserId(request);
         if (!userId) {
-          throw new Error('Sign in required to upload video');
+          throw new Error('Sign in required to upload');
         }
         validatePathname(pathname, userId);
+        const maxBytes = maxBytesForPathname(pathname);
         return {
-          allowedContentTypes: ['video/mp4', 'video/webm'],
-          maximumSizeInBytes: MAX_VIDEO_BYTES,
+          allowedContentTypes: [...VIDEO_TYPES, ...DOCUMENT_TYPES],
+          maximumSizeInBytes: maxBytes,
           tokenPayload: JSON.stringify({ userId }),
         };
       },

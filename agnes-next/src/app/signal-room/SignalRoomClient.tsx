@@ -69,7 +69,9 @@ function getItemTypeLabel(item: { type: string; data: unknown }): string {
 
   const mediaUrl = typeof s.mediaUrl === 'string' ? s.mediaUrl : null;
   const mediaType = typeof s.mediaType === 'string' ? s.mediaType : null;
-  if (mediaUrl && (mediaType === 'video' || mediaType === 'image')) return 'TRANSMISSION';
+  if (mediaUrl && (mediaType === 'video' || mediaType === 'image' || mediaType === 'document')) {
+    return 'TRANSMISSION';
+  }
 
   return 'SIGNAL';
 }
@@ -130,7 +132,7 @@ type FeedItem =
   | { type: 'review'; createdAt: Date | string; id: string; data: ReviewData };
 
 function signalHasHeroMedia(s: SignalData): boolean {
-  return !!(s.mediaUrl && (s.mediaType === 'video' || s.mediaType === 'image'));
+  return !!(s.mediaUrl && (s.mediaType === 'video' || s.mediaType === 'image' || s.mediaType === 'document'));
 }
 
 type SignalRoomClientProps = {

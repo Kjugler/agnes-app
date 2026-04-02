@@ -4,7 +4,7 @@
  */
 
 export type MediaSource =
-  | { kind: 'direct'; type: 'image' | 'video' | 'audio'; url: string }
+  | { kind: 'direct'; type: 'image' | 'video' | 'audio' | 'pdf'; url: string }
   | { kind: 'youtube'; embedUrl: string }
   | { kind: 'vimeo'; embedUrl: string }
   | { kind: 'unsupported'; url: string };
@@ -54,6 +54,26 @@ function isDirectImageUrl(url: string): boolean {
   );
 }
 
+function isDirectPdfUrl(url: string): boolean {
+  return /\.pdf(\?|$)/i.test(url);
+}
+
+function blobSignalsPathname(url: string): string | null {
+  try {
+    const u = new URL(url.trim());
+    if (
+      u.protocol === 'https:' &&
+      u.hostname.endsWith('.public.blob.vercel-storage.com') &&
+      /\/signals\//i.test(u.pathname)
+    ) {
+      return u.pathname;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
 /**
  * Analyze mediaUrl (and optional mediaType hint) and return how to render it.
  * IMPORTANT: URL-based detection (YouTube, Vimeo) always wins over mediaType hint.
@@ -83,22 +103,33 @@ export function getMediaSource(
     };
   }
 
-  // Vercel Blob Signal uploads (path contains /signals/) — treat as direct video
-  try {
-    const u = new URL(url);
-    if (
-      u.protocol === 'https:' &&
-      u.hostname.endsWith('.public.blob.vercel-storage.com') &&
-      /\/signals\//i.test(u.pathname)
-    ) {
+  // Vercel Blob Signal uploads — classify by extension (PDF/image/video), not always video
+  const blobPath = blobSignalsPathname(url);
+  if (blobPath) {
+    const lower = blobPath.toLowerCase();
+    if (lower.endsWith('.pdf') || /\.pdf(\?|$)/i.test(blobPath)) {
+      return { kind: 'direct', type: 'pdf', url };
+    }
+    if (/\.(png|jpg|jpeg|gif|webp|avif)(\?|$)/i.test(blobPath)) {
+      return { kind: 'direct', type: 'image', url };
+    }
+    if (/\.(mp4|webm|ogg|mov)(\?|$)/i.test(blobPath) || lower.includes('/video')) {
       return { kind: 'direct', type: 'video', url };
     }
-  } catch {
-    /* ignore */
+    return { kind: 'direct', type: 'video', url };
   }
 
   // 2. Only then consider direct files (by URL pattern or mediaType hint)
   const hint = (mediaTypeHint || '').toLowerCase();
+  if (hint === 'document') {
+    if (isDirectPdfUrl(url)) {
+      return { kind: 'direct', type: 'pdf', url };
+    }
+    if (isDirectImageUrl(url)) {
+      return { kind: 'direct', type: 'image', url };
+    }
+    return { kind: 'unsupported', url };
+  }
   if (hint === 'image' || isDirectImageUrl(url)) {
     return { kind: 'direct', type: 'image', url };
   }
