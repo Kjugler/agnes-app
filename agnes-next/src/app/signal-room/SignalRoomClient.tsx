@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import ReplyModal from './ReplyModal';
@@ -128,6 +128,10 @@ type FeedItem =
   | { type: 'signal'; createdAt: Date | string; id: string; data: SignalData }
   | { type: 'review'; createdAt: Date | string; id: string; data: ReviewData };
 
+function signalHasHeroMedia(s: SignalData): boolean {
+  return !!(s.mediaUrl && (s.mediaType === 'video' || s.mediaType === 'image'));
+}
+
 type DailySummaryApi = {
   summaryDate: string;
   first: { name: string; dailyPoints: number | null };
@@ -174,13 +178,49 @@ export default function SignalRoomClient({ signals: initialSignals, feedRefreshT
       .catch(() => {});
   }, [feedRefreshTrigger]);
 
-  const feedItems: FeedItem[] = [
-    ...signals.map((s) => ({ type: 'signal' as const, createdAt: s.createdAt, id: `signal-${s.id}`, data: s })),
-    ...reviews.map((r) => ({ type: 'review' as const, createdAt: r.createdAt, id: `review-${r.id}`, data: r })),
-  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  useEffect(() => {
+    fetch('/api/contest/daily-summary', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.ok && d.summary) {
+          setDailySummary(d.summary);
+        }
+      })
+      .catch(() => {});
+  }, [feedRefreshTrigger]);
 
-  const latestItem = feedItems[0] ?? null;
-  const restFeed = feedItems.slice(1);
+  const feedItems: FeedItem[] = useMemo(
+    () =>
+      [
+        ...signals.map((s) => ({ type: 'signal' as const, createdAt: s.createdAt, id: `signal-${s.id}`, data: s })),
+        ...reviews.map((r) => ({ type: 'review' as const, createdAt: r.createdAt, id: `review-${r.id}`, data: r })),
+      ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    [signals, reviews]
+  );
+
+  /** Prefer a recent transmission as hero when a text-only review would otherwise hide it (same ~72h window). */
+  const { latestItem, restFeed } = useMemo(() => {
+    if (feedItems.length === 0) return { latestItem: null as FeedItem | null, restFeed: [] as FeedItem[] };
+    const sorted = [...feedItems];
+    const top = sorted[0];
+    const WINDOW_MS = 72 * 60 * 60 * 1000;
+
+    if (top.type === 'review') {
+      const topTransmission = sorted.find((i) => i.type === 'signal' && signalHasHeroMedia(i.data));
+      if (topTransmission) {
+        const reviewT = new Date(top.data.createdAt).getTime();
+        const sigT = new Date(topTransmission.data.createdAt).getTime();
+        if (Math.abs(reviewT - sigT) <= WINDOW_MS) {
+          return {
+            latestItem: topTransmission,
+            restFeed: sorted.filter((i) => i.id !== topTransmission.id),
+          };
+        }
+      }
+    }
+
+    return { latestItem: top, restFeed: sorted.slice(1) };
+  }, [feedItems]);
 
   useEffect(() => {
     if (!loadMoreRef.current || !hasMore || loadingMore) return;
@@ -648,6 +688,9 @@ export default function SignalRoomClient({ signals: initialSignals, feedRefreshT
             </div>
             <div style={{ color: '#e7e5e4', fontSize: '0.88rem', marginTop: '0.65rem' }}>
               <strong>Contestants scoring that day:</strong> {dailySummary.contestantCount}
+            </div>
+            <div style={{ color: '#a8a29e', fontSize: '0.72rem', marginTop: '0.35rem', lineHeight: 1.4 }}>
+              Count = users with net positive ledger points that day (not total people who joined the contest).
             </div>
             {dailySummary.liveLeader?.name != null && dailySummary.liveLeader.totalPoints != null && (
               <div style={{ color: '#e7e5e4', fontSize: '0.88rem', marginTop: '0.35rem' }}>

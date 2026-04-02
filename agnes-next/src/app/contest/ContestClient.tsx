@@ -19,6 +19,7 @@ import {
 } from '@/lib/identity';
 import RequestAccessModal from '@/components/auth/RequestAccessModal';
 import BetaContestRules from '@/components/BetaContestRules';
+import { extractDailyContestRibbonLine, type SignalRibbonEvent } from '@/lib/signalRibbonFeed';
 
 declare global {
   interface Window {
@@ -75,6 +76,8 @@ export default function ContestClient() {
   } | null>(null);
   const [liveStatsHighlight, setLiveStatsHighlight] = useState<Set<string>>(new Set());
   const [bannerIndex, setBannerIndex] = useState(0);
+  /** Same source as Signal Room / Protocol ribbons: GET /api/signal/events (daily summary prepended server-side). */
+  const [dailyContestRibbonLine, setDailyContestRibbonLine] = useState<string | null>(null);
   const [showTerminalUnlockPanel, setShowTerminalUnlockPanel] = useState(false);
   const [terminalDiscoveryBannerActive, setTerminalDiscoveryBannerActive] = useState(false);
   const [terminalDiscoveryJustAwarded, setTerminalDiscoveryJustAwarded] = useState<boolean | null>(null);
@@ -481,6 +484,32 @@ export default function ContestClient() {
       })
       .catch(() => {});
     return () => { cancelled = true; };
+  }, []);
+
+  // Ribbon parity with Signal Room: same merged SignalEvent feed (includes daily contest line when present).
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/signal/events', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled || !d?.ok || !Array.isArray(d.events)) return;
+        const line = extractDailyContestRibbonLine(d.events as SignalRibbonEvent[]);
+        setDailyContestRibbonLine(line);
+      })
+      .catch(() => {});
+    const t = setInterval(() => {
+      fetch('/api/signal/events', { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((d) => {
+          if (!d?.ok || !Array.isArray(d.events)) return;
+          setDailyContestRibbonLine(extractDailyContestRibbonLine(d.events as SignalRibbonEvent[]));
+        })
+        .catch(() => {});
+    }, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
   }, []);
 
   // Poll live stats every 30s
@@ -1492,8 +1521,8 @@ export default function ContestClient() {
         </div>
       )}
 
-      {/* DYNAMIC RUNNING BANNER: motivation + live metrics, 2–3s rotation, smooth fade */}
-      {bannerMessages.length > 0 && (
+      {/* DYNAMIC RUNNING BANNER: daily contest (fixed line) + motivation + live metrics */}
+      {(dailyContestRibbonLine || bannerMessages.length > 0) && (
         <div
           style={{
             backgroundColor: 'rgba(0, 255, 224, 0.12)',
@@ -1502,28 +1531,46 @@ export default function ContestClient() {
             position: 'fixed',
             bottom: 0,
             width: '100%',
-            padding: '0.6rem 1rem',
+            padding: dailyContestRibbonLine ? '0.35rem 1rem 0.5rem' : '0.6rem 1rem',
             fontWeight: 600,
             zIndex: 1000,
             textAlign: 'center',
             minHeight: 44,
             display: 'flex',
+            flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
+            gap: dailyContestRibbonLine ? 6 : 0,
         }}
       >
-        <p
-          key={bannerIndex}
-          style={{
-            margin: 0,
-            fontSize: '0.95rem',
-            animation: 'contestBannerFade 0.5s ease',
-          }}
-        >
-          {terminalDiscoveryBannerActive
-            ? '⚡ Hidden terminal discovered — bonus points awarded'
-            : bannerMessages[bannerIndex]}
-        </p>
+        {dailyContestRibbonLine && (
+          <p
+            style={{
+              margin: 0,
+              fontSize: '0.82rem',
+              lineHeight: 1.35,
+              color: '#b5fff4',
+              fontWeight: 600,
+              maxWidth: 960,
+            }}
+          >
+            {dailyContestRibbonLine}
+          </p>
+        )}
+        {bannerMessages.length > 0 && (
+          <p
+            key={bannerIndex}
+            style={{
+              margin: 0,
+              fontSize: '0.95rem',
+              animation: 'contestBannerFade 0.5s ease',
+            }}
+          >
+            {terminalDiscoveryBannerActive
+              ? '⚡ Hidden terminal discovered — bonus points awarded'
+              : bannerMessages[bannerIndex]}
+          </p>
+        )}
       </div>
       )}
 

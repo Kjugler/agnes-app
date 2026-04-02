@@ -62,7 +62,7 @@ async function fetchInitialSignalsFromDeepquill(cookieHeader: string): Promise<{
   try {
     const headers: Record<string, string> = { Accept: 'application/json' };
     if (cookieHeader) headers.Cookie = cookieHeader;
-    const res = await fetch(`${getDeepquillBase()}/api/signals?limit=20`, {
+    const res = await fetch(`${getDeepquillBase()}/api/signals?limit=50`, {
       cache: 'no-store',
       headers,
     });

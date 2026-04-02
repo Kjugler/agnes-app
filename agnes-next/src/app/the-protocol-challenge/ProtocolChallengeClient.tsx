@@ -6,6 +6,7 @@ import { clearIdentityStorage } from '@/lib/identity';
 import { readContestEmail } from '@/lib/identity';
 import CinematicVideo from '@/components/CinematicVideo';
 import GlitchIntro from '@/components/GlitchIntro';
+import { buildRibbonTickerText } from '@/lib/signalRibbonFeed';
 import styles from './protocol-challenge.module.css';
 
 export default function ProtocolChallengeClient() {
@@ -15,6 +16,18 @@ export default function ProtocolChallengeClient() {
   const [entryVariantSource, setEntryVariantSource] = useState<string>('unknown');
   const [isButtonHovered, setIsButtonHovered] = useState(false);
   const [showIntro, setShowIntro] = useState(true); // ✅ Protocol Challenge: intro ALWAYS plays
+  const [ribbonTickerText, setRibbonTickerText] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch('/api/signal/events')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.ok && Array.isArray(d.events) && d.events.length > 0) {
+          setRibbonTickerText(buildRibbonTickerText(d.events));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // E4: Get variant for dev display
   useEffect(() => {
@@ -235,8 +248,8 @@ export default function ProtocolChallengeClient() {
 
       <div className={styles.banner}>
         <span className={styles.tickerText}>
-          Agnes Protocol tops banned book list — again. ⚡ Tiana M. just earned 3,450 points. ⚡ Nate R. entered the
-          contest from Tucson. ⚡
+          {ribbonTickerText ??
+            'Agnes Protocol tops banned book list — again. ⚡ Tiana M. just earned 3,450 points. ⚡ Nate R. entered the contest from Tucson. ⚡'}
         </span>
       </div>
       </div>

@@ -1,11 +1,10 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-
-type EventItem = { id: string; eventText: string; createdAt: string };
+import { buildRibbonTickerText, type SignalRibbonEvent } from '@/lib/signalRibbonFeed';
 
 export default function RibbonTicker() {
-  const [events, setEvents] = useState<EventItem[]>([]);
+  const [events, setEvents] = useState<SignalRibbonEvent[]>([]);
 
   useEffect(() => {
     fetch('/api/signal/events')
@@ -18,10 +17,7 @@ export default function RibbonTicker() {
       .catch(() => {});
   }, []);
 
-  const tickerContent =
-    events.length > 0
-      ? events.map((e) => e.eventText).join(' • ')
-      : 'Signal Room Active • Monitoring all channels • Stay alert';
+  const tickerContent = buildRibbonTickerText(events);
 
   return (
     <div

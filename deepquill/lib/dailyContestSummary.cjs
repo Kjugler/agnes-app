@@ -23,7 +23,7 @@ function formatPublicName(user) {
 function defaultCashClaimText() {
   return (
     process.env.DAILY_SUMMARY_CASH_CLAIM_DEFAULT ||
-    'If your name appears in the cash challenge slot, email hello@theagnesprotocol.com from your contest email with subject line "Daily cash challenge" within 72 hours to verify and claim.'
+    'If your name appears in the cash challenge slot, email Kris@theagnesprotocol.com from your contest email with subject line "Daily cash challenge" within 72 hours to verify and claim.'
   );
 }
 

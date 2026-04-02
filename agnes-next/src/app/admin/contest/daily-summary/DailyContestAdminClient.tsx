@@ -317,6 +317,11 @@ export default function DailyContestAdminClient() {
               Live leader: {summary.liveLeader?.name ?? '—'} ({summary.liveLeader?.totalPoints ?? '—'})
             </li>
           </ul>
+          <p style={{ fontSize: '0.82rem', color: '#555', marginTop: 10, lineHeight: 1.45 }}>
+            <strong>Contestant count</strong> here is only users with net positive <em>ledger points that calendar day</em>{' '}
+            (America/Denver), excluding same-day placement awards. It is not the same as Contest Hub &quot;players
+            exploring&quot; (everyone who ever joined the contest).
+          </p>
 
           <h3 style={{ fontSize: '1rem', marginBottom: 8 }}>Display overrides (public ribbon/bulletin)</h3>
           <div style={{ display: 'grid', gap: 8, marginBottom: 16 }}>
