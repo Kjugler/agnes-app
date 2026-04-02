@@ -43,6 +43,7 @@ export default function SignalRoomContainer({
   isInitializing,
   initialDailySummary = null,
 }: SignalRoomContainerProps) {
+  // Do not key SignalRoomClient by signals[0] — remounting cleared daily bulletin client state.
   const [feedRefreshTrigger, setFeedRefreshTrigger] = useState(0);
   const handleReviewSubmitted = useCallback(() => {
     setFeedRefreshTrigger((t) => t + 1);
@@ -83,7 +84,6 @@ export default function SignalRoomContainer({
           </div>
         </div>
       ) : (
-        {/* Stable key: do not key off signals[0] — that remounted the client on every new top post and cleared bulletin state */}
         <SignalRoomClient
           signals={signals}
           feedRefreshTrigger={feedRefreshTrigger}
