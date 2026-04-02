@@ -77,6 +77,18 @@ export function middleware(request: NextRequest) {
     }
   }
 
+  // Contest ops admin (daily summary): same cookie gate as fulfillment
+  const isContestAdminRoute = pathname.startsWith('/admin/contest');
+  const isContestAdminAuthPage =
+    pathname === '/admin/contest/auth' || pathname.startsWith('/admin/contest/auth/');
+  if (isContestAdminRoute && !isContestAdminAuthPage) {
+    const token = request.cookies.get('fulfillment-token')?.value;
+    if (!token || !token.trim()) {
+      const authUrl = withSameOrigin(request, `/admin/fulfillment/auth?redirect=${encodeURIComponent(pathname)}`);
+      return NextResponse.redirect(authUrl);
+    }
+  }
+
   // Spec 1: Root route → Lightning (single cinematic entry)
   if (pathname === '/') {
     const destinationUrl = withSameOrigin(request, '/lightening');

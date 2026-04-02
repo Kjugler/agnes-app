@@ -366,4 +366,44 @@ router.get('/seed-signal-room', async (req, res) => {
   }
 });
 
+// POST/GET /api/admin/jobs/daily-contest-summary — nightly job (x-admin-key). Optional ?date=YYYY-MM-DD or JSON body.summaryDate
+async function runDailyContestSummaryJob(req, res) {
+  const {
+    runDailyContestSummary,
+    toPublicSummaryDto,
+    recordDailyContestSummaryJobRun,
+    getDailyContestSummaryJobStatus,
+  } = require('../../lib/dailyContestSummary.cjs');
+  try {
+    const date =
+      (typeof req.query?.date === 'string' && req.query.date.trim()) ||
+      (req.body && typeof req.body.summaryDate === 'string' && req.body.summaryDate.trim()) ||
+      undefined;
+    const result = await runDailyContestSummary(prisma, { summaryDate: date });
+    await recordDailyContestSummaryJobRun(prisma, { success: true });
+    return res.json({
+      ok: true,
+      summaryDate: result.summaryDate,
+      summary: toPublicSummaryDto(result.summary),
+      placement: result.placement,
+      contestantCount: result.contestantCount,
+      jobStatus: await getDailyContestSummaryJobStatus(prisma),
+    });
+  } catch (err) {
+    console.error('[daily-contest-summary job]', err);
+    try {
+      await recordDailyContestSummaryJobRun(prisma, {
+        success: false,
+        errorMessage: err?.message || 'Unknown error',
+      });
+    } catch (e2) {
+      console.error('[daily-contest-summary job] job-status', e2);
+    }
+    return res.status(500).json({ ok: false, error: err?.message || 'Unknown error' });
+  }
+}
+
+router.post('/daily-contest-summary', express.json(), runDailyContestSummaryJob);
+router.get('/daily-contest-summary', runDailyContestSummaryJob);
+
 module.exports = router;

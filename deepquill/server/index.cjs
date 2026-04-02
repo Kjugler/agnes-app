@@ -267,6 +267,15 @@ const contestLiveStatsHandler = require('../api/contest/liveStats.cjs');
 app.get('/api/contest/live-stats', contestLiveStatsHandler);
 console.log('✅ Mounted /api/contest/live-stats');
 
+// Daily contest summary (ribbons / bulletin / admin)
+const contestDailySummaryHandler = require('../api/contest/daily-summary.cjs');
+app.get('/api/contest/daily-summary', contestDailySummaryHandler);
+console.log('✅ Mounted /api/contest/daily-summary');
+
+const adminContestDailyRouter = require('./routes/adminContestDaily.cjs');
+app.use('/api/admin/contest', adminContestDailyRouter);
+console.log('✅ Mounted /api/admin/contest (daily-summary)');
+
 // Terminal discovery bonus (SPEC 3: +250 pts for hidden path discovery)
 const contestTerminalDiscoveryHandler = require('../api/contest/terminalDiscovery.cjs');
 app.post('/api/contest/terminal-discovery', contestTerminalDiscoveryHandler);

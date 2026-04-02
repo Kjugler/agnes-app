@@ -128,6 +128,20 @@ type FeedItem =
   | { type: 'signal'; createdAt: Date | string; id: string; data: SignalData }
   | { type: 'review'; createdAt: Date | string; id: string; data: ReviewData };
 
+type DailySummaryApi = {
+  summaryDate: string;
+  first: { name: string; dailyPoints: number | null };
+  second: { name: string; dailyPoints: number | null };
+  third: { name: string; dailyPoints: number | null };
+  contestantCount: number;
+  liveLeader: { name: string | null; totalPoints: number | null };
+  cashChallenge: {
+    winnerDisplayName: string | null;
+    claimInstructions: string | null;
+    claimed: boolean;
+  };
+};
+
 type SignalRoomClientProps = {
   signals: SignalData[];
   feedRefreshTrigger?: number;
@@ -137,6 +151,7 @@ export default function SignalRoomClient({ signals: initialSignals, feedRefreshT
   const router = useRouter();
   const [signals, setSignals] = useState(initialSignals);
   const [reviews, setReviews] = useState<ReviewData[]>([]);
+  const [dailySummary, setDailySummary] = useState<DailySummaryApi | null>(null);
   const [replyModalSignalId, setReplyModalSignalId] = useState<string | null>(null);
   const [editSignal, setEditSignal] = useState<SignalData | null>(null);
   const [editReview, setEditReview] = useState<ReviewData | null>(null);
@@ -602,6 +617,53 @@ export default function SignalRoomClient({ signals: initialSignals, feedRefreshT
           gap: '1rem',
         }}
       >
+        {dailySummary && (
+          <section
+            style={{
+              backgroundColor: '#1a1530',
+              border: '1px solid #6d28d9',
+              borderRadius: 8,
+              padding: '1.25rem 1.5rem',
+            }}
+            aria-label="Daily contest bulletin"
+          >
+            <div style={{ color: '#c4b5fd', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
+              DAILY CONTEST BULLETIN • {dailySummary.summaryDate} (America/Denver)
+            </div>
+            <div style={{ color: '#f5f3ff', fontSize: '0.95rem', lineHeight: 1.55 }}>
+              <strong>Yesterday&apos;s top 3 (points that day):</strong>{' '}
+              {dailySummary.first?.dailyPoints ? (
+                <>
+                  1st {dailySummary.first.name} ({dailySummary.first.dailyPoints} pts)
+                  {dailySummary.second?.dailyPoints
+                    ? ` • 2nd ${dailySummary.second.name} (${dailySummary.second.dailyPoints} pts)`
+                    : ''}
+                  {dailySummary.third?.dailyPoints
+                    ? ` • 3rd ${dailySummary.third.name} (${dailySummary.third.dailyPoints} pts)`
+                    : ''}
+                </>
+              ) : (
+                <span style={{ color: '#a8a29e' }}>No placements for that day yet.</span>
+              )}
+            </div>
+            <div style={{ color: '#e7e5e4', fontSize: '0.88rem', marginTop: '0.65rem' }}>
+              <strong>Contestants scoring that day:</strong> {dailySummary.contestantCount}
+            </div>
+            {dailySummary.liveLeader?.name != null && dailySummary.liveLeader.totalPoints != null && (
+              <div style={{ color: '#e7e5e4', fontSize: '0.88rem', marginTop: '0.35rem' }}>
+                <strong>Overall leader (live total):</strong> {dailySummary.liveLeader.name} —{' '}
+                {dailySummary.liveLeader.totalPoints} pts
+              </div>
+            )}
+            {dailySummary.cashChallenge?.winnerDisplayName && !dailySummary.cashChallenge.claimed && (
+              <div style={{ color: '#fde68a', fontSize: '0.88rem', marginTop: '0.75rem', lineHeight: 1.5 }}>
+                <strong>Cash challenge:</strong> {dailySummary.cashChallenge.winnerDisplayName}.{' '}
+                {dailySummary.cashChallenge.claimInstructions || 'See contest admin for claim steps.'}
+              </div>
+            )}
+          </section>
+        )}
+
         {/* Live Transmission (hero) – newest item as current transmission */}
         {latestItem && (
           <div

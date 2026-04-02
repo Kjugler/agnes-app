@@ -70,7 +70,21 @@ router.get('/signal/events', async (req, res) => {
       take: 50,
       select: { id: true, signalId: true, eventText: true, createdAt: true },
     });
-    res.json({ ok: true, events });
+    const { ribbonLineFromSummary } = require('../../lib/dailyContestSummary.cjs');
+    const latestSummary = await prisma.dailyContestSummary.findFirst({
+      orderBy: { summaryDate: 'desc' },
+    });
+    const ribbonExtra = ribbonLineFromSummary(latestSummary);
+    const merged = [...events];
+    if (ribbonExtra) {
+      merged.unshift({
+        id: `daily-contest-${latestSummary.summaryDate}`,
+        signalId: 'daily-contest',
+        eventText: ribbonExtra,
+        createdAt: latestSummary.updatedAt || latestSummary.generatedAt,
+      });
+    }
+    res.json({ ok: true, events: merged });
   } catch (err) {
     console.error('[signal/events] Error', err);
     res.status(500).json({ ok: false, error: err?.message || 'Unknown error' });

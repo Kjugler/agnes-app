@@ -67,8 +67,73 @@ model User {
   signalCommentUpvotes         SignalCommentUpvote[]
   reviews                      Review[]
   customers                    Customer[] // Customers linked to this User
+  dailyContestSummariesFirst   DailyContestSummary[] @relation("DailyFirst")
+  dailyContestSummariesSecond  DailyContestSummary[] @relation("DailySecond")
+  dailyContestSummariesThird   DailyContestSummary[] @relation("DailyThird")
+  dailyContestSummariesLiveLeader DailyContestSummary[] @relation("DailyLiveLeader")
+  dailyContestSummariesCashWinner DailyContestSummary[] @relation("DailyCashWinner")
 
   @@index([referralCode])
+}
+
+/// Canonical daily contest rollup for ribbons, Signal bulletin, and admin (America/Denver calendar date).
+model DailyContestSummary {
+  id           String @id @default(cuid())
+  /// YYYY-MM-DD in America/Denver (the **day scored**, not the job run date)
+  summaryDate  String @unique
+
+  firstUserId    String?
+  secondUserId   String?
+  thirdUserId    String?
+  firstUser      User?   @relation("DailyFirst", fields: [firstUserId], references: [id], onDelete: SetNull)
+  secondUser     User?   @relation("DailySecond", fields: [secondUserId], references: [id], onDelete: SetNull)
+  thirdUser      User?   @relation("DailyThird", fields: [thirdUserId], references: [id], onDelete: SetNull)
+
+  firstDailyPoints    Int?
+  secondDailyPoints   Int?
+  thirdDailyPoints    Int?
+
+  /// Derived at job time: First + last initial (e.g. "Jane D.")
+  firstDisplayName   String?
+  secondDisplayName  String?
+  thirdDisplayName   String?
+
+  /// Admin override for public display (takes precedence when set)
+  firstDisplayOverride   String?
+  secondDisplayOverride  String?
+  thirdDisplayOverride   String?
+
+  /// Users with net positive ledger points earned that summary day (see job; excludes placement awards for that day)
+  contestantCount Int @default(0)
+
+  liveLeaderUserId       String?
+  liveLeader             User?   @relation("DailyLiveLeader", fields: [liveLeaderUserId], references: [id], onDelete: SetNull)
+  liveLeaderDisplayName  String?
+  liveLeaderTotalPoints  Int?
+
+  cashChallengeWinnerUserId      String?
+  cashChallengeWinner            User?   @relation("DailyCashWinner", fields: [cashChallengeWinnerUserId], references: [id], onDelete: SetNull)
+  cashChallengeWinnerDisplayName String?
+  cashChallengeClaimInstructions String?
+  cashChallengeClaimed           Boolean @default(false)
+
+  placementPointsAwardedAt DateTime?
+
+  generatedAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  manuallyEditedNames Boolean @default(false)
+
+  @@index([summaryDate])
+}
+
+/// Singleton row (id = daily_contest_summary): telemetry for the daily summary job (cron + manual regenerate).
+model DailyContestSummaryJobStatus {
+  id            String    @id
+  lastRunAt     DateTime?
+  lastSuccessAt DateTime?
+  lastError     String?
+  updatedAt     DateTime  @updatedAt
 }
 
 model Ledger {
@@ -139,6 +204,11 @@ enum LedgerType {
   // Moderation approval bonuses
   SIGNAL_APPROVED // +100 pts when Signal approved
   REVIEW_APPROVED  // +150 pts when Review approved
+
+  // Daily contest placement (previous calendar day in America/Denver — awarded by automated job)
+  DAILY_CONTEST_FIRST // +10 placement points (1st)
+  DAILY_CONTEST_SECOND // +5 (2nd)
+  DAILY_CONTEST_THIRD // +3 (3rd)
 }
 
 model Event {
