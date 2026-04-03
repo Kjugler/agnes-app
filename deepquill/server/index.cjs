@@ -222,7 +222,9 @@ console.log('✅ Mounted /api admin/moderation (approve-signal, approve-review, 
 // Admin jobs (email reminders, seed-signal-room)
 const adminJobsRouter = require('./routes/adminJobs.cjs');
 app.use('/api/admin/jobs', adminJobsRouter);
-console.log('✅ Mounted /api/admin/jobs (send-engaged-reminders, send-non-participant-reminders, send-no-purchase-reminders, send-missionary-emails, seed-signal-room)');
+console.log(
+  '✅ Mounted /api/admin/jobs (send-engaged-reminders, send-non-participant-reminders, send-no-purchase-reminders, send-missionary-emails, seed-signal-room, daily-contest-summary)'
+);
 
 // Contest login endpoint (DB owner)
 const contestLoginHandler = require('../api/contest/login.cjs');

@@ -383,9 +383,12 @@ export default function DailyContestAdminClient() {
       )}
 
       <p style={{ fontSize: '0.85rem', color: '#666' }}>
-        Scheduler: call{' '}
-        <code>GET/POST /api/admin/jobs/daily-contest-summary</code> on deepquill with <code>x-admin-key</code> at ~2:00 AM
-        America/Denver (e.g. 08:05 or 09:05 UTC with a “run only once per day” guard, or an hourly check for Denver hour === 2).
+        <strong>Automation (intended):</strong> ~2:00 AM America/Denver. The repo ships{' '}
+        <code>agnes-next/vercel.json</code> with <code>GET /api/cron/daily-contest-summary</code> at{' '}
+        <code>5 9 * * *</code> (09:05 UTC = 2:05 AM MST; during MDT it runs 3:05 AM Denver unless you adjust the
+        schedule or use an external scheduler). Vercel must have <code>CRON_SECRET</code> and{' '}
+        <code>ADMIN_KEY</code> (same as deepquill) on the agnes-next project. Manual deepquill call:{' '}
+        <code>GET/POST /api/admin/jobs/daily-contest-summary</code> with <code>x-admin-key</code>.
       </p>
     </div>
   );
