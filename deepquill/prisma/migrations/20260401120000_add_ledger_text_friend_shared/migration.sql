@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "LedgerType" ADD VALUE 'TEXT_FRIEND_SHARED';

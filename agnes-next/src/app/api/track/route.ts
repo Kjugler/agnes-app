@@ -36,6 +36,7 @@ const EVENT_TAGS: Record<string, string[]> = {
   PURCHASE_COMPLETED: ['Buyer'],
   ASSOCIATE_JOINED: ['Associate'],
   DAILY_DIGEST_OPT_IN: ['Digest'],
+  TEXT_FRIEND_SHARED: [],
 };
 
 // Events allowed without an email (thank-you page only has session_id)

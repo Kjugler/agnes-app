@@ -33,6 +33,27 @@ export default function LighteningClient() {
   
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
 
+  // Text-a-friend: remember selected on-site video hint (SMS sends site link only)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const source = searchParams.get('source');
+    const video = searchParams.get('video');
+    if (source === 'textafriend' && video && /^fb[123]$/.test(video)) {
+      try {
+        sessionStorage.setItem('textafriend_video', video);
+      } catch {
+        /* ignore */
+      }
+    }
+    if (searchParams.get('discount') === '15') {
+      try {
+        sessionStorage.setItem('textafriend_discount', '15');
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [searchParams]);
+
   // Read and store email from query string
   useEffect(() => {
     if (typeof window === 'undefined') return;

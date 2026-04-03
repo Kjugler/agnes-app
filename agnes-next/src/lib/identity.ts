@@ -201,6 +201,7 @@ export function clearIdentityStorage() {
     'ap_code',
     'discount_code',
     'ref',
+    'textafriend_discount',
   ];
   
   cookiesToClear.forEach((key) => {

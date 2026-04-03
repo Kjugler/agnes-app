@@ -48,6 +48,18 @@ function withSameOrigin(request: NextRequest, pathname: string): URL {
   }
 }
 
+/** Text-a-friend landing: persist 15% discount for checkout (cookie + client sessionStorage). */
+function maybeSetTextafriendDiscountCookie(request: NextRequest, response: NextResponse) {
+  if (request.nextUrl.searchParams.get('discount') === '15') {
+    response.cookies.set('textafriend_discount', '15', {
+      maxAge: 60 * 60 * 24 * 30, // 30 days
+      path: '/',
+      sameSite: 'lax',
+      secure: request.nextUrl.protocol === 'https:',
+    });
+  }
+}
+
 export function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
@@ -114,6 +126,8 @@ export function middleware(request: NextRequest) {
       });
     }
 
+    maybeSetTextafriendDiscountCookie(request, response);
+
     return response;
   }
 
@@ -139,6 +153,8 @@ export function middleware(request: NextRequest) {
         path: '/',
       });
     }
+
+    maybeSetTextafriendDiscountCookie(request, response);
 
     return response;
   }
@@ -200,6 +216,8 @@ export function middleware(request: NextRequest) {
   // IMPORTANT: Do NOT redirect based on ref param - only set cookies
   // Routes like /catalog, /checkout, /contest/thank-you should NOT be redirected
   const response = NextResponse.next();
+
+  maybeSetTextafriendDiscountCookie(request, response);
 
   // Part 1A: Log redirects (for debugging)
   if (process.env.NODE_ENV === 'development') {

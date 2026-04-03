@@ -499,7 +499,23 @@ module.exports = async function handler(req, res) {
         userId: user?.id || 'no_user',
       });
     }
-    
+
+    // Text-a-friend landing link (?discount=15): apply associate 15% Stripe coupon when no referral discount applies
+    const textafriendDiscount = req.body?.textafriendDiscount === true;
+    if (textafriendDiscount && !appliedDiscount && envConfig.STRIPE_ASSOCIATE_15_COUPON_ID) {
+      appliedDiscount = true;
+      discountCodeSource = 'textafriend_15';
+      console.log('[CHECKOUT_DISCOUNT] Text-a-friend 15% coupon (no referral code)', {
+        userId: user?.id || 'no_user',
+      });
+    } else if (textafriendDiscount && appliedDiscount) {
+      console.log('[CHECKOUT_DISCOUNT] textafriendDiscount flag ignored (referral discount already applied)', {
+        userId: user?.id || 'no_user',
+      });
+    } else if (textafriendDiscount && !envConfig.STRIPE_ASSOCIATE_15_COUPON_ID) {
+      console.warn('[CHECKOUT_DISCOUNT] textafriendDiscount requested but STRIPE_ASSOCIATE_15_COUPON_ID is not set');
+    }
+
     console.log('[CHECKOUT_START_SERVER]', { 
       product, 
       priceId, 
@@ -537,6 +553,10 @@ module.exports = async function handler(req, res) {
     if (req.body?.src) metadata.src = req.body.src;
     if (req.body?.v) metadata.v = req.body.v;
     if (req.body?.origin) metadata.origin = req.body.origin;
+    if (textafriendDiscount && discountCodeSource === 'textafriend_15') {
+      metadata.discount_source = 'textafriend';
+      metadata.discount_pct = '15';
+    }
 
     // GUARDRAIL: Use request origin, not env vars (prevents stale ngrok URLs)
     // Priority 1: Use origin from request body (passed from agnes-next)

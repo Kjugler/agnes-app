@@ -85,6 +85,7 @@ const ACTION_MAP = {
   share_x: { type: 'SHARE_X', points: 100 },
   share_ig: { type: 'SHARE_IG', points: 100 },
   share_fb: { type: 'SHARE_FB', points: 100 },
+  text_friend_shared: { type: 'TEXT_FRIEND_SHARED', points: 100 },
   share_truth: { type: 'SHARE_TRUTH', points: 100 },
   share_tiktok: { type: 'SHARE_TT', points: 100 },
   share_x_back_to_score_bonus: { type: 'SHARE_X_BACK_BONUS', points: 100 },
@@ -207,7 +208,9 @@ module.exports = async (req, res) => {
     }
 
     // Check if already awarded (idempotency for non-share actions)
-    const isShareAction = actionType.toLowerCase().startsWith('share_');
+    const lower = actionType.toLowerCase();
+    const isShareAction =
+      lower.startsWith('share_') || lower === 'text_friend_shared';
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
     

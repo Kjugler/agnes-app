@@ -7,10 +7,12 @@ import { proxyJson } from '@/lib/deepquillProxy';
 /**
  * Normalize action name for deepquill compatibility.
  * Deepquill accepts: share_x, share_ig, share_fb, share_truth, share_tiktok,
- * share_x_back_to_score_bonus, contest_join, subscribe_digest, signup.
+ * share_x_back_to_score_bonus, contest_join, subscribe_digest, signup, text_friend_shared.
  */
 function normalizeAction(action: string): string {
   switch (action) {
+    case 'TEXT_FRIEND_SHARED':
+      return 'text_friend_shared';
     case 'share_twitter':
     case 'share_xcom':
       return 'share_x';

@@ -172,6 +172,7 @@ enum LedgerType {
   SHARE_X
   SHARE_IG
   SHARE_FB
+  TEXT_FRIEND_SHARED // Text-a-friend share from score page (+100 pts, daily cap)
   SHARE_TRUTH
   SHARE_TT
   CONTEST_JOIN

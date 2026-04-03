@@ -11,7 +11,7 @@ export interface ReferVideoConfig {
 export const REFER_VIDEOS: ReferVideoConfig[] = [
   {
     id: 'fb1',
-    label: 'Video 1 – "Agnes Protocol Intro"',
+    label: 'Ghost Writers',
     thumbnailSrc: '/images/fb/fb1.jpg',
     videoSrc: '/videos/fb1.mp4',
     description: 'Quick teaser introducing The Agnes Protocol.',

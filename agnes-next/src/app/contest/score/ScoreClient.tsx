@@ -17,6 +17,7 @@ import { ScoreCaptionRotator } from '@/components/ScoreCaptionRotator';
 import { BuyBookButton } from '@/components/BuyBookButton';
 import { ContestEntryForm } from '@/components/ContestEntryForm';
 import ReferFriendButton from '@/components/refer/ReferFriendButton';
+import TextAFriendModal from '@/components/refer/TextAFriendModal';
 import SocialHandleModal from './SocialHandleModal';
 import HelpButton from '@/components/HelpButton';
 
@@ -79,6 +80,7 @@ export default function ScoreClient() {
       window.matchMedia('(prefers-reduced-motion: reduce)').matches
   );
   const [isMobile, setIsMobile] = useState(false);
+  const [textFriendModalOpen, setTextFriendModalOpen] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -172,7 +174,7 @@ export default function ScoreClient() {
     tt: '+100 pts today. Share again tomorrow for another +100.',
     contest: 'Game on! Enter the contest for +250 pts and a shot at the cruise.',
     refer: 'Invite friends: they save $3.90; you earn $2 each. It adds up fast.',
-    subscribe: 'Stay in the loop—+50 pts when you join the weekly digest.',
+    textfriend: 'Send a prewritten text with a link—opens your SMS app with autocomplete.',
     rabbit: 'Catch the Rabbit and earn +500 points.',
   };
 
@@ -1615,10 +1617,14 @@ export default function ScoreClient() {
             )}
           </div>
           <ActionButton
-            label="Weekly Digest"
-            sub="50 pts"
-            href="/subscribe"
-            hoverKey="subscribe"
+            label="Text a Friend"
+            sub=""
+            href="#text-a-friend"
+            hoverKey="textfriend"
+            onClick={(e) => {
+              e.preventDefault();
+              setTextFriendModalOpen(true);
+            }}
             colorBase="#e11d48"
             colorHover="#be123c"
           />
@@ -1676,6 +1682,8 @@ export default function ScoreClient() {
         onSave={handleSaveSocialHandle}
         onCancel={() => setSocialHandleModal({ ...socialHandleModal, isOpen: false })}
       />
+
+      <TextAFriendModal isOpen={textFriendModalOpen} onClose={() => setTextFriendModalOpen(false)} />
 
       {/* Sync status indicator (shown during refresh loop) */}
       {syncingExplicitEntry && (

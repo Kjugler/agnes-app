@@ -61,6 +61,7 @@ export async function POST(req: NextRequest) {
     const userCodeMatch = cookieHeader.match(/contest_user_code=([^;]+)/);
     const contestEmailMatch = cookieHeader.match(/contest_email=([^;]+)/);
     const userEmailMatch = cookieHeader.match(/user_email=([^;]+)/);
+    const textafriendDiscountMatch = cookieHeader.match(/(?:^|;\s*)textafriend_discount=([^;]+)/);
     
     const userIdCookie = userIdMatch?.[1] ? decodeURIComponent(userIdMatch[1]) : null;
     const userCodeCookie = userCodeMatch?.[1] ? decodeURIComponent(userCodeMatch[1]) : null;
@@ -178,6 +179,11 @@ export async function POST(req: NextRequest) {
     // Determine active ref with correct precedence
     const refRaw = refFromQuery || refCookie || refFromBody;
     const ref = refRaw && refRaw.trim() && refRaw.trim() !== '...' ? refRaw.trim() : undefined;
+
+    const textafriendDiscountRaw = textafriendDiscountMatch?.[1]
+      ? decodeURIComponent(textafriendDiscountMatch[1].trim())
+      : '';
+    const textafriendDiscount = textafriendDiscountRaw === '15';
     
     // Root Cause A Fix: If query param ref is present, update cookie to match (override stale cookie)
     // Note: We can't set cookies in API routes directly, but we can log and ensure query param wins
@@ -206,6 +212,7 @@ export async function POST(req: NextRequest) {
       product,
       qty: body?.qty || 1,
       ref, // Only send valid codes, not placeholders
+      textafriendDiscount,
       src: body?.src || body?.metadata?.src,
       v: body?.v || body?.metadata?.v,
       origin: body?.origin || body?.metadata?.origin || requestOrigin, // Always pass origin
