@@ -45,6 +45,8 @@ async function fetchInitialSignalsFromDeepquill(cookieHeader: string): Promise<{
     discussionEnabled?: boolean;
     isSystem?: boolean;
     createdAt: Date | string;
+    approvedAt?: string | null;
+    moderationStatus?: string | null;
     userEmail?: string | null;
     userFirstName?: string | null;
     isAuthor?: boolean;
@@ -151,6 +153,8 @@ export default async function SignalRoomPage() {
         discussionEnabled: s.discussionEnabled ?? true,
         isSystem: s.isSystem ?? false,
         createdAt: s.createdAt,
+        approvedAt: s.approvedAt ?? null,
+        moderationStatus: s.moderationStatus ?? 'APPROVED',
         userEmail: s.userEmail ?? null,
         userFirstName: s.userFirstName ?? null,
         isAuthor: s.isAuthor ?? false,

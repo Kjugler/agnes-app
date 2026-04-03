@@ -1,5 +1,6 @@
 'use client';
 
+import React, { useEffect, useState } from 'react';
 import { getMediaSource } from '@/lib/signal-media-utils';
 
 type SignalMediaProps = {
@@ -8,20 +9,59 @@ type SignalMediaProps = {
   variant?: 'default' | 'featured';
 };
 
+function MediaLoadError({ url, borderRadius, marginTop }: { url: string; borderRadius: number; marginTop: string }) {
+  return (
+    <div
+      style={{
+        backgroundColor: '#1a1f3a',
+        border: '1px solid #5a3a3a',
+        borderRadius,
+        padding: '1rem',
+        marginTop,
+        color: '#e0a0a0',
+        fontSize: '0.88em',
+        lineHeight: 1.45,
+      }}
+    >
+      Media failed to load in the room.{' '}
+      <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: '#00ffe0', textDecoration: 'underline' }}>
+        Open asset URL
+      </a>
+    </div>
+  );
+}
+
 export default function SignalMedia({ mediaType, mediaUrl, variant = 'default' }: SignalMediaProps) {
   const source = getMediaSource(mediaUrl, mediaType);
+  const [loadError, setLoadError] = useState(false);
+
+  useEffect(() => {
+    setLoadError(false);
+  }, [mediaUrl, mediaType]);
+
   if (!source) return null;
 
   const isFeatured = variant === 'featured';
   const marginTop = isFeatured ? '1rem' : '0.5rem';
   const borderRadius = isFeatured ? 12 : 8;
-  const containerStyle: React.CSSProperties = {
+  const imageStyle: React.CSSProperties = {
+    width: '100%',
+    maxWidth: '100%',
+    maxHeight: isFeatured ? 520 : 400,
+    objectFit: 'contain',
+    borderRadius,
+    marginTop,
+    backgroundColor: '#0a0e27',
+    display: 'block',
+  };
+  const videoStyle: React.CSSProperties = {
     width: '100%',
     maxWidth: '100%',
     aspectRatio: '16/9',
-    objectFit: 'cover',
+    objectFit: 'contain',
     borderRadius,
     marginTop,
+    backgroundColor: '#0a0e27',
   };
 
   if (source.kind === 'youtube' || source.kind === 'vimeo') {
@@ -44,23 +84,31 @@ export default function SignalMedia({ mediaType, mediaUrl, variant = 'default' }
 
   if (source.kind === 'direct') {
     if (source.type === 'image') {
+      if (loadError) {
+        return <MediaLoadError url={source.url} borderRadius={borderRadius} marginTop={marginTop} />;
+      }
       return (
         <img
           src={source.url}
           alt="Signal media"
           loading={isFeatured ? 'eager' : 'lazy'}
-          style={containerStyle}
+          style={imageStyle}
+          onError={() => setLoadError(true)}
         />
       );
     }
     if (source.type === 'video') {
+      if (loadError) {
+        return <MediaLoadError url={source.url} borderRadius={borderRadius} marginTop={marginTop} />;
+      }
       return (
         <video
           src={source.url}
           controls
           playsInline
           preload={isFeatured ? 'auto' : 'metadata'}
-          style={containerStyle}
+          style={videoStyle}
+          onError={() => setLoadError(true)}
         />
       );
     }

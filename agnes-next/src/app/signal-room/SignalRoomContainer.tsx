@@ -45,7 +45,7 @@ export default function SignalRoomContainer({
 }: SignalRoomContainerProps) {
   // Do not key SignalRoomClient by signals[0] — remounting cleared daily bulletin client state.
   const [feedRefreshTrigger, setFeedRefreshTrigger] = useState(0);
-  const handleReviewSubmitted = useCallback(() => {
+  const bumpFeedRefresh = useCallback(() => {
     setFeedRefreshTrigger((t) => t + 1);
   }, []);
 
@@ -62,7 +62,7 @@ export default function SignalRoomContainer({
         overflowX: 'hidden',
       }}
     >
-      <SignalRoomHeader onReviewSubmitted={handleReviewSubmitted} />
+      <SignalRoomHeader onReviewSubmitted={bumpFeedRefresh} onSignalSubmitted={bumpFeedRefresh} />
       {isInitializing ? (
         <div
           style={{

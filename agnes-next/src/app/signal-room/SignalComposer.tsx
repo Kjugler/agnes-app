@@ -7,6 +7,8 @@ import { validateDocumentPasteUrl } from '@/lib/signalDocumentUrl';
 type SignalComposerProps = {
   isOpen: boolean;
   onClose: () => void;
+  /** Fires after a signal is successfully created (held or approved) so the room can refetch “my submissions”. */
+  onSubmitted?: () => void;
 };
 
 type SubmitState = 'idle' | 'submitting' | 'approved' | 'held' | 'error';
@@ -18,6 +20,8 @@ const MAX_VIDEO_BYTES = 80 * 1024 * 1024;
 const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/webm'];
 
 const MAX_DOCUMENT_BYTES = 50 * 1024 * 1024;
+/** Multipart adds round-trips; use only for larger files */
+const MULTIPART_MIN_BYTES = 12 * 1024 * 1024;
 const ALLOWED_DOCUMENT_TYPES = ['application/pdf', 'image/png', 'image/jpeg'] as const;
 
 function documentExtForMime(mime: string): string | null {
@@ -36,7 +40,7 @@ function isValidMediaUrl(url: string): boolean {
   }
 }
 
-export default function SignalComposer({ isOpen, onClose }: SignalComposerProps) {
+export default function SignalComposer({ isOpen, onClose, onSubmitted }: SignalComposerProps) {
   const router = useRouter();
   const [text, setText] = useState('');
   const [mediaType, setMediaType] = useState<MediaTypeOption>('none');
@@ -46,6 +50,8 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [submitState, setSubmitState] = useState<SubmitState>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [uploadPhase, setUploadPhase] = useState<'idle' | 'preparing' | 'uploading'>('idle');
+  const [lastCreatedSignalId, setLastCreatedSignalId] = useState<string | null>(null);
 
   // Reset state when modal opens
   useEffect(() => {
@@ -57,6 +63,8 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
       setUploadProgress(null);
       setSubmitState('idle');
       setError(null);
+      setUploadPhase('idle');
+      setLastCreatedSignalId(null);
     }
   }, [isOpen]);
 
@@ -72,6 +80,7 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
       return;
     }
     setUploadProgress(0);
+    setUploadPhase('preparing');
     try {
       const ctx = await fetch('/api/signal/upload-context');
       const ctxJson = await ctx.json().catch(() => ({}));
@@ -84,18 +93,21 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
       const ext = file.type === 'video/webm' ? 'webm' : 'mp4';
       const pathname = `signals/${userId}/${crypto.randomUUID()}.${ext}`;
       const { upload } = await import('@vercel/blob/client');
+      setUploadPhase('uploading');
       const result = await upload(pathname, file, {
         access: 'public',
         handleUploadUrl: '/api/signal/media-upload',
-        multipart: file.size > 4 * 1024 * 1024,
+        multipart: file.size > MULTIPART_MIN_BYTES,
         onUploadProgress: ({ percentage }) => setUploadProgress(percentage),
       });
       setMediaUrl(result.url);
       setUploadProgress(100);
+      setUploadPhase('idle');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Upload failed';
       setError(message);
       setUploadProgress(null);
+      setUploadPhase('idle');
     } finally {
       window.setTimeout(() => setUploadProgress(null), 600);
     }
@@ -119,6 +131,7 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
       return;
     }
     setUploadProgress(0);
+    setUploadPhase('preparing');
     try {
       const ctx = await fetch('/api/signal/upload-context');
       const ctxJson = await ctx.json().catch(() => ({}));
@@ -130,18 +143,21 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
       const userId = ctxJson.userId as string;
       const pathname = `signals/${userId}/${crypto.randomUUID()}.${ext}`;
       const { upload } = await import('@vercel/blob/client');
+      setUploadPhase('uploading');
       const result = await upload(pathname, file, {
         access: 'public',
         handleUploadUrl: '/api/signal/media-upload',
-        multipart: file.size > 4 * 1024 * 1024,
+        multipart: file.size > MULTIPART_MIN_BYTES,
         onUploadProgress: ({ percentage }) => setUploadProgress(percentage),
       });
       setMediaUrl(result.url);
       setUploadProgress(100);
+      setUploadPhase('idle');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Upload failed';
       setError(message);
       setUploadProgress(null);
+      setUploadPhase('idle');
     } finally {
       window.setTimeout(() => setUploadProgress(null), 600);
     }
@@ -190,6 +206,7 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
     }
 
     setSubmitState('submitting');
+    const publishStarted = performance.now();
 
     try {
       const body: Record<string, unknown> = { text: text.trim() };
@@ -213,6 +230,16 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
       }
 
       if (data.ok) {
+        if (typeof data.signalId === 'string') {
+          setLastCreatedSignalId(data.signalId);
+        }
+        onSubmitted?.();
+        if (process.env.NODE_ENV === 'development') {
+          console.log(
+            `[signal/create] ${(performance.now() - publishStarted).toFixed(0)}ms status=${data.status}`,
+            { signalId: data.signalId, heldReason: data.heldReason }
+          );
+        }
         if (data.status === 'APPROVED') {
           setSubmitState('approved');
           setText('');
@@ -346,10 +373,24 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
                 style={{
                   color: '#bbb',
                   fontSize: '0.9em',
+                  lineHeight: 1.5,
                 }}
               >
-                Your signal will appear once approved.
+                It does <strong>not</strong> appear in the public Signal Room feed until a moderator approves it. Check
+                the &quot;Your submissions&quot; section at the top of the room for status and exact timestamps.
               </div>
+              {lastCreatedSignalId && (
+                <div
+                  style={{
+                    color: '#888',
+                    fontSize: '0.82em',
+                    marginTop: '0.65rem',
+                    fontFamily: 'ui-monospace, monospace',
+                  }}
+                >
+                  Reference ID: {lastCreatedSignalId}
+                </div>
+              )}
             </div>
           )}
 
@@ -547,8 +588,14 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
                             }}
                           />
                         </label>
+                        {uploadPhase === 'preparing' && (
+                          <span style={{ fontSize: '0.8em', color: '#888' }}>Preparing upload…</span>
+                        )}
                         {uploadProgress !== null && uploadProgress < 100 && (
-                          <span style={{ fontSize: '0.8em', color: '#888' }}>Uploading… {uploadProgress}%</span>
+                          <span style={{ fontSize: '0.8em', color: '#888' }}>
+                            {uploadPhase === 'uploading' ? 'Uploading to storage' : 'Uploading'}
+                            … {uploadProgress}%
+                          </span>
                         )}
                         {!!mediaUrl && attachMode === 'upload' && (
                           <span style={{ fontSize: '0.8em', color: '#00ffe0' }}>Video ready — send when you&apos;re done writing.</span>
@@ -652,8 +699,14 @@ export default function SignalComposer({ isOpen, onClose }: SignalComposerProps)
                             }}
                           />
                         </label>
+                        {uploadPhase === 'preparing' && (
+                          <span style={{ fontSize: '0.8em', color: '#888' }}>Preparing upload…</span>
+                        )}
                         {uploadProgress !== null && uploadProgress < 100 && (
-                          <span style={{ fontSize: '0.8em', color: '#888' }}>Uploading… {uploadProgress}%</span>
+                          <span style={{ fontSize: '0.8em', color: '#888' }}>
+                            {uploadPhase === 'uploading' ? 'Uploading to storage' : 'Uploading'}
+                            … {uploadProgress}%
+                          </span>
                         )}
                         {!!mediaUrl && attachMode === 'upload' && (
                           <span style={{ fontSize: '0.8em', color: '#00ffe0' }}>

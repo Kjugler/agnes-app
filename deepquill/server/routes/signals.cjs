@@ -31,7 +31,10 @@ function isFirstPartyUploadedMediaUrl(url) {
   try {
     const u = new URL(url.trim());
     if (u.protocol !== 'https:') return false;
-    if (!u.hostname.endsWith('.public.blob.vercel-storage.com')) return false;
+    const h = u.hostname.toLowerCase();
+    const onVercelBlob =
+      h.endsWith('.public.blob.vercel-storage.com') || h.endsWith('.blob.vercel-storage.com');
+    if (!onVercelBlob) return false;
     return u.pathname.includes('/signals/');
   } catch {
     return false;
@@ -188,6 +191,75 @@ router.get('/signal/:id', async (req, res) => {
   }
 });
 
+// GET /api/signals/me — current user's recent signals (any moderation status); for “pending” strip + support IDs
+router.get('/signals/me', async (req, res) => {
+  try {
+    const user = await resolveUserByEmail(req);
+    if (!user) {
+      return res.status(401).json({ ok: false, error: 'UNAUTHORIZED' });
+    }
+
+    const limit = Math.min(parseInt(req.query.limit || '15', 10), 30);
+    const rows = await prisma.signal.findMany({
+      where: { userId: user.id, isSystem: false },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit,
+      select: {
+        id: true,
+        text: true,
+        title: true,
+        type: true,
+        content: true,
+        mediaType: true,
+        mediaUrl: true,
+        locationTag: true,
+        tags: true,
+        discussionEnabled: true,
+        isSystem: true,
+        status: true,
+        heldReason: true,
+        heldAt: true,
+        approvedAt: true,
+        rejectedAt: true,
+        createdAt: true,
+        user: { select: { email: true, firstName: true } },
+      },
+    });
+
+    const signals = rows.map((s) => ({
+      id: s.id,
+      text: s.text,
+      title: s.title ?? null,
+      type: s.type ?? null,
+      content: s.content ?? null,
+      mediaType: s.mediaType ?? null,
+      mediaUrl: s.mediaUrl ?? null,
+      locationTag: s.locationTag ?? null,
+      tags: s.tags ?? null,
+      discussionEnabled: s.discussionEnabled ?? true,
+      isSystem: s.isSystem,
+      createdAt: s.createdAt,
+      userEmail: s.user?.email ?? null,
+      userFirstName: s.user?.firstName ?? null,
+      isAuthor: true,
+      moderationStatus: s.status,
+      heldReason: s.heldReason ?? null,
+      heldAt: s.heldAt ?? null,
+      approvedAt: s.approvedAt ?? null,
+      rejectedAt: s.rejectedAt ?? null,
+      replyCount: 0,
+      acknowledgeCount: 0,
+      acknowledged: false,
+      replies: [],
+    }));
+
+    res.json({ ok: true, signals });
+  } catch (err) {
+    console.error('[signals/me] Error', err);
+    res.status(500).json({ ok: false, error: err?.message || 'Unknown error' });
+  }
+});
+
 // GET /api/signals - List published signals
 router.get('/signals', async (req, res) => {
   try {
@@ -222,6 +294,7 @@ router.get('/signals', async (req, res) => {
         isSystem: true,
         createdAt: true,
         author: true,
+        approvedAt: true,
         user: { select: { email: true, firstName: true } },
         _count: { select: { replies: true, acknowledges: true } },
         replies: {
@@ -249,6 +322,8 @@ router.get('/signals', async (req, res) => {
       discussionEnabled: s.discussionEnabled ?? true,
       isSystem: s.isSystem,
       createdAt: s.createdAt,
+      approvedAt: s.approvedAt ?? null,
+      moderationStatus: 'APPROVED',
       userEmail: s.user?.email ?? null,
       userFirstName: s.user?.firstName ?? null,
       isAuthor: !!(currentUser && s.userId && s.userId === currentUser.id),
@@ -397,8 +472,9 @@ router.post('/signal/create', async (req, res) => {
       heldReason = 'PROFANITY';
     }
 
-    // Beta: uploaded videos always held for review (even for purchasers)
-    if (mediaUrl && isFirstPartyUploadedMediaUrl(mediaUrl)) {
+    // Beta: first-party uploaded video always held for review (even for purchasers).
+    // Images/documents on blob follow normal purchase/official approval (faster publish, fewer “missing” posts).
+    if (mediaUrl && mediaType === 'video' && isFirstPartyUploadedMediaUrl(mediaUrl)) {
       status = 'HELD';
       heldReason = 'MEDIA_UPLOAD';
     }
@@ -434,7 +510,15 @@ router.post('/signal/create', async (req, res) => {
       },
     });
 
-    res.json({ ok: true, status, signalId: signal.id });
+    res.json({
+      ok: true,
+      status,
+      signalId: signal.id,
+      createdAt: signal.createdAt,
+      heldReason: status === 'HELD' ? heldReason : null,
+      mediaType: signal.mediaType ?? null,
+      mediaUrl: signal.mediaUrl ?? null,
+    });
   } catch (err) {
     console.error('[signal/create] Error', err);
     res.status(500).json({ ok: false, error: err?.message || 'Unknown error' });

@@ -61,13 +61,11 @@ function isDirectPdfUrl(url: string): boolean {
 function blobSignalsPathname(url: string): string | null {
   try {
     const u = new URL(url.trim());
-    if (
-      u.protocol === 'https:' &&
-      u.hostname.endsWith('.public.blob.vercel-storage.com') &&
-      /\/signals\//i.test(u.pathname)
-    ) {
-      return u.pathname;
-    }
+    if (u.protocol !== 'https:') return null;
+    const h = u.hostname.toLowerCase();
+    const onVercelBlob = h.endsWith('.public.blob.vercel-storage.com') || h.endsWith('.blob.vercel-storage.com');
+    if (!onVercelBlob || !/\/signals\//i.test(u.pathname)) return null;
+    return u.pathname;
   } catch {
     /* ignore */
   }
@@ -107,6 +105,7 @@ export function getMediaSource(
   const blobPath = blobSignalsPathname(url);
   if (blobPath) {
     const lower = blobPath.toLowerCase();
+    const hint = (mediaTypeHint || '').toLowerCase();
     if (lower.endsWith('.pdf') || /\.pdf(\?|$)/i.test(blobPath)) {
       return { kind: 'direct', type: 'pdf', url };
     }
@@ -115,6 +114,13 @@ export function getMediaSource(
     }
     if (/\.(mp4|webm|ogg|mov)(\?|$)/i.test(blobPath) || lower.includes('/video')) {
       return { kind: 'direct', type: 'video', url };
+    }
+    // Path may lack a recognizable extension (unusual); trust server mediaType when present
+    if (hint === 'image') return { kind: 'direct', type: 'image', url };
+    if (hint === 'video') return { kind: 'direct', type: 'video', url };
+    if (hint === 'document') {
+      if (isDirectPdfUrl(url)) return { kind: 'direct', type: 'pdf', url };
+      return { kind: 'direct', type: 'image', url };
     }
     return { kind: 'direct', type: 'video', url };
   }

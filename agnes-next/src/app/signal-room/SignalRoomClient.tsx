@@ -25,6 +25,32 @@ function formatRelativeTime(date: Date | string): string {
   return signalDate.toLocaleDateString();
 }
 
+function formatAbsoluteTimestamp(date: Date | string | null | undefined): string {
+  if (date == null) return '—';
+  const d = typeof date === 'string' ? new Date(date) : date;
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function shortSignalId(id: string): string {
+  return id.length <= 10 ? id : `…${id.slice(-8)}`;
+}
+
+const HELD_REASON_COPY: Record<string, string> = {
+  LINK: 'Link in text',
+  PROFANITY: 'Language flagged',
+  MEDIA_UPLOAD: 'Uploaded video (moderation queue)',
+  HARASSMENT: 'Harassment',
+  HATE: 'Hate content',
+  CLAIM: 'Claim / promo',
+  OTHER: 'Other',
+};
+
+function heldReasonLine(reason: string | null | undefined): string | null {
+  if (!reason) return null;
+  return HELD_REASON_COPY[reason] ?? reason;
+}
+
 function getDisplayName(signal: {
   isSystem: boolean;
   userEmail?: string | null;
@@ -114,6 +140,12 @@ type SignalData = {
   acknowledgeCount: number;
   acknowledged: boolean;
   replies: ReplyData[];
+  /** Present on list + /signals/me */
+  approvedAt?: Date | string | null;
+  moderationStatus?: string | null;
+  heldReason?: string | null;
+  heldAt?: Date | string | null;
+  rejectedAt?: Date | string | null;
 };
 
 type ReviewData = {
@@ -195,6 +227,52 @@ export default function SignalRoomClient({
     };
   }, [feedRefreshTrigger]);
 
+  const [mySignals, setMySignals] = useState<SignalData[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/signals/me', { credentials: 'include', cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d: Record<string, unknown>) => {
+        if (cancelled || !d.ok || !Array.isArray(d.signals)) return;
+        const mapped: SignalData[] = (d.signals as Record<string, unknown>[]).map((s) => ({
+          id: String(s.id),
+          text: String(s.text ?? ''),
+          title: (s.title as string) ?? null,
+          type: (s.type as string) ?? null,
+          content: (s.content as string) ?? null,
+          mediaType: (s.mediaType as string) ?? null,
+          mediaUrl: (s.mediaUrl as string) ?? null,
+          locationTag: (s.locationTag as string) ?? null,
+          tags: s.tags,
+          discussionEnabled: s.discussionEnabled !== false,
+          isSystem: !!(s.isSystem as boolean),
+          createdAt: s.createdAt as string,
+          userEmail: (s.userEmail as string) ?? null,
+          userFirstName: (s.userFirstName as string) ?? null,
+          isAuthor: true,
+          replyCount: 0,
+          acknowledgeCount: 0,
+          acknowledged: false,
+          replies: [],
+          approvedAt: (s.approvedAt as string) ?? null,
+          moderationStatus: (s.moderationStatus as string) ?? null,
+          heldReason: (s.heldReason as string) ?? null,
+          heldAt: (s.heldAt as string) ?? null,
+          rejectedAt: (s.rejectedAt as string) ?? null,
+        }));
+        setMySignals(mapped);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [feedRefreshTrigger]);
+
+  const pendingMySignals = useMemo(
+    () => mySignals.filter((s) => s.moderationStatus === 'HELD' || s.moderationStatus === 'REJECTED'),
+    [mySignals]
+  );
+
   const feedItems: FeedItem[] = useMemo(
     () =>
       [
@@ -255,6 +333,8 @@ export default function SignalRoomClient({
                     discussionEnabled: s.discussionEnabled ?? true,
                     isSystem: s.isSystem ?? false,
                     createdAt: s.createdAt,
+                    approvedAt: (s as { approvedAt?: string | null }).approvedAt ?? null,
+                    moderationStatus: (s as { moderationStatus?: string }).moderationStatus ?? 'APPROVED',
                     userEmail: s.userEmail ?? null,
                     userFirstName: s.userFirstName ?? null,
                     isAuthor: s.isAuthor ?? false,
@@ -399,6 +479,7 @@ export default function SignalRoomClient({
       });
       if (res.ok) {
         setSignals((prev) => prev.filter((s) => s.id !== signalId));
+        setMySignals((prev) => prev.filter((s) => s.id !== signalId));
         router.refresh();
       } else {
         const data = await res.json();
@@ -428,19 +509,27 @@ export default function SignalRoomClient({
     }
   };
 
-  function renderSignalCard(signal: SignalData) {
+  function renderSignalCard(signal: SignalData, cardContext: 'feed' | 'pending' = 'feed') {
     const displayName = getDisplayName(signal);
     const label = getLabel(signal);
     const relativeTime = formatRelativeTime(signal.createdAt);
     const isRepliesExpanded = expandedReplies.has(signal.id);
     const bodyText = signal.content || signal.text;
     const typeLabel = signal.type ? SIGNAL_TYPE_LABELS[signal.type] ?? signal.type : null;
+    const mod = signal.moderationStatus;
+    const publishedAt = signal.approvedAt ?? signal.createdAt;
+    const borderColor =
+      cardContext === 'pending'
+        ? mod === 'REJECTED'
+          ? '1px solid #6b2a2a'
+          : '1px solid #5c4a1a'
+        : '1px solid #1a1f3a';
 
     return (
       <div
         style={{
           backgroundColor: '#14192e',
-          border: '1px solid #1a1f3a',
+          border: borderColor,
           borderRadius: '4px',
           padding: '1rem',
           display: 'flex',
@@ -448,7 +537,7 @@ export default function SignalRoomClient({
           gap: '0.5rem',
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
             <span style={{ color: signal.isSystem ? '#00ffe0' : '#ffcc00', fontWeight: 'bold', fontSize: '0.9em' }}>
               {displayName}
@@ -461,8 +550,64 @@ export default function SignalRoomClient({
                 {typeLabel}
               </span>
             )}
+            {cardContext === 'feed' && (
+              <span
+                style={{
+                  color: '#5eead4',
+                  fontSize: '0.68em',
+                  fontWeight: 700,
+                  padding: '2px 6px',
+                  backgroundColor: '#0f2f2a',
+                  borderRadius: '2px',
+                }}
+              >
+                PUBLISHED
+              </span>
+            )}
+            {cardContext === 'pending' && mod === 'HELD' && (
+              <span
+                style={{
+                  color: '#fbbf24',
+                  fontSize: '0.68em',
+                  fontWeight: 700,
+                  padding: '2px 6px',
+                  backgroundColor: '#2a2210',
+                  borderRadius: '2px',
+                }}
+              >
+                PENDING REVIEW
+              </span>
+            )}
+            {cardContext === 'pending' && mod === 'REJECTED' && (
+              <span
+                style={{
+                  color: '#f87171',
+                  fontSize: '0.68em',
+                  fontWeight: 700,
+                  padding: '2px 6px',
+                  backgroundColor: '#2a1010',
+                  borderRadius: '2px',
+                }}
+              >
+                NOT PUBLISHED
+              </span>
+            )}
           </div>
-          <span style={{ color: '#888', fontSize: '0.85em' }}>{relativeTime}</span>
+          <div style={{ textAlign: 'right', flexShrink: 0, lineHeight: 1.35 }}>
+            <div style={{ color: '#d4d4d4', fontSize: '0.8em', fontWeight: 600 }}>
+              {cardContext === 'feed' ? formatAbsoluteTimestamp(publishedAt) : formatAbsoluteTimestamp(signal.createdAt)}
+            </div>
+            <div style={{ color: '#888', fontSize: '0.72em', marginTop: 2 }}>
+              {relativeTime} · id {shortSignalId(signal.id)}
+            </div>
+            {cardContext === 'feed' &&
+              signal.approvedAt &&
+              Math.abs(new Date(signal.approvedAt).getTime() - new Date(signal.createdAt).getTime()) > 3000 && (
+                <div style={{ color: '#666', fontSize: '0.68em', marginTop: 2 }}>
+                  Submitted {formatAbsoluteTimestamp(signal.createdAt)}
+                </div>
+              )}
+          </div>
         </div>
         {signal.title && (
           <div style={{ color: '#fff', fontSize: '1em', fontWeight: 600 }}>{signal.title}</div>
@@ -470,83 +615,112 @@ export default function SignalRoomClient({
         <div style={{ color: '#e0e0e0', fontSize: '0.95em', lineHeight: '1.5', marginTop: '0.25rem' }}>
           {bodyText}
         </div>
+        {cardContext === 'pending' && heldReasonLine(signal.heldReason) && (
+          <div style={{ color: '#a8a29e', fontSize: '0.8em', fontStyle: 'italic' }}>
+            Queue: {heldReasonLine(signal.heldReason)}
+          </div>
+        )}
         <SignalMedia mediaType={signal.mediaType} mediaUrl={signal.mediaUrl} />
         {signal.locationTag && (
           <div style={{ color: '#888', fontSize: '0.85em' }}>📍 {signal.locationTag}</div>
         )}
-        <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid #1a1f3a' }}>
+        {cardContext === 'feed' && (
+          <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid #1a1f3a' }}>
+            <div
+              onClick={() => handleAcknowledge(signal.id)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.25rem',
+                color: signal.acknowledged ? '#00ffe0' : '#888',
+                fontSize: '0.85em',
+                cursor: 'pointer',
+                textShadow: signal.acknowledged ? '0 0 4px #00ffe0' : 'none',
+                transition: 'all 0.2s ease',
+              }}
+            >
+              ✓ Upvote {signal.acknowledgeCount > 0 && `(${signal.acknowledgeCount})`}
+            </div>
+            {signal.discussionEnabled !== false && (
+              <div
+                onClick={() => setReplyModalSignalId(signal.id)}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#888', fontSize: '0.85em', cursor: 'pointer' }}
+              >
+                ↻ Theory {signal.replyCount > 0 && `(${signal.replyCount})`}
+              </div>
+            )}
+            <Link
+              href={`/signal-room/${signal.id}`}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#00ffe0', fontSize: '0.85em', textDecoration: 'none', fontWeight: 600 }}
+            >
+              View Signal →
+            </Link>
+            <div
+              onClick={() => {
+                const url = typeof window !== 'undefined' ? `${window.location.origin}/signal-room/${signal.id}` : '';
+                const text = signal.title || signal.content || signal.text;
+                if (navigator.share) {
+                  navigator.share({ title: signal.title || 'Signal', text, url }).catch(() => {});
+                } else {
+                  navigator.clipboard?.writeText(url || text);
+                }
+              }}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#888', fontSize: '0.85em', cursor: 'pointer' }}
+              title="Share signal"
+            >
+              ↗ Share
+            </div>
+            {signal.isAuthor && (
+              <>
+                <div
+                  onClick={() => setEditSignal(signal)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#888', fontSize: '0.85em', cursor: 'pointer' }}
+                  title="Edit"
+                >
+                  ✎ Edit
+                </div>
+                <div
+                  onClick={() => handleDeleteSignal(signal.id)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#888', fontSize: '0.85em', cursor: 'pointer' }}
+                  title="Delete"
+                >
+                  🗑 Delete
+                </div>
+              </>
+            )}
+            {signal.replyCount > 0 && (
+              <div
+                onClick={() => toggleReplies(signal.id)}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#888', fontSize: '0.85em', cursor: 'pointer', marginLeft: 'auto' }}
+              >
+                {isRepliesExpanded ? '▼' : '▶'} {signal.replyCount} {signal.replyCount === 1 ? 'reply' : 'replies'}
+              </div>
+            )}
+          </div>
+        )}
+        {cardContext === 'pending' && (
           <div
-            onClick={() => handleAcknowledge(signal.id)}
             style={{
               display: 'flex',
+              gap: '1rem',
+              marginTop: '0.5rem',
+              paddingTop: '0.5rem',
+              borderTop: '1px solid #1a1f3a',
               alignItems: 'center',
-              gap: '0.25rem',
-              color: signal.acknowledged ? '#00ffe0' : '#888',
-              fontSize: '0.85em',
-              cursor: 'pointer',
-              textShadow: signal.acknowledged ? '0 0 4px #00ffe0' : 'none',
-              transition: 'all 0.2s ease',
+              flexWrap: 'wrap',
             }}
           >
-            ✓ Upvote {signal.acknowledgeCount > 0 && `(${signal.acknowledgeCount})`}
-          </div>
-          {signal.discussionEnabled !== false && (
             <div
-              onClick={() => setReplyModalSignalId(signal.id)}
+              onClick={() => handleDeleteSignal(signal.id)}
               style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#888', fontSize: '0.85em', cursor: 'pointer' }}
+              title="Delete"
             >
-              ↻ Theory {signal.replyCount > 0 && `(${signal.replyCount})`}
+              🗑 Delete
             </div>
-          )}
-          <Link
-            href={`/signal-room/${signal.id}`}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#00ffe0', fontSize: '0.85em', textDecoration: 'none', fontWeight: 600 }}
-          >
-            View Signal →
-          </Link>
-          <div
-            onClick={() => {
-              const url = typeof window !== 'undefined' ? `${window.location.origin}/signal-room/${signal.id}` : '';
-              const text = signal.title || signal.content || signal.text;
-              if (navigator.share) {
-                navigator.share({ title: signal.title || 'Signal', text, url }).catch(() => {});
-              } else {
-                navigator.clipboard?.writeText(url || text);
-              }
-            }}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#888', fontSize: '0.85em', cursor: 'pointer' }}
-            title="Share signal"
-          >
-            ↗ Share
+            <span style={{ color: '#666', fontSize: '0.78em', marginLeft: 'auto' }}>Hidden from the public feed until published</span>
           </div>
-          {signal.isAuthor && (
-            <>
-              <div
-                onClick={() => setEditSignal(signal)}
-                style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#888', fontSize: '0.85em', cursor: 'pointer' }}
-                title="Edit"
-              >
-                ✎ Edit
-              </div>
-              <div
-                onClick={() => handleDeleteSignal(signal.id)}
-                style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#888', fontSize: '0.85em', cursor: 'pointer' }}
-                title="Delete"
-              >
-                🗑 Delete
-              </div>
-            </>
-          )}
-          {signal.replyCount > 0 && (
-            <div
-              onClick={() => toggleReplies(signal.id)}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#888', fontSize: '0.85em', cursor: 'pointer', marginLeft: 'auto' }}
-            >
-              {isRepliesExpanded ? '▼' : '▶'} {signal.replyCount} {signal.replyCount === 1 ? 'reply' : 'replies'}
-            </div>
-          )}
-        </div>
-        {isRepliesExpanded && signal.replies.length > 0 && (
+        )}
+        {cardContext === 'feed' && isRepliesExpanded && signal.replies.length > 0 && (
           <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid #1a1f3a', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {signal.replies.map((reply) => {
               const replyDisplayName = reply.userFirstName || (reply.userEmail ? reply.userEmail.split('@')[0] : 'Anonymous');
@@ -713,6 +887,35 @@ export default function SignalRoomClient({
           </section>
         )}
 
+        {pendingMySignals.length > 0 && (
+          <section
+            style={{
+              backgroundColor: '#121008',
+              border: '1px solid #5c4a1a',
+              borderRadius: 8,
+              padding: '1rem 1.25rem',
+            }}
+            aria-label="Your submissions awaiting publication"
+          >
+            <div
+              style={{
+                color: '#fbbf24',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                letterSpacing: '0.06em',
+                marginBottom: '0.65rem',
+              }}
+            >
+              YOUR SUBMISSIONS — NOT IN THE PUBLIC FEED YET
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {pendingMySignals.map((s) => (
+                <div key={s.id}>{renderSignalCard(s, 'pending')}</div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* Live Transmission (hero) – newest item as current transmission */}
         {latestItem && (
           <div
@@ -762,7 +965,16 @@ export default function SignalRoomClient({
                         </span>
                       )}
                     </div>
-                    <span style={{ color: '#888', fontSize: '0.85em' }}>{formatRelativeTime(latestItem.data.createdAt)}</span>
+                    <div style={{ textAlign: 'right', lineHeight: 1.35 }}>
+                      <div style={{ color: '#d4d4d4', fontSize: '0.82em', fontWeight: 600 }}>
+                        {formatAbsoluteTimestamp(
+                          latestItem.data.approvedAt ?? latestItem.data.createdAt
+                        )}
+                      </div>
+                      <div style={{ color: '#888', fontSize: '0.75em', marginTop: 2 }}>
+                        {formatRelativeTime(latestItem.data.createdAt)} · id {shortSignalId(latestItem.data.id)}
+                      </div>
+                    </div>
                   </div>
                   {latestItem.data.title && (
                     <div style={{ color: '#fff', fontSize: '1.1em', fontWeight: 600 }}>{latestItem.data.title}</div>
@@ -886,7 +1098,7 @@ export default function SignalRoomClient({
                     {getItemTypeLabel(item)}
                   </span>
                 </div>
-                {renderSignalCard(item.data)}
+                {renderSignalCard(item.data, 'feed')}
               </div>
             ) : (
               <div style={{ marginBottom: '0.5rem' }}>

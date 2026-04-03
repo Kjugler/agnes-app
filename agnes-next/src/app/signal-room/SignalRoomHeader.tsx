@@ -10,9 +10,15 @@ type SignalRoomHeaderProps = {
   gated?: boolean;
   /** Called after a review is submitted (for feed refresh) */
   onReviewSubmitted?: () => void;
+  /** Called after a signal is created (held or approved) so “my submissions” can refresh */
+  onSignalSubmitted?: () => void;
 };
 
-export default function SignalRoomHeader({ gated = false, onReviewSubmitted }: SignalRoomHeaderProps) {
+export default function SignalRoomHeader({
+  gated = false,
+  onReviewSubmitted,
+  onSignalSubmitted,
+}: SignalRoomHeaderProps) {
   const [isComposerOpen, setIsComposerOpen] = useState(false);
   const [isReviewComposerOpen, setIsReviewComposerOpen] = useState(false);
 
@@ -106,7 +112,11 @@ export default function SignalRoomHeader({ gated = false, onReviewSubmitted }: S
         </div>
       </header>
 
-      <SignalComposer isOpen={isComposerOpen} onClose={() => setIsComposerOpen(false)} />
+      <SignalComposer
+        isOpen={isComposerOpen}
+        onClose={() => setIsComposerOpen(false)}
+        onSubmitted={onSignalSubmitted}
+      />
       <ReviewComposer
         isOpen={isReviewComposerOpen}
         onClose={() => setIsReviewComposerOpen(false)}
