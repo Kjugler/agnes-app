@@ -1,5 +1,5 @@
 // deepquill/server/index.cjs
-console.log('🟢 Booting deepquill API…');
+console.log('[deepquill] Booting deepquill API');
 
 const path = require('path');
 const express = require('express');
@@ -332,14 +332,19 @@ const PORT = Number(process.env.PORT) || 5055;
 // Bind all interfaces so PaaS proxies (Railway) can reach the process (not only loopback)
 const HOST = process.env.HOST || '0.0.0.0';
 
-// ✅ Print startup banner before server starts
+// ✅ Print startup banner before server starts (never block listen)
 const { printStartupBanner } = require('../lib/startupBanner.cjs');
-printStartupBanner({
-  port: PORT,
-  host: HOST,
-  nodeEnv: envConfig.NODE_ENV,
-});
+try {
+  printStartupBanner({
+    port: PORT,
+    host: HOST,
+    nodeEnv: envConfig.NODE_ENV,
+  });
+} catch (bannerErr) {
+  console.warn('[deepquill] Startup banner skipped:', bannerErr?.message || bannerErr);
+}
 
 app.listen(PORT, HOST, () => {
-  console.log(`🚀 Server is listening on http://${HOST}:${PORT}`);
+  console.log(`[deepquill] Listening on port ${PORT} (host ${HOST})`);
+  console.log(`[deepquill] Server running — http://${HOST}:${PORT} (e.g. GET /ping)`);
 });

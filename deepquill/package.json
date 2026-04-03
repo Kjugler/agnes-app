@@ -11,6 +11,7 @@
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist",
     "start-server": "node server/index.cjs",
+    "start": "npx prisma migrate deploy && npm run start-server",
     "migrate:deploy": "prisma migrate deploy",
     "fulfill:ebooks": "node scripts/process-fulfillments.cjs"
   },
