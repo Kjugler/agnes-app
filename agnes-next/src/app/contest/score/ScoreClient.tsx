@@ -1581,13 +1581,16 @@ export default function ScoreClient() {
             colorHover="#1565c0"
           />
           <ActionButton
-            label="Share to Truth"
-            sub="100 pts"
-            href="/share/truth/1"
-            hoverKey="truth"
-            onClick={(e: any) => handleShareClick('truth', e)}
-            colorBase="#6366f1"
-            colorHover="#4f46e5"
+            label="Text a Friend"
+            sub=""
+            href="#text-a-friend"
+            hoverKey="textfriend"
+            onClick={(e) => {
+              e.preventDefault();
+              setTextFriendModalOpen(true);
+            }}
+            colorBase="#e11d48"
+            colorHover="#be123c"
           />
           <ActionButton
             label="Join the Contest"
@@ -1617,16 +1620,13 @@ export default function ScoreClient() {
             )}
           </div>
           <ActionButton
-            label="Text a Friend"
-            sub=""
-            href="#text-a-friend"
-            hoverKey="textfriend"
-            onClick={(e) => {
-              e.preventDefault();
-              setTextFriendModalOpen(true);
-            }}
-            colorBase="#e11d48"
-            colorHover="#be123c"
+            label="Share to Truth"
+            sub="100 pts"
+            href="/share/truth/1"
+            hoverKey="truth"
+            onClick={(e: any) => handleShareClick('truth', e)}
+            colorBase="#6366f1"
+            colorHover="#4f46e5"
           />
           <ActionButton
             label="Share to TikTok"

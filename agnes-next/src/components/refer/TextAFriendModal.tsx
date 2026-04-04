@@ -16,13 +16,13 @@ function buildLandingUrl(videoId: ReferVideoId): string {
 }
 
 function buildDefaultMessage(landingUrl: string): string {
-  return `This showed up today.
+  return `Hey—this showed up today.
 
-Not sure what it is. It's wild. It's not normal.
+Not sure what it is yet, but it's actually pretty interesting.
 
 ${landingUrl}
 
-Go in and tell me what you find.
+Go in and tell me what you think.
 
 #WhereIsJodyVernon`;
 }
@@ -186,6 +186,9 @@ export default function TextAFriendModal({ isOpen, onClose }: TextAFriendModalPr
                 resize: 'vertical',
               }}
             />
+            <p style={{ fontSize: '0.75rem', color: '#9ca3af', margin: '0.4rem 0 0', fontStyle: 'italic' }}>
+              Feel free to personalize this before sending.
+            </p>
             <p style={{ fontSize: '0.7rem', color: '#9ca3af', margin: '0.35rem 0 0' }}>
               Link includes <code style={{ fontSize: '0.65rem' }}>?source=textafriend&amp;video=…&amp;discount=15</code>{' '}
               for tracking and their 15% discount. No video URL is sent in the text.
