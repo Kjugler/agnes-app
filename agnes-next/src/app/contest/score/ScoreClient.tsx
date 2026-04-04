@@ -1220,6 +1220,8 @@ export default function ScoreClient() {
         onBlur={onButtonLeave}
         className={getGlowClass()}
         style={{
+          position: 'relative',
+          zIndex: onClick ? 3 : 1,
           display: 'inline-flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -1233,6 +1235,7 @@ export default function ScoreClient() {
           outline: 'none',
           textDecoration: 'none',
           cursor: 'pointer',
+          touchAction: 'manipulation',
         }}
       >
         <div style={{
@@ -1603,6 +1606,9 @@ export default function ScoreClient() {
           <div
             style={{
               position: 'relative',
+              zIndex: 0,
+              maxWidth: '100%',
+              overflowX: 'hidden',
             }}
             onMouseEnter={() => onButtonEnter('refer')}
             onMouseLeave={onButtonLeave}

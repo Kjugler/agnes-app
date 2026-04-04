@@ -314,6 +314,13 @@
   margin-right: auto;
   padding-left: 1rem;
   padding-right: 1rem;
+  /* Prevent wide cells (e.g. Refer copy) from painting over sibling columns (TikTok/X/Truth taps). */
+  isolation: isolate;
+  overflow-x: hidden;
+}
+
+.buttons-grid-inner > * {
+  min-width: 0;
 }
 
 @media (min-width: 768px) {

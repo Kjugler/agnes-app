@@ -720,8 +720,11 @@ router.get('/admin/signals', async (req, res) => {
   try {
     const signals = await prisma.signal.findMany({
       orderBy: { createdAt: 'desc' },
-      take: 100,
-      include: { _count: { select: { comments: true, replies: true } } },
+      take: 200,
+      include: {
+        user: { select: { email: true, firstName: true } },
+        _count: { select: { comments: true, replies: true } },
+      },
     });
     res.json({ ok: true, signals });
   } catch (err) {

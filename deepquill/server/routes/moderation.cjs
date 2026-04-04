@@ -4,6 +4,7 @@
 const express = require('express');
 const { prisma } = require('../prisma.cjs');
 const { awardForSignalApproved, awardForReviewApproved } = require('../../lib/points/awardPoints.cjs');
+const { createSignalEvent } = require('../../lib/signalEvent.cjs');
 
 const router = express.Router();
 
@@ -33,9 +34,21 @@ router.post('/admin/moderation/approve-signal', async (req, res) => {
         approvedAt: new Date(),
         heldAt: null,
         heldReason: null,
+        rejectedAt: null,
+        publishStatus: 'PUBLISHED',
+        publishAt: null,
       },
       include: { user: { select: { id: true, email: true } } },
     });
+
+    try {
+      const existingEvent = await prisma.signalEvent.findFirst({ where: { signalId: id }, select: { id: true } });
+      if (!existingEvent) {
+        await createSignalEvent(id);
+      }
+    } catch (err) {
+      console.warn('[moderation] createSignalEvent after approve', err?.message || err);
+    }
 
     if (updated.userId) {
       try {
@@ -58,6 +71,115 @@ router.post('/admin/moderation/approve-signal', async (req, res) => {
     }
     console.error('[moderation] Error approving signal', err);
     res.status(500).json({ error: err?.message || 'Failed to approve signal' });
+  }
+});
+
+// POST /api/admin/moderation/reject-signal — not public; operator removal of pending or any non-delete path
+router.post('/admin/moderation/reject-signal', async (req, res) => {
+  if (!isAuthorized(req)) {
+    return res.status(403).json({ error: 'Forbidden - Development only or valid x-admin-key required' });
+  }
+
+  try {
+    const { id } = req.body || {};
+    if (!id || typeof id !== 'string') {
+      return res.status(400).json({ error: 'Missing or invalid signal id' });
+    }
+
+    const now = new Date();
+    const updated = await prisma.signal.update({
+      where: { id },
+      data: {
+        status: 'REJECTED',
+        rejectedAt: now,
+        heldAt: null,
+        publishStatus: 'DRAFT',
+      },
+    });
+
+    res.json({
+      ok: true,
+      signal: {
+        id: updated.id,
+        status: updated.status,
+        rejectedAt: updated.rejectedAt,
+        publishStatus: updated.publishStatus,
+      },
+    });
+  } catch (err) {
+    if (err?.code === 'P2025') {
+      return res.status(404).json({ error: 'Signal not found' });
+    }
+    console.error('[moderation] Error rejecting signal', err);
+    res.status(500).json({ error: err?.message || 'Failed to reject signal' });
+  }
+});
+
+// POST /api/admin/moderation/unpublish-signal — hide approved content from feed (DRAFT) without deleting
+router.post('/admin/moderation/unpublish-signal', async (req, res) => {
+  if (!isAuthorized(req)) {
+    return res.status(403).json({ error: 'Forbidden - Development only or valid x-admin-key required' });
+  }
+
+  try {
+    const { id } = req.body || {};
+    if (!id || typeof id !== 'string') {
+      return res.status(400).json({ error: 'Missing or invalid signal id' });
+    }
+
+    const updated = await prisma.signal.update({
+      where: { id },
+      data: { publishStatus: 'DRAFT' },
+    });
+
+    res.json({
+      ok: true,
+      signal: { id: updated.id, status: updated.status, publishStatus: updated.publishStatus },
+    });
+  } catch (err) {
+    if (err?.code === 'P2025') {
+      return res.status(404).json({ error: 'Signal not found' });
+    }
+    console.error('[moderation] Error unpublishing signal', err);
+    res.status(500).json({ error: err?.message || 'Failed to unpublish signal' });
+  }
+});
+
+// POST /api/admin/moderation/republish-signal — show again (must be APPROVED)
+router.post('/admin/moderation/republish-signal', async (req, res) => {
+  if (!isAuthorized(req)) {
+    return res.status(403).json({ error: 'Forbidden - Development only or valid x-admin-key required' });
+  }
+
+  try {
+    const { id } = req.body || {};
+    if (!id || typeof id !== 'string') {
+      return res.status(400).json({ error: 'Missing or invalid signal id' });
+    }
+
+    const existing = await prisma.signal.findUnique({ where: { id }, select: { status: true } });
+    if (!existing) {
+      return res.status(404).json({ error: 'Signal not found' });
+    }
+    if (existing.status !== 'APPROVED') {
+      return res.status(400).json({ error: 'Only approved signals can be republished' });
+    }
+
+    const updated = await prisma.signal.update({
+      where: { id },
+      data: { publishStatus: 'PUBLISHED', publishAt: null },
+    });
+
+    res.json({
+      ok: true,
+      signal: { id: updated.id, status: updated.status, publishStatus: updated.publishStatus },
+    });
+  } catch (err) {
+    if (err?.code === 'P2025') {
+      return res.status(404).json({ error: 'Signal not found' });
+    }
+    console.error('[moderation] Error republishing signal', err);
+    res.status(500).json({ error: err?.message || 'Failed to republish signal' });
   }
 });
 

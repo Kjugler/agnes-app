@@ -20,11 +20,9 @@ function buildDefaultMessage(landingUrl: string): string {
 
 Not sure what it is yet, but it's actually pretty interesting.
 
-${landingUrl}
-
 Go in and tell me what you think.
 
-#WhereIsJodyVernon`;
+${landingUrl}`;
 }
 
 type TextAFriendModalProps = {
