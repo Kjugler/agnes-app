@@ -3,7 +3,6 @@
 import React, { useState, useCallback } from 'react';
 import SignalRoomHeader from './SignalRoomHeader';
 import SignalRoomClient from './SignalRoomClient';
-import type { DailySummaryBulletin } from './dailySummaryTypes';
 
 type SignalData = {
   id: string;
@@ -35,15 +34,13 @@ type SignalData = {
 type SignalRoomContainerProps = {
   signals: SignalData[];
   isInitializing: boolean;
-  initialDailySummary?: DailySummaryBulletin | null;
 };
 
 export default function SignalRoomContainer({
   signals,
   isInitializing,
-  initialDailySummary = null,
 }: SignalRoomContainerProps) {
-  // Do not key SignalRoomClient by signals[0] — remounting cleared daily bulletin client state.
+  // Do not key SignalRoomClient by signals[0] — remounting would reset client feed state.
   const [feedRefreshTrigger, setFeedRefreshTrigger] = useState(0);
   const bumpFeedRefresh = useCallback(() => {
     setFeedRefreshTrigger((t) => t + 1);
@@ -84,11 +81,7 @@ export default function SignalRoomContainer({
           </div>
         </div>
       ) : (
-        <SignalRoomClient
-          signals={signals}
-          feedRefreshTrigger={feedRefreshTrigger}
-          initialDailySummary={initialDailySummary}
-        />
+        <SignalRoomClient signals={signals} feedRefreshTrigger={feedRefreshTrigger} />
       )}
     </div>
   );

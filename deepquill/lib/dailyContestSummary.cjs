@@ -231,14 +231,117 @@ async function runDailyContestSummary(prisma, opts = {}) {
     });
   }
 
+  let finalSummary = summary;
+
+  try {
+    await upsertDailyBulletinSignal(prisma, finalSummary);
+  } catch (bulletinErr) {
+    console.error('[dailyContestSummary] upsertDailyBulletinSignal failed', bulletinErr?.message || bulletinErr);
+  }
+
   return {
-    summary,
+    summary: finalSummary,
     summaryDate,
     rankedTop3: top3,
     contestantCount,
     placement: awardResult,
     liveLeader: live,
   };
+}
+
+/**
+ * Build plain-text body for the daily contest bulletin (mirrors public Signal Room copy).
+ */
+function buildDailyBulletinSignalText(row) {
+  const dto = toPublicSummaryDto(row);
+  if (!dto) return null;
+  const lines = [];
+  lines.push(`DAILY CONTEST BULLETIN • ${dto.summaryDate} (America/Denver)`);
+  lines.push('');
+  lines.push(`Yesterday's top 3 (points that day):`);
+  if (dto.first?.dailyPoints && dto.first.name !== '—') {
+    const parts = [`1st ${dto.first.name} (${dto.first.dailyPoints} pts)`];
+    if (dto.second?.dailyPoints && dto.second.name !== '—') {
+      parts.push(`2nd ${dto.second.name} (${dto.second.dailyPoints} pts)`);
+    }
+    if (dto.third?.dailyPoints && dto.third.name !== '—') {
+      parts.push(`3rd ${dto.third.name} (${dto.third.dailyPoints} pts)`);
+    }
+    lines.push(parts.join(' • '));
+  } else {
+    lines.push('No placements for that day yet.');
+  }
+  lines.push('');
+  lines.push(`Contestants scoring that day: ${dto.contestantCount}`);
+  lines.push(
+    'Count = users with net positive ledger points that day (not total people who joined the contest).'
+  );
+  if (dto.liveLeader?.name != null && dto.liveLeader.totalPoints != null) {
+    lines.push('');
+    lines.push(`Overall leader (live total): ${dto.liveLeader.name} — ${dto.liveLeader.totalPoints} pts`);
+  }
+  if (dto.cashChallenge?.winnerDisplayName && !dto.cashChallenge.claimed) {
+    lines.push('');
+    lines.push(`Cash challenge: ${dto.cashChallenge.winnerDisplayName}.`);
+    if (dto.cashChallenge.claimInstructions) {
+      lines.push(dto.cashChallenge.claimInstructions);
+    }
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Publish or update the daily bulletin as a normal system Signal (chronological feed; not pinned).
+ */
+async function upsertDailyBulletinSignal(prisma, summaryRow) {
+  if (!prisma?.signal || !summaryRow?.summaryDate) return null;
+
+  const summaryDate = summaryRow.summaryDate;
+  const signalId = `daily_bulletin_${summaryDate}`;
+  const body = buildDailyBulletinSignalText(summaryRow);
+  if (!body) return null;
+
+  const title = `Daily Contest Bulletin • ${summaryDate} (America/Denver)`;
+  const tags = { feedStyle: 'daily_bulletin', summaryDate };
+  const now = new Date();
+  const textLine = body.split('\n').find((l) => l.trim().length > 0) || 'Daily contest bulletin.';
+  const text = textLine.length > 500 ? textLine.slice(0, 497) + '...' : textLine;
+
+  const existing = await prisma.signal.findUnique({
+    where: { id: signalId },
+    select: { id: true },
+  });
+
+  if (existing) {
+    return prisma.signal.update({
+      where: { id: signalId },
+      data: {
+        title,
+        content: body,
+        text,
+        tags,
+        updatedAt: now,
+      },
+    });
+  }
+
+  return prisma.signal.create({
+    data: {
+      id: signalId,
+      text,
+      title,
+      content: body,
+      isSystem: true,
+      type: 'NARRATIVE',
+      status: 'APPROVED',
+      approvedAt: now,
+      createdAt: now,
+        discussionEnabled: true,
+        tags,
+        publishStatus: 'PUBLISHED',
+        publishAt: now,
+      },
+    });
 }
 
 function toPublicSummaryDto(row) {
@@ -362,4 +465,6 @@ module.exports = {
   recordDailyContestSummaryJobRun,
   getDailyContestSummaryJobStatus,
   JOB_STATUS_ID,
+  upsertDailyBulletinSignal,
+  buildDailyBulletinSignalText,
 };

@@ -260,25 +260,45 @@ router.get('/signals/me', async (req, res) => {
   }
 });
 
-// GET /api/signals - List published signals
+// GET /api/signals - List published signals (ordered by visible time: COALESCE(approvedAt, createdAt) desc)
 router.get('/signals', async (req, res) => {
   try {
-    const cursor = req.query.cursor;
     const limit = Math.min(parseInt(req.query.limit || '20', 10), 50);
+    const offset = Math.max(0, parseInt(String(req.query.offset || '0'), 10) || 0);
     const type = req.query.type;
     const currentUser = await resolveUserByEmail(req);
 
-    const where = {
-      status: 'APPROVED',
-      OR: [{ publishStatus: 'PUBLISHED' }, { publishStatus: null }],
-      ...(type && type !== 'all' ? { type } : {}),
-    };
+    const typeFilter = type && type !== 'all' && VALID_TYPES.includes(type) ? type : null;
 
-    const signals = await prisma.signal.findMany({
-      where,
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    let sql = `
+      SELECT id FROM Signal
+      WHERE status = 'APPROVED'
+        AND ("publishStatus" = 'PUBLISHED' OR "publishStatus" IS NULL)`;
+    const sqlParams = [];
+    if (typeFilter) {
+      sql += ` AND "type" = ?`;
+      sqlParams.push(typeFilter);
+    }
+    sql += `
+      ORDER BY datetime(COALESCE("approvedAt", "createdAt")) DESC, id DESC
+      LIMIT ? OFFSET ?`;
+    sqlParams.push(limit + 1, offset);
+
+    const idRows = await prisma.$queryRawUnsafe(sql, ...sqlParams);
+    const ids = Array.isArray(idRows) ? idRows.map((r) => r.id) : [];
+
+    if (ids.length === 0) {
+      return res.json({
+        ok: true,
+        signals: [],
+        nextCursor: null,
+        nextOffset: null,
+        hasMore: false,
+      });
+    }
+
+    const signalsUnordered = await prisma.signal.findMany({
+      where: { id: { in: ids } },
       select: {
         id: true,
         userId: true,
@@ -304,10 +324,13 @@ router.get('/signals', async (req, res) => {
         },
       },
     });
+    const byId = new Map(signalsUnordered.map((s) => [s.id, s]));
+    const signals = ids.map((id) => byId.get(id)).filter(Boolean);
 
     const hasMore = signals.length > limit;
     const items = hasMore ? signals.slice(0, limit) : signals;
     const nextCursor = hasMore ? items[items.length - 1].id : null;
+    const nextOffset = hasMore ? offset + limit : null;
 
     const signalsData = items.map((s) => ({
       id: s.id,
@@ -339,7 +362,7 @@ router.get('/signals', async (req, res) => {
       })),
     }));
 
-    res.json({ ok: true, signals: signalsData, nextCursor, hasMore });
+    res.json({ ok: true, signals: signalsData, nextCursor, nextOffset, hasMore });
   } catch (err) {
     console.error('[signals] Error', err);
     res.status(500).json({ ok: false, error: err?.message || 'Unknown error' });

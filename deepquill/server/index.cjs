@@ -347,4 +347,17 @@ try {
 app.listen(PORT, HOST, () => {
   console.log(`[deepquill] Listening on port ${PORT} (host ${HOST})`);
   console.log(`[deepquill] Server running — http://${HOST}:${PORT} (e.g. GET /ping)`);
+
+  setImmediate(async () => {
+    try {
+      const { prisma } = require('./prisma.cjs');
+      const { ensureBetaDeclarationSignal } = require('../lib/officialFeedSeeds.cjs');
+      if (prisma) {
+        await ensureBetaDeclarationSignal(prisma);
+        console.log('[deepquill] Official feed seeds checked (beta declaration)');
+      }
+    } catch (seedErr) {
+      console.warn('[deepquill] Official feed seed skipped:', seedErr?.message || seedErr);
+    }
+  });
 });

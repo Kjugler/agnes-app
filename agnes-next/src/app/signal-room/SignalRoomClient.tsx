@@ -8,7 +8,6 @@ import EditSignalModal from './EditSignalModal';
 import EditReviewModal from './EditReviewModal';
 import SignalMedia from './SignalMedia';
 import RibbonTicker from './RibbonTicker';
-import type { DailySummaryBulletin } from './dailySummaryTypes';
 
 function formatRelativeTime(date: Date | string): string {
   const now = new Date();
@@ -88,7 +87,12 @@ function getItemTypeLabel(item: { type: string; data: unknown }): string {
     isSystem?: unknown;
     mediaUrl?: unknown;
     mediaType?: unknown;
+    tags?: unknown;
   };
+
+  const fs = parseFeedTags(s.tags)?.feedStyle;
+  if (fs === 'parchment_declaration') return 'OFFICIAL';
+  if (fs === 'daily_bulletin') return 'BULLETIN';
 
   const isSystem = typeof s.isSystem === 'boolean' ? s.isSystem : false;
   if (isSystem) return 'SYSTEM';
@@ -154,6 +158,8 @@ type ReviewData = {
   text: string;
   tags?: string[] | null;
   createdAt: Date | string;
+  /** When the review became publicly visible (falls back to createdAt in UI). */
+  approvedAt?: Date | string | null;
   userEmail?: string | null;
   userFirstName?: string | null;
   isAuthor?: boolean;
@@ -163,26 +169,39 @@ type FeedItem =
   | { type: 'signal'; createdAt: Date | string; id: string; data: SignalData }
   | { type: 'review'; createdAt: Date | string; id: string; data: ReviewData };
 
-function signalHasHeroMedia(s: SignalData): boolean {
-  return !!(s.mediaUrl && (s.mediaType === 'video' || s.mediaType === 'image' || s.mediaType === 'document'));
-}
-
 type SignalRoomClientProps = {
   signals: SignalData[];
   feedRefreshTrigger?: number;
-  /** Server-fetched latest summary so the bulletin renders on first paint (not only after client fetch). */
-  initialDailySummary?: DailySummaryBulletin | null;
 };
+
+function parseFeedTags(tags: unknown): { feedStyle?: string } | null {
+  if (tags == null) return null;
+  try {
+    const t = typeof tags === 'string' ? JSON.parse(tags) : tags;
+    if (t && typeof t === 'object' && 'feedStyle' in t) return t as { feedStyle?: string };
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function visibleAtMsSignal(s: SignalData): number {
+  const d = s.approvedAt ?? s.createdAt;
+  return new Date(d).getTime();
+}
+
+function visibleAtMsReview(r: ReviewData): number {
+  const d = r.approvedAt ?? r.createdAt;
+  return new Date(d).getTime();
+}
 
 export default function SignalRoomClient({
   signals: initialSignals,
   feedRefreshTrigger = 0,
-  initialDailySummary = null,
 }: SignalRoomClientProps) {
   const router = useRouter();
   const [signals, setSignals] = useState(initialSignals);
   const [reviews, setReviews] = useState<ReviewData[]>([]);
-  const [dailySummary, setDailySummary] = useState<DailySummaryBulletin | null>(initialDailySummary ?? null);
   const [replyModalSignalId, setReplyModalSignalId] = useState<string | null>(null);
   const [editSignal, setEditSignal] = useState<SignalData | null>(null);
   const [editReview, setEditReview] = useState<ReviewData | null>(null);
@@ -203,28 +222,6 @@ export default function SignalRoomClient({
         }
       })
       .catch(() => {});
-  }, [feedRefreshTrigger]);
-
-  // Refresh bulletin after job runs / navigation; 5m poll picks up new day without full reload
-  useEffect(() => {
-    let cancelled = false;
-    const load = () => {
-      fetch('/api/contest/daily-summary', { cache: 'no-store' })
-        .then((r) => r.json())
-        .then((d) => {
-          if (cancelled) return;
-          if (d.ok && d.summary) {
-            setDailySummary(d.summary as DailySummaryBulletin);
-          }
-        })
-        .catch(() => {});
-    };
-    load();
-    const interval = window.setInterval(load, 5 * 60 * 1000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
   }, [feedRefreshTrigger]);
 
   const [mySignals, setMySignals] = useState<SignalData[]>([]);
@@ -273,47 +270,31 @@ export default function SignalRoomClient({
     [mySignals]
   );
 
-  const feedItems: FeedItem[] = useMemo(
-    () =>
-      [
-        ...signals.map((s) => ({ type: 'signal' as const, createdAt: s.createdAt, id: `signal-${s.id}`, data: s })),
-        ...reviews.map((r) => ({ type: 'review' as const, createdAt: r.createdAt, id: `review-${r.id}`, data: r })),
-      ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
-    [signals, reviews]
-  );
-
-  /** Prefer a recent transmission as hero when a text-only review would otherwise hide it (same ~72h window). */
-  const { latestItem, restFeed } = useMemo(() => {
-    if (feedItems.length === 0) return { latestItem: null as FeedItem | null, restFeed: [] as FeedItem[] };
-    const sorted = [...feedItems];
-    const top = sorted[0];
-    const WINDOW_MS = 72 * 60 * 60 * 1000;
-
-    if (top.type === 'review') {
-      const topTransmission = sorted.find((i) => i.type === 'signal' && signalHasHeroMedia(i.data));
-      if (topTransmission) {
-        const reviewT = new Date(top.data.createdAt).getTime();
-        const sigT = new Date(topTransmission.data.createdAt).getTime();
-        if (Math.abs(reviewT - sigT) <= WINDOW_MS) {
-          return {
-            latestItem: topTransmission,
-            restFeed: sorted.filter((i) => i.id !== topTransmission.id),
-          };
-        }
-      }
-    }
-
-    return { latestItem: top, restFeed: sorted.slice(1) };
-  }, [feedItems]);
+  /** Unified chronological feed: newest public-visible content first (approvedAt ?? createdAt). */
+  const feedItems: FeedItem[] = useMemo(() => {
+    const merged: FeedItem[] = [
+      ...signals.map((s) => ({ type: 'signal' as const, createdAt: s.createdAt, id: `signal-${s.id}`, data: s })),
+      ...reviews.map((r) => ({ type: 'review' as const, createdAt: r.createdAt, id: `review-${r.id}`, data: r })),
+    ];
+    const getV = (item: FeedItem) => {
+      if (item.type === 'signal') return visibleAtMsSignal(item.data);
+      return visibleAtMsReview(item.data);
+    };
+    return merged.sort((a, b) => {
+      const vb = getV(b);
+      const va = getV(a);
+      if (vb !== va) return vb - va;
+      return b.id.localeCompare(a.id);
+    });
+  }, [signals, reviews]);
 
   useEffect(() => {
     if (!loadMoreRef.current || !hasMore || loadingMore) return;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0]?.isIntersecting && hasMore && !loadingMore) {
-          const cursor = nextCursor ?? signals[signals.length - 1]?.id;
           setLoadingMore(true);
-          fetch(`/api/signals?limit=20&cursor=${cursor || ''}`)
+          fetch(`/api/signals?limit=20&offset=${signals.length}`)
             .then((r) => r.json())
             .then((d) => {
               if (d.ok && d.signals?.length) {
@@ -344,7 +325,7 @@ export default function SignalRoomClient({
                     replies: (s.replies as ReplyData[]) ?? [],
                   }));
                 setSignals((prev) => [...prev, ...toAdd]);
-                setNextCursor(d.nextCursor);
+                setNextCursor(d.nextCursor ?? null);
                 setHasMore(!!d.hasMore);
               } else {
                 setHasMore(false);
@@ -509,15 +490,112 @@ export default function SignalRoomClient({
     }
   };
 
+  function renderParchmentDeclarationCard(signal: SignalData) {
+    const publishedAt = signal.approvedAt ?? signal.createdAt;
+    const body = signal.content || signal.text;
+    return (
+      <div
+        style={{
+          background: 'linear-gradient(165deg, #f7efd8 0%, #ebe0c8 45%, #e2d4b8 100%)',
+          border: '3px double #3d2f1f',
+          borderRadius: 4,
+          padding: '1.75rem 1.5rem 2rem',
+          color: '#1c1917',
+          boxShadow: '0 12px 40px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.4)',
+        }}
+      >
+        <div style={{ textAlign: 'right', marginBottom: '0.75rem', fontSize: '0.72rem', color: '#57534e' }}>
+          {formatAbsoluteTimestamp(publishedAt)} · {getLabel(signal)}
+        </div>
+        {signal.title && (
+          <h2
+            style={{
+              fontFamily: 'Georgia, "Times New Roman", serif',
+              textAlign: 'center',
+              fontSize: '1.15rem',
+              fontWeight: 700,
+              letterSpacing: '0.04em',
+              margin: '0 0 1.25rem',
+              lineHeight: 1.35,
+              color: '#0c0a09',
+            }}
+          >
+            {signal.title}
+          </h2>
+        )}
+        <div
+          style={{
+            fontFamily: 'Georgia, "Times New Roman", serif',
+            fontSize: '0.92rem',
+            lineHeight: 1.65,
+            whiteSpace: 'pre-wrap',
+            textAlign: 'justify',
+            color: '#292524',
+          }}
+        >
+          {body}
+        </div>
+        <div style={{ marginTop: '1.25rem', paddingTop: '0.75rem', borderTop: '1px solid rgba(61, 47, 31, 0.2)' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', fontSize: '0.8rem' }}>
+            <Link
+              href={`/signal-room/${signal.id}`}
+              style={{ color: '#1c3d5e', fontWeight: 600, textDecoration: 'underline' }}
+            >
+              View Signal →
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function renderDailyBulletinCard(signal: SignalData) {
+    const publishedAt = signal.approvedAt ?? signal.createdAt;
+    const body = signal.content || signal.text;
+    return (
+      <section
+        style={{
+          backgroundColor: '#1a1530',
+          border: '1px solid #6d28d9',
+          borderRadius: 8,
+          padding: '1.25rem 1.5rem',
+        }}
+        aria-label="Daily contest bulletin"
+      >
+        <div style={{ color: '#c4b5fd', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
+          OFFICIAL BULLETIN · {formatAbsoluteTimestamp(publishedAt)}
+        </div>
+        {signal.title && (
+          <div style={{ color: '#f5f3ff', fontSize: '1rem', fontWeight: 700, marginBottom: '0.5rem' }}>{signal.title}</div>
+        )}
+        <div style={{ color: '#e7e5e4', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{body}</div>
+        <div style={{ marginTop: '0.75rem', display: 'flex', gap: '1rem', flexWrap: 'wrap', fontSize: '0.82rem' }}>
+          <Link href={`/signal-room/${signal.id}`} style={{ color: '#c4b5fd', fontWeight: 600 }}>
+            View Signal →
+          </Link>
+        </div>
+      </section>
+    );
+  }
+
   function renderSignalCard(signal: SignalData, cardContext: 'feed' | 'pending' = 'feed') {
+    if (cardContext === 'feed') {
+      const fs = parseFeedTags(signal.tags)?.feedStyle;
+      if (fs === 'parchment_declaration') {
+        return renderParchmentDeclarationCard(signal);
+      }
+      if (fs === 'daily_bulletin') {
+        return renderDailyBulletinCard(signal);
+      }
+    }
     const displayName = getDisplayName(signal);
     const label = getLabel(signal);
-    const relativeTime = formatRelativeTime(signal.createdAt);
+    const publishedAt = signal.approvedAt ?? signal.createdAt;
+    const relativeTime = formatRelativeTime(publishedAt);
     const isRepliesExpanded = expandedReplies.has(signal.id);
     const bodyText = signal.content || signal.text;
     const typeLabel = signal.type ? SIGNAL_TYPE_LABELS[signal.type] ?? signal.type : null;
     const mod = signal.moderationStatus;
-    const publishedAt = signal.approvedAt ?? signal.createdAt;
     const borderColor =
       cardContext === 'pending'
         ? mod === 'REJECTED'
@@ -740,17 +818,17 @@ export default function SignalRoomClient({
     );
   }
 
-  function renderReviewCard(review: ReviewData, options?: { isHero?: boolean }) {
+  function renderReviewCard(review: ReviewData) {
     const displayName = getReviewDisplayName(review);
-    const isHero = options?.isHero ?? false;
+    const visibleAt = review.approvedAt ?? review.createdAt;
     const card = (
       <div
         key={review.id}
         style={{
-          backgroundColor: isHero ? '#0d1220' : '#14192e',
-          border: isHero ? '2px solid #00ffe0' : '1px solid #1a1f3a',
-          borderRadius: isHero ? 8 : 4,
-          padding: isHero ? '1.5rem' : '1rem',
+          backgroundColor: '#14192e',
+          border: '1px solid #1a1f3a',
+          borderRadius: 4,
+          padding: '1rem',
           display: 'flex',
           flexDirection: 'column',
           gap: '0.5rem',
@@ -765,7 +843,7 @@ export default function SignalRoomClient({
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <span style={{ color: '#ffcc00', fontSize: '0.95em' }}>{'★'.repeat(review.rating)}</span>
-            <span style={{ color: '#888', fontSize: '0.85em' }}>{formatRelativeTime(review.createdAt)}</span>
+            <span style={{ color: '#888', fontSize: '0.85em' }}>{formatRelativeTime(visibleAt)}</span>
             {review.isAuthor && (
               <>
                 <span
@@ -837,56 +915,6 @@ export default function SignalRoomClient({
           gap: '1rem',
         }}
       >
-        {dailySummary && (
-          <section
-            style={{
-              backgroundColor: '#1a1530',
-              border: '1px solid #6d28d9',
-              borderRadius: 8,
-              padding: '1.25rem 1.5rem',
-            }}
-            aria-label="Daily contest bulletin"
-          >
-            <div style={{ color: '#c4b5fd', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
-              DAILY CONTEST BULLETIN • {dailySummary.summaryDate} (America/Denver)
-            </div>
-            <div style={{ color: '#f5f3ff', fontSize: '0.95rem', lineHeight: 1.55 }}>
-              <strong>Yesterday&apos;s top 3 (points that day):</strong>{' '}
-              {dailySummary.first?.dailyPoints ? (
-                <>
-                  1st {dailySummary.first.name} ({dailySummary.first.dailyPoints} pts)
-                  {dailySummary.second?.dailyPoints
-                    ? ` • 2nd ${dailySummary.second.name} (${dailySummary.second.dailyPoints} pts)`
-                    : ''}
-                  {dailySummary.third?.dailyPoints
-                    ? ` • 3rd ${dailySummary.third.name} (${dailySummary.third.dailyPoints} pts)`
-                    : ''}
-                </>
-              ) : (
-                <span style={{ color: '#a8a29e' }}>No placements for that day yet.</span>
-              )}
-            </div>
-            <div style={{ color: '#e7e5e4', fontSize: '0.88rem', marginTop: '0.65rem' }}>
-              <strong>Contestants scoring that day:</strong> {dailySummary.contestantCount}
-            </div>
-            <div style={{ color: '#a8a29e', fontSize: '0.72rem', marginTop: '0.35rem', lineHeight: 1.4 }}>
-              Count = users with net positive ledger points that day (not total people who joined the contest).
-            </div>
-            {dailySummary.liveLeader?.name != null && dailySummary.liveLeader.totalPoints != null && (
-              <div style={{ color: '#e7e5e4', fontSize: '0.88rem', marginTop: '0.35rem' }}>
-                <strong>Overall leader (live total):</strong> {dailySummary.liveLeader.name} —{' '}
-                {dailySummary.liveLeader.totalPoints} pts
-              </div>
-            )}
-            {dailySummary.cashChallenge?.winnerDisplayName && !dailySummary.cashChallenge.claimed && (
-              <div style={{ color: '#fde68a', fontSize: '0.88rem', marginTop: '0.75rem', lineHeight: 1.5 }}>
-                <strong>Cash challenge:</strong> {dailySummary.cashChallenge.winnerDisplayName}.{' '}
-                {dailySummary.cashChallenge.claimInstructions || 'See contest admin for claim steps.'}
-              </div>
-            )}
-          </section>
-        )}
-
         {pendingMySignals.length > 0 && (
           <section
             style={{
@@ -916,180 +944,8 @@ export default function SignalRoomClient({
           </section>
         )}
 
-        {/* Live Transmission (hero) – newest item as current transmission */}
-        {latestItem && (
-          <div
-            style={{
-              backgroundColor: '#0d1220',
-              border: '2px solid #00ffe0',
-              borderRadius: 8,
-              padding: '1.5rem',
-              marginBottom: '0.5rem',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
-              <span style={{ color: '#00ffe0', fontSize: '0.8em', fontWeight: 600 }}>
-                LIVE TRANSMISSION
-              </span>
-              <span
-                style={{
-                  color: '#ff4444',
-                  fontSize: '0.7em',
-                  fontWeight: 700,
-                  padding: '2px 6px',
-                  backgroundColor: 'rgba(255,68,68,0.2)',
-                  borderRadius: 2,
-                  animation: 'pulse 2s ease-in-out infinite',
-                }}
-              >
-                ● ON AIR
-              </span>
-              <span style={{ color: '#888', fontSize: '0.7em', padding: '2px 6px', backgroundColor: '#0a0e27', borderRadius: '2px' }}>
-                {getItemTypeLabel(latestItem)}
-              </span>
-            </div>
-            {latestItem.type === 'signal' ? (
-              <>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: latestItem.data.mediaUrl ? '0.5rem' : 0 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                      <span style={{ color: latestItem.data.isSystem ? '#00ffe0' : '#ffcc00', fontWeight: 'bold', fontSize: '1em' }}>
-                        {getDisplayName(latestItem.data)}
-                      </span>
-                      <span style={{ color: '#888', fontSize: '0.8em', padding: '2px 6px', backgroundColor: '#0a0e27', borderRadius: '2px' }}>
-                        {getLabel(latestItem.data)}
-                      </span>
-                      {latestItem.data.type && SIGNAL_TYPE_LABELS[latestItem.data.type] && (
-                        <span style={{ color: '#00ffe0', fontSize: '0.75em', padding: '2px 6px', backgroundColor: '#1a1f3a', borderRadius: '2px' }}>
-                          {SIGNAL_TYPE_LABELS[latestItem.data.type]}
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ textAlign: 'right', lineHeight: 1.35 }}>
-                      <div style={{ color: '#d4d4d4', fontSize: '0.82em', fontWeight: 600 }}>
-                        {formatAbsoluteTimestamp(
-                          latestItem.data.approvedAt ?? latestItem.data.createdAt
-                        )}
-                      </div>
-                      <div style={{ color: '#888', fontSize: '0.75em', marginTop: 2 }}>
-                        {formatRelativeTime(latestItem.data.createdAt)} · id {shortSignalId(latestItem.data.id)}
-                      </div>
-                    </div>
-                  </div>
-                  {latestItem.data.title && (
-                    <div style={{ color: '#fff', fontSize: '1.1em', fontWeight: 600 }}>{latestItem.data.title}</div>
-                  )}
-                  <div style={{ color: '#e0e0e0', fontSize: '1em', lineHeight: '1.55' }}>
-                    {latestItem.data.content || latestItem.data.text}
-                  </div>
-                  {latestItem.data.locationTag && (
-                    <div style={{ color: '#888', fontSize: '0.85em' }}>📍 {latestItem.data.locationTag}</div>
-                  )}
-                </div>
-                {(latestItem.data.mediaUrl || latestItem.data.mediaType) && (
-                  <SignalMedia
-                    mediaType={latestItem.data.mediaType}
-                    mediaUrl={latestItem.data.mediaUrl}
-                    variant="featured"
-                  />
-                )}
-                <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #1a1f3a' }}>
-                  <div
-                    onClick={() => handleAcknowledge(latestItem.data.id)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.25rem',
-                      color: latestItem.data.acknowledged ? '#00ffe0' : '#888',
-                      fontSize: '0.85em',
-                      cursor: 'pointer',
-                      textShadow: latestItem.data.acknowledged ? '0 0 4px #00ffe0' : 'none',
-                      transition: 'all 0.2s ease',
-                    }}
-                  >
-                    ✓ Upvote {latestItem.data.acknowledgeCount > 0 && `(${latestItem.data.acknowledgeCount})`}
-                  </div>
-                  {latestItem.data.discussionEnabled !== false && (
-                    <div
-                      onClick={() => setReplyModalSignalId(latestItem.data.id)}
-                      style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#888', fontSize: '0.85em', cursor: 'pointer' }}
-                    >
-                      ↻ Theory {latestItem.data.replyCount > 0 && `(${latestItem.data.replyCount})`}
-                    </div>
-                  )}
-                  <Link
-                    href={`/signal-room/${latestItem.data.id}`}
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#00ffe0', fontSize: '0.85em', textDecoration: 'none', fontWeight: 600 }}
-                  >
-                    View Signal →
-                  </Link>
-                  <div
-                    onClick={() => {
-                      const url = typeof window !== 'undefined' ? `${window.location.origin}/signal-room/${latestItem.data.id}` : '';
-                      const text = latestItem.data.title || latestItem.data.content || latestItem.data.text;
-                      if (navigator.share) {
-                        navigator.share({ title: latestItem.data.title || 'Signal', text, url }).catch(() => {});
-                      } else {
-                        navigator.clipboard?.writeText(url || text);
-                      }
-                    }}
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#888', fontSize: '0.85em', cursor: 'pointer' }}
-                    title="Share signal"
-                  >
-                    ↗ Share
-                  </div>
-                  {latestItem.data.isAuthor && (
-                    <>
-                      <div
-                        onClick={() => setEditSignal(latestItem.data)}
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#888', fontSize: '0.85em', cursor: 'pointer' }}
-                        title="Edit"
-                      >
-                        ✎ Edit
-                      </div>
-                      <div
-                        onClick={() => handleDeleteSignal(latestItem.data.id)}
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#888', fontSize: '0.85em', cursor: 'pointer' }}
-                        title="Delete"
-                      >
-                        🗑 Delete
-                      </div>
-                    </>
-                  )}
-                  {latestItem.data.replyCount > 0 && (
-                    <div
-                      onClick={() => toggleReplies(latestItem.data.id)}
-                      style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#888', fontSize: '0.85em', cursor: 'pointer', marginLeft: 'auto' }}
-                    >
-                      {expandedReplies.has(latestItem.data.id) ? '▼' : '▶'} {latestItem.data.replyCount} {latestItem.data.replyCount === 1 ? 'reply' : 'replies'}
-                    </div>
-                  )}
-                </div>
-                {expandedReplies.has(latestItem.data.id) && latestItem.data.replies.length > 0 && (
-                  <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid #1a1f3a', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                    {latestItem.data.replies.map((reply) => {
-                      const replyDisplayName = reply.userFirstName || (reply.userEmail ? reply.userEmail.split('@')[0] : 'Anonymous');
-                      return (
-                        <div key={reply.id} style={{ backgroundColor: '#0a0e27', padding: '0.75rem', borderRadius: '4px', border: '1px solid #1a1f3a' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
-                            <span style={{ color: '#ffcc00', fontSize: '0.85em', fontWeight: 'bold' }}>{replyDisplayName}</span>
-                            <span style={{ color: '#666', fontSize: '0.75em' }}>{formatRelativeTime(reply.createdAt)}</span>
-                          </div>
-                          <div style={{ color: '#d0d0d0', fontSize: '0.9em', lineHeight: '1.4' }}>{reply.text}</div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </>
-            ) : (
-              renderReviewCard(latestItem.data, { isHero: true })
-            )}
-          </div>
-        )}
-
-        {/* Unified Feed */}
-        {restFeed.map((item) => (
+        {/* Unified feed — single chronological order (visible time: approvedAt ?? createdAt) */}
+        {feedItems.map((item) => (
           <div key={item.id}>
             {item.type === 'signal' ? (
               <div style={{ marginBottom: '0.5rem' }}>

@@ -2,31 +2,12 @@ import React from 'react';
 import { cookies } from 'next/headers';
 import { normalizeEmail } from '@/lib/email';
 import { hasSignalRoomAccess, getSignalRoomAccessMode, SIGNAL_ROOM_ACCESS_COOKIE } from '@/lib/signal-room-access';
-import { getActiveBroadcastConfig } from '@/lib/signal-room-broadcast';
 import SignalRoomContainer from './SignalRoomContainer';
-import type { DailySummaryBulletin } from './dailySummaryTypes';
 import SignalRoomHeader from './SignalRoomHeader';
 import SignalRoomGateView from './SignalRoomGateView';
 
 function getDeepquillBase() {
   return process.env.DEEPQUILL_URL || process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5055';
-}
-
-/** Fetches a single signal from deepquill */
-async function fetchSignalFromDeepquill(
-  id: string,
-  cookieHeader: string
-): Promise<{ ok: boolean; signal?: Record<string, unknown> }> {
-  try {
-    const headers: Record<string, string> = { Accept: 'application/json' };
-    if (cookieHeader) headers.Cookie = cookieHeader;
-    const res = await fetch(`${getDeepquillBase()}/api/signal/${id}`, { cache: 'no-store', headers });
-    const data = await res.json();
-    return data;
-  } catch (err) {
-    console.error('[SignalRoom] Failed to fetch signal from deepquill:', err);
-    return { ok: false };
-  }
 }
 
 /** Fetches initial signals from deepquill (same source as creates and load-more) */
@@ -77,19 +58,6 @@ async function fetchInitialSignalsFromDeepquill(cookieHeader: string): Promise<{
   }
 }
 
-/** Latest daily contest summary (same JSON as GET /api/contest/daily-summary) for SSR bulletin card. */
-async function fetchDailySummaryFromDeepquill(): Promise<DailySummaryBulletin | null> {
-  try {
-    const res = await fetch(`${getDeepquillBase()}/api/contest/daily-summary`, { cache: 'no-store' });
-    const data = await res.json();
-    if (data?.ok && data.summary) return data.summary as DailySummaryBulletin;
-    return null;
-  } catch (err) {
-    console.error('[SignalRoom] Failed to fetch daily summary from deepquill:', err);
-    return null;
-  }
-}
-
 export default async function SignalRoomPage() {
   // Get current user email for acknowledge status and access check
   const cookieStore = await cookies();
@@ -133,12 +101,8 @@ export default async function SignalRoomPage() {
     );
   }
 
-  // Fetch initial signals + latest daily summary in parallel (bulletin must render without waiting on client JS)
   const cookieHeader = cookieStore.getAll().map((c) => `${c.name}=${c.value}`).join('; ');
-  const [{ ok, signals: rawSignals }, initialDailySummary] = await Promise.all([
-    fetchInitialSignalsFromDeepquill(cookieHeader),
-    fetchDailySummaryFromDeepquill(),
-  ]);
+  const { ok, signals: rawSignals } = await fetchInitialSignalsFromDeepquill(cookieHeader);
   const signalsData = ok && Array.isArray(rawSignals)
     ? rawSignals.map((s) => ({
         id: s.id,
@@ -174,11 +138,7 @@ export default async function SignalRoomPage() {
   const isInitializing = !ok;
 
   return (
-    <SignalRoomContainer
-      signals={signalsData}
-      isInitializing={isInitializing}
-      initialDailySummary={initialDailySummary}
-    />
+    <SignalRoomContainer signals={signalsData} isInitializing={isInitializing} />
   );
 }
 

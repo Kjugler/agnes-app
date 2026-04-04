@@ -127,14 +127,21 @@ router.get('/reviews/list', async (req, res) => {
     const take = takeParam ? Math.min(parseInt(takeParam, 10), 100) : 50;
     const currentUser = await resolveUserByEmail(req);
 
-    const reviews = await prisma.review.findMany({
+    const reviewsRaw = await prisma.review.findMany({
       where: { status: 'APPROVED' },
-      orderBy: { createdAt: 'desc' },
-      take,
       include: {
         user: { select: { email: true, firstName: true } },
       },
     });
+
+    const reviews = reviewsRaw
+      .sort((a, b) => {
+        const ta = (a.approvedAt ?? a.createdAt).getTime();
+        const tb = (b.approvedAt ?? b.createdAt).getTime();
+        if (tb !== ta) return tb - ta;
+        return b.id.localeCompare(a.id);
+      })
+      .slice(0, take);
 
     const reviewsData = reviews.map((r) => ({
       id: r.id,
@@ -142,6 +149,7 @@ router.get('/reviews/list', async (req, res) => {
       text: r.text,
       tags: r.tags ? (typeof r.tags === 'string' ? JSON.parse(r.tags) : r.tags) : null,
       createdAt: r.createdAt,
+      approvedAt: r.approvedAt ?? null,
       userEmail: r.user?.email,
       userFirstName: r.user?.firstName,
       isAuthor: !!(currentUser && r.userId === currentUser.id),
