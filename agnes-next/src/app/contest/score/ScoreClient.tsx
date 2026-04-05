@@ -1557,6 +1557,18 @@ export default function ScoreClient() {
             </BuyBookButton>
           </div>
           <ActionButton
+            label="Text a Friend"
+            sub=""
+            href="#text-a-friend"
+            hoverKey="textfriend"
+            onClick={(e) => {
+              e.preventDefault();
+              setTextFriendModalOpen(true);
+            }}
+            colorBase="#e11d48"
+            colorHover="#be123c"
+          />
+          <ActionButton
             label="Share to X"
             sub="100 pts"
             href="/share/x/1"
@@ -1584,18 +1596,6 @@ export default function ScoreClient() {
             colorHover="#1565c0"
           />
           <ActionButton
-            label="Text a Friend"
-            sub=""
-            href="#text-a-friend"
-            hoverKey="textfriend"
-            onClick={(e) => {
-              e.preventDefault();
-              setTextFriendModalOpen(true);
-            }}
-            colorBase="#e11d48"
-            colorHover="#be123c"
-          />
-          <ActionButton
             label="Join the Contest"
             sub="250 pts"
             href="/contest"
@@ -1604,6 +1604,7 @@ export default function ScoreClient() {
             colorHover="#4338ca"
           />
           <div
+            className="score-refer-slot"
             style={{
               position: 'relative',
               zIndex: 0,
@@ -1689,7 +1690,11 @@ export default function ScoreClient() {
         onCancel={() => setSocialHandleModal({ ...socialHandleModal, isOpen: false })}
       />
 
-      <TextAFriendModal isOpen={textFriendModalOpen} onClose={() => setTextFriendModalOpen(false)} />
+      <TextAFriendModal
+        isOpen={textFriendModalOpen}
+        onClose={() => setTextFriendModalOpen(false)}
+        referralCode={associate?.code ?? null}
+      />
 
       {/* Sync status indicator (shown during refresh loop) */}
       {syncingExplicitEntry && (

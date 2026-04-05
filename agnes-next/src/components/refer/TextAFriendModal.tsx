@@ -5,13 +5,15 @@ import { createPortal } from 'react-dom';
 import { REFER_VIDEOS, type ReferVideoId } from '@/config/referVideos';
 import { readContestEmail } from '@/lib/identity';
 
+/** Production site for SMS links; short path /t/:video expands to full attribution on the server. */
 const LANDING_ORIGIN = 'https://www.theagnesprotocol.com';
 
-function buildLandingUrl(videoId: ReferVideoId): string {
-  const u = new URL(LANDING_ORIGIN);
-  u.searchParams.set('source', 'textafriend');
-  u.searchParams.set('video', videoId);
-  u.searchParams.set('discount', '15');
+function buildLandingUrl(videoId: ReferVideoId, referralCode: string | null | undefined): string {
+  const path = `${LANDING_ORIGIN}/t/${videoId}`;
+  const code = referralCode?.trim();
+  if (!code) return path;
+  const u = new URL(path);
+  u.searchParams.set('ref', code);
   return u.toString();
 }
 
@@ -28,9 +30,11 @@ ${landingUrl}`;
 type TextAFriendModalProps = {
   isOpen: boolean;
   onClose: () => void;
+  /** Sender referral code → `?ref=` on /t/… so redirects preserve commission / ap_ref cookies */
+  referralCode?: string | null;
 };
 
-export default function TextAFriendModal({ isOpen, onClose }: TextAFriendModalProps) {
+export default function TextAFriendModal({ isOpen, onClose, referralCode }: TextAFriendModalProps) {
   const [selectedVideoId, setSelectedVideoId] = useState<ReferVideoId>('fb1');
   const [message, setMessage] = useState('');
   const [toast, setToast] = useState(false);
@@ -42,8 +46,8 @@ export default function TextAFriendModal({ isOpen, onClose }: TextAFriendModalPr
 
   useEffect(() => {
     if (!isOpen) return;
-    setMessage(buildDefaultMessage(buildLandingUrl(selectedVideoId)));
-  }, [isOpen, selectedVideoId]);
+    setMessage(buildDefaultMessage(buildLandingUrl(selectedVideoId, referralCode)));
+  }, [isOpen, selectedVideoId, referralCode]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -188,8 +192,8 @@ export default function TextAFriendModal({ isOpen, onClose }: TextAFriendModalPr
               Feel free to personalize this before sending.
             </p>
             <p style={{ fontSize: '0.7rem', color: '#9ca3af', margin: '0.35rem 0 0' }}>
-              Link includes <code style={{ fontSize: '0.65rem' }}>?source=textafriend&amp;video=…&amp;discount=15</code>{' '}
-              for tracking and their 15% discount. No video URL is sent in the text.
+              Short link <code style={{ fontSize: '0.65rem' }}>/t/fb1?ref=…</code> expands to full tracking (source, video,
+              discount, your referral code). No video file is sent in the text.
             </p>
           </div>
 

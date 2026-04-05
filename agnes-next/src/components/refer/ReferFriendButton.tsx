@@ -69,7 +69,7 @@ export default function ReferFriendButton({
 
   return (
     <>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center' }}>
+      <div className="refer-friend-stack" style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center' }}>
         <button
           type="button"
           onClick={() => {
@@ -125,15 +125,18 @@ export default function ReferFriendButton({
           </div>
         </button>
         
-        {/* Explanation panel */}
-        <div style={{
+        {/* Explanation panel — hidden in score mobile rail via score.css */}
+        <div
+          className="refer-friend-explanation"
+          style={{
           fontSize: '11px',
           lineHeight: 1.4,
           color: 'rgba(255,255,255,0.85)',
           textAlign: 'center',
           maxWidth: '200px',
           padding: '0 8px',
-        }}>
+        }}
+        >
           <div style={{ marginBottom: '4px', fontWeight: 600 }}>How this works</div>
           <div style={{ fontSize: '10px', opacity: 0.9 }}>
             Send friends a private email with your discount link. They save $3.90. You earn $2 per purchase.
