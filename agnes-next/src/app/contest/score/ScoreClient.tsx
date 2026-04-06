@@ -10,8 +10,7 @@ import { confettiCelebrate, confettiSprinkle } from '@/lib/confetti';
 import { clearAssociateCaches, readAssociate, readContestEmail, type AssociateCache } from '@/lib/identity';
 import { getNextVariant, type SharePlatform } from '@/lib/shareAssets';
 import { getNextTarget } from '@/lib/shareTarget';
-import { buildShareCaption } from '@/lib/shareCaption';
-import { buildShareUrl, buildPlatformShareUrl, hasSocialHandle, platformToHandleField } from '@/lib/shareHelpers';
+import { buildShareUrl, hasSocialHandle, platformToHandleField } from '@/lib/shareHelpers';
 import { buildScoreCaption, type PlayerState } from '@/lib/scoreCaption';
 import { ScoreCaptionRotator } from '@/components/ScoreCaptionRotator';
 import { BuyBookButton } from '@/components/BuyBookButton';
@@ -23,6 +22,22 @@ import HelpButton from '@/components/HelpButton';
 
 function clamp(min: number, v: number, max: number) {
   return Math.max(min, Math.min(max, v));
+}
+
+/**
+ * Touch / iPhone Safari: pointerdown often synthesizes mouseenter + focus before click. Running heavy
+ * hover state + confetti there steals the gesture and can require a second tap. Desktop hover UX unchanged.
+ */
+function shouldSkipHoverDrivenButtonEffects(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return (
+      window.matchMedia('(pointer: coarse)').matches ||
+      window.matchMedia('(hover: none)').matches
+    );
+  } catch {
+    return false;
+  }
 }
 
 type PointsPayload = {
@@ -64,7 +79,7 @@ export default function ScoreClient() {
     isOpen: boolean;
     platform: SharePlatform;
     platformName: string;
-    pendingAction?: () => Promise<void>;
+    pendingAction?: () => void | Promise<void>;
   }>({
     isOpen: false,
     platform: 'fb',
@@ -903,18 +918,23 @@ export default function ScoreClient() {
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const onButtonEnter = (key: string) => {
     if (stageSequence === 'rabbit') return;
+    if (shouldSkipHoverDrivenButtonEffects()) {
+      return;
+    }
     setHovered(key);
     if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
     setStageSequence('hover');
     setStageText(hoverCaptions[key] || '');
     setStageVisible(true);
-    // Sprinkle confetti on hover (only if not reduced motion)
     if (!reducedMotion) {
       confettiSprinkle();
     }
   };
   const onButtonLeave = () => {
     if (stageSequence === 'rabbit') return;
+    if (shouldSkipHoverDrivenButtonEffects()) {
+      return;
+    }
     setHovered(null);
     if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
     hoverTimeoutRef.current = setTimeout(() => {
@@ -924,35 +944,7 @@ export default function ScoreClient() {
       }, 300);
     }, 300);
   };
-  // A1: Check for social handle before sharing
-  const checkAndPromptHandle = useCallback(
-    async (platform: SharePlatform, platformName: string, proceedWithShare: () => Promise<void>) => {
-      // Facebook doesn't require a handle
-      if (platform === 'fb') {
-        await proceedWithShare();
-        return;
-      }
-      
-      // Check if handle exists
-      if (hasSocialHandle(associateHandles, platform)) {
-        await proceedWithShare();
-        return;
-      }
-      
-      // Show modal to collect handle
-      setSocialHandleModal({
-        isOpen: true,
-        platform,
-        platformName,
-        pendingAction: async () => {
-          await proceedWithShare();
-        },
-      });
-    },
-    [associateHandles]
-  );
-
-  const handleShareClick = async (
+  const handleShareClick = (
     platform: 'x' | 'ig' | 'fb' | 'truth' | 'tiktok',
     e: React.MouseEvent<HTMLAnchorElement>
   ) => {
@@ -999,23 +991,10 @@ export default function ScoreClient() {
     // A4: Get next target (50/50 toggle)
     const target = getNextTarget();
 
-    // Build share URL
     const shareUrl = buildShareUrl(normalizedPlatform, variant, referralCode, target, baseUrl);
 
-    // Build caption with firstName if available
-    const firstName = data?.firstName || null;
-    const caption = buildShareCaption({
-      firstName,
-      refCode: referralCode,
-      shareUrl,
-      includeSecretCode: target === 'terminal', // A2: Include secret code for terminal
-      platform: normalizedPlatform, // Pass platform for X-specific caption
-    });
-
-    // Navigate to share landing page (guided flow)
-    const performShare = async () => {
+    const performShare = () => {
       try {
-        // Navigate to share landing page (same window)
         router.push(shareUrl);
       } catch (err) {
         console.error('[share] handler failed', err);
@@ -1023,8 +1002,18 @@ export default function ScoreClient() {
       }
     };
 
-    // A1: Check handle and proceed
-    await checkAndPromptHandle(normalizedPlatform, platformNames[normalizedPlatform], performShare);
+    // Synchronous navigation when allowed so Safari keeps this inside the user gesture (no await before router.push).
+    if (normalizedPlatform === 'fb' || hasSocialHandle(associateHandles, normalizedPlatform)) {
+      performShare();
+      return;
+    }
+
+    setSocialHandleModal({
+      isOpen: true,
+      platform: normalizedPlatform,
+      platformName: platformNames[normalizedPlatform],
+      pendingAction: performShare,
+    });
   };
 
   // Handle social handle modal save
