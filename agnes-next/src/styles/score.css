@@ -398,6 +398,22 @@
   }
 }
 
+/* Wide desktop (2-column stage + sidebar): page scrolls; buttons use natural height — no inner scrollbar. */
+@media (min-width: 1101px) {
+  .score-wrap {
+    min-height: 100vh;
+    height: auto;
+    overflow: visible;
+    grid-template-rows: minmax(260px, 40vh) auto;
+  }
+
+  .buttons-grid {
+    max-height: none;
+    min-height: auto;
+    overflow-y: visible;
+  }
+}
+
 @media (max-width: 1100px) {
   .score-wrap {
     grid-template-columns: minmax(0, 1fr);
