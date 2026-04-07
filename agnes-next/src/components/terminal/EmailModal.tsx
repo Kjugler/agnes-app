@@ -95,6 +95,16 @@ export default function EmailModal({ isOpen, onEmailSubmitted }: EmailModalProps
           window.localStorage.removeItem('associate_email');
         }
 
+        /* Same as ContestClient: block repeat terminal in funnel as soon as flow succeeds (before contest navigation). */
+        try {
+          document.cookie =
+            'terminal_discovery_complete=1; path=/; max-age=' +
+            60 * 60 * 24 * 365 +
+            '; SameSite=Lax';
+        } catch {
+          /* ignore */
+        }
+
         const currentParams = new URLSearchParams(window.location.search);
         currentParams.set('email', normalizedEmail);
         currentParams.set('v', 'terminal');

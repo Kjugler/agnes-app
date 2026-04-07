@@ -8,11 +8,10 @@ export type EntryFunnelDecision =
   | 'query_override'
   | 'query_override_blocked_terminal_discovery'
   | 'weighted_first_visit'
-  | 'unseen_preference'
+  /** Phase 2: renormalized NEXT_PUBLIC_ENTRY_SPLIT_* over unseen eligible variants only */
+  | 'weighted_unseen'
   | 'sticky_settled'
-  | 'sticky_discovery_replace_terminal'
-  /** entry_variant existed before seen_* cookies (deploy migration) */
-  | 'sticky_legacy_no_seen_state';
+  | 'sticky_discovery_replace_terminal';
 
 const SEEN_MAX_AGE = 60 * 60 * 24 * 365; // 1 year — experience memory
 const STICKY_MAX_AGE = 60 * 60 * 24 * 7; // 7 days — settled visitor sticky variant
@@ -71,6 +70,20 @@ export type EntryFunnelResolution = {
   decision: EntryFunnelDecision;
 };
 
+/** Configured split weights (terminal 0 when not eligible). Defaults 20/40/40. */
+function getRawWeights(allowTerminal: boolean): {
+  terminal: number;
+  protocol: number;
+  contest: number;
+} {
+  const terminal = allowTerminal
+    ? parseInt(process.env.NEXT_PUBLIC_ENTRY_SPLIT_TERMINAL || '20', 10) || 20
+    : 0;
+  const protocol = parseInt(process.env.NEXT_PUBLIC_ENTRY_SPLIT_PROTOCOL || '40', 10) || 40;
+  const contest = parseInt(process.env.NEXT_PUBLIC_ENTRY_SPLIT_CONTEST || '40', 10) || 40;
+  return { terminal, protocol, contest };
+}
+
 /**
  * Weighted random (defaults 20 / 40 / 40 if env missing). Honors NEXT_PUBLIC_ENTRY_SPLIT_* at build time.
  */
@@ -78,10 +91,7 @@ function assignWeightedVariant(allowTerminal: boolean): 'terminal' | 'protocol' 
   if (!allowTerminal) {
     return assignWeightedVariantNoTerminal();
   }
-  const terminal = parseInt(process.env.NEXT_PUBLIC_ENTRY_SPLIT_TERMINAL || '20', 10) || 20;
-  const protocol = parseInt(process.env.NEXT_PUBLIC_ENTRY_SPLIT_PROTOCOL || '40', 10) || 40;
-  const contest = parseInt(process.env.NEXT_PUBLIC_ENTRY_SPLIT_CONTEST || '40', 10) || 40;
-
+  const { terminal, protocol, contest } = getRawWeights(true);
   const total = terminal + protocol + contest;
   const r = Math.random() * (total || 100);
 
@@ -101,12 +111,39 @@ function assignWeightedVariantNoTerminal(): 'protocol' | 'contest' {
   return r < protocol ? 'protocol' : 'contest';
 }
 
-function pickUniformUnseen(
-  candidates: Array<'terminal' | 'protocol' | 'contest'>
+/**
+ * Phase 2: pick among unseen paths using renormalized configured weights (not uniform).
+ * Example: unseen {terminal, protocol} with 20/40/40 → P(terminal)=20/60, P(protocol)=40/60.
+ */
+function pickWeightedUnseen(
+  unseen: Array<'terminal' | 'protocol' | 'contest'>,
+  allowTerminal: boolean
 ): 'terminal' | 'protocol' | 'contest' {
-  if (candidates.length === 0) return assignWeightedVariantNoTerminal();
-  const i = Math.floor(Math.random() * candidates.length);
-  return candidates[i];
+  if (unseen.length === 0) return assignWeightedVariantNoTerminal();
+
+  const w = getRawWeights(allowTerminal);
+  type V = 'terminal' | 'protocol' | 'contest';
+  const weightFor = (v: V): number =>
+    v === 'terminal' ? w.terminal : v === 'protocol' ? w.protocol : w.contest;
+
+  let total = 0;
+  const weighted: Array<{ variant: V; weight: number }> = [];
+  for (const v of unseen) {
+    const weight = weightFor(v);
+    total += weight;
+    weighted.push({ variant: v, weight });
+  }
+
+  if (total <= 0) {
+    return unseen[Math.floor(Math.random() * unseen.length)];
+  }
+
+  let r = Math.random() * total;
+  for (const entry of weighted) {
+    r -= entry.weight;
+    if (r <= 0) return entry.variant;
+  }
+  return weighted[weighted.length - 1].variant;
 }
 
 /**
@@ -114,9 +151,9 @@ function pickUniformUnseen(
  *
  * Precedence:
  * 1. ?v=terminal|protocol|contest — unless terminal + terminal_discovery_complete (terminal blocked)
- * 2. Phase 3 (all seen_*): sticky entry_variant for 7 days (same as legacy), with discovery terminal guard
- * 3. Phase 1 (no seen_*): weighted 20/40/40 (defaults)
- * 4. Phase 2 (some but not all seen_*): uniform pick among unseen (terminal only if allowed)
+ * 2. Phase 3 (all seen_*): sticky entry_variant for 7 days, with discovery terminal guard
+ * 3. Phase 1 (no seen_*): weighted split (defaults 20/40/40); stale entry_variant alone does not override
+ * 4. Phase 2 (some but not all seen_*): weighted pick renormalized over unseen eligible variants only
  */
 export function resolveEntryFunnelClient(): EntryFunnelResolution {
   if (typeof window === 'undefined') {
@@ -153,18 +190,6 @@ export function resolveEntryFunnelClient(): EntryFunnelResolution {
     };
   }
 
-  // 1b) Legacy sticky before any seen_* cookie (post-deploy first visit)
-  if (!anySeen && stickyValid) {
-    if (stickyValid === 'terminal' && !allowTerminal) {
-      return {
-        variant: assignWeightedVariantNoTerminal(),
-        phase: 3,
-        decision: 'sticky_discovery_replace_terminal',
-      };
-    }
-    return { variant: stickyValid, phase: 3, decision: 'sticky_legacy_no_seen_state' };
-  }
-
   // 2) Phase 3 — sticky (legacy entry_variant), 7-day cookie
   if (allSeen) {
     if (stickyValid) {
@@ -193,8 +218,8 @@ export function resolveEntryFunnelClient(): EntryFunnelResolution {
   if (!seen.protocol) unseen.push('protocol');
   if (!seen.contest) unseen.push('contest');
 
-  const v = pickUniformUnseen(unseen);
-  return { variant: v, phase: 2, decision: 'unseen_preference' };
+  const v = pickWeightedUnseen(unseen, allowTerminal);
+  return { variant: v, phase: 2, decision: 'weighted_unseen' };
 }
 
 /**
