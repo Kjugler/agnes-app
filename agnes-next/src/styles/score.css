@@ -2,7 +2,8 @@
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 220px;
-  grid-template-rows: minmax(260px, 40vh) 1fr;
+  /* minmax(0, 1fr): fr row can shrink so grid children with overflow-y: auto can scroll (min-height: auto would clip). */
+  grid-template-rows: minmax(260px, 40vh) minmax(0, 1fr);
   height: 100vh;
   overflow: hidden;
   color: #f8fafc;
@@ -254,6 +255,7 @@
   margin-top: 2.5rem;
   background: transparent;
   max-height: calc(100vh - 260px);
+  min-height: 0; /* Required with grid + overflow-y: auto; else content min-height blocks the scrollport on desktop. */
   overflow-y: auto;
   padding-bottom: 120px;
 }
