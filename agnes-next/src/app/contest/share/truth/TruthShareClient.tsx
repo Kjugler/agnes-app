@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { readContestEmail, readAssociate } from '@/lib/identity';
 import { buildShareCaption } from '@/lib/shareCaption';
 import { buildTrackingLink } from '@/lib/shareHelpers';
-import { getNextVariant, shareAssets } from '@/lib/shareAssets';
+import { getNextVariant, shareAssets, type ShareVariant } from '@/lib/shareAssets';
 import { getTrainingVideoSrc } from '@/lib/trainingVideoUrl';
 import { JodyAssistant } from '@/components/JodyAssistant';
 import { JodyTrainingModal } from '@/components/JodyTrainingModal';
@@ -22,7 +22,7 @@ export default function TruthShareClient() {
   const [firstName, setFirstName] = useState<string | null>(null);
   const [truthCaption, setTruthCaption] = useState('');
   const [truthVideoSrc, setTruthVideoSrc] = useState<string | null>(null);
-  const [truthVariant, setTruthVariant] = useState<1 | 2 | 3>(1);
+  const [truthVariant, setTruthVariant] = useState<ShareVariant>(1);
   const [showTruthTraining, setShowTruthTraining] = useState(false);
 
   // Get rotating Truth video variant - lock it on mount

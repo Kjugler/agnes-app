@@ -8,7 +8,7 @@ import { readContestEmail, readAssociate } from '@/lib/identity';
 import HelpButton from '@/components/HelpButton';
 import { buildShareCaption } from '@/lib/shareCaption';
 import { buildTrackingLink } from '@/lib/shareHelpers';
-import { getNextVariant, shareAssets } from '@/lib/shareAssets';
+import { getNextVariant, shareAssets, type ShareVariant } from '@/lib/shareAssets';
 import { getTrainingVideoSrc } from '@/lib/trainingVideoUrl';
 
 export default function TikTokShareClient() {
@@ -23,7 +23,7 @@ export default function TikTokShareClient() {
   const [tiktokCaption, setTiktokCaption] = useState('');
   const [showTikTokTraining, setShowTikTokTraining] = useState(false);
   const [tiktokVideoSrc, setTiktokVideoSrc] = useState<string | null>(null);
-  const [tiktokVariant, setTiktokVariant] = useState<1 | 2 | 3>(1);
+  const [tiktokVariant, setTiktokVariant] = useState<ShareVariant>(1);
 
   // Get rotating TikTok video variant - lock it on mount
   useEffect(() => {

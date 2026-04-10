@@ -7,11 +7,15 @@ export type AssetEntry = {
   mime: string;
 };
 
-/** FB asset catalog - extend with fb4, poster1, etc. later */
+/** FB asset catalog — rotation pool for FB share delivery */
 export const FB_ASSETS: AssetEntry[] = [
   { id: 'fb1', type: 'video', file: 'fb1.mp4', mime: 'video/mp4' },
   { id: 'fb2', type: 'video', file: 'fb2.mp4', mime: 'video/mp4' },
   { id: 'fb3', type: 'video', file: 'fb3.mp4', mime: 'video/mp4' },
+  { id: 'fb4', type: 'video', file: 'fb4.mp4', mime: 'video/mp4' },
+  { id: 'fb5', type: 'video', file: 'fb5.mp4', mime: 'video/mp4' },
+  { id: 'fb6', type: 'video', file: 'fb6.mp4', mime: 'video/mp4' },
+  { id: 'fb7', type: 'video', file: 'fb7.mp4', mime: 'video/mp4' },
 ];
 
 /** Map platform + variant to asset list (FB uses rotation; others use 1:1 for now) */
@@ -21,10 +25,42 @@ function getAssetList(platform: SharePlatform, variant: number): AssetEntry[] {
   }
   // Other platforms: single asset per variant (no rotation yet)
   const fileMap: Record<string, Record<number, string>> = {
-    ig: { 1: 'ig1.mp4', 2: 'ig2.mp4', 3: 'ig3.mp4' },
-    x: { 1: 'x1.mp4', 2: 'x2.mp4', 3: 'x3.mp4' },
-    tt: { 1: 'tiktok1.mp4', 2: 'tiktok2.mp4', 3: 'tiktok3.mp4' },
-    truth: { 1: 'truth1.mp4', 2: 'truth2.mp4', 3: 'truth3.mp4' },
+    ig: {
+      1: 'ig1.mp4',
+      2: 'ig2.mp4',
+      3: 'ig3.mp4',
+      4: 'ig4.mp4',
+      5: 'ig5.mp4',
+      6: 'ig6.mp4',
+      7: 'ig7.mp4',
+    },
+    x: {
+      1: 'x1.mp4',
+      2: 'x2.mp4',
+      3: 'x3.mp4',
+      4: 'x4.mp4',
+      5: 'x5.mp4',
+      6: 'x6.mp4',
+      7: 'x7.mp4',
+    },
+    tt: {
+      1: 'tiktok1.mp4',
+      2: 'tiktok2.mp4',
+      3: 'tiktok3.mp4',
+      4: 'tiktok4.mp4',
+      5: 'tiktok5.mp4',
+      6: 'tiktok6.mp4',
+      7: 'tiktok7.mp4',
+    },
+    truth: {
+      1: 'truth1.mp4',
+      2: 'truth2.mp4',
+      3: 'truth3.mp4',
+      4: 'truth4.mp4',
+      5: 'truth5.mp4',
+      6: 'truth6.mp4',
+      7: 'truth7.mp4',
+    },
   };
   const file = fileMap[platform]?.[variant] || 'fb1.mp4';
   return [{ id: file.replace('.mp4', ''), type: 'video', file, mime: 'video/mp4' }];

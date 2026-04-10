@@ -3,7 +3,7 @@
 import '../../styles/share.css';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import type { SharePlatform } from '@/lib/shareAssets';
+import type { SharePlatform, ShareVariant } from '@/lib/shareAssets';
 import { readContestEmail } from '@/lib/identity';
 import type { ShareTarget } from '@/lib/shareTarget';
 
@@ -17,7 +17,7 @@ const ACTION_MAP: Record<SharePlatform, string> = {
 
 export interface ShareScaffoldProps {
   platform: SharePlatform;
-  variant: 1 | 2 | 3;
+  variant: ShareVariant;
   target?: ShareTarget;
   children: React.ReactNode;
   /** Optional: hide the I Shared button (platform handles it differently) */

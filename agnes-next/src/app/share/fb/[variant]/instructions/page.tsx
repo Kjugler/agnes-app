@@ -10,12 +10,13 @@ import { readContestEmail } from '@/lib/identity';
 import { getFbInstructionsVideoSrc } from '@/lib/trainingVideoUrl';
 import { useDeviceProfile } from '@/hooks/useDeviceProfile';
 import type { ShareTarget } from '@/lib/shareTarget';
+import type { ShareVariant } from '@/lib/shareAssets';
 
 function InstructionsContent() {
   const params = useParams();
   const searchParams = useSearchParams();
   const variantRaw = Number(params.variant) || 1;
-  const variant = (variantRaw >= 1 && variantRaw <= 3 ? variantRaw : 1) as 1 | 2 | 3;
+  const variant = (variantRaw >= 1 && variantRaw <= 7 ? variantRaw : 1) as ShareVariant;
   const refCode = searchParams.get('ref') || '';
   const target = (searchParams.get('target') as ShareTarget) || 'challenge';
 

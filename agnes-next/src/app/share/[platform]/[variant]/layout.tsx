@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import type { SharePlatform } from '@/lib/shareAssets';
+import type { SharePlatform, ShareVariant } from '@/lib/shareAssets';
 import { shareAssets } from '@/lib/shareAssets';
 
 type Params = {
@@ -22,7 +22,7 @@ export async function generateMetadata(
 
   const platform = (platformRaw as SharePlatform) || 'fb';
   const variantNum = Number(variantRaw) || 1;
-  const variant = (variantNum >= 1 && variantNum <= 3 ? variantNum : 1) as 1 | 2 | 3;
+  const variant = (variantNum >= 1 && variantNum <= 7 ? variantNum : 1) as ShareVariant;
 
   // Get image path from shareAssets (X and IG platforms use FB thumbnails)
   const assets = shareAssets[platform]?.variants[variant];

@@ -1,7 +1,7 @@
 import { headers } from 'next/headers';
 import Link from 'next/link';
 import type { ShareTarget } from '@/lib/shareTarget';
-import { shareAssets } from '@/lib/shareAssets';
+import { shareAssets, type ShareVariant } from '@/lib/shareAssets';
 
 const SITE_ROOT = process.env.NEXT_PUBLIC_SITE_ROOT ?? 'https://TheAgnesProtocol.com';
 
@@ -23,7 +23,7 @@ function getBaseUrl(host: string | null, protocol: string): string {
 export async function generateMetadata({ params, searchParams }: Props) {
   const { variant } = await params;
   const search = await searchParams;
-  const variantNum = Math.min(3, Math.max(1, parseInt(variant || '1', 10) || 1)) as 1 | 2 | 3;
+  const variantNum = Math.min(7, Math.max(1, parseInt(variant || '1', 10) || 1)) as ShareVariant;
   const refCode = search.ref || '';
   const target = (search.target as ShareTarget) || 'challenge';
 
@@ -72,7 +72,7 @@ export async function generateMetadata({ params, searchParams }: Props) {
 
 export default async function FbPreviewPage({ params, searchParams }: Props) {
   const { variant } = await params;
-  const variantNum = Math.min(3, Math.max(1, parseInt(variant || '1', 10) || 1)) as 1 | 2 | 3;
+  const variantNum = Math.min(7, Math.max(1, parseInt(variant || '1', 10) || 1)) as ShareVariant;
   const assets = shareAssets.fb.variants[variantNum];
 
   return (

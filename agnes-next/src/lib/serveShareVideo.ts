@@ -7,11 +7,51 @@ import { pickAsset } from './assetRotation';
 import type { SharePlatform } from './shareAssets';
 
 const PLATFORM_VIDEOS: Record<SharePlatform, Record<number, string>> = {
-  fb: { 1: 'fb1.mp4', 2: 'fb2.mp4', 3: 'fb3.mp4' },
-  ig: { 1: 'ig1.mp4', 2: 'ig2.mp4', 3: 'ig3.mp4' },
-  x: { 1: 'x1.mp4', 2: 'x2.mp4', 3: 'x3.mp4' },
-  tt: { 1: 'tiktok1.mp4', 2: 'tiktok2.mp4', 3: 'tiktok3.mp4' },
-  truth: { 1: 'truth1.mp4', 2: 'truth2.mp4', 3: 'truth3.mp4' },
+  fb: {
+    1: 'fb1.mp4',
+    2: 'fb2.mp4',
+    3: 'fb3.mp4',
+    4: 'fb4.mp4',
+    5: 'fb5.mp4',
+    6: 'fb6.mp4',
+    7: 'fb7.mp4',
+  },
+  ig: {
+    1: 'ig1.mp4',
+    2: 'ig2.mp4',
+    3: 'ig3.mp4',
+    4: 'ig4.mp4',
+    5: 'ig5.mp4',
+    6: 'ig6.mp4',
+    7: 'ig7.mp4',
+  },
+  x: {
+    1: 'x1.mp4',
+    2: 'x2.mp4',
+    3: 'x3.mp4',
+    4: 'x4.mp4',
+    5: 'x5.mp4',
+    6: 'x6.mp4',
+    7: 'x7.mp4',
+  },
+  tt: {
+    1: 'tiktok1.mp4',
+    2: 'tiktok2.mp4',
+    3: 'tiktok3.mp4',
+    4: 'tiktok4.mp4',
+    5: 'tiktok5.mp4',
+    6: 'tiktok6.mp4',
+    7: 'tiktok7.mp4',
+  },
+  truth: {
+    1: 'truth1.mp4',
+    2: 'truth2.mp4',
+    3: 'truth3.mp4',
+    4: 'truth4.mp4',
+    5: 'truth5.mp4',
+    6: 'truth6.mp4',
+    7: 'truth7.mp4',
+  },
 };
 
 type ServeOptions = {

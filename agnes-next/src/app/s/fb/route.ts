@@ -5,7 +5,7 @@ export async function GET(request: NextRequest) {
   const searchParams = url.searchParams;
   
   const v = Number(searchParams.get('v') || '1');
-  const validV = [1, 2, 3].includes(v) ? v : 1;
+  const validV = [1, 2, 3, 4, 5, 6, 7].includes(v) ? v : 1;
   const ref = searchParams.get('ref') || '';
   
   // Build redirect script (allows FB to scrape metadata before redirect)
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
   <meta property="og:url" content="${url.toString()}">
   <meta property="og:title" content="The Agnes Protocol — The End of Truth Begins Here">
   <meta property="og:description" content="A cinematic thriller that weaponizes truth. #WhereIsJodyVernon">
-  <meta property="og:image" content="${url.origin}/images/fb${validV}.jpg">
+  <meta property="og:image" content="${url.origin}/images/fb/fb${validV}.jpg">
   <meta property="og:video" content="${url.origin}/videos/fb${validV}.mp4">
   <meta property="og:video:type" content="video/mp4">
   <meta property="og:video:width" content="1280">
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
   <meta name="twitter:card" content="player">
   <meta name="twitter:title" content="The Agnes Protocol — The End of Truth Begins Here">
   <meta name="twitter:description" content="A cinematic thriller that weaponizes truth. #WhereIsJodyVernon">
-  <meta name="twitter:image" content="${url.origin}/images/fb${validV}.jpg">
+  <meta name="twitter:image" content="${url.origin}/images/fb/fb${validV}.jpg">
   
   ${redirectScript}
 </head>
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
   <div style="max-width: 900px; margin: 40px auto; padding: 16px;">
     <video
       src="/videos/fb${validV}.mp4"
-      poster="/images/fb${validV}.jpg"
+      poster="/images/fb/fb${validV}.jpg"
       controls
       playsinline
       muted

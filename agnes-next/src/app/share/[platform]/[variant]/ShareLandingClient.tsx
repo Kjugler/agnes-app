@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
-import type { SharePlatform } from '@/lib/shareAssets';
+import type { SharePlatform, ShareVariant } from '@/lib/shareAssets';
 import { shareAssets } from '@/lib/shareAssets';
 import { buildShareCaption } from '@/lib/shareCaption';
 import type { ShareTarget } from '@/lib/shareTarget';
@@ -33,7 +33,7 @@ export default function ShareLandingClient({ device: serverDevice }: Props) {
 
   const platform = (params.platform as SharePlatform) || 'fb';
   const variantRaw = Number(params.variant) || 1;
-  const variant = (variantRaw >= 1 && variantRaw <= 3 ? variantRaw : 1) as 1 | 2 | 3;
+  const variant = (variantRaw >= 1 && variantRaw <= 7 ? variantRaw : 1) as ShareVariant;
 
   const refCode = searchParams.get('ref') || '';
   const target = (searchParams.get('target') as ShareTarget) || 'challenge';
@@ -73,7 +73,7 @@ export default function ShareLandingClient({ device: serverDevice }: Props) {
 
   const assets = shareAssets[platform]?.variants[variant];
   const videoUrl = assets?.video || '/videos/fb1.mp4';
-  const thumbnailUrl = assets?.thumbnail || '/images/fb1.jpg';
+  const thumbnailUrl = assets?.thumbnail || '/images/fb/fb1.jpg';
 
   useEffect(() => {
     const fetchUserInfo = async () => {

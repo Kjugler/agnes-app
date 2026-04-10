@@ -1,4 +1,4 @@
-import type { SharePlatform } from './shareAssets';
+import type { SharePlatform, ShareVariant } from './shareAssets';
 import { getNextVariant } from './shareAssets';
 import { getNextTarget, type ShareTarget } from './shareTarget';
 import { buildShareCaption } from './shareCaption';
@@ -62,7 +62,7 @@ export function hasSocialHandle(
  * Used by Desktop and Android flows; NOT the attachment download route
  */
 export function buildFbPreviewUrl(
-  variant: 1 | 2 | 3,
+  variant: ShareVariant,
   refCode: string,
   target: ShareTarget,
   baseUrl: string
@@ -82,7 +82,7 @@ export function buildFbPreviewUrl(
  */
 export function buildTrackingLink(
   platform: SharePlatform,
-  variant: 1 | 2 | 3,
+  variant: ShareVariant,
   refCode: string,
   target: ShareTarget,
   baseUrl: string
@@ -102,7 +102,7 @@ export function buildTrackingLink(
  */
 export function buildShareUrl(
   platform: SharePlatform,
-  variant: 1 | 2 | 3,
+  variant: ShareVariant,
   refCode: string,
   target: ShareTarget,
   baseUrl: string
