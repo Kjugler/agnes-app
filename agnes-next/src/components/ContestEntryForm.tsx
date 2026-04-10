@@ -87,12 +87,9 @@ export function ContestEntryForm({
       
       setForm((prev) => {
         const next = { ...prev };
-        // Only update if field is empty to avoid overwriting user input
-        if (stored?.name && !prev.firstName) {
-          const parts = stored.name.trim().split(' ');
-          if (parts.length > 0) next.firstName = parts[0];
-          if (parts.length > 1) next.lastName = parts.slice(1).join(' ');
-        }
+        // Do not pre-fill first/last from associate cache: stored.name may be an email or
+        // legacy bad data, which previously put the email into First Name; sample placeholders
+        // were also confused with real values. Names stay blank until the user types them.
         // Email: prioritize contest email, then stored associate email
         if (!prev.email) {
           if (email) {
@@ -457,10 +454,11 @@ export function ContestEntryForm({
             <span>First Name</span>
             <input
               type="text"
+              name="given-name"
+              autoComplete="given-name"
               value={form.firstName}
               onChange={onChange('firstName')}
               required
-              placeholder="Simona"
               style={inputStyle}
             />
           </label>
@@ -468,10 +466,11 @@ export function ContestEntryForm({
             <span>Last Name</span>
             <input
               type="text"
+              name="family-name"
+              autoComplete="family-name"
               value={form.lastName}
               onChange={onChange('lastName')}
               required
-              placeholder="Vernon"
               style={inputStyle}
             />
           </label>

@@ -13,7 +13,9 @@
     "start-server": "node server/index.cjs",
     "start": "npx prisma migrate deploy && npm run start-server",
     "migrate:deploy": "prisma migrate deploy",
-    "fulfill:ebooks": "node scripts/process-fulfillments.cjs"
+    "fulfill:ebooks": "node scripts/process-fulfillments.cjs",
+    "email:proof-baseline": "node scripts/render-email-baseline-proof.cjs",
+    "email:verify-strategic": "node scripts/verify-strategic-parity.cjs"
   },
   "dependencies": {
     "@mailchimp/mailchimp_marketing": "^3.0.80",

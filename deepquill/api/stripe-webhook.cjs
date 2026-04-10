@@ -9,6 +9,11 @@ const { logFulfillment } = require('../src/lib/fulfillmentLogger.cjs');
 const { buildPurchaseConfirmationEmail } = require('../src/lib/purchaseEmail.cjs');
 const { buildReferrerCommissionEmail } = require('../src/lib/referrerCommissionEmail.cjs');
 const { applyGlobalEmailBanner } = require('../src/lib/emailBanner.cjs');
+const {
+  isTrustSplitEmailEnabled,
+  buildTrustPurchaseEmail,
+  buildTrustReferralEmail,
+} = require('../src/lib/trustTransactionalEmail.cjs');
 const { normalizeEmail, normalizeReferralCode, extractNameFromEmail } = require('../src/lib/normalize.cjs');
 const { isSelfReferral, normalizeIdentityEmail } = require('../src/lib/selfReferralGuards.cjs');
 const envConfig = require('../src/config/env.cjs');
@@ -1750,8 +1755,36 @@ router.post(
               }
 
               const fromEmail = process.env.MAILCHIMP_FROM_EMAIL || 'hello@theagnesprotocol.com';
-              
-              // Build purchase confirmation email
+              /** Additive trust emails only; strategic still uses fromEmail */
+              const trustFromEmail =
+                process.env.MAILCHIMP_TRUST_FROM_EMAIL || 'no-reply@theagnesprotocol.com';
+
+              if (isTrustSplitEmailEnabled()) {
+                try {
+                  const trust = buildTrustPurchaseEmail({
+                    sessionId: session.id,
+                    product: product || 'unknown',
+                  });
+                  await client.messages.send({
+                    message: {
+                      from_email: trustFromEmail,
+                      from_name: 'The Agnes Protocol',
+                      subject: trust.subject,
+                      to: [{ email: customerEmail, type: 'to' }],
+                      text: trust.text,
+                      html: trust.html,
+                    },
+                  });
+                  console.log('[WEBHOOK] Email: trust transactional (purchase) sent sessionId=' + session.id);
+                } catch (trustErr) {
+                  console.warn('[WEBHOOK] Trust transactional email failed (continuing to strategic)', {
+                    error: trustErr.message,
+                    sessionId: session.id,
+                  });
+                }
+              }
+
+              // Build purchase confirmation email (strategic — unchanged template path)
               // Use ledger rollup (canonical) - NOT user.points which may be stale until reconciled
               // Ledger entries (POINTS_AWARDED_PURCHASE, CONTEST_JOIN) were just written above
               let buyerTotalPoints = null;
@@ -2608,7 +2641,31 @@ async function processReferralCommission({ referrerCode, buyerEmail, buyerUserId
         console.warn('[WEBHOOK] Cannot send referrer email - Mailchimp not configured');
       } else {
         const fromEmail = process.env.MAILCHIMP_FROM_EMAIL || 'hello@theagnesprotocol.com';
-        
+        const trustFromEmail =
+          process.env.MAILCHIMP_TRUST_FROM_EMAIL || 'no-reply@theagnesprotocol.com';
+
+        if (isTrustSplitEmailEnabled()) {
+          try {
+            const trust = buildTrustReferralEmail({ sessionId });
+            await client.messages.send({
+              message: {
+                from_email: trustFromEmail,
+                from_name: 'The Agnes Protocol',
+                subject: trust.subject,
+                to: [{ email: referrerEmail, type: 'to' }],
+                text: trust.text,
+                html: trust.html,
+              },
+            });
+            console.log('[TRUST_EMAIL] referral trust sent sessionId=' + sessionId);
+          } catch (trustErr) {
+            console.warn('[TRUST_EMAIL] referral trust send failed (continuing to strategic)', {
+              error: trustErr.message,
+              sessionId,
+            });
+          }
+        }
+
         // Safely extract buyer name from email
         const buyerDisplayName = extractNameFromEmail(buyerEmail);
         
