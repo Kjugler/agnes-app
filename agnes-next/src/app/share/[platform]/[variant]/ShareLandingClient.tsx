@@ -3,7 +3,11 @@
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import type { SharePlatform, ShareVariant } from '@/lib/shareAssets';
-import { shareAssets } from '@/lib/shareAssets';
+import {
+  getShareVariantMedia,
+  parseSharePlatformParam,
+  parseShareVariantParam,
+} from '@/lib/shareAssets';
 import { buildShareCaption } from '@/lib/shareCaption';
 import type { ShareTarget } from '@/lib/shareTarget';
 import { buildPlatformShareUrl, buildTrackingLink, buildFbPreviewUrl } from '@/lib/shareHelpers';
@@ -31,9 +35,8 @@ export default function ShareLandingClient({ device: serverDevice }: Props) {
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  const platform = (params.platform as SharePlatform) || 'fb';
-  const variantRaw = Number(params.variant) || 1;
-  const variant = (variantRaw >= 1 && variantRaw <= 7 ? variantRaw : 1) as ShareVariant;
+  const platform = parseSharePlatformParam(params.platform as string | string[] | undefined);
+  const variant = parseShareVariantParam(params.variant as string | string[] | undefined);
 
   const refCode = searchParams.get('ref') || '';
   const target = (searchParams.get('target') as ShareTarget) || 'challenge';
@@ -71,9 +74,7 @@ export default function ShareLandingClient({ device: serverDevice }: Props) {
   const isTruth = platform === 'truth';
   const needsManualUpload = isIG || isX || isTT || isTruth || isFB;
 
-  const assets = shareAssets[platform]?.variants[variant];
-  const videoUrl = assets?.video || '/videos/fb1.mp4';
-  const thumbnailUrl = assets?.thumbnail || '/images/fb/fb1.jpg';
+  const { video: videoUrl, thumbnail: thumbnailUrl } = getShareVariantMedia(platform, variant);
 
   useEffect(() => {
     const fetchUserInfo = async () => {

@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
-import type { SharePlatform, ShareVariant } from '@/lib/shareAssets';
-import { shareAssets } from '@/lib/shareAssets';
+import { getShareVariantMedia, parseSharePlatformParam, parseShareVariantParam } from '@/lib/shareAssets';
 
 type Params = {
   platform: string;
@@ -20,13 +19,10 @@ export async function generateMetadata(
 ): Promise<Metadata> {
   const { platform: platformRaw, variant: variantRaw } = await params;
 
-  const platform = (platformRaw as SharePlatform) || 'fb';
-  const variantNum = Number(variantRaw) || 1;
-  const variant = (variantNum >= 1 && variantNum <= 7 ? variantNum : 1) as ShareVariant;
+  const platform = parseSharePlatformParam(platformRaw);
+  const variant = parseShareVariantParam(variantRaw);
 
-  // Get image path from shareAssets (X and IG platforms use FB thumbnails)
-  const assets = shareAssets[platform]?.variants[variant];
-  const thumbnailPath = assets?.thumbnail || `/images/fb/fb${variant}.jpg`;
+  const { thumbnail: thumbnailPath } = getShareVariantMedia(platform, variant);
   const imageUrl = `${BASE_URL}${thumbnailPath}`;
 
   // Build share URL without query params (query params handled at page level)

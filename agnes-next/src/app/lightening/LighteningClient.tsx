@@ -1,6 +1,6 @@
 // /app/lightening/page.tsx
 // Spec 1: Lightning-first entry. Variant routing happens ONLY after video/continue.
-// User lands → Lightning plays → Continue or video ends → THEN route to terminal/protocol/contest.
+// User lands → Lightning plays → Continue or video ends → THEN route to protocol/contest (or /terminal only if ?v=terminal).
 
 "use client";
 
@@ -10,6 +10,7 @@ import HelpButton from "@/components/HelpButton";
 import { writeContestEmail, readContestEmail } from "@/lib/identity";
 import CinematicVideo from "@/components/CinematicVideo";
 import {
+  incrementLightningContinueCount,
   resolveEntryFunnelClient,
   setSeenVariantCookie,
   setVariantCookieClient,
@@ -138,6 +139,7 @@ export default function LighteningClient() {
       });
     }
 
+    incrementLightningContinueCount();
     const resolution = resolveEntryFunnelClient();
     const variant = resolution.variant;
     setVariantCookieClient(variant);

@@ -114,19 +114,19 @@ export default function EntryClient() {
               }
             }
             
-            // Determine variant using same priority as middleware
+            // IBM terminal: only when explicitly requested (?v=terminal or entry=terminal).
+            // Public funnel never assigns terminal via cookie or randomness.
             let isTerminalVariant = false;
             if (vParam === 'terminal' || entryParam === 'terminal') {
               isTerminalVariant = true;
             } else if (vParam === 'protocol' || entryParam === 'protocol') {
               isTerminalVariant = false;
             } else if (cookieVariant === 'terminal') {
-              isTerminalVariant = true;
+              isTerminalVariant = false;
             } else if (cookieVariant === 'protocol') {
               isTerminalVariant = false;
             } else {
-              // No variant set - random 50/50 (matches middleware)
-              isTerminalVariant = Math.random() < 0.5;
+              isTerminalVariant = false;
             }
             
             if (isTerminalVariant) {

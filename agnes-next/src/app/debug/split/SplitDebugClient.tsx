@@ -126,7 +126,7 @@ export default function SplitDebugClient() {
           </div>
           <div>
             <a href="/start" style={{ color: '#00ff00', textDecoration: 'underline' }}>
-              /start (random)
+              /start → lightening (protocol/contest only; not terminal)
             </a>
           </div>
         </div>

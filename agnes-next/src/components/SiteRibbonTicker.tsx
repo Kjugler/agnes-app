@@ -68,7 +68,7 @@ export default function SiteRibbonTicker({ extraSegments, pollIntervalMs }: Site
           style={{
             display: 'inline-block',
             paddingLeft: '100%',
-            animation: 'siteRibbonTicker 25s linear infinite',
+            animation: 'siteRibbonTicker 50s linear infinite',
           }}
         >
           {tickerContent}

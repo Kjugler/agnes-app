@@ -1,7 +1,7 @@
 import { headers } from 'next/headers';
 import Link from 'next/link';
 import type { ShareTarget } from '@/lib/shareTarget';
-import { shareAssets, type ShareVariant } from '@/lib/shareAssets';
+import { getShareVariantMedia, parseShareVariantParam } from '@/lib/shareAssets';
 
 const SITE_ROOT = process.env.NEXT_PUBLIC_SITE_ROOT ?? 'https://TheAgnesProtocol.com';
 
@@ -23,7 +23,7 @@ function getBaseUrl(host: string | null, protocol: string): string {
 export async function generateMetadata({ params, searchParams }: Props) {
   const { variant } = await params;
   const search = await searchParams;
-  const variantNum = Math.min(7, Math.max(1, parseInt(variant || '1', 10) || 1)) as ShareVariant;
+  const variantNum = parseShareVariantParam(variant);
   const refCode = search.ref || '';
   const target = (search.target as ShareTarget) || 'challenge';
 
@@ -37,8 +37,9 @@ export async function generateMetadata({ params, searchParams }: Props) {
   qs.set('target', target);
   if (target === 'terminal') qs.set('secret', 'WhereIsJodyVernon');
   const canonicalUrl = `${baseUrl}/p/fb/${variantNum}?${qs.toString()}`;
-  const videoUrl = `${baseUrl}/videos/fb${variantNum}.mp4`;
-  const posterUrl = `${baseUrl}/images/fb/fb${variantNum}.jpg`;
+  const { video: videoPath, thumbnail: thumbPath } = getShareVariantMedia('fb', variantNum);
+  const videoUrl = `${baseUrl}${videoPath}`;
+  const posterUrl = `${baseUrl}${thumbPath}`;
   const description = refCode
     ? `The internet isn't ready for this. Use code ${refCode} for 15% off.`
     : 'The internet isn\'t ready for this. Use your code for 15% off.';
@@ -72,8 +73,8 @@ export async function generateMetadata({ params, searchParams }: Props) {
 
 export default async function FbPreviewPage({ params, searchParams }: Props) {
   const { variant } = await params;
-  const variantNum = Math.min(7, Math.max(1, parseInt(variant || '1', 10) || 1)) as ShareVariant;
-  const assets = shareAssets.fb.variants[variantNum];
+  const variantNum = parseShareVariantParam(variant);
+  const assets = getShareVariantMedia('fb', variantNum);
 
   return (
     <div

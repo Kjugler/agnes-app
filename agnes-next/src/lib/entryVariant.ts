@@ -11,10 +11,40 @@ export type EntryFunnelDecision =
   /** Phase 2: renormalized NEXT_PUBLIC_ENTRY_SPLIT_* over unseen eligible variants only */
   | 'weighted_unseen'
   | 'sticky_settled'
-  | 'sticky_discovery_replace_terminal';
+  | 'sticky_discovery_replace_terminal'
+  /** Sticky cookie was terminal — IBM removed from public funnel, reroll protocol/contest */
+  | 'sticky_terminal_removed_public_funnel';
 
 const SEEN_MAX_AGE = 60 * 60 * 24 * 365; // 1 year — experience memory
 const STICKY_MAX_AGE = 60 * 60 * 24 * 7; // 7 days — settled visitor sticky variant
+
+/** Incremented only from Lightening `handleContinue` (Continue or video end). Not used by /terminal. */
+const LS_LIGHTNING_CONTINUE_COUNT = 'dq_lightning_continue_count';
+
+export function getLightningContinueCount(): number {
+  if (typeof window === 'undefined') return 0;
+  const raw = localStorage.getItem(LS_LIGHTNING_CONTINUE_COUNT);
+  const n = parseInt(raw ?? '0', 10);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
+/** Call once per lightning bridge completion, before `resolveEntryFunnelClient()`. */
+export function incrementLightningContinueCount(): number {
+  if (typeof window === 'undefined') return 0;
+  const next = getLightningContinueCount() + 1;
+  try {
+    localStorage.setItem(LS_LIGHTNING_CONTINUE_COUNT, String(next));
+  } catch {
+    /* ignore quota / private mode */
+  }
+  return next;
+}
+
+/** Terminal in weighted funnel only after 4+ lightning completions and if discovery has not locked it out. */
+function canOfferTerminalInWeightedFunnel(): boolean {
+  if (typeof window === 'undefined') return false;
+  return getLightningContinueCount() >= 4 && !hasTerminalDiscoveryComplete();
+}
 
 function readBrowserCookie(name: string): string | null {
   if (typeof document === 'undefined') return null;
@@ -101,9 +131,9 @@ function assignWeightedVariant(allowTerminal: boolean): 'terminal' | 'protocol' 
 }
 
 /**
- * Weighted random protocol vs contest only (e.g. terminal excluded by discovery).
+ * Weighted random protocol vs contest only (IBM terminal never assigned by public funnel).
  */
-function assignWeightedVariantNoTerminal(): 'protocol' | 'contest' {
+export function assignWeightedVariantNoTerminal(): 'protocol' | 'contest' {
   const protocol = parseInt(process.env.NEXT_PUBLIC_ENTRY_SPLIT_PROTOCOL || '40', 10) || 40;
   const contest = parseInt(process.env.NEXT_PUBLIC_ENTRY_SPLIT_CONTEST || '40', 10) || 40;
   const total = protocol + contest;
@@ -149,11 +179,15 @@ function pickWeightedUnseen(
 /**
  * Full entry funnel resolution (client-only). Zero network I/O.
  *
+ * IBM terminal in weighted splits: only after `incrementLightningContinueCount()` has run and
+ * `getLightningContinueCount() >= 4`, and not when `terminal_discovery_complete` is set.
+ * Explicit `?v=terminal` still works when discovery allows. Direct `/terminal` does not use this.
+ *
  * Precedence:
- * 1. ?v=terminal|protocol|contest — unless terminal + terminal_discovery_complete (terminal blocked)
- * 2. Phase 3 (all seen_*): sticky entry_variant for 7 days, with discovery terminal guard
- * 3. Phase 1 (no seen_*): weighted split (defaults 20/40/40); stale entry_variant alone does not override
- * 4. Phase 2 (some but not all seen_*): weighted pick renormalized over unseen eligible variants only
+ * 1. ?v=terminal|protocol|contest — terminal blocked if terminal_discovery_complete
+ * 2. Phase 3 (all seen_*): sticky entry_variant (terminal sticky honored only if weighted terminal allowed)
+ * 3. Phase 1: weighted split including terminal when allowed
+ * 4. Phase 2: unseen paths, terminal when allowed
  */
 export function resolveEntryFunnelClient(): EntryFunnelResolution {
   if (typeof window === 'undefined') {
@@ -163,7 +197,8 @@ export function resolveEntryFunnelClient(): EntryFunnelResolution {
   const params = new URLSearchParams(window.location.search);
   const queryV = params.get('v');
   const discovery = hasTerminalDiscoveryComplete();
-  const allowTerminal = !discovery;
+  const allowQueryTerminal = !discovery;
+  const allowTerminalWeighted = canOfferTerminalInWeightedFunnel();
 
   const seen = parseSeenFlags();
   const anySeen = seen.terminal || seen.protocol || seen.contest;
@@ -176,7 +211,7 @@ export function resolveEntryFunnelClient(): EntryFunnelResolution {
 
   // 1) Query override
   if (queryV === 'terminal' || queryV === 'protocol' || queryV === 'contest') {
-    if (queryV === 'terminal' && !allowTerminal) {
+    if (queryV === 'terminal' && !allowQueryTerminal) {
       return {
         variant: assignWeightedVariantNoTerminal(),
         phase: allSeen ? 3 : anySeen ? 2 : 1,
@@ -193,32 +228,35 @@ export function resolveEntryFunnelClient(): EntryFunnelResolution {
   // 2) Phase 3 — sticky (legacy entry_variant), 7-day cookie
   if (allSeen) {
     if (stickyValid) {
-      if (stickyValid === 'terminal' && !allowTerminal) {
-        return {
-          variant: assignWeightedVariantNoTerminal(),
-          phase: 3,
-          decision: 'sticky_discovery_replace_terminal',
-        };
+      if (stickyValid === 'terminal') {
+        if (!allowTerminalWeighted) {
+          return {
+            variant: assignWeightedVariantNoTerminal(),
+            phase: 3,
+            decision: discovery ? 'sticky_discovery_replace_terminal' : 'sticky_terminal_removed_public_funnel',
+          };
+        }
+        return { variant: 'terminal', phase: 3, decision: 'sticky_settled' };
       }
       return { variant: stickyValid, phase: 3, decision: 'sticky_settled' };
     }
-    const v = assignWeightedVariant(allowTerminal);
+    const v = assignWeightedVariant(allowTerminalWeighted);
     return { variant: v, phase: 3, decision: 'sticky_settled' };
   }
 
   // 3) Phase 1 — first visit (no experience cookies yet)
   if (!anySeen) {
-    const v = assignWeightedVariant(allowTerminal);
+    const v = assignWeightedVariant(allowTerminalWeighted);
     return { variant: v, phase: 1, decision: 'weighted_first_visit' };
   }
 
   // 4) Phase 2 — prefer unseen
   const unseen: Array<'terminal' | 'protocol' | 'contest'> = [];
-  if (!seen.terminal && allowTerminal) unseen.push('terminal');
+  if (!seen.terminal && allowTerminalWeighted) unseen.push('terminal');
   if (!seen.protocol) unseen.push('protocol');
   if (!seen.contest) unseen.push('contest');
 
-  const v = pickWeightedUnseen(unseen, allowTerminal);
+  const v = pickWeightedUnseen(unseen, allowTerminalWeighted);
   return { variant: v, phase: 2, decision: 'weighted_unseen' };
 }
 

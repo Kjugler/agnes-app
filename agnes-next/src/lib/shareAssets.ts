@@ -65,6 +65,33 @@ export const shareAssets: Record<SharePlatform, {
   },
 };
 
+const SHARE_PLATFORMS: SharePlatform[] = ['fb', 'ig', 'x', 'tt', 'truth'];
+
+function isSharePlatform(s: string | undefined): s is SharePlatform {
+  return !!s && SHARE_PLATFORMS.includes(s as SharePlatform);
+}
+
+/** Parse `[platform]` segment — handles `string | string[]` from Next.js params */
+export function parseSharePlatformParam(raw: string | string[] | undefined): SharePlatform {
+  const s = Array.isArray(raw) ? raw[0] : raw;
+  return isSharePlatform(s) ? s : 'fb';
+}
+
+/** Parse `[variant]` segment — always 1–7 for share routes */
+export function parseShareVariantParam(raw: string | string[] | undefined): ShareVariant {
+  const s = Array.isArray(raw) ? raw[0] : raw;
+  const n = Number.parseInt(String(s ?? '1'), 10);
+  if (!Number.isFinite(n) || n < 1 || n > 7) return 1;
+  return n as ShareVariant;
+}
+
+/** Video + poster for OG/UI; ensures variant-aligned paths even if lookup fails */
+export function getShareVariantMedia(platform: SharePlatform, variant: ShareVariant) {
+  const row = shareAssets[platform]?.variants[variant];
+  if (row) return row;
+  return shareAssets.fb.variants[variant];
+}
+
 /**
  * Get eligible variants for rotation (exclude last used)
  */

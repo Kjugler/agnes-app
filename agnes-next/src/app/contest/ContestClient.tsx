@@ -49,8 +49,6 @@ export default function ContestClient() {
   const sessionId = qp.get('session_id');
   const justPurchased = qp.get('justPurchased') === '1';
   
-  const [current, setCurrent] = useState(0);
-  const [tapsyText, setTapsyText] = useState('Tap here to read a sample chapter!');
   const [showScoreButton, setShowScoreButton] = useState(false);
   const [contestEmail, setContestEmail] = useState<string | null>(null);
   const [associate, setAssociate] = useState<AssociateCache | null>(null);
@@ -903,16 +901,6 @@ export default function ContestClient() {
     [userHasJoinedContest],
   );
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const next = (current + 1) % buttons.length;
-      setCurrent(next);
-      setTapsyText(buttons[next].text);
-    }, 5000);
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current, buttons]);
-
   /** Motivational + live stats + terminal flash — merged into the same ticker as `/api/signal/events` (SiteRibbonTicker). */
   const ribbonExtraSegments = useMemo(() => {
     const segs: string[] = [...BANNER_MOTIVATIONAL];
@@ -1246,7 +1234,9 @@ export default function ContestClient() {
       )}
 
       {/* Tapsy COMMENT */}
-      <div style={{ textAlign: 'center', marginTop: '2rem', fontSize: '1.2rem' }}>{tapsyText}</div>
+      <div style={{ textAlign: 'center', marginTop: '2rem', fontSize: '1.2rem', color: '#d1d5db' }}>
+        Explore the story, join the contest, and more — tap a button below.
+      </div>
 
       {contestEmail ? (
         <div
@@ -1338,7 +1328,7 @@ export default function ContestClient() {
         maxWidth: '100%', // E1: Prevent overflow
         width: '100%', // E1: Full width container
       }}>
-        {buttons.map((btn, index) => (
+        {buttons.map((btn) => (
           <div key={btn.id} style={{ 
             position: 'relative', 
             textAlign: 'center',
@@ -1356,31 +1346,6 @@ export default function ContestClient() {
             >
               {btn.microPrompt}
             </div>
-            {index === current && (
-              <>
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: '-40px',
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    fontSize: '2rem',
-                    animation: 'bounce 1s infinite',
-                  }}
-                >
-                  👉
-                </div>
-                <div
-                  style={{
-                    fontSize: '0.8rem',
-                    color: '#00ff00',
-                    marginBottom: '0.3rem',
-                  }}
-                >
-                  {btn.text}
-                </div>
-              </>
-            )}
             {btn.id === 'contestBtn' ? (
               <button
                 type="button"
@@ -1394,12 +1359,11 @@ export default function ContestClient() {
                 }}
                 style={{
                   padding: '1rem',
-                  backgroundColor: index === current ? 'green' : '#111',
+                  backgroundColor: '#111',
                   border: '2px solid green',
-                  color: index === current ? 'black' : 'white',
+                  color: 'white',
                   fontSize: '1rem',
                   cursor: statusLoading ? 'not-allowed' : 'pointer',
-                  animation: index === current ? 'pulse 1s infinite' : 'none',
                   transition: 'all 0.3s',
                   minWidth: '160px', // E1: Smaller min width for mobile
                   width: '100%', // E1: Full width on mobile
@@ -1417,12 +1381,11 @@ export default function ContestClient() {
                 onRequireContestEntry={handleRequireContestEntry}
                 style={{
                   padding: '1rem',
-                  backgroundColor: index === current ? 'green' : '#111',
+                  backgroundColor: '#111',
                   border: '2px solid green',
-                  color: index === current ? 'black' : 'white',
+                  color: 'white',
                   fontSize: '1rem',
                   cursor: 'pointer',
-                  animation: index === current ? 'pulse 1s infinite' : 'none',
                   transition: 'all 0.3s',
                   minWidth: '160px', // E1: Smaller min width for mobile
                   width: '100%', // E1: Full width on mobile
@@ -1440,13 +1403,12 @@ export default function ContestClient() {
                   alignItems: 'center',
                   justifyContent: 'center',
                   padding: '1rem',
-                  backgroundColor: index === current ? 'green' : '#111',
+                  backgroundColor: '#111',
                   border: '2px solid green',
-                  color: index === current ? 'black' : 'white',
+                  color: 'white',
                   fontSize: '1rem',
                   textDecoration: 'none',
                   cursor: 'pointer',
-                  animation: index === current ? 'pulse 1s infinite' : 'none',
                   transition: 'all 0.3s',
                   minWidth: '160px', // E1: Smaller min width for mobile
                   width: '100%', // E1: Full width on mobile
@@ -1495,15 +1457,6 @@ export default function ContestClient() {
           0% { opacity: 1; box-shadow: 0 0 0 rgba(0, 255, 224, 0); }
           50% { opacity: 1; box-shadow: 0 0 12px rgba(0, 255, 224, 0.5); }
           100% { opacity: 1; box-shadow: 0 0 0 rgba(0, 255, 224, 0); }
-        }
-        @keyframes pulse {
-          0% { box-shadow: 0 0 5px lime; }
-          50% { box-shadow: 0 0 15px lime; }
-          100% { box-shadow: 0 0 5px lime; }
-        }
-        @keyframes bounce {
-          0%, 100% { transform: translateX(-50%) translateY(0); }
-          50% { transform: translateX(-50%) translateY(-5px); }
         }
       `}</style>
 
