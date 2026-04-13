@@ -8,6 +8,7 @@ import EditSignalModal from './EditSignalModal';
 import EditReviewModal from './EditReviewModal';
 import SignalMedia from './SignalMedia';
 import RibbonTicker from './RibbonTicker';
+import { parseFeedTags } from '@/lib/parseFeedTags';
 
 function formatRelativeTime(date: Date | string): string {
   const now = new Date();
@@ -174,15 +175,8 @@ type SignalRoomClientProps = {
   feedRefreshTrigger?: number;
 };
 
-function parseFeedTags(tags: unknown): { feedStyle?: string } | null {
-  if (tags == null) return null;
-  try {
-    const t = typeof tags === 'string' ? JSON.parse(tags) : tags;
-    if (t && typeof t === 'object' && 'feedStyle' in t) return t as { feedStyle?: string };
-    return null;
-  } catch {
-    return null;
-  }
+function excludeDailyBulletinSignals(signals: SignalData[]): SignalData[] {
+  return signals.filter((s) => parseFeedTags(s.tags)?.feedStyle !== 'daily_bulletin');
 }
 
 function visibleAtMsSignal(s: SignalData): number {
@@ -200,7 +194,11 @@ export default function SignalRoomClient({
   feedRefreshTrigger = 0,
 }: SignalRoomClientProps) {
   const router = useRouter();
-  const [signals, setSignals] = useState(initialSignals);
+  const [signals, setSignals] = useState<SignalData[]>(() => excludeDailyBulletinSignals(initialSignals));
+
+  useEffect(() => {
+    setSignals(excludeDailyBulletinSignals(initialSignals));
+  }, [initialSignals]);
   const [reviews, setReviews] = useState<ReviewData[]>([]);
   const [replyModalSignalId, setReplyModalSignalId] = useState<string | null>(null);
   const [editSignal, setEditSignal] = useState<SignalData | null>(null);
@@ -323,8 +321,9 @@ export default function SignalRoomClient({
                     acknowledgeCount: s.acknowledgeCount ?? 0,
                     acknowledged: s.acknowledged ?? false,
                     replies: (s.replies as ReplyData[]) ?? [],
-                  }));
-                setSignals((prev) => [...prev, ...toAdd]);
+                  })) as SignalData[];
+                const filtered = excludeDailyBulletinSignals(toAdd);
+                setSignals((prev) => [...prev, ...filtered]);
                 setNextCursor(d.nextCursor ?? null);
                 setHasMore(!!d.hasMore);
               } else {

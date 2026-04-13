@@ -24,7 +24,11 @@ export default function SiteRibbonTicker({ extraSegments, pollIntervalMs }: Site
         .then((r) => r.json())
         .then((d) => {
           if (!cancelled && d.ok && Array.isArray(d.events)) {
-            setEvents(d.events);
+            const noDailyRibbon = d.events.filter(
+              (e: SignalRibbonEvent) =>
+                typeof e.id !== 'string' || !e.id.startsWith('daily-contest-')
+            );
+            setEvents(noDailyRibbon);
           }
         })
         .catch(() => {});

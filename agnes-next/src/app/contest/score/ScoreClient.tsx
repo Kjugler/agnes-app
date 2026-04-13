@@ -1272,21 +1272,6 @@ export default function ScoreClient() {
 
       <div className="score-content">
       <section className="score-stage">
-        {/* Beta Test Scoreboard label — simulation environment */}
-        {process.env.NEXT_PUBLIC_STRESS_TEST_MODE === '1' && (
-          <div style={{
-            position: 'absolute',
-            top: 16,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            fontSize: 11,
-            color: 'rgba(255, 255, 255, 0.6)',
-            letterSpacing: '0.04em',
-            zIndex: 44,
-          }}>
-            Beta Test Scoreboard — simulation environment
-          </div>
-        )}
         {/* Back to Contest button */}
         <Link
           href="/contest"

@@ -400,19 +400,6 @@ export function ContestEntryForm({
       <p style={{ marginBottom: '1.5rem', color: '#cbd5f5' }}>
         Join the Agnes Protocol contest. Earn points, climb the leaderboard, and qualify for the vacation drawing.
       </p>
-      {process.env.NEXT_PUBLIC_STRESS_TEST_MODE === '1' && (
-        <div style={{
-          marginBottom: '1.5rem',
-          padding: '12px 16px',
-          background: 'rgba(0, 255, 127, 0.1)',
-          border: '1px solid rgba(0, 255, 127, 0.3)',
-          borderRadius: '8px',
-          fontSize: '14px',
-          color: '#a5b4fc',
-        }}>
-          <strong style={{ color: '#00ff7f' }}>PUBLIC STRESS TEST ACTIVE</strong> — Everything you see is a simulation. No real charges. No real deliveries. Your mission: try to break the system. <a href="mailto:hello@theagnesprotocol.com" style={{ color: '#00ff7f', textDecoration: 'underline' }}>Found a bug? Email hello@theagnesprotocol.com</a>
-        </div>
-      )}
       {effectiveContestEmail ? (
         <p
           style={{
@@ -663,7 +650,7 @@ export function ContestEntryForm({
             style={{ marginTop: '4px', flexShrink: 0 }}
           />
           <span>
-            I understand this is a public beta stress test. All purchases are simulated and no real deliveries will occur. I have read the{' '}
+            I understand this is a public beta contest. Purchases and prizes follow the published rules. I have read the{' '}
             <a
               href="/contest/beta-rules"
               target="_blank"

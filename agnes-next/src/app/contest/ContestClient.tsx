@@ -18,7 +18,6 @@ import {
   type AssociateCache,
 } from '@/lib/identity';
 import RequestAccessModal from '@/components/auth/RequestAccessModal';
-import BetaContestRules from '@/components/BetaContestRules';
 import SiteRibbonTicker from '@/components/SiteRibbonTicker';
 
 declare global {
@@ -1157,11 +1156,6 @@ export default function ContestClient() {
           <p style={{ fontSize: '1rem', color: '#9ca3af' }}>
             You&apos;re in. Let&apos;s play.
           </p>
-          {process.env.NEXT_PUBLIC_STRESS_TEST_MODE === '1' && (
-            <p style={{ fontSize: '0.8rem', color: 'rgba(156, 163, 175, 0.8)', marginTop: '0.25rem' }}>
-              Public Stress Test Active — simulation only
-            </p>
-          )}
         </div>
       ) : null}
 
@@ -1304,7 +1298,9 @@ export default function ContestClient() {
         maxWidth: '100%', // E1: Prevent overflow
         width: '100%', // E1: Full width container
       }}>
-        {buttons.map((btn) => (
+        {buttons.map((btn) => {
+          const sampleEmphasis = btn.id === 'sampleBtn';
+          return (
           <div key={btn.id} style={{ 
             position: 'relative', 
             textAlign: 'center',
@@ -1315,7 +1311,7 @@ export default function ContestClient() {
             <div
               style={{
                 fontSize: '0.75rem',
-                color: '#9ca3af',
+                color: sampleEmphasis ? '#b8e8d4' : '#9ca3af',
                 marginBottom: '0.35rem',
                 minHeight: '1.2em',
               }}
@@ -1374,6 +1370,7 @@ export default function ContestClient() {
               <Link
                 href={btn.href}
                 prefetch={false}
+                className={sampleEmphasis ? 'contestHubSampleLink' : undefined}
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -1385,7 +1382,7 @@ export default function ContestClient() {
                   fontSize: '1rem',
                   textDecoration: 'none',
                   cursor: 'pointer',
-                  transition: 'all 0.3s',
+                  transition: 'box-shadow 0.2s ease, border-color 0.2s ease',
                   minWidth: '160px', // E1: Smaller min width for mobile
                   width: '100%', // E1: Full width on mobile
                   maxWidth: '100%', // E1: Don't exceed container
@@ -1395,7 +1392,8 @@ export default function ContestClient() {
               </Link>
             )}
           </div>
-        ))}
+        );
+        })}
       </div>
 
       {/* “VIEW YOUR POINTS” — animated component */}
@@ -1434,21 +1432,16 @@ export default function ContestClient() {
           50% { opacity: 1; box-shadow: 0 0 12px rgba(0, 255, 224, 0.5); }
           100% { opacity: 1; box-shadow: 0 0 0 rgba(0, 255, 224, 0); }
         }
+        a.contestHubSampleLink {
+          border: 2px solid rgba(52, 211, 153, 0.72) !important;
+          box-shadow: 0 0 14px rgba(34, 197, 94, 0.22);
+        }
+        a.contestHubSampleLink:hover,
+        a.contestHubSampleLink:focus-visible {
+          border-color: rgba(110, 231, 183, 0.92) !important;
+          box-shadow: 0 0 18px rgba(52, 211, 153, 0.32);
+        }
       `}</style>
-
-      {/* SPEC 4: Beta Contest Rules footer during public stress test */}
-      {process.env.NEXT_PUBLIC_STRESS_TEST_MODE === '1' && (
-        <div style={{
-          marginTop: '2rem',
-          marginBottom: '1rem',
-          padding: '0 1.5rem',
-          maxWidth: '600px',
-          marginLeft: 'auto',
-          marginRight: 'auto',
-        }}>
-          <BetaContestRules variant="compact" />
-        </div>
-      )}
 
       {/* Invisible behavior: wires Buy button to checkout */}
       <CheckoutWiring />

@@ -17,17 +17,12 @@ import {
 } from "@/lib/entryVariant";
 import GlitchIntro from "@/components/terminal/GlitchIntro";
 
-const STRESS_TEST_MODE = process.env.NEXT_PUBLIC_STRESS_TEST_MODE === '1';
 const ENTRY_FUNNEL_DEBUG = process.env.NEXT_PUBLIC_ENTRY_FUNNEL_DEBUG === '1';
 
 export default function LighteningClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [showContinue, setShowContinue] = useState(false);
-  const [showStressOverlay, setShowStressOverlay] = useState(false);
-  const [overlayFadingOut, setOverlayFadingOut] = useState(false);
-  const [overlayFadingIn, setOverlayFadingIn] = useState(true);
-  const [showGlitchFrame, setShowGlitchFrame] = useState(false);
   /** Full-screen red THE AGNES PROTOCOL beat after Continue (all variants). */
   const [postLightningGlitch, setPostLightningGlitch] = useState(false);
   const pendingRouteRef = useRef<string | null>(null);
@@ -86,30 +81,6 @@ export default function LighteningClient() {
     if (typeof window === 'undefined') return;
     const timer = setTimeout(() => setShowContinue(true), 2000);
     return () => clearTimeout(timer);
-  }, []);
-
-  // SPEC: Lightning page stress test overlay — appears after ~2s, visible 12s, then fades out
-  // ARG: After overlay fades, quick glitch frame (0.4s) then normal flow
-  useEffect(() => {
-    if (!STRESS_TEST_MODE || typeof window === 'undefined') return;
-    const showDelay = 2000;
-    const visibleDuration = 12000;
-    const fadeDuration = 600;
-    const glitchDuration = 400;
-    const overlayEnd = showDelay + visibleDuration + fadeDuration;
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    timers.push(setTimeout(() => {
-      setShowStressOverlay(true);
-      setOverlayFadingIn(true);
-      timers.push(setTimeout(() => setOverlayFadingIn(false), 50));
-    }, showDelay));
-    timers.push(setTimeout(() => setOverlayFadingOut(true), showDelay + visibleDuration));
-    timers.push(setTimeout(() => {
-      setShowStressOverlay(false);
-      setShowGlitchFrame(true);
-    }, overlayEnd));
-    timers.push(setTimeout(() => setShowGlitchFrame(false), overlayEnd + glitchDuration));
-    return () => timers.forEach(clearTimeout);
   }, []);
 
   /**
@@ -235,84 +206,43 @@ export default function LighteningClient() {
           onEnded={handleVideoEnded}
           mode="fullscreen"
         />
-        
-        {/* SPEC: Stress test overlay — Lightning page only, does not interrupt animation */}
-        {STRESS_TEST_MODE && showStressOverlay && (
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              zIndex: 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: 'rgba(0, 0, 0, 0.75)',
-              pointerEvents: 'none',
-              opacity: overlayFadingOut ? 0 : overlayFadingIn ? 0 : 1,
-              transition: 'opacity 0.6s ease-out',
-            }}
-          >
-            <div
-              style={{
-                maxWidth: '90%',
-                padding: 'clamp(24px, 5vh, 32px) clamp(18px, 5vw, 40px)',
-                textAlign: 'center',
-                color: '#ffffff',
-                fontFamily: 'Arial, Helvetica, sans-serif',
-                lineHeight: 1.7,
-              }}
-            >
-              <div style={{ fontSize: 'clamp(21px, 5.2vw, 26px)', fontWeight: 700, marginBottom: '18px', letterSpacing: '0.02em', lineHeight: 1.35 }}>
-                PUBLIC STRESS TEST ACTIVE
-              </div>
-              <div style={{ fontSize: 'clamp(16px, 4.3vw, 18px)', marginBottom: '22px', opacity: 0.95, lineHeight: 1.65 }}>
-                You are entering a live beta environment.
-              </div>
-              <div style={{ fontSize: 'clamp(15px, 4.1vw, 17px)', marginBottom: '14px', lineHeight: 1.65 }}>
-                All purchases are simulated.<br />
-                No real charges.<br />
-                No real deliveries.
-              </div>
-              <div style={{ fontSize: 'clamp(15px, 4.1vw, 17px)', marginBottom: '26px', fontWeight: 600, lineHeight: 1.65 }}>
-                Explore the system.<br />
-                Invite friends.<br />
-                Try to break it.
-              </div>
-              <div style={{ fontSize: 'clamp(14px, 3.8vw, 16px)', opacity: 0.9, lineHeight: 1.65 }}>
-                Found a bug?<br />
-                <a href="mailto:hello@theagnesprotocol.com" style={{ color: '#00ff7f', textDecoration: 'underline' }}>
-                  hello@theagnesprotocol.com
-                </a>
-              </div>
-            </div>
-          </div>
-        )}
 
-        {/* ARG: Quick glitch frame after overlay fades — system message feel */}
-        {STRESS_TEST_MODE && showGlitchFrame && (
-          <div
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 100,
+            zIndex: 2,
+            textAlign: 'center',
+            pointerEvents: 'none',
+            padding: '0 1.25rem',
+          }}
+        >
+          <p
             style={{
-              position: 'absolute',
-              inset: 0,
-              zIndex: 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: '#000',
-              color: '#00ff7f',
-              fontFamily: 'monospace',
-              fontSize: '14px',
-              letterSpacing: '0.15em',
-              textAlign: 'center',
-              animation: 'lightningGlitchFlicker 0.4s steps(2)',
+              margin: '0 0 10px 0',
+              fontSize: 'clamp(15px, 3.8vw, 18px)',
+              fontWeight: 500,
+              color: 'rgba(245, 245, 245, 0.88)',
+              letterSpacing: '0.04em',
+              textShadow: '0 2px 12px rgba(0,0,0,0.85)',
             }}
           >
-            <div>
-              <div style={{ marginBottom: '12px', opacity: 0.9 }}>SYSTEM LOG: BETA OBSERVATION ACTIVE</div>
-              <div style={{ fontSize: '12px', opacity: 0.8 }}>USER PARTICIPATION RECORDED</div>
-            </div>
-          </div>
-        )}
+            A story. A game. Something more.
+          </p>
+          <p
+            style={{
+              margin: 0,
+              fontSize: 'clamp(13px, 3.2vw, 15px)',
+              color: 'rgba(203, 213, 225, 0.75)',
+              letterSpacing: '0.06em',
+              textShadow: '0 2px 10px rgba(0,0,0,0.8)',
+            }}
+          >
+            Tap anywhere to begin
+          </p>
+        </div>
 
         {/* Continue button - shown after timer */}
         {showContinue && (
@@ -345,12 +275,6 @@ export default function LighteningClient() {
         )}
         
       </div>
-      <style jsx global>{`
-        @keyframes lightningGlitchFlicker {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.7; }
-        }
-      `}</style>
       <HelpButton />
     </>
   );

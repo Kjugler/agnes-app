@@ -6,6 +6,7 @@ import { hasSignalRoomAccess, getSignalRoomAccessMode, SIGNAL_ROOM_ACCESS_COOKIE
 import SignalDetailClient from '../SignalDetailClient';
 import SignalRoomHeader from '../SignalRoomHeader';
 import SignalRoomGateView from '../SignalRoomGateView';
+import { isDailyBulletinTags } from '@/lib/parseFeedTags';
 
 async function fetchSignalFromDeepquill(id: string, cookieHeader: string) {
   const base = process.env.DEEPQUILL_URL || process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5055';
@@ -60,6 +61,9 @@ export default async function SignalDetailPage({ params }: { params: Promise<{ i
   if (!data?.ok || !data?.signal) notFound();
 
   const s = data.signal;
+  if (mode === 'public' && isDailyBulletinTags(s.tags)) {
+    notFound();
+  }
   const signalData = {
     id: s.id,
     text: s.text,

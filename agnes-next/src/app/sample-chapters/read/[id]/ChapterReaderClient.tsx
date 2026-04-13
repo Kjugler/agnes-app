@@ -70,7 +70,23 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
           borderBottom: '1px solid rgba(0, 255, 229, 0.2)',
         }}
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-start' }}>
+        <div className="chapterReaderNavMobile">
+          <Link
+            href="/sample-chapters"
+            style={{
+              color: '#00ffe5',
+              fontSize: 14,
+              fontFamily: 'inherit',
+              textDecoration: 'underline',
+            }}
+          >
+            ← Back to Sample Chapters
+          </Link>
+        </div>
+        <div
+          className="chapterReaderNavDesktop"
+          style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-start' }}
+        >
           <Link
             href="/sample-chapters"
             style={{
@@ -219,6 +235,26 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
           }}
         />
       </div>
+
+      <style jsx global>{`
+        .chapterReaderNavMobile {
+          display: none;
+        }
+        .chapterReaderNavDesktop {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          align-items: flex-start;
+        }
+        @media (max-width: 767px) {
+          .chapterReaderNavMobile {
+            display: block !important;
+          }
+          .chapterReaderNavDesktop {
+            display: none !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }
