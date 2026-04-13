@@ -12,7 +12,17 @@ function ContestAccessContent() {
   const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
-    // A: Check auth status on load
+    // Protocol Challenge → contest: land on hub without email gate (explore first)
+    const from = searchParams.get('from');
+    if (from === 'protocol-challenge') {
+      setIsChecking(false);
+      const params = new URLSearchParams(searchParams.toString());
+      const redirectUrl = `/contest${params.toString() ? `?${params.toString()}` : ''}`;
+      router.replace(redirectUrl);
+      return;
+    }
+
+    // A: Check auth status on load (other entry paths may still use access gate)
     const checkAuth = async () => {
       try {
         const res = await fetch('/api/associate/status', {

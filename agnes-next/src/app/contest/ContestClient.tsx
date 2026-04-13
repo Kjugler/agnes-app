@@ -55,6 +55,9 @@ export default function ContestClient() {
   const [hasProfile, setHasProfile] = useState(false);
   const [hasJoinedContest, setHasJoinedContest] = useState(false);
   const [profileFirstName, setProfileFirstName] = useState<string | null>(null);
+  /** From associate/status — ISO string or null */
+  const [contestJoinedAtIso, setContestJoinedAtIso] = useState<string | null>(null);
+  const [hasPurchasedBook, setHasPurchasedBook] = useState(false);
   /** Start true so CTA shows "Checking..." until first status resolve (avoids wrong "Enter" flash). */
   const [statusLoading, setStatusLoading] = useState(true);
   const [statusLoaded, setStatusLoaded] = useState(false);
@@ -95,14 +98,31 @@ export default function ContestClient() {
   // These are safe to compute here because they're simple boolean expressions
   // Default to false until state is loaded. contestJoined from API is authoritative; contestEmail may lag on first load.
   const userHasJoinedContest = statusLoaded && hasJoinedContest;
-  const hasAssociate = statusLoaded && hasProfile && Boolean(contestEmail);
-  
+
+  const isUserCommitted =
+    Boolean(contestJoinedAtIso) || Boolean(hasPurchasedBook);
+
+  /** Real first name only — no email heuristics, no Friend/Explorer/None */
+  const greetingName = useMemo(() => {
+    const n = (profileFirstName || '').trim();
+    return n.length > 0 ? n : null;
+  }, [profileFirstName]);
+
   // Additional computed flags (if any)
   // const isReturning = Boolean(associate?.id);
   // const hasLedger = Boolean(associate?.code);
 
   // ---- MEMOS / EFFECTS / CALLBACKS (all hooks that use the above values go here) ----
   
+  useEffect(() => {
+    if (!statusLoaded) return;
+    console.log('USER STATE:', {
+      committed: isUserCommitted,
+      hasName: !!greetingName,
+      contestJoinedAt: contestJoinedAtIso,
+    });
+  }, [statusLoaded, isUserCommitted, greetingName, contestJoinedAtIso]);
+
   // SPEC 3: Terminal discovery - when v=terminal, award bonus and show unlock panel
   useEffect(() => {
     const v = qp.get('v') || qp.get('variant');
@@ -147,7 +167,9 @@ export default function ContestClient() {
       setContestEmail(null);
       setAssociate(null);
       setShowIdentityBanner(false);
-      
+      setContestJoinedAtIso(null);
+      setHasPurchasedBook(false);
+
       // DO NOT force entry form - let user see video and buttons naturally
       // They can click "Enter the Contest" when ready
       
@@ -378,15 +400,18 @@ export default function ContestClient() {
         const data = await res.json();
         if (cancelled) return;
 
-        // D: Self-heal - if not authenticated OR missing principal → show RequestAccessModal
+        // Explore-first: anonymous or missing principal — browse without email gate / modal
         if (!data?.ok || !data?.id || !data?.email) {
-          console.log('[contest] Not authenticated or missing principal - showing RequestAccessModal', {
+          console.log('[contest] No principal — hub without identity gate', {
             ok: data?.ok,
             id: data?.id,
             email: data?.email,
+            reason: data?.reason,
           });
           associateStatusForEmailRef.current = null;
-          setShowRequestAccessModal(true);
+          setContestJoinedAtIso(null);
+          setHasPurchasedBook(false);
+          setShowRequestAccessModal(false);
           setStatusLoading(false);
           setStatusLoaded(true);
           return;
@@ -401,6 +426,10 @@ export default function ContestClient() {
         setHasProfile(nextHasProfile);
         setHasJoinedContest(nextHasJoinedContest);
         setProfileFirstName(data?.firstName || null);
+        setContestJoinedAtIso(
+          typeof data?.contestJoinedAt === 'string' ? data.contestJoinedAt : null
+        );
+        setHasPurchasedBook(Boolean(data?.hasPurchasedBook));
 
         // Sync contestEmail from API when we have it but state may not be set yet (first-load race)
         if (data?.email) {
@@ -439,6 +468,8 @@ export default function ContestClient() {
           setHasProfile(false);
           setHasJoinedContest(false);
           setProfileFirstName(null);
+          setContestJoinedAtIso(null);
+          setHasPurchasedBook(false);
           // Keep existing associate if we have one (don't clear on error)
           // Only clear if we don't have one already
           const existingAssociate = readAssociate();
@@ -544,6 +575,10 @@ export default function ContestClient() {
           .then((data) => {
             const nextHasJoinedContest = Boolean(data?.contestJoined ?? data?.hasJoinedContest);
             setHasJoinedContest(nextHasJoinedContest);
+            setContestJoinedAtIso(
+              typeof data?.contestJoinedAt === 'string' ? data.contestJoinedAt : null
+            );
+            setHasPurchasedBook(Boolean(data?.hasPurchasedBook));
             setStatusLoaded(true);
             setStatusLoading(false);
           })
@@ -1104,8 +1139,8 @@ export default function ContestClient() {
         )}
       </div>
 
-      {/* Greeting: Welcome back or Welcome based on profile existence */}
-      {contestEmail && (
+      {/* Greeting: committed users with a real first name only (no Friend/None/email guesses) */}
+      {isUserCommitted && greetingName ? (
         <div
           style={{
             textAlign: 'center',
@@ -1114,32 +1149,13 @@ export default function ContestClient() {
           }}
         >
           <h2 style={{ fontSize: '1.5rem', fontWeight: 600, marginBottom: '0.5rem' }}>
-            {hasProfile ? 'Welcome back' : 'Welcome'}, {(() => {
-              // If profile exists, use profile firstName
-              if (profileFirstName) {
-                return profileFirstName;
-              }
-              // Else guess from email local part
-              const emailLocal = contestEmail.split('@')[0];
-              if (emailLocal) {
-                // Extract name from email (e.g., "egg.benedict" -> "Egg" or "Egg Benedict")
-                const parts = emailLocal.split(/[._-]/);
-                if (parts.length > 1) {
-                  // Multiple parts: capitalize each and join
-                  return parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
-                } else {
-                  // Single part: capitalize first letter
-                  return emailLocal.charAt(0).toUpperCase() + emailLocal.slice(1);
-                }
-              }
-              return 'Explorer';
-            })()}.
+            {hasProfile ? 'Welcome back' : 'Welcome'}, {greetingName}.
           </h2>
           <p style={{ fontSize: '1.1rem', fontWeight: 700, color: '#00ffe0', marginBottom: '0.5rem', textShadow: '0 0 8px rgba(0, 255, 224, 0.5)' }}>
             WIN A 6-DAY • 7-NIGHT FAMILY VACATION
           </p>
           <p style={{ fontSize: '1rem', color: '#9ca3af' }}>
-            You're in. Let's play.
+            You&apos;re in. Let&apos;s play.
           </p>
           {process.env.NEXT_PUBLIC_STRESS_TEST_MODE === '1' && (
             <p style={{ fontSize: '0.8rem', color: 'rgba(156, 163, 175, 0.8)', marginTop: '0.25rem' }}>
@@ -1147,7 +1163,7 @@ export default function ContestClient() {
             </p>
           )}
         </div>
-      )}
+      ) : null}
 
       {/* LIVE CONTEST STATUS PANEL */}
       {liveStats && (
@@ -1250,18 +1266,15 @@ export default function ContestClient() {
             flexWrap: 'wrap',
           }}
         >
-          {hasAssociate ? (
-            <>
-              Signed in as <strong>{contestEmail}</strong>
-              {' · '}
-              Welcome back
-              {profileFirstName ? `, ${profileFirstName}` : '!'}
-            </>
-          ) : (
-            <>
-              Signed in as <strong>{contestEmail}</strong>
-            </>
-          )}
+          <span>
+            Signed in as <strong>{contestEmail}</strong>
+            {isUserCommitted && greetingName ? (
+              <>
+                {' · '}
+                {hasProfile ? 'Welcome back' : 'Welcome'}, {greetingName}
+              </>
+            ) : null}
+          </span>
           <button
             type="button"
             onClick={handleChangeAccount}
@@ -1277,44 +1290,7 @@ export default function ContestClient() {
             Change account
           </button>
         </div>
-      ) : (
-        <div 
-          style={{ 
-            marginTop: '1rem', 
-            padding: '1rem 1.5rem',
-            color: '#00ffe0',
-            fontSize: '1rem',
-            textAlign: 'center',
-            backgroundColor: 'rgba(0, 255, 224, 0.05)',
-            border: '1px solid rgba(0, 255, 224, 0.2)',
-            borderRadius: '0.5rem',
-            maxWidth: '600px',
-            marginLeft: 'auto',
-            marginRight: 'auto',
-            transition: 'all 0.3s ease',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = 'rgba(0, 255, 224, 0.1)';
-            e.currentTarget.style.borderColor = 'rgba(0, 255, 224, 0.4)';
-            e.currentTarget.style.boxShadow = '0 0 12px rgba(0, 255, 224, 0.3)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'rgba(0, 255, 224, 0.05)';
-            e.currentTarget.style.borderColor = 'rgba(0, 255, 224, 0.2)';
-            e.currentTarget.style.boxShadow = 'none';
-          }}
-        >
-          <div style={{ fontSize: '1.2rem', fontWeight: 600, marginBottom: '0.5rem', color: '#00ffe0', textShadow: '0 0 8px rgba(0, 255, 224, 0.5)' }}>
-            Welcome, friend.
-          </div>
-          <div style={{ fontSize: '1rem', fontWeight: 700, color: '#00ffe0', marginBottom: '0.5rem', textShadow: '0 0 6px rgba(0, 255, 224, 0.4)' }}>
-            WIN A 6-DAY • 7-NIGHT FAMILY VACATION
-          </div>
-          <div style={{ fontSize: '0.9rem', color: '#d1d5db', lineHeight: '1.5' }}>
-            You&apos;re new here — enjoy your stay. When you&apos;re ready, you can enter the contest anytime.
-          </div>
-        </div>
-      )}
+      ) : null}
 
       {/* MENU BUTTONS */}
       {/* E1: Mobile layout - wrap buttons in portrait, ensure all visible */}
@@ -1497,6 +1473,10 @@ export default function ContestClient() {
               setHasProfile(nextHasProfile);
               setHasJoinedContest(nextHasJoinedContest);
               setProfileFirstName(data?.firstName || null);
+              setContestJoinedAtIso(
+                typeof data?.contestJoinedAt === 'string' ? data.contestJoinedAt : null
+              );
+              setHasPurchasedBook(Boolean(data?.hasPurchasedBook));
               
               if (data?.id && data?.email) {
                 const payload: AssociateCache = {

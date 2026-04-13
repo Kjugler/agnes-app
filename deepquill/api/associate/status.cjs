@@ -36,6 +36,7 @@ async function handleAssociateStatus(req, res) {
       handleTiktok: true,
       handleTruth: true,
       contestJoinedAt: true,
+      earnedPurchaseBook: true,
     };
 
     let user = null;
@@ -86,6 +87,8 @@ async function handleAssociateStatus(req, res) {
         hasAssociate: false,
         reason: 'anonymous',
         contestJoined: false,
+        contestJoinedAt: null,
+        hasPurchasedBook: false,
         id: null,
         email: null,
       });
@@ -122,6 +125,8 @@ async function handleAssociateStatus(req, res) {
         hasProfile: false,
         hasJoinedContest: false,
         contestJoined: false, // R3: Explicit boolean field
+        contestJoinedAt: null,
+        hasPurchasedBook: false,
         newlyCreated,
       });
     }
@@ -149,6 +154,8 @@ async function handleAssociateStatus(req, res) {
       hasProfile,
       hasJoinedContest: contestJoined, // R3: Ledger-driven only
       contestJoined, // R3: Explicit boolean field (ledger-driven)
+      contestJoinedAt: user.contestJoinedAt ? user.contestJoinedAt.toISOString() : null,
+      hasPurchasedBook: Boolean(user.earnedPurchaseBook),
       newlyCreated,
       handles: {
         x: user.handleX,
