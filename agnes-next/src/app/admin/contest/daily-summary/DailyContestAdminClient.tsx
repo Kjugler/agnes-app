@@ -196,6 +196,11 @@ export default function DailyContestAdminClient() {
           ← Fulfillment admin
         </Link>
       </p>
+      <p style={{ marginBottom: 16 }}>
+        <Link href="/admin/contest/contest-users" style={{ color: '#0070f3' }}>
+          Contest &amp; users (leaderboard / Player / purchases) →
+        </Link>
+      </p>
       <h1 style={{ fontSize: '1.5rem', marginBottom: 8 }}>Daily contest summary</h1>
       <p style={{ color: '#555', fontSize: '0.95rem', marginBottom: 24 }}>
         Regenerate pulls ledger data for the scoring day (America/Denver). Placement points (10 / 5 / 3) are awarded once per

@@ -276,7 +276,9 @@ console.log('✅ Mounted /api/contest/daily-summary');
 
 const adminContestDailyRouter = require('./routes/adminContestDaily.cjs');
 app.use('/api/admin/contest', adminContestDailyRouter);
-console.log('✅ Mounted /api/admin/contest (daily-summary)');
+const adminContestAnalyticsRouter = require('./routes/adminContestAnalytics.cjs');
+app.use('/api/admin/contest', adminContestAnalyticsRouter);
+console.log('✅ Mounted /api/admin/contest (daily-summary + analytics)');
 
 // Terminal discovery bonus (SPEC 3: +250 pts for hidden path discovery)
 const contestTerminalDiscoveryHandler = require('../api/contest/terminalDiscovery.cjs');
