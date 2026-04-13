@@ -176,7 +176,7 @@ export default function ScoreClient() {
 
   const infoLines = [
     "Everything is up from here—have fun using the site and you'll earn points toward a family vacation and BIG money!",
-    'Games, social media, inviting friends—everything you do earns points!',
+    'Games, social media, referrals—everything you do earns points!',
   ];
 
   // Button hover captions
@@ -188,7 +188,7 @@ export default function ScoreClient() {
     truth: '+100 pts today. Share again tomorrow for another +100.',
     tt: '+100 pts today. Share again tomorrow for another +100.',
     contest: 'Game on! Enter the contest for +250 pts and a shot at the cruise.',
-    refer: 'Invite friends: they save $3.90; you earn $2 each. It adds up fast.',
+    refer: 'Referrals: they save $3.90; you earn $2 each. It adds up fast.',
     textfriend: 'Send a prewritten text with a link—opens your SMS app with autocomplete.',
     rabbit: 'Catch the Rabbit and earn +500 points.',
   };

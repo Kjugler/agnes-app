@@ -1,22 +1,29 @@
 /**
- * Canonical ribbon copy comes from deepquill GET /api/signal/events
- * (SignalEvent rows + synthetic daily contest line when present).
+ * Canonical ribbon copy from deepquill GET /api/signal/events.
+ * Daily contest ribbon rows (id daily-contest-*) are excluded from public UI.
  */
 
 export type SignalRibbonEvent = { id: string; eventText: string; createdAt?: string };
 
-export function defaultRibbonFallbackText(): string {
-  return 'Signal Room Active • Monitoring all channels • Stay alert';
+/** Drop synthetic daily-contest lines from ticker merge (defense in depth with SiteRibbonTicker). */
+export function filterRibbonEventsForDisplay(events: SignalRibbonEvent[]): SignalRibbonEvent[] {
+  return events.filter((e) => {
+    const id = e?.id;
+    if (id == null) return true;
+    if (typeof id !== 'string') return true;
+    if (id.startsWith('daily-contest-')) return false;
+    return true;
+  });
 }
 
 export function buildRibbonTickerText(events: SignalRibbonEvent[]): string {
-  if (!events.length) return defaultRibbonFallbackText();
-  return events.map((e) => e.eventText).join(' • ');
+  const filtered = filterRibbonEventsForDisplay(events);
+  if (!filtered.length) return '';
+  return filtered.map((e) => e.eventText).join(' • ');
 }
 
 /**
- * One continuous stream: canonical signal events (incl. daily contest line) + optional extra phrases
- * (motivational, live stats, etc.), same separator as the rest of the ribbon.
+ * One stream: filtered signal events + optional extra phrases (contest hub stats, etc.).
  */
 export function mergeRibbonTickerSegments(
   events: SignalRibbonEvent[],
@@ -24,15 +31,8 @@ export function mergeRibbonTickerSegments(
 ): string {
   const base = buildRibbonTickerText(events);
   const extras = (extraSegments ?? []).map((s) => String(s).trim()).filter(Boolean);
+  if (!base && extras.length === 0) return '';
+  if (!base) return extras.join(' • ');
   if (extras.length === 0) return base;
   return [base, ...extras].join(' • ');
-}
-
-/** Synthetic row prepended by deepquill when a DailyContestSummary exists. */
-export function extractDailyContestRibbonLine(events: SignalRibbonEvent[]): string | null {
-  const first = events[0];
-  if (first && typeof first.id === 'string' && first.id.startsWith('daily-contest-')) {
-    return first.eventText || null;
-  }
-  return null;
 }

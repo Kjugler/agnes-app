@@ -1,7 +1,11 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { mergeRibbonTickerSegments, type SignalRibbonEvent } from '@/lib/signalRibbonFeed';
+import {
+  filterRibbonEventsForDisplay,
+  mergeRibbonTickerSegments,
+  type SignalRibbonEvent,
+} from '@/lib/signalRibbonFeed';
 
 export type SiteRibbonTickerProps = {
   /** Appended after `/api/signal/events` content (motivational, live stats, flash messages). */
@@ -24,11 +28,7 @@ export default function SiteRibbonTicker({ extraSegments, pollIntervalMs }: Site
         .then((r) => r.json())
         .then((d) => {
           if (!cancelled && d.ok && Array.isArray(d.events)) {
-            const noDailyRibbon = d.events.filter(
-              (e: SignalRibbonEvent) =>
-                typeof e.id !== 'string' || !e.id.startsWith('daily-contest-')
-            );
-            setEvents(noDailyRibbon);
+            setEvents(filterRibbonEventsForDisplay(d.events as SignalRibbonEvent[]));
           }
         })
         .catch(() => {});
@@ -50,6 +50,10 @@ export default function SiteRibbonTicker({ extraSegments, pollIntervalMs }: Site
     () => mergeRibbonTickerSegments(events, extraSegments),
     [events, extraSegments]
   );
+
+  if (!tickerContent.trim()) {
+    return null;
+  }
 
   return (
     <>

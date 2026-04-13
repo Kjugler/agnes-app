@@ -17,13 +17,10 @@ ${EMAIL_BETA_BANNER_MARKER}
         🟣 LIVE BETA CONTEST ACTIVE
       </p>
       <p style="margin:0 0 6px 0;font-size:14px;color:#faf5ff;line-height:1.45;">
-        Earn points. Invite friends. Win cash and prizes.
+        Earn points. Referrals and sharing. Win cash and prizes.
       </p>
-      <p style="margin:0 0 10px 0;font-size:14px;color:#faf5ff;line-height:1.45;">
+      <p style="margin:0;font-size:14px;color:#faf5ff;line-height:1.45;">
         Top 15% unlock The Quiet Reveal.
-      </p>
-      <p style="margin:0;font-size:11px;line-height:1.45;color:#e9d5ff;">
-        (All purchases are simulated)
       </p>
     </td>
   </tr>
@@ -31,9 +28,8 @@ ${EMAIL_BETA_BANNER_MARKER}
 `;
 
 const BANNER_TEXT = `🟣 LIVE BETA CONTEST ACTIVE
-Earn points. Invite friends. Win cash and prizes.
+Earn points. Referrals and sharing. Win cash and prizes.
 Top 15% unlock The Quiet Reveal.
-(All purchases are simulated)
 
 
 `;

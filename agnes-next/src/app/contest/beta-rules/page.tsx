@@ -3,10 +3,7 @@
 import Link from 'next/link';
 import { BETA_RULES_PAGE_SECTIONS } from '@/lib/betaContestRules';
 
-/**
- * SPEC 4 — Beta Rules page
- * Clear plain English for public stress test.
- */
+/** Beta period contest rules (plain language). */
 export default function BetaRulesPage() {
   return (
     <main style={{
@@ -57,7 +54,7 @@ export default function BetaRulesPage() {
           </pre>
 
           <h3 style={{ margin: '28px 0 12px 0', fontSize: '16px', fontWeight: 700, color: '#00ff7f' }}>
-            Simulation disclaimer
+            Test purchases
           </h3>
           <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 'inherit' }}>
             {BETA_RULES_PAGE_SECTIONS.simulation}

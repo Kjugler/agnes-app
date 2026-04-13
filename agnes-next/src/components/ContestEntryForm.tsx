@@ -123,7 +123,6 @@ export function ContestEntryForm({
     return normalizedFormEmail !== normalizedContestEmail;
   }, [effectiveContestEmail, form.email]);
 
-  const stressTestMode = process.env.NEXT_PUBLIC_STRESS_TEST_MODE === '1';
   const canSubmit = useMemo(() => {
     const emailValid = /.+@.+/.test(form.email.trim());
     const baseValid =
@@ -131,11 +130,8 @@ export function ContestEntryForm({
       form.lastName.trim().length > 0 &&
       emailValid &&
       !emailMismatch;
-    if (stressTestMode) {
-      return baseValid && betaAcknowledged;
-    }
-    return baseValid;
-  }, [form, emailMismatch, stressTestMode, betaAcknowledged]);
+    return baseValid && betaAcknowledged;
+  }, [form, emailMismatch, betaAcknowledged]);
 
   const onChange = (key: keyof FormState) => (e: ChangeEvent<HTMLInputElement>) => {
     setForm((prev) => ({ ...prev, [key]: e.target.value }));
@@ -628,41 +624,38 @@ export function ContestEntryForm({
         </div>
       )}
 
-      {/* SPEC: Required beta acknowledgment during stress test */}
-      {stressTestMode && (
-        <label
-          style={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: '12px',
-            marginTop: '1.5rem',
-            marginBottom: '1rem',
-            cursor: 'pointer',
-            color: '#cbd5f5',
-            fontSize: '0.9rem',
-            lineHeight: 1.5,
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={betaAcknowledged}
-            onChange={(e) => setBetaAcknowledged(e.target.checked)}
-            style={{ marginTop: '4px', flexShrink: 0 }}
-          />
-          <span>
-            I understand this is a public beta contest. Purchases and prizes follow the published rules. I have read the{' '}
-            <a
-              href="/contest/beta-rules"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ color: '#00ff7f', textDecoration: 'underline' }}
-            >
-              Beta Test Rules
-            </a>
-            .
-          </span>
-        </label>
-      )}
+      <label
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: '12px',
+          marginTop: '1.5rem',
+          marginBottom: '1rem',
+          cursor: 'pointer',
+          color: '#cbd5f5',
+          fontSize: '0.9rem',
+          lineHeight: 1.5,
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={betaAcknowledged}
+          onChange={(e) => setBetaAcknowledged(e.target.checked)}
+          style={{ marginTop: '4px', flexShrink: 0 }}
+        />
+        <span>
+          I understand this is a public beta contest. Purchases and prizes follow the published rules. I have read the{' '}
+          <a
+            href="/contest/beta-rules"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: '#00ff7f', textDecoration: 'underline' }}
+          >
+            Beta contest rules
+          </a>
+          .
+        </span>
+      </label>
 
       {/* Quick completion reassurance */}
       <p style={{ marginTop: '1.5rem', marginBottom: 0, color: '#94a3b8', fontSize: '0.9rem', textAlign: 'center' }}>

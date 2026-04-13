@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Single lightweight simulation line for the catalog + checkout buy path only.
+ * Checkout / catalog buy path only — test-mode card hint.
  */
 export default function StressTestBuyNotice() {
   if (process.env.NEXT_PUBLIC_STRESS_TEST_MODE !== '1') return null;
@@ -16,7 +16,7 @@ export default function StressTestBuyNotice() {
         maxWidth: 440,
       }}
     >
-      Test simulation only — no real charges. Use card number{' '}
+      Test Simulation Only – use card{' '}
       <span style={{ fontFamily: 'ui-monospace, monospace', color: '#e2e8f0' }}>4242 4242 4242 4242</span>
     </p>
   );

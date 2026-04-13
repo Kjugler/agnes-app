@@ -1,25 +1,18 @@
 /**
- * SPEC 4 — Beta Contest Rules (Public Stress Test)
- * Clear plain English for rules page and shared display.
+ * Plain-language copy for /contest/beta-rules and shared constants.
  */
 
-export const BETA_RULES_HEADLINE = 'Beta Contest Rules (Public Stress Test)';
-export const BETA_RULES_SUBHEADLINE = 'PUBLIC STRESS TEST RULES';
+export const BETA_RULES_HEADLINE = 'Beta contest rules';
+export const BETA_RULES_SUBHEADLINE = 'Contest rules (beta period)';
 
-// New plain English content for /contest/beta-rules
 export const BETA_RULES_PAGE_SECTIONS = {
-  opening: `PUBLIC STRESS TEST
+  opening: `The Agnes Protocol contest is in beta.
 
-You are participating in a live beta test of The Agnes Protocol platform.
+We may adjust features and scoring during this period.
 
-Everything you see is a simulation.
+Your participation helps us improve the experience before wider release.`,
 
-No real charges will occur.
-No physical books will be shipped.
-
-Your participation helps us test the system before the official launch.`,
-
-  personalPurchase: `Personal Book Purchases
+  personalPurchase: `Personal book purchases
 
 You may earn contest points for one personal book purchase per day.
 
@@ -28,25 +21,24 @@ Each qualifying purchase awards:
 
 Additional purchases on the same day will not award additional contest points.`,
 
-  referral: `Referral Purchases
+  referral: `Referral purchases
 
-When a friend buys using your referral code, you earn:
+When someone buys using your referral code, you earn:
 
 5,000 contest points.
 
-During beta testing, referral points are capped at:
+During beta, referral points are capped at:
 
 25,000 points per day
 (up to 5 successful referral purchases per day).`,
 
-  simulation: `Simulation Notice
+  simulation: `Test purchases
 
-All purchases during the stress test are simulated.
+When the site is in test mode, checkout uses Stripe test cards only—see the notice on the catalog and checkout screens.
 
-No credit cards will be charged.
-No deliveries will occur.`,
+No production card charges occur in that mode.`,
 
-  bugReport: `Bug Reports
+  bugReport: `Bug reports
 
 If you encounter unexpected behavior, please report it to:
 
