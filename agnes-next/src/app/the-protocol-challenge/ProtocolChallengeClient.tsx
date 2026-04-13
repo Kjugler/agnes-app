@@ -202,7 +202,7 @@ export default function ProtocolChallengeClient() {
           onMouseEnter={() => setIsButtonHovered(true)}
           onMouseLeave={() => setIsButtonHovered(false)}
         >
-          Get on Board Now!
+          See More
         </button>
       </div>
 
