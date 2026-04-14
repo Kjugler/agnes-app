@@ -3,6 +3,8 @@
 import React from 'react';
 import Link from 'next/link';
 import { getChapter, isValidChapterId } from '../../chapters';
+import { readAssociate } from '@/lib/identity';
+import { buildTextThisSceneSmsBody, openSmsWithPrefilledBody } from '@/lib/textThisScene';
 
 interface ChapterReaderClientProps {
   chapterId: string;
@@ -42,6 +44,12 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
   }
 
   const { title, pdfUrl } = chapter;
+
+  const handleTextThisScene = () => {
+    const ref = readAssociate()?.code ?? null;
+    const body = buildTextThisSceneSmsBody(ref);
+    openSmsWithPrefilledBody(body);
+  };
 
   return (
     <div
@@ -126,7 +134,24 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
           {title}
         </span>
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
+          <button
+            type="button"
+            onClick={handleTextThisScene}
+            style={{
+              background: 'rgba(0, 255, 229, 0.12)',
+              border: '1px solid rgba(0, 255, 229, 0.6)',
+              color: '#00ffe5',
+              padding: '8px 16px',
+              fontSize: 14,
+              fontFamily: 'inherit',
+              borderRadius: 6,
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            Text This Scene
+          </button>
           <a
             href={pdfUrl}
             target="_blank"
