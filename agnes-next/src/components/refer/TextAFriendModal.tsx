@@ -2,14 +2,15 @@
 
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { REFER_VIDEOS, type ReferVideoId } from '@/config/referVideos';
 import { readContestEmail } from '@/lib/identity';
+import { buildTextThisSceneSmsBody } from '@/lib/textThisScene';
 
 /** Production site for SMS links; short path /t/:video expands to full attribution on the server. */
 const LANDING_ORIGIN = 'https://www.theagnesprotocol.com';
+type TextAFriendOption = 'share_this' | 'share_scene';
 
-function buildLandingUrl(videoId: ReferVideoId, referralCode: string | null | undefined): string {
-  const path = `${LANDING_ORIGIN}/t/${videoId}`;
+function buildShareThisUrl(referralCode: string | null | undefined): string {
+  const path = `${LANDING_ORIGIN}/t/fb1`;
   const code = referralCode?.trim();
   if (!code) return path;
   const u = new URL(path);
@@ -17,14 +18,21 @@ function buildLandingUrl(videoId: ReferVideoId, referralCode: string | null | un
   return u.toString();
 }
 
-function buildDefaultMessage(landingUrl: string): string {
-  return `Hey—this showed up today.
+function buildShareThisMessage(shareUrl: string): string {
+  return `Hey—came across this and thought of you.
 
-Not sure what it is yet, but it's actually pretty interesting.
+Take a look when you have a second.
 
-Go in and tell me what you think.
+Let me know what you think.
 
-${landingUrl}`;
+${shareUrl}`;
+}
+
+function buildMessage(option: TextAFriendOption, referralCode: string | null | undefined): string {
+  if (option === 'share_scene') {
+    return buildTextThisSceneSmsBody(referralCode);
+  }
+  return buildShareThisMessage(buildShareThisUrl(referralCode));
 }
 
 type TextAFriendModalProps = {
@@ -35,7 +43,7 @@ type TextAFriendModalProps = {
 };
 
 export default function TextAFriendModal({ isOpen, onClose, referralCode }: TextAFriendModalProps) {
-  const [selectedVideoId, setSelectedVideoId] = useState<ReferVideoId>('fb1');
+  const [selectedOption, setSelectedOption] = useState<TextAFriendOption>('share_this');
   const [message, setMessage] = useState('');
   const [toast, setToast] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -46,12 +54,12 @@ export default function TextAFriendModal({ isOpen, onClose, referralCode }: Text
 
   useEffect(() => {
     if (!isOpen) return;
-    setMessage(buildDefaultMessage(buildLandingUrl(selectedVideoId, referralCode)));
-  }, [isOpen, selectedVideoId, referralCode]);
+    setMessage(buildMessage(selectedOption, referralCode));
+  }, [isOpen, selectedOption, referralCode]);
 
   useEffect(() => {
     if (!isOpen) {
-      setSelectedVideoId('fb1');
+      setSelectedOption('share_this');
     }
   }, [isOpen]);
 
@@ -60,7 +68,11 @@ export default function TextAFriendModal({ isOpen, onClose, referralCode }: Text
     const href = `sms:?body=${encodeURIComponent(body)}`;
     const email = readContestEmail();
     if (email) {
-      const trackPayload = JSON.stringify({ type: 'TEXT_FRIEND_SHARED', email });
+      const trackPayload = JSON.stringify({
+        type: 'TEXT_FRIEND_SHARED',
+        email,
+        meta: { option: selectedOption },
+      });
       fetch('/api/track', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -122,60 +134,61 @@ export default function TextAFriendModal({ isOpen, onClose, referralCode }: Text
           }}
         >
           <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: '0 0 0.75rem' }}>Text a Friend</h2>
-          <p style={{ fontSize: '0.875rem', color: '#4b5563', margin: '0 0 1rem', lineHeight: 1.45 }}>
-            Pick a video for their visit after they tap your link (no video file is sent by SMS).
-          </p>
-
           <div style={{ marginBottom: '1rem' }}>
             <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#374151', marginBottom: '0.5rem' }}>
-              Video for on-site experience
+              Choose message
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {REFER_VIDEOS.map((video) => (
-                <label
-                  key={video.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: '0.75rem',
-                    padding: '0.5rem',
-                    borderRadius: '0.5rem',
-                    border: selectedVideoId === video.id ? '2px solid #e11d48' : '1px solid #e5e7eb',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="taf-video"
-                    checked={selectedVideoId === video.id}
-                    onChange={() => setSelectedVideoId(video.id)}
-                    style={{ marginTop: 4 }}
-                  />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{video.label}</div>
-                    <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{video.description}</div>
-                  </div>
-                  <img
-                    src={video.thumbnailSrc}
-                    alt=""
-                    width={72}
-                    height={54}
-                    style={{ objectFit: 'cover', borderRadius: 6, flexShrink: 0 }}
-                  />
-                </label>
-              ))}
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.75rem',
+                  padding: '0.5rem',
+                  borderRadius: '0.5rem',
+                  border: selectedOption === 'share_this' ? '2px solid #e11d48' : '1px solid #e5e7eb',
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="radio"
+                  name="taf-message-option"
+                  checked={selectedOption === 'share_this'}
+                  onChange={() => setSelectedOption('share_this')}
+                />
+                <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>Share This</span>
+              </label>
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.75rem',
+                  padding: '0.5rem',
+                  borderRadius: '0.5rem',
+                  border: selectedOption === 'share_scene' ? '2px solid #e11d48' : '1px solid #e5e7eb',
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="radio"
+                  name="taf-message-option"
+                  checked={selectedOption === 'share_scene'}
+                  onChange={() => setSelectedOption('share_scene')}
+                />
+                <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>Share a Scene</span>
+              </label>
             </div>
           </div>
 
           <div style={{ marginBottom: '1rem' }}>
             <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: '0.5rem' }}>
-              Message preview (editable)
+              Message preview
             </label>
             <textarea
               value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              rows={12}
-              spellCheck
+              readOnly
+              rows={10}
+              spellCheck={false}
               style={{
                 width: '100%',
                 boxSizing: 'border-box',
@@ -185,16 +198,10 @@ export default function TextAFriendModal({ isOpen, onClose, referralCode }: Text
                 borderRadius: '0.5rem',
                 border: '1px solid #d1d5db',
                 fontFamily: 'system-ui, sans-serif',
-                resize: 'vertical',
+                resize: 'none',
+                backgroundColor: '#f9fafb',
               }}
             />
-            <p style={{ fontSize: '0.75rem', color: '#9ca3af', margin: '0.4rem 0 0', fontStyle: 'italic' }}>
-              Feel free to personalize this before sending.
-            </p>
-            <p style={{ fontSize: '0.7rem', color: '#9ca3af', margin: '0.35rem 0 0' }}>
-              Short link <code style={{ fontSize: '0.65rem' }}>/t/fb1?ref=…</code> expands to full tracking (source, video,
-              discount, your referral code). No video file is sent in the text.
-            </p>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', flexWrap: 'wrap' }}>
