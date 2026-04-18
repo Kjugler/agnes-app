@@ -1,24 +1,15 @@
 /**
- * Centralized email configuration for stress test / test mode.
- * Single source of truth for transactional email behavior.
+ * Transactional email behavior (agnes-next).
  *
- * CANONICAL STRESS-TEST FLAG STRATEGY
- * -----------------------------------
- * - STRESS_TEST_MODE=1       Master server-side flag. When set, email stress-test
- *                            messaging turns on automatically (subject prefix + body note).
- * - NEXT_PUBLIC_STRESS_TEST_MODE=1  Client/UI flag for banners, share captions, etc.
- * - EMAIL_CONTEST_BANNER=1   Legacy override; still supported. Prefer STRESS_TEST_MODE.
+ * Legacy: STRESS_TEST_MODE / EMAIL_CONTEST_BANNER used to inject a global HTML banner and
+ * subject prefix. That path is removed; emails render as authored.
  *
- * For public beta: set STRESS_TEST_MODE=1 in agnes-next and deepquill .env.
- * No separate manual email-only toggle needed.
+ * Client/UI stress-test chrome (catalog/checkout notices) uses NEXT_PUBLIC_STRESS_TEST_MODE only.
  */
 
-/** When true, apply test banner to all transactional emails */
+/** @deprecated Always false — global email banner injection disabled */
 export function shouldApplyEmailTestBanner(): boolean {
-  return (
-    process.env.STRESS_TEST_MODE === '1' ||
-    process.env.EMAIL_CONTEST_BANNER === '1'
-  );
+  return false;
 }
 
 /**

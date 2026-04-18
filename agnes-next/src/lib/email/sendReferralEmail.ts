@@ -112,7 +112,6 @@ Either way, thanks for checking it out.
     }
   }
 
-  // Apply stress-test banner when enabled (subject prefix + body note)
   const { html: finalHtml, text: finalText, subject: finalSubject } = applyGlobalEmailBanner({
     html: htmlBody,
     text: textBody,

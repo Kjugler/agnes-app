@@ -21,9 +21,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Dev-only diagnostic logging to verify env values inside the running Next process
+  // Dev-only diagnostic logging
   if (process.env.NODE_ENV === 'development') {
-    console.log('[ENV CHECK] EMAIL_CONTEST_BANNER =', process.env.EMAIL_CONTEST_BANNER);
     console.log('[ENV CHECK] SITE_URL =', process.env.SITE_URL);
     console.log('[ENV CHECK] NEXT_PUBLIC_SITE_URL =', process.env.NEXT_PUBLIC_SITE_URL);
   }

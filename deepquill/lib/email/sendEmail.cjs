@@ -1,5 +1,5 @@
 // deepquill/lib/email/sendEmail.cjs
-// E1: Universal email wrapper with banner toggle
+// Wraps Mailchimp send; passes content through applyGlobalEmailBanner (no-op; legacy banner removed).
 
 const mailchimp = require('@mailchimp/mailchimp_transactional');
 
@@ -15,24 +15,15 @@ function getMailchimpClient() {
   return mailchimp(apiKey);
 }
 
-/**
- * Apply contest banner to email content
- * E1: Universal banner toggle via EMAIL_CONTEST_BANNER env var (string)
- * Uses existing applyGlobalEmailBanner for consistency
- * @param {string} html - HTML email body
- * @param {string} text - Plain text email body
- * @param {string} subject - Email subject
- * @returns {Object} { html, text, subject } with banner applied if enabled
- */
+/** Pass-through hook (global beta banner disabled in emailBanner.cjs). */
 function applyContestBanner(html, text, subject) {
-  // E1: Use existing emailBanner module (it checks EMAIL_CONTEST_BANNER env var)
   const { applyGlobalEmailBanner } = require('../../src/lib/emailBanner.cjs');
   return applyGlobalEmailBanner({ html, text, subject });
 }
 
 /**
  * Send email via Mailchimp Transactional
- * E1: Universal wrapper that applies banner if EMAIL_CONTEST_BANNER is set
+ * Applies applyGlobalEmailBanner (identity) before send
  * @param {Object} params
  * @param {string} params.fromEmail - From email address
  * @param {string} params.fromName - From name
@@ -48,7 +39,6 @@ async function sendEmail({ fromEmail, fromName, to, subject, html, text }) {
     throw new Error('[EMAIL] Mailchimp client not available');
   }
 
-  // E1: Apply contest banner if EMAIL_CONTEST_BANNER is set
   const bannerResult = applyContestBanner(html, text, subject);
   const finalHtml = bannerResult.html;
   const finalText = bannerResult.text;

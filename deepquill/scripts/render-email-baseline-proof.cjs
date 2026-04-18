@@ -2,24 +2,12 @@
  * Email Split (Choice B) — baseline proof renders.
  * Run from deepquill: node scripts/render-email-baseline-proof.cjs
  *
- * Sets banner-related env BEFORE loading emailBanner.cjs so module constants match intent.
- * Usage:
- *   EMAIL_BANNER=0 node scripts/render-email-baseline-proof.cjs   # no banner (clean baseline)
- *   EMAIL_BANNER=1 node scripts/render-email-baseline-proof.cjs   # banner on (matches typical .env)
+ * Global email banner injection is disabled in emailBanner.cjs; applyGlobalEmailBanner is a no-op.
  */
 const fs = require('fs');
 const path = require('path');
 
-const bannerMode = process.env.EMAIL_BANNER === '1' ? 'with-banner' : 'no-banner';
-
-/* emailBanner treats any non-empty EMAIL_CONTEST_BANNER (even "0") as banner-on. Only '' or unset disables. */
-if (bannerMode === 'no-banner') {
-  process.env.STRESS_TEST_MODE = '0';
-  process.env.EMAIL_CONTEST_BANNER = '';
-} else {
-  process.env.STRESS_TEST_MODE = '0';
-  process.env.EMAIL_CONTEST_BANNER = '1';
-}
+const bannerMode = 'no-banner';
 
 const { buildPurchaseConfirmationEmail } = require('../src/lib/purchaseEmail.cjs');
 const { buildReferrerCommissionEmail } = require('../src/lib/referrerCommissionEmail.cjs');
