@@ -15,7 +15,8 @@
     "migrate:deploy": "prisma migrate deploy",
     "fulfill:ebooks": "node scripts/process-fulfillments.cjs",
     "email:proof-baseline": "node scripts/render-email-baseline-proof.cjs",
-    "email:verify-strategic": "node scripts/verify-strategic-parity.cjs"
+    "email:verify-strategic": "node scripts/verify-strategic-parity.cjs",
+    "upload:ebook-blob": "node scripts/upload-ebook-to-blob.mjs"
   },
   "dependencies": {
     "@mailchimp/mailchimp_marketing": "^3.0.80",
@@ -39,6 +40,7 @@
   "devDependencies": {
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
+    "@vercel/blob": "^2.3.3",
     "@vitejs/plugin-react": "^4.3.1",
     "eslint": "^8.57.0",
     "eslint-plugin-react": "^7.34.3",
