@@ -7,6 +7,11 @@ import { buildTextThisSceneSmsBody } from '@/lib/textThisScene';
 
 /** Production site for SMS links; short path /t/:video expands to full attribution on the server. */
 const LANDING_ORIGIN = 'https://www.theagnesprotocol.com';
+
+/** Thumbnails for chooser (same assets as main site OG + Chapter 9 link preview). */
+const THUMB_SHARE_MAIN_SITE = '/og/ghost-writers.jpg';
+const THUMB_SHARE_CHAPTER_9 = '/images/fb/chapter9.jpg';
+
 type TextAFriendOption = 'share_this' | 'share_scene';
 
 function buildShareThisUrl(referralCode: string | null | undefined): string {
@@ -155,8 +160,33 @@ export default function TextAFriendModal({ isOpen, onClose, referralCode }: Text
                   name="taf-message-option"
                   checked={selectedOption === 'share_this'}
                   onChange={() => setSelectedOption('share_this')}
+                  style={{ flexShrink: 0 }}
                 />
-                <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>Share This</span>
+                <div
+                  style={{
+                    width: '104px',
+                    height: '58px',
+                    flexShrink: 0,
+                    borderRadius: '0.375rem',
+                    overflow: 'hidden',
+                    border: '1px solid #e5e7eb',
+                    backgroundColor: '#f3f4f6',
+                  }}
+                >
+                  <img
+                    src={THUMB_SHARE_MAIN_SITE}
+                    alt="Preview: main site share image"
+                    width={104}
+                    height={58}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.125rem', minWidth: 0 }}>
+                  <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>Share This</span>
+                  <span style={{ fontSize: '0.7rem', color: '#6b7280', lineHeight: 1.35 }}>
+                    Main site and launch link
+                  </span>
+                </div>
               </label>
               <label
                 style={{
@@ -174,8 +204,33 @@ export default function TextAFriendModal({ isOpen, onClose, referralCode }: Text
                   name="taf-message-option"
                   checked={selectedOption === 'share_scene'}
                   onChange={() => setSelectedOption('share_scene')}
+                  style={{ flexShrink: 0 }}
                 />
-                <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>Share a Scene</span>
+                <div
+                  style={{
+                    width: '104px',
+                    height: '58px',
+                    flexShrink: 0,
+                    borderRadius: '0.375rem',
+                    overflow: 'hidden',
+                    border: '1px solid #e5e7eb',
+                    backgroundColor: '#f3f4f6',
+                  }}
+                >
+                  <img
+                    src={THUMB_SHARE_CHAPTER_9}
+                    alt="Preview: Chapter 9 sample read"
+                    width={104}
+                    height={58}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.125rem', minWidth: 0 }}>
+                  <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>Share a Scene</span>
+                  <span style={{ fontSize: '0.7rem', color: '#6b7280', lineHeight: 1.35 }}>
+                    Chapter 9 sample read
+                  </span>
+                </div>
               </label>
             </div>
           </div>
