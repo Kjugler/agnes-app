@@ -1,3 +1,2 @@
-# Place TheAgnesProtocol.epub (or other eBook file) here
-# This file should not be committed to git
-
+# Production eBook: the-agnes-protocol.epub (see EBOOK_FILE_PATH in deepquill env).
+# *.epub / *.pdf / *.mobi under this folder are gitignored.

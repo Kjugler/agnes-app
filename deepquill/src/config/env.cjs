@@ -1,6 +1,8 @@
 // deepquill/src/config/env.cjs
 // Validated environment variables with safe diagnostics
 
+const path = require('path');
+
 const STRIPE_SECRET_KEY_RAW = (process.env.STRIPE_SECRET_KEY || '').trim();
 
 if (!STRIPE_SECRET_KEY_RAW) {
@@ -43,10 +45,22 @@ if (!exports.FULFILLMENT_TOKEN_SECRET) {
   console.warn('[ENV] FULFILLMENT_TOKEN_SECRET not set - eBook download tokens will fail');
 }
 
-// eBook file path
-exports.EBOOK_FILE_PATH = process.env.EBOOK_FILE_PATH || null;
-if (!exports.EBOOK_FILE_PATH) {
-  console.warn('[ENV] EBOOK_FILE_PATH not set - eBook downloads will fail');
+// eBook file on disk (EPUB delivered as application/epub+zip — see ebook-download.cjs).
+// Default: deepquill/assets/ebook/the-agnes-protocol.epub (repo-relative from this file).
+// Railway: when the service root is the deepquill app, set explicitly to:
+//   /app/assets/ebook/the-agnes-protocol.epub
+const DEFAULT_EBOOK_FILE_PATH = path.resolve(
+  __dirname,
+  '..',
+  '..',
+  'assets',
+  'ebook',
+  'the-agnes-protocol.epub'
+);
+const ebookPathEnv = (process.env.EBOOK_FILE_PATH || '').trim();
+exports.EBOOK_FILE_PATH = ebookPathEnv || DEFAULT_EBOOK_FILE_PATH;
+if (!ebookPathEnv) {
+  console.log(`[ENV] EBOOK_FILE_PATH unset; using default: ${exports.EBOOK_FILE_PATH}`);
 }
 
 // eBook link TTL (days)
