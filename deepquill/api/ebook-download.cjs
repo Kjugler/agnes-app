@@ -4,6 +4,7 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const { Readable } = require('stream');
 const { verifyToken } = require('../src/lib/fulfillmentToken.cjs');
 const envConfig = require('../src/config/env.cjs');
 const { stripe } = require('../src/lib/stripe.cjs');
@@ -64,6 +65,83 @@ async function resolveProductTypeFromStripeSession(sessionId) {
   return { session, productType };
 }
 
+const EBOOK_ATTACHMENT_NAME = 'the-agnes-protocol.epub';
+
+function setDownloadHeaders(res, { contentType, contentLength, contentDisposition }) {
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('Content-Disposition', contentDisposition);
+  if (contentLength != null && contentLength !== '') {
+    res.setHeader('Content-Length', String(contentLength));
+  }
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+}
+
+/**
+ * Stream EPUB from Vercel Blob (or any HTTPS URL). Preferred when EBOOK_FILE_URL is set.
+ */
+async function streamEbookFromBlobUrl(res, url, logPayload) {
+  let response;
+  try {
+    response = await fetch(url, { redirect: 'follow', cache: 'no-store' });
+  } catch (err) {
+    console.error('[EBOOK_DOWNLOAD] fetch failed:', err?.message);
+    if (!res.headersSent) {
+      return res.status(502).json({ error: 'EBook source unavailable' });
+    }
+    return;
+  }
+
+  if (!response.ok) {
+    console.error('[EBOOK_DOWNLOAD] blob HTTP error', { status: response.status, url: url.slice(0, 80) });
+    if (!res.headersSent) {
+      return res.status(502).json({ error: 'EBook source unavailable' });
+    }
+    return;
+  }
+
+  const len = response.headers.get('content-length');
+  setDownloadHeaders(res, {
+    contentType: 'application/epub+zip',
+    contentLength: len,
+    contentDisposition: `attachment; filename="${EBOOK_ATTACHMENT_NAME}"`,
+  });
+
+  console.log('[EBOOK_DOWNLOAD]', {
+    ...logPayload,
+    source: 'EBOOK_FILE_URL',
+    fileName: EBOOK_ATTACHMENT_NAME,
+    fileSize: len ? Number(len) : undefined,
+    contentType: 'application/epub+zip',
+  });
+
+  if (!response.body) {
+    if (!res.headersSent) {
+      return res.status(502).json({ error: 'EBook source empty' });
+    }
+    return;
+  }
+
+  try {
+    const nodeReadable = Readable.fromWeb(response.body);
+    nodeReadable.pipe(res);
+    nodeReadable.on('error', (err) => {
+      console.error('[EBOOK_DOWNLOAD] Blob stream error:', err.message);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Stream error' });
+      } else {
+        res.destroy(err);
+      }
+    });
+  } catch (err) {
+    console.error('[EBOOK_DOWNLOAD] fromWeb failed:', err?.message);
+    if (!res.headersSent) {
+      return res.status(500).json({ error: 'Stream setup failed' });
+    }
+  }
+}
+
 function streamEbookFile(res, filePath, logPayload) {
   if (!filePath || !fs.existsSync(filePath)) {
     console.error('[EBOOK_DOWNLOAD] File not found:', filePath);
@@ -72,17 +150,17 @@ function streamEbookFile(res, filePath, logPayload) {
 
   const stats = fs.statSync(filePath);
   const fileSize = stats.size;
-  const fileName = path.basename(filePath);
   const contentType = getContentTypeForFile(filePath);
+  const fileName =
+    path.extname(filePath).toLowerCase() === '.epub' ? EBOOK_ATTACHMENT_NAME : path.basename(filePath);
 
-  res.setHeader('Content-Type', contentType);
-  res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-  res.setHeader('Content-Length', fileSize);
-  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
+  setDownloadHeaders(res, {
+    contentType,
+    contentLength: fileSize,
+    contentDisposition: `attachment; filename="${fileName}"`,
+  });
 
-  console.log('[EBOOK_DOWNLOAD]', { ...logPayload, fileName, fileSize, contentType });
+  console.log('[EBOOK_DOWNLOAD]', { ...logPayload, source: 'EBOOK_FILE_PATH', fileName, fileSize, contentType });
 
   const fileStream = fs.createReadStream(filePath);
   fileStream.pipe(res);
@@ -93,6 +171,18 @@ function streamEbookFile(res, filePath, logPayload) {
       res.status(500).json({ error: 'File read error' });
     }
   });
+}
+
+/**
+ * If EBOOK_FILE_URL is set, stream from remote; else local EBOOK_FILE_PATH.
+ */
+async function deliverEbook(res, logPayload) {
+  const blobUrl = envConfig.EBOOK_FILE_URL;
+  if (blobUrl) {
+    await streamEbookFromBlobUrl(res, blobUrl, logPayload);
+    return;
+  }
+  streamEbookFile(res, envConfig.EBOOK_FILE_PATH, logPayload);
 }
 
 /**
@@ -113,8 +203,7 @@ router.get('/ebook/download', async (req, res) => {
       return res.status(403).json({ error: 'Invalid or expired token' });
     }
 
-    const filePath = envConfig.EBOOK_FILE_PATH;
-    streamEbookFile(res, filePath, {
+    await deliverEbook(res, {
       mode: 'token',
       email: payload.email,
       sessionId: payload.sessionId,
@@ -169,8 +258,7 @@ router.get('/ebook/download-by-session', async (req, res) => {
       return res.status(403).json({ ok: false, error: 'ebook_not_entitled' });
     }
 
-    const filePath = envConfig.EBOOK_FILE_PATH;
-    streamEbookFile(res, filePath, {
+    await deliverEbook(res, {
       mode: 'session',
       sessionId: session.id,
       productType,

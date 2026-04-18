@@ -1,2 +1,3 @@
-# Production eBook: the-agnes-protocol.epub (see EBOOK_FILE_PATH in deepquill env).
+# Optional local dev: the-agnes-protocol.epub when EBOOK_FILE_URL is unset (see env.cjs).
+# Production: set EBOOK_FILE_URL to the Vercel Blob URL; DeepQuill streams via fetch.
 # *.epub / *.pdf / *.mobi under this folder are gitignored.

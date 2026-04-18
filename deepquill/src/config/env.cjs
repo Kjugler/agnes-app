@@ -45,10 +45,15 @@ if (!exports.FULFILLMENT_TOKEN_SECRET) {
   console.warn('[ENV] FULFILLMENT_TOKEN_SECRET not set - eBook download tokens will fail');
 }
 
-// eBook file on disk (EPUB delivered as application/epub+zip — see ebook-download.cjs).
-// Default: deepquill/assets/ebook/the-agnes-protocol.epub (repo-relative from this file).
-// Railway: when the service root is the deepquill app, set explicitly to:
-//   /app/assets/ebook/the-agnes-protocol.epub
+// eBook delivery (see ebook-download.cjs):
+// - If EBOOK_FILE_URL is set (e.g. Vercel Blob HTTPS URL), DeepQuill streams via fetch (no local disk).
+// - Else EBOOK_FILE_PATH is used (local filesystem fallback for dev).
+const ebookUrlEnv = (process.env.EBOOK_FILE_URL || '').trim();
+exports.EBOOK_FILE_URL = ebookUrlEnv || null;
+if (exports.EBOOK_FILE_URL) {
+  console.log('[ENV] EBOOK_FILE_URL set — eBook will be streamed from remote URL (Vercel Blob)');
+}
+
 const DEFAULT_EBOOK_FILE_PATH = path.resolve(
   __dirname,
   '..',
@@ -59,7 +64,7 @@ const DEFAULT_EBOOK_FILE_PATH = path.resolve(
 );
 const ebookPathEnv = (process.env.EBOOK_FILE_PATH || '').trim();
 exports.EBOOK_FILE_PATH = ebookPathEnv || DEFAULT_EBOOK_FILE_PATH;
-if (!ebookPathEnv) {
+if (!exports.EBOOK_FILE_URL && !ebookPathEnv) {
   console.log(`[ENV] EBOOK_FILE_PATH unset; using default: ${exports.EBOOK_FILE_PATH}`);
 }
 
