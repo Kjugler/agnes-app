@@ -5,6 +5,7 @@
 
 const { startOfDenverDayUtc, endOfDenverDayUtc, previousDenverSummaryDateKey } = require('./denverTime.cjs');
 const { getPointsRollupForUser } = require('./pointsRollup.cjs');
+const { getExcludedStripeSessionIdsForPointsRollup } = require('./archivedBetaPurchases.cjs');
 
 const PLACEMENT_TYPES = new Set(['DAILY_CONTEST_FIRST', 'DAILY_CONTEST_SECOND', 'DAILY_CONTEST_THIRD']);
 const PLACEMENT_POINTS = { DAILY_CONTEST_FIRST: 10, DAILY_CONTEST_SECOND: 5, DAILY_CONTEST_THIRD: 3 };
@@ -31,15 +32,18 @@ function defaultCashClaimText() {
  * Ledger rows that count toward "points earned today" (aligned with rollup filters; excludes placement types for that day).
  */
 async function fetchLedgerRowsForDay(prisma, startUtc, endUtc) {
-  return prisma.ledger.findMany({
+  const rows = await prisma.ledger.findMany({
     where: {
       createdAt: { gte: startUtc, lt: endUtc },
       OR: [{ points: { gt: 0 } }, { currency: 'points' }],
       NOT: [{ currency: 'email' }, { currency: 'usd' }],
       type: { notIn: [...PLACEMENT_TYPES] },
     },
-    select: { userId: true, points: true, createdAt: true },
+    select: { userId: true, points: true, createdAt: true, sessionId: true },
   });
+  const excluded = await getExcludedStripeSessionIdsForPointsRollup(prisma);
+  if (!excluded.size) return rows;
+  return rows.filter((r) => !r.sessionId || !excluded.has(r.sessionId));
 }
 
 function aggregateDailyScores(rows) {
@@ -467,4 +471,5 @@ module.exports = {
   JOB_STATUS_ID,
   upsertDailyBulletinSignal,
   buildDailyBulletinSignalText,
+  resolveLiveLeader,
 };

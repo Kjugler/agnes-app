@@ -3,6 +3,7 @@
  */
 
 const { getPointsRollupForUser } = require('./pointsRollup.cjs');
+const { wherePurchaseCountsForProductionMetrics } = require('./archivedBetaPurchases.cjs');
 
 function isBlank(v) {
   if (v == null) return true;
@@ -72,7 +73,7 @@ async function getContestAdminReport(prisma, opts = {}) {
     await Promise.all([
       prisma.user.count(),
       prisma.user.count({ where: { contestJoinedAt: { not: null } } }),
-      prisma.purchase.count(),
+      prisma.purchase.count({ where: wherePurchaseCountsForProductionMetrics() }),
       prisma.user.findMany({
         select: {
           id: true,
@@ -88,6 +89,7 @@ async function getContestAdminReport(prisma, opts = {}) {
       prisma.ledger.findMany({ select: { userId: true, createdAt: true } }),
       prisma.purchase.groupBy({
         by: ['userId'],
+        where: wherePurchaseCountsForProductionMetrics(),
         _count: { _all: true },
       }),
     ]);
@@ -193,6 +195,8 @@ async function getContestAdminReport(prisma, opts = {}) {
       activeDayBasis: 'UTC calendar date (YYYY-MM-DD) on Ledger.createdAt',
       searchMatches: users.length,
       contestOnlyFilter: contestOnly,
+      purchasesAndPointsRollup:
+        'Purchase totals and per-user purchase counts exclude archived beta (saleStatus archived_beta / countsForPoints false). Ledger rollups exclude rows whose sessionId matches an archived-beta purchase.',
     },
     topFinalists,
     topByTotalLedgerPoints: topByPoints,

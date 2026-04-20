@@ -212,6 +212,9 @@ router.get('/next-for-label', async (req, res) => {
       const candidate = await tx.order.findFirst({
         where: {
           status: 'pending',
+          saleStatus: 'live',
+          fulfillmentStatus: { not: 'none' },
+          countsForShipping: true,
           labelPrintedAt: null,
           shippedAt: null,
           OR: [
@@ -275,6 +278,9 @@ router.get('/to-ship', async (req, res) => {
       where: {
         labelPrintedById: fulfillmentUserId,
         shippedAt: null,
+        saleStatus: 'live',
+        countsForShipping: true,
+        fulfillmentStatus: { not: 'none' },
       },
       orderBy: { labelPrintedAt: 'asc' },
     });
@@ -319,6 +325,9 @@ router.post('/print-label', async (req, res) => {
     }
     if (order.shippedAt) {
       return res.status(400).json({ error: 'Order has already been shipped' });
+    }
+    if (order.saleStatus === 'archived_beta' || !order.countsForShipping || order.fulfillmentStatus === 'none') {
+      return res.status(400).json({ error: 'Order is not eligible for fulfillment (archived or inactive)' });
     }
 
     // Strict: only reservation owner may print. No expired-takeover.
@@ -421,6 +430,9 @@ router.post('/mark-shipped', async (req, res) => {
 
     if (!order) {
       return res.status(404).json({ error: 'Order not found' });
+    }
+    if (order.saleStatus === 'archived_beta' || !order.countsForShipping || order.fulfillmentStatus === 'none') {
+      return res.status(400).json({ error: 'Order is not eligible for shipping (archived or inactive)' });
     }
 
     await fulfillmentPrisma.order.update({

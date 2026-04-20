@@ -1,24 +1,18 @@
 // deepquill/api/contest/liveStats.cjs
 // Read-only aggregate metrics for Contest Hub "Rock Concert Mode"
-// No schema changes. Uses existing User, Purchase, Ledger.
+// Leader uses ledger rollup (excludes archived-beta sessions). booksClaimed uses production Purchase rows only.
 
 const { prisma } = require('../../server/prisma.cjs');
 const { ensureDatabaseUrl } = require('../../server/prisma.cjs');
+const { resolveLiveLeader } = require('../../lib/dailyContestSummary.cjs');
+const { wherePurchaseCountsForProductionMetrics } = require('../../lib/archivedBetaPurchases.cjs');
 
 async function handleLiveStats(req, res) {
   try {
     ensureDatabaseUrl();
 
-    // Leader: top user by points (has at least 1 point)
-    const leader = await prisma.user.findFirst({
-      where: { points: { gt: 0 } },
-      orderBy: { points: 'desc' },
-      select: {
-        firstName: true,
-        fname: true,
-        points: true,
-      },
-    });
+    // Leader: top user by ledger rollup (canonical; excludes archived-beta checkout sessions)
+    const liveLeader = await resolveLiveLeader(prisma);
 
     // Contest participants (users who joined)
     const playersCount = await prisma.user.count({
@@ -39,13 +33,16 @@ async function handleLiveStats(req, res) {
     });
     const associateRewardsCents = associateRewardsAgg._sum.associateLifetimeEarnedCents || 0;
 
-    // Books claimed: Purchase count
-    const booksClaimed = await prisma.purchase.count();
+    // Books claimed: live / production purchases only (excludes archived beta)
+    const booksClaimed = await prisma.purchase.count({
+      where: wherePurchaseCountsForProductionMetrics(),
+    });
 
-    const leaderName = leader
-      ? (leader.firstName || leader.fname || 'Anonymous').trim() || 'Anonymous'
-      : null;
-    const leaderPoints = leader?.points ?? 0;
+    const leaderName =
+      liveLeader.displayName && liveLeader.totalPoints > 0
+        ? liveLeader.displayName
+        : null;
+    const leaderPoints = liveLeader.totalPoints > 0 ? liveLeader.totalPoints : 0;
 
     return res.json({
       ok: true,

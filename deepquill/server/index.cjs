@@ -280,6 +280,11 @@ const adminContestAnalyticsRouter = require('./routes/adminContestAnalytics.cjs'
 app.use('/api/admin/contest', adminContestAnalyticsRouter);
 console.log('✅ Mounted /api/admin/contest (daily-summary + analytics)');
 
+// TEMPORARY: one-time beta archive for Railway production (remove after run). POST + x-admin-key.
+const adminArchiveBetaSalesOnceRouter = require('./routes/adminArchiveBetaSalesOnce.cjs');
+app.use('/api/admin/ops', adminArchiveBetaSalesOnceRouter);
+console.log('⚠️ TEMP Mounted POST /api/admin/ops/archive-beta-sales-once (remove after production archive)');
+
 // Terminal discovery bonus (SPEC 3: +250 pts for hidden path discovery)
 const contestTerminalDiscoveryHandler = require('../api/contest/terminalDiscovery.cjs');
 app.post('/api/contest/terminal-discovery', contestTerminalDiscoveryHandler);

@@ -2,6 +2,7 @@
 // Single source of truth for points totals - computed from ledger rollup
 
 const { ensureDatabaseUrl } = require('../server/prisma.cjs');
+const { getExcludedStripeSessionIdsForPointsRollup } = require('./archivedBetaPurchases.cjs');
 
 /**
  * Get points rollup for a user (single source of truth)
@@ -22,20 +23,28 @@ async function getPointsRollupForUser(prismaClient, userId) {
   try {
     ensureDatabaseUrl();
 
+    const excludedSessionIds = await getExcludedStripeSessionIdsForPointsRollup(prismaClient);
+    const excludedList = excludedSessionIds.size ? [...excludedSessionIds] : [];
+
     // Fetch all ledger entries for this user
     // A1: Exclude email and USD entries - only count points entries
+    // A3: Exclude ledger tied to archived-beta checkout sessions (same Stripe session id as Purchase)
     const ledgerEntries = await prismaClient.ledger.findMany({
       where: {
         userId,
-        // Include entries with points > 0 OR currency === 'points'
-        // Exclude entries with currency: 'email' or currency: 'usd'
-        OR: [
-          { points: { gt: 0 } }, // Entries with positive points
-          { currency: 'points' }, // Explicit points entries (even if 0)
-        ],
-        NOT: [
-          { currency: 'email' }, // Exclude email delivery entries
-          { currency: 'usd' }, // Exclude USD-only entries (commissions, discounts)
+        AND: [
+          {
+            OR: [
+              { points: { gt: 0 } },
+              { currency: 'points' },
+            ],
+          },
+          {
+            NOT: [{ currency: 'email' }, { currency: 'usd' }],
+          },
+          ...(excludedList.length
+            ? [{ OR: [{ sessionId: null }, { sessionId: { notIn: excludedList } }] }]
+            : []),
         ],
       },
       select: {

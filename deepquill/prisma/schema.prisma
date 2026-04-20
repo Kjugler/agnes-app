@@ -269,7 +269,15 @@ model Purchase {
   source    String?
   createdAt DateTime @default(now())
 
+  /// Production vs beta: `archived_beta` = historical beta sale (excluded from contest/shipping aggregates).
+  saleStatus          String  @default("live")
+  /// Echo of order fulfillment disposition; `none` when not in live fulfillment.
+  fulfillmentStatus   String  @default("active")
+  countsForShipping   Boolean @default(true)
+  countsForPoints     Boolean @default(true)
+
   @@index([userId, createdAt])
+  @@index([saleStatus])
 }
 
 model ReferralConversion {
@@ -355,6 +363,13 @@ model Order {
   commissionCents  Int?
   friendSavedCents Int?
 
+  /// Production vs beta: `archived_beta` for historical beta rows (keeps original `status` for audit).
+  saleStatus          String  @default("live")
+  /// `active` = may enter fulfillment queue; `none` = excluded (e.g. archived beta).
+  fulfillmentStatus   String  @default("active")
+  countsForShipping   Boolean @default(true)
+  countsForPoints     Boolean @default(true)
+
   // Fulfillment fields
   status           String           @default("pending")
   reservedAt       DateTime?        // Claim when worker fetches; 30min TTL
@@ -388,6 +403,7 @@ model Order {
   @@index([status, reservedAt])
   @@index([labelPrintedById])
   @@index([shippedById])
+  @@index([saleStatus])
 }
 
 enum SignalStatus {
