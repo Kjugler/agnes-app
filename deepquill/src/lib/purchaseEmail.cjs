@@ -105,6 +105,9 @@ ${pointsText}
 ${(product === 'ebook' || product === 'paperback') && downloadUrl ? `
 ${product === 'ebook' ? 'Your eBook is ready for download! Click the link below to access your copy.' : 'As promised, your free eBook is ready! Click the link below to download your copy.'}
 
+Best experience: Open in Apple Books or Google Play Books
+On Windows: Right-click the file → Open with Microsoft Edge
+
 Download link: ${downloadUrl}
 
 If you have trouble accessing your eBook, please contact us at hello@theagnesprotocol.com.
@@ -160,9 +163,15 @@ DeepQuill LLC
               
               ${(product === 'ebook' || product === 'paperback') && downloadUrl ? `
               <div style="margin:30px 0;text-align:center;">
+                <p style="margin:0 0 12px 0;font-size:13px;line-height:1.5;color:#6b7280;">
+                  Best experience: Open in Apple Books or Google Play Books
+                </p>
                 <a href="${downloadUrl}" style="display:inline-block;padding:14px 28px;background-color:#00ff7f;color:#000000;text-decoration:none;border-radius:6px;font-weight:bold;font-size:16px;">
                   ${product === 'ebook' ? 'Download eBook' : 'Download Your Free eBook'}
                 </a>
+                <p style="margin:12px 0 0 0;font-size:13px;line-height:1.5;color:#6b7280;">
+                  On Windows: Right-click the file → Open with Microsoft Edge
+                </p>
               </div>
               <p style="margin:20px 0 0 0;font-size:14px;line-height:1.6;color:#666666;">
                 <strong>Having trouble?</strong> Contact us at <a href="mailto:hello@theagnesprotocol.com" style="color:#00ff7f;">hello@theagnesprotocol.com</a>
