@@ -285,6 +285,10 @@ const adminArchiveBetaSalesOnceRouter = require('./routes/adminArchiveBetaSalesO
 app.use('/api/admin/ops', adminArchiveBetaSalesOnceRouter);
 console.log('⚠️ TEMP Mounted POST /api/admin/ops/archive-beta-sales-once (remove after production archive)');
 
+const adminSalesLedgerRouter = require('./routes/adminSalesLedger.cjs');
+app.use('/api/admin', adminSalesLedgerRouter);
+console.log('✅ Mounted GET /api/admin/sales-ledger');
+
 // Terminal discovery bonus (SPEC 3: +250 pts for hidden path discovery)
 const contestTerminalDiscoveryHandler = require('../api/contest/terminalDiscovery.cjs');
 app.post('/api/contest/terminal-discovery', contestTerminalDiscoveryHandler);

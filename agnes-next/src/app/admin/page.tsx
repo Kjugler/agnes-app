@@ -12,14 +12,14 @@ const linkStyle: CSSProperties = {
   fontSize: 14,
 };
 
-const descStyle: React.CSSProperties = {
+const descStyle: CSSProperties = {
   margin: '4px 0 16px 0',
   fontSize: 13,
   color: '#64748b',
   lineHeight: 1.4,
 };
 
-const sectionTitle: React.CSSProperties = {
+const sectionTitle: CSSProperties = {
   fontSize: 16,
   fontWeight: 600,
   margin: '24px 0 12px 0',
@@ -40,6 +40,15 @@ export default function AdminHubPage() {
       <h1 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 8px 0' }}>DeepQuill Admin Console</h1>
       <p style={{ margin: '0 0 24px 0', fontSize: 14, color: '#b45309', fontWeight: 500 }}>
         Internal Use Only
+      </p>
+
+      <h2 style={sectionTitle}>Sales &amp; diagnostics</h2>
+      <Link href="/admin/sales" style={linkStyle}>
+        Sales Ledger
+      </Link>
+      <p style={descStyle}>
+        View recent sales, product type, live vs beta status, fulfillment status, and points/shipping
+        eligibility.
       </p>
 
       <h2 style={sectionTitle}>Fulfillment</h2>
