@@ -102,6 +102,18 @@ async function runArchiveBetaSales({ prisma, fulfillmentPrisma, cutoff, dryRun =
     }
   }
 
+  // Catch Orders before cutoff that were never tied to a Purchase row (or session drift),
+  // and any session-matched rows already updated count as 0 here.
+  const orderByCutoffWhere = {
+    createdAt: { lt: cutoff },
+    saleStatus: { not: ARCHIVED_SALE_STATUS },
+  };
+  const supplemental = await fp.order.updateMany({
+    where: orderByCutoffWhere,
+    data: orderData,
+  });
+  orderUpdated += supplemental.count;
+
   return {
     ...base,
     purchasesUpdated: purchaseResult.count,
