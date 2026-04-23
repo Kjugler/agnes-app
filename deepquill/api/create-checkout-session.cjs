@@ -23,6 +23,25 @@ const { isSelfOwnedCode, normalizeIdentityEmail } = require('../src/lib/selfRefe
 // Part B1: Referral attribution window (30 days)
 const REFERRAL_ATTRIBUTION_WINDOW_DAYS = 30;
 const REFERRAL_ATTRIBUTION_WINDOW_MS = REFERRAL_ATTRIBUTION_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+const REFERRAL_SOURCE_TIE_PRIORITY = {
+  query_ref: 3,
+  cookie_ref: 2,
+  user_last_referral: 1,
+};
+
+function parseIsoDate(value) {
+  if (!value || typeof value !== 'string') return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
+}
+
+function cleanReferralParam(value) {
+  if (value == null) return null;
+  const s = String(value).trim();
+  if (!s || s === '...') return null;
+  return s;
+}
 
 // Log allowlist configuration at startup
 console.log('[CHECKOUT_CONFIG] Discount code allowlist configuration:', {
@@ -322,9 +341,28 @@ module.exports = async function handler(req, res) {
     }
 
     // Part B2: Determine discount code priority: explicit ref > latest active referral > stored preferredDiscountCode > none
+    // NOTE: preferredDiscountCode is allowed for discounting, but is NOT an attribution candidate.
     const refRaw = req.body?.ref || req.body?.referralCode || '';
     // Filter out placeholder values like '...' or empty strings
     const requestCode = refRaw && refRaw.trim() && refRaw.trim() !== '...' ? refRaw.trim() : null;
+    const cookieRefRaw = req.body?.referralCookieRef || metadata?.referral_cookie_ref || null;
+    const cookieCode = cookieRefRaw && cookieRefRaw.trim() && cookieRefRaw.trim() !== '...'
+      ? cookieRefRaw.trim()
+      : null;
+    const requestAtRaw = req.body?.checkoutRequestAt || metadata?.checkout_request_at || null;
+    const checkoutRequestAt = parseIsoDate(requestAtRaw) || new Date();
+
+    // Attribution: separate query vs cookie (agnes-next sends both). Do not use merged `ref` for both.
+    let queryAttributionCode = cleanReferralParam(
+      req.body?.referralQueryRef || metadata?.referral_query_ref,
+    );
+    let cookieAttributionCode = cleanReferralParam(
+      req.body?.referralCookieRef || metadata?.referral_cookie_ref,
+    );
+    if (!queryAttributionCode && !cookieAttributionCode) {
+      const legacy = cleanReferralParam(refRaw);
+      if (legacy) queryAttributionCode = legacy;
+    }
     
     // Check if buyer has an active lastReferral (within attribution window)
     let activeLastReferral = null;
@@ -352,9 +390,87 @@ module.exports = async function handler(req, res) {
         });
       }
     }
+
+    // Canonical direct sponsor attribution candidates (true last-touch)
+    const attributionCandidates = [];
+    if (queryAttributionCode) {
+      attributionCandidates.push({
+        code: queryAttributionCode,
+        source: 'query_ref',
+        eventAt: checkoutRequestAt,
+      });
+    }
+    if (
+      cookieAttributionCode &&
+      cookieAttributionCode.trim().toUpperCase() !==
+        (queryAttributionCode || '').trim().toUpperCase()
+    ) {
+      attributionCandidates.push({
+        code: cookieAttributionCode,
+        source: 'cookie_ref',
+        eventAt: checkoutRequestAt,
+      });
+    }
+    if (activeLastReferral) {
+      attributionCandidates.push({
+        code: activeLastReferral.code,
+        source: 'user_last_referral',
+        eventAt: new Date(user.lastReferralAt),
+      });
+    }
+
+    const attributionEvaluations = [];
+    for (const candidate of attributionCandidates) {
+      const eventAtIso = candidate.eventAt?.toISOString?.() || null;
+      if (!eventAtIso) {
+        attributionEvaluations.push({
+          code: candidate.code,
+          source: candidate.source,
+          eventAt: null,
+          valid: false,
+          reason: 'invalid_event_timestamp',
+        });
+        continue;
+      }
+
+      const refValid = await isValidAssociatePublisherRef(candidate.code);
+      let valid = !!refValid.valid;
+      let reason = valid ? 'valid' : `invalid_${refValid.method || 'unknown'}`;
+      if (valid && isSelfOwnedDiscountCandidate(refValid, candidate.source, candidate.code)) {
+        valid = false;
+        reason = 'self_owned_code_blocked';
+      }
+
+      attributionEvaluations.push({
+        code: candidate.code,
+        source: candidate.source,
+        eventAt: eventAtIso,
+        valid,
+        reason,
+      });
+    }
+
+    const validAttributionEvents = attributionEvaluations
+      .filter((e) => e.valid)
+      .sort((a, b) => {
+        const ta = Date.parse(a.eventAt);
+        const tb = Date.parse(b.eventAt);
+        if (tb !== ta) return tb - ta; // newest wins
+        const pa = REFERRAL_SOURCE_TIE_PRIORITY[a.source] || 0;
+        const pb = REFERRAL_SOURCE_TIE_PRIORITY[b.source] || 0;
+        return pb - pa; // query > cookie > user_last_referral
+      });
+    const canonicalWinner = validAttributionEvents[0] || null;
+
+    console.log('[CHECKOUT_ATTRIBUTION] Candidate evaluation', {
+      userId: user?.id || null,
+      checkoutRequestAt: checkoutRequestAt.toISOString(),
+      candidates: attributionEvaluations,
+      canonicalWinner: canonicalWinner || null,
+    });
     
-    // Baseline rule: first discount code associated with customer persists unless manually overridden.
-    // When request code is invalid, fall back to persisted valid code so Stripe discount aligns with webhook attribution.
+    // Baseline discount rule: explicit request > active lastReferral > stored preferredDiscountCode.
+    // This affects Stripe couponing. Attribution winner is computed separately above (canonicalWinner).
     if (requestCode) {
       const requestValid = await isValidAssociatePublisherRef(requestCode);
       if (requestValid.valid && !isSelfOwnedDiscountCandidate(requestValid, 'request', requestCode)) {
@@ -534,21 +650,40 @@ module.exports = async function handler(req, res) {
 
     // Add product, ref, and tracking params to metadata
     metadata.product = product;
-    if (discountCodeToUse && appliedDiscount) {
-      metadata.ref = discountCodeToUse.toUpperCase();
-      metadata.ref_valid = appliedDiscount ? 'true' : 'false';
-    }
-    // Part B2: Add AP referral metadata for webhook attribution
-    if (activeLastReferral && appliedDiscount && activeLastReferral.userId) {
-      metadata.ap_referral_code = activeLastReferral.code;
-      metadata.ap_user_id = activeLastReferral.userId;
-      metadata.referral_at = user.lastReferralAt.toISOString();
-      metadata.referral_source = activeLastReferral.source;
-      console.log('[CHECKOUT_DISCOUNT] Added AP referral metadata', {
-        ap_referral_code: metadata.ap_referral_code,
-        ap_user_id: metadata.ap_user_id,
-        referral_source: metadata.referral_source,
-      });
+    // Canonical attribution metadata for webhook (authoritative for new sessions).
+    if (canonicalWinner) {
+      metadata.ref_canonical_code = String(canonicalWinner.code).trim().toUpperCase();
+      metadata.ref_canonical_source = canonicalWinner.source;
+      // Stripe metadata values must be strings
+      metadata.ref_canonical_at =
+        typeof canonicalWinner.eventAt === 'string'
+          ? canonicalWinner.eventAt
+          : canonicalWinner.eventAt?.toISOString?.() || checkoutRequestAt.toISOString();
+      metadata.ref_canonical_valid = 'true';
+      metadata.ref_canonical_version = 'v1_last_touch';
+
+      // Legacy compatibility metadata mirrors canonical winner for transition period.
+      metadata.ref = metadata.ref_canonical_code;
+      metadata.ref_valid = 'true';
+
+      metadata.ref_candidates_count = String(attributionEvaluations.length);
+      metadata.ref_decision_note = `winner=${canonicalWinner.source}`;
+      metadata.ref_request_code = queryAttributionCode
+        ? String(queryAttributionCode).trim().toUpperCase()
+        : '';
+      metadata.ref_last_referral_code = activeLastReferral?.code
+        ? String(activeLastReferral.code).trim().toUpperCase()
+        : '';
+    } else {
+      delete metadata.ref_canonical_code;
+      delete metadata.ref_canonical_source;
+      delete metadata.ref_canonical_at;
+      delete metadata.ref_canonical_valid;
+      delete metadata.ref_canonical_version;
+
+      // Keep legacy ref fields empty when no valid attribution winner.
+      delete metadata.ref;
+      delete metadata.ref_valid;
     }
     if (req.body?.src) metadata.src = req.body.src;
     if (req.body?.v) metadata.v = req.body.v;

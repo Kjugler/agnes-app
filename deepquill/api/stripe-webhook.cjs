@@ -337,8 +337,13 @@ router.post(
           
           const ref = metadata.ref || metadata.referrerCode || null;
           const refValid = metadata.ref_valid === 'true';
-          
-          // Part C1: Check for AP referral metadata (from Part B2 - auto-applied latest referral)
+          const canonicalRefCode = metadata.ref_canonical_code || null;
+          const canonicalRefSource = metadata.ref_canonical_source || null;
+          const canonicalRefAt = metadata.ref_canonical_at || null;
+          const canonicalRefValid = metadata.ref_canonical_valid === 'true';
+          const canonicalRefVersion = metadata.ref_canonical_version || null;
+
+          // Legacy compatibility fields (used only when canonical metadata is missing).
           const apReferralCode = metadata.ap_referral_code || null;
           const apUserId = metadata.ap_user_id || null;
           
@@ -373,6 +378,11 @@ router.post(
             product,
             referralMetadata: {
               ref: ref || 'none',
+              ref_canonical_code: canonicalRefCode || 'none',
+              ref_canonical_source: canonicalRefSource || 'none',
+              ref_canonical_at: canonicalRefAt || 'none',
+              ref_canonical_valid: canonicalRefValid ? 'true' : 'false',
+              ref_canonical_version: canonicalRefVersion || 'none',
               refSource: metadata.refSource || 'none',
               refVariant: metadata.refVariant || 'none',
               referrerCode: metadata.referrerCode || ref || 'none',
@@ -1521,87 +1531,121 @@ router.post(
             }
 
             // Part C1: Process referral commission
-            // Priority: metadata.ap_referral_code > metadata.ref (if valid) > buyer's lastReferral (if active)
+            // Canonical-first rule for v1 last-touch:
+            // 1) metadata.ref_canonical_* (authoritative)
+            // 2) legacy fallback only when canonical metadata is missing
             let referralCodeToUse = null;
             let referralSource = 'none';
-            
-            if (apReferralCode && apUserId && paymentStatus === 'paid') {
-              // Priority 1: AP referral metadata (from auto-applied latest referral)
-              referralCodeToUse = apReferralCode;
-              referralSource = 'ap_metadata';
-              console.log('[ATTRIBUTION_REFERRER] Using AP referral from metadata', {
-                apReferralCode,
-                apUserId,
-                sessionId: session.id,
-              });
-            } else if (ref && refValid && paymentStatus === 'paid') {
-              // Priority 2: Explicit ref param (user-entered or stored)
-              referralCodeToUse = ref;
-              referralSource = 'metadata_ref';
-              console.log('[ATTRIBUTION_REFERRER] Using ref from metadata', {
-                ref,
-                sessionId: session.id,
-              });
-            } else if (buyerUser && paymentStatus === 'paid' && prisma) {
-              // Priority 3: Check buyer's lastReferral (if within attribution window)
-              try {
-                ensureDatabaseUrl();
-                const buyerWithReferral = await prisma.user.findUnique({
-                  where: { id: buyerUser.id },
-                  select: {
-                    lastReferralCode: true,
-                    lastReferralAt: true,
-                    lastReferredByUserId: true,
-                    lastReferralSource: true,
-                  },
+            const hasCanonicalReferralMetadata = Boolean(
+              canonicalRefCode ||
+              canonicalRefSource ||
+              canonicalRefAt ||
+              canonicalRefVersion ||
+              metadata.ref_canonical_valid != null
+            );
+            let canonicalMalformed = false;
+
+            if (hasCanonicalReferralMetadata && paymentStatus === 'paid') {
+              const canonicalDate = canonicalRefAt ? new Date(canonicalRefAt) : null;
+              const canonicalDateValid = !!canonicalDate && !Number.isNaN(canonicalDate.getTime());
+              if (canonicalRefVersion === 'v1_last_touch' && canonicalRefValid && canonicalRefCode && canonicalDateValid) {
+                referralCodeToUse = canonicalRefCode;
+                referralSource = `canonical:${canonicalRefSource || 'unknown'}`;
+                console.log('[ATTRIBUTION_REFERRER] Using canonical referral metadata', {
+                  canonicalRefCode,
+                  canonicalRefSource,
+                  canonicalRefAt,
+                  canonicalRefVersion,
+                  sessionId: session.id,
                 });
-                
-                if (buyerWithReferral?.lastReferralCode && buyerWithReferral?.lastReferralAt) {
-                  const REFERRAL_ATTRIBUTION_WINDOW_DAYS = 30;
-                  const REFERRAL_ATTRIBUTION_WINDOW_MS = REFERRAL_ATTRIBUTION_WINDOW_DAYS * 24 * 60 * 60 * 1000;
-                  const referralAgeMs = Date.now() - new Date(buyerWithReferral.lastReferralAt).getTime();
-                  
-                  if (referralAgeMs <= REFERRAL_ATTRIBUTION_WINDOW_MS) {
-                    const isSelfFromStoredReferral = isSelfReferral({
-                      buyerEmail: buyerUser?.email || customerEmail || null,
-                      sponsorEmail: null,
-                      buyerUserId: buyerUser?.id || null,
-                      sponsorUserId: buyerWithReferral.lastReferredByUserId || null,
-                    });
-                    if (isSelfFromStoredReferral) {
-                      console.warn('[SELF_REFERRAL_GUARD] self_referral_blocked_at_post_purchase', {
-                        buyerUserId: buyerUser?.id || null,
-                        buyerEmail: normalizeIdentityEmail(buyerUser?.email || customerEmail || null),
-                        sponsorUserId: buyerWithReferral.lastReferredByUserId || null,
+              } else {
+                canonicalMalformed = true;
+                console.error('[ATTRIBUTION_REFERRER] Canonical referral metadata malformed', {
+                  sessionId: session.id,
+                  canonicalRefCode: canonicalRefCode || null,
+                  canonicalRefSource: canonicalRefSource || null,
+                  canonicalRefAt: canonicalRefAt || null,
+                  canonicalRefValid,
+                  canonicalRefVersion: canonicalRefVersion || null,
+                });
+              }
+            } else if (paymentStatus === 'paid') {
+              // Legacy fallback for older sessions that don't carry canonical metadata.
+              if (apReferralCode && apUserId) {
+                referralCodeToUse = apReferralCode;
+                referralSource = 'legacy:ap_metadata';
+                console.log('[ATTRIBUTION_REFERRER] Using legacy AP referral metadata', {
+                  apReferralCode,
+                  apUserId,
+                  sessionId: session.id,
+                });
+              } else if (ref && refValid) {
+                referralCodeToUse = ref;
+                referralSource = 'legacy:metadata_ref';
+                console.log('[ATTRIBUTION_REFERRER] Using legacy ref metadata', {
+                  ref,
+                  sessionId: session.id,
+                });
+              } else if (buyerUser && prisma) {
+                try {
+                  ensureDatabaseUrl();
+                  const buyerWithReferral = await prisma.user.findUnique({
+                    where: { id: buyerUser.id },
+                    select: {
+                      lastReferralCode: true,
+                      lastReferralAt: true,
+                      lastReferredByUserId: true,
+                      lastReferralSource: true,
+                    },
+                  });
+
+                  if (buyerWithReferral?.lastReferralCode && buyerWithReferral?.lastReferralAt) {
+                    const REFERRAL_ATTRIBUTION_WINDOW_DAYS = 30;
+                    const REFERRAL_ATTRIBUTION_WINDOW_MS = REFERRAL_ATTRIBUTION_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+                    const referralAgeMs = Date.now() - new Date(buyerWithReferral.lastReferralAt).getTime();
+
+                    if (referralAgeMs <= REFERRAL_ATTRIBUTION_WINDOW_MS) {
+                      const isSelfFromStoredReferral = isSelfReferral({
+                        buyerEmail: buyerUser?.email || customerEmail || null,
                         sponsorEmail: null,
-                        referralCode: normalizeReferralCode(buyerWithReferral.lastReferralCode) || null,
-                        source: 'buyer_last_referral',
-                        sessionId: session.id,
+                        buyerUserId: buyerUser?.id || null,
+                        sponsorUserId: buyerWithReferral.lastReferredByUserId || null,
                       });
+                      if (isSelfFromStoredReferral) {
+                        console.warn('[SELF_REFERRAL_GUARD] self_referral_blocked_at_post_purchase', {
+                          buyerUserId: buyerUser?.id || null,
+                          buyerEmail: normalizeIdentityEmail(buyerUser?.email || customerEmail || null),
+                          sponsorUserId: buyerWithReferral.lastReferredByUserId || null,
+                          sponsorEmail: null,
+                          referralCode: normalizeReferralCode(buyerWithReferral.lastReferralCode) || null,
+                          source: 'buyer_last_referral',
+                          sessionId: session.id,
+                        });
+                      } else {
+                        referralCodeToUse = buyerWithReferral.lastReferralCode;
+                        referralSource = 'legacy:buyer_last_referral';
+                        console.log('[ATTRIBUTION_REFERRER] Using legacy buyer lastReferral', {
+                          referralCode: referralCodeToUse,
+                          ageDays: Math.floor(referralAgeMs / (24 * 60 * 60 * 1000)),
+                          source: buyerWithReferral.lastReferralSource,
+                          sessionId: session.id,
+                        });
+                      }
                     } else {
-                      referralCodeToUse = buyerWithReferral.lastReferralCode;
-                      referralSource = 'buyer_last_referral';
-                      console.log('[ATTRIBUTION_REFERRER] Using buyer lastReferral', {
-                        referralCode: referralCodeToUse,
+                      console.log('[ATTRIBUTION_REFERRER] Legacy buyer lastReferral expired', {
+                        referralCode: buyerWithReferral.lastReferralCode,
                         ageDays: Math.floor(referralAgeMs / (24 * 60 * 60 * 1000)),
-                        source: buyerWithReferral.lastReferralSource,
+                        windowDays: REFERRAL_ATTRIBUTION_WINDOW_DAYS,
                         sessionId: session.id,
                       });
                     }
-                  } else {
-                    console.log('[ATTRIBUTION_REFERRER] Buyer lastReferral expired', {
-                      referralCode: buyerWithReferral.lastReferralCode,
-                      ageDays: Math.floor(referralAgeMs / (24 * 60 * 60 * 1000)),
-                      windowDays: REFERRAL_ATTRIBUTION_WINDOW_DAYS,
-                      sessionId: session.id,
-                    });
                   }
+                } catch (lastRefErr) {
+                  console.warn('[ATTRIBUTION_REFERRER] Failed to check legacy buyer lastReferral', {
+                    error: lastRefErr.message,
+                    sessionId: session.id,
+                  });
                 }
-              } catch (lastRefErr) {
-                console.warn('[ATTRIBUTION_REFERRER] Failed to check buyer lastReferral', {
-                  error: lastRefErr.message,
-                  sessionId: session.id,
-                });
               }
             }
             
@@ -1628,6 +1672,10 @@ router.post(
                 });
                 // Don't fail webhook - referral commission is non-critical
               }
+            } else if (canonicalMalformed) {
+              console.warn('[ATTRIBUTION_REFERRER] Skipping referral payout due to malformed canonical metadata', {
+                sessionId: session.id,
+              });
             } else if (ref && !refValid) {
               console.log('[ATTRIBUTION_REFERRER] Skipping - ref_valid is false', {
                 ref,
@@ -2085,6 +2133,87 @@ console.log('[WEBHOOK_CONFIG] Webhook endpoint configured:', {
   currentSiteUrl: siteUrl,
 });
 
+const OVERRIDE_GUS_USER_ID = process.env.OVERRIDE_GUS_USER_ID || null;
+const OVERRIDE_FRANK_USER_ID = process.env.OVERRIDE_FRANK_USER_ID || null;
+const MAX_LINEAGE_DEPTH = 20;
+
+/**
+ * Walk referral upline via User.lastReferredByUserId (same field stamped at login / refer-friend).
+ * Excludes the starting user; collects ancestor user ids only (for Gus/Frank membership checks).
+ */
+async function resolveReferralUplineUserIds(prismaClient, startUserId) {
+  const lineageUserIds = new Set();
+  const visited = new Set();
+  let cycleDetected = false;
+  let truncated = false;
+  let depth = 0;
+
+  let currentId = startUserId || null;
+  if (!currentId) {
+    return { lineageUserIds, depth: 0, truncated: false, cycleDetected: false };
+  }
+
+  while (depth < MAX_LINEAGE_DEPTH) {
+    const node = await prismaClient.user.findUnique({
+      where: { id: currentId },
+      select: { id: true, lastReferredByUserId: true },
+    });
+    const nextId = node?.lastReferredByUserId || null;
+    if (!nextId) {
+      break;
+    }
+    if (visited.has(nextId)) {
+      cycleDetected = true;
+      break;
+    }
+    visited.add(nextId);
+    lineageUserIds.add(nextId);
+    currentId = nextId;
+    depth += 1;
+  }
+
+  if (depth >= MAX_LINEAGE_DEPTH) {
+    const tail = await prismaClient.user.findUnique({
+      where: { id: currentId },
+      select: { lastReferredByUserId: true },
+    });
+    truncated = !!tail?.lastReferredByUserId;
+  }
+
+  return { lineageUserIds, depth, truncated, cycleDetected };
+}
+
+function buildOverrideRecipients({ lineageUserIds, gusUserId, frankUserId }) {
+  const gusInLineage = !!gusUserId && lineageUserIds.has(gusUserId);
+  const frankInLineage = !!frankUserId && lineageUserIds.has(frankUserId);
+
+  if (gusInLineage && frankInLineage) {
+    return {
+      gusInLineage,
+      frankInLineage,
+      recipients: [
+        { userId: gusUserId, cents: 150, role: 'gus', splitCase: 'both' },
+        { userId: frankUserId, cents: 150, role: 'frank', splitCase: 'both' },
+      ],
+    };
+  }
+  if (gusInLineage) {
+    return {
+      gusInLineage,
+      frankInLineage,
+      recipients: [{ userId: gusUserId, cents: 300, role: 'gus', splitCase: 'gus_only' }],
+    };
+  }
+  if (frankInLineage) {
+    return {
+      gusInLineage,
+      frankInLineage,
+      recipients: [{ userId: frankUserId, cents: 300, role: 'frank', splitCase: 'frank_only' }],
+    };
+  }
+  return { gusInLineage, frankInLineage, recipients: [] };
+}
+
 /**
  * Process referral commission: award points, record commission, track friend savings, send email
  * Math Mode v2: Sponsor gets +5000 points, $2 commission, and friend savings credit
@@ -2100,6 +2229,9 @@ async function processReferralCommission({ referrerCode, buyerEmail, buyerUserId
     console.warn('[ATTRIBUTION_REFERRER] Invalid referrer code, skipping commission', { referrerCode });
     return;
   }
+  const canonicalCode = metadata?.ref_canonical_code || normalizedReferrerCode;
+  const canonicalSource = metadata?.ref_canonical_source || 'legacy';
+  const canonicalAt = metadata?.ref_canonical_at || null;
   
   console.log('[WEBHOOK] Processing referral commission', {
     referrerCode: normalizedReferrerCode,
@@ -2109,20 +2241,23 @@ async function processReferralCommission({ referrerCode, buyerEmail, buyerUserId
     hasPrisma: !!prismaClient,
   });
 
-  // Idempotency check: has this session already been processed?
+  // Idempotency check for direct sponsor conversion.
+  // NOTE: We do NOT return early on existing conversion, because override payouts
+  // must still be idempotently evaluated/repaired on retries.
+  let existingConversion = null;
   if (prismaClient) {
     try {
       ensureDatabaseUrl(); // Ensure before query
-      const existing = await prismaClient.referralConversion.findUnique({
+      existingConversion = await prismaClient.referralConversion.findUnique({
         where: { stripeSessionId: sessionId },
       });
       
-      if (existing) {
+      if (existingConversion) {
         console.log('[WEBHOOK] Referral commission already processed (idempotency)', {
           sessionId,
           referrerCode: normalizedReferrerCode,
+          note: 'Direct conversion exists; override payouts will still be checked',
         });
-        return; // Already processed, skip
       }
     } catch (err) {
       console.warn('[WEBHOOK] Idempotency check failed, continuing anyway', {
@@ -2362,15 +2497,18 @@ async function processReferralCommission({ referrerCode, buyerEmail, buyerUserId
           },
         });
 
-        // Update referrer earnings (commission only - points and savings tracked in ledger)
-        await tx.user.update({
-          where: { id: referrer.id },
-          data: {
-            referralEarningsCents: {
-              increment: COMMISSION_CENTS,
+        // Update referrer earnings only when this conversion is first-seen.
+        // For retries with existingConversion, keep earnings idempotent.
+        if (!existingConversion) {
+          await tx.user.update({
+            where: { id: referrer.id },
+            data: {
+              referralEarningsCents: {
+                increment: COMMISSION_CENTS,
+              },
             },
-          },
-        });
+          });
+        }
       });
       
       // Award referral sponsor points (Math Mode - deterministic, no caps)
@@ -2463,6 +2601,12 @@ async function processReferralCommission({ referrerCode, buyerEmail, buyerUserId
             product: productType,
             purchaseId: purchaseId || null,
             discountCents: discountCents,
+            payoutKind: 'direct',
+            recipientRole: 'direct',
+            splitCase: 'direct_only',
+            canonicalCode,
+            canonicalSource,
+            canonicalAt,
           },
         });
         console.log('[LEDGER] REFERRAL_COMMISSION_EARNED recorded', {
@@ -2630,6 +2774,129 @@ async function processReferralCommission({ referrerCode, buyerEmail, buyerUserId
   } else {
     // No Prisma or allowlist fallback - set default award result
     referralAwardResult = { awarded: 0, reason: 'no_prisma_or_allowlist' };
+  }
+
+  // ===== Override cash-only payouts (Gus / Frank) =====
+  // Direct sponsor points flow remains unchanged; overrides never award points.
+  if (prismaClient && referrer.id !== 'allowlist-fallback') {
+    try {
+      const gusUserId = OVERRIDE_GUS_USER_ID;
+      const frankUserId = OVERRIDE_FRANK_USER_ID;
+      if (!gusUserId || !frankUserId) {
+        console.warn('[OVERRIDE_PAYOUT] Skipping override payout - OVERRIDE_GUS_USER_ID / OVERRIDE_FRANK_USER_ID not configured', {
+          sessionId,
+        });
+      } else {
+        const uplineStartUserId = buyerUserId || referrer.id;
+        const lineage = await resolveReferralUplineUserIds(prismaClient, uplineStartUserId);
+        const overridePlan = buildOverrideRecipients({
+          lineageUserIds: lineage.lineageUserIds,
+          gusUserId,
+          frankUserId,
+        });
+
+        console.log('[OVERRIDE_PAYOUT] Lineage evaluation', {
+          sessionId,
+          directSponsorUserId: referrer.id,
+          canonicalCode,
+          canonicalSource,
+          canonicalAt,
+          gusInLineage: overridePlan.gusInLineage,
+          frankInLineage: overridePlan.frankInLineage,
+          lineageDepth: lineage.depth,
+          lineageTruncated: lineage.truncated,
+          cycleDetected: lineage.cycleDetected,
+          recipients: overridePlan.recipients,
+        });
+
+        if (overridePlan.recipients.length > 0) {
+          const overrideSummary = await prismaClient.$transaction(async (tx) => {
+            let created = 0;
+            let skipped = 0;
+            for (const recipient of overridePlan.recipients) {
+              if (buyerUserId && recipient.userId === buyerUserId) {
+                console.warn('[OVERRIDE_PAYOUT] Skipping recipient equal to buyer (self)', {
+                  sessionId,
+                  role: recipient.role,
+                  buyerUserId,
+                });
+                skipped += 1;
+                continue;
+              }
+              const overrideSessionId = `${sessionId}:override:${recipient.role}`;
+              const existingOverride = await tx.ledger.findUnique({
+                where: {
+                  uniq_ledger_type_session_user: {
+                    sessionId: overrideSessionId,
+                    type: 'REFERRAL_COMMISSION_EARNED',
+                    userId: recipient.userId,
+                  },
+                },
+                select: { id: true },
+              });
+              if (existingOverride) {
+                skipped += 1;
+                continue;
+              }
+
+              await tx.ledger.create({
+                data: {
+                  sessionId: overrideSessionId,
+                  userId: recipient.userId,
+                  type: 'REFERRAL_COMMISSION_EARNED',
+                  points: 0,
+                  amount: recipient.cents,
+                  currency: 'usd',
+                  usd: recipient.cents / 100,
+                  note: `Override payout (${recipient.role}): $${(recipient.cents / 100).toFixed(2)}`,
+                  meta: {
+                    payoutKind: 'override',
+                    recipientRole: recipient.role,
+                    splitCase: recipient.splitCase,
+                    canonicalCode,
+                    canonicalSource,
+                    canonicalAt,
+                    originalSessionId: sessionId,
+                    directSponsorUserId: referrer.id,
+                    directSponsorCode: normalizedReferrerCode,
+                    purchaseId: purchaseId || null,
+                    product: productType,
+                    buyerUserId: buyerUserId || null,
+                    buyerEmail: normalizeEmail(buyerEmail) || null,
+                  },
+                },
+              });
+
+              await tx.user.update({
+                where: { id: recipient.userId },
+                data: {
+                  referralEarningsCents: { increment: recipient.cents },
+                },
+              });
+              created += 1;
+            }
+            return { created, skipped };
+          });
+
+          console.log('[OVERRIDE_PAYOUT] Applied override payout plan', {
+            sessionId,
+            recipients: overridePlan.recipients,
+            created: overrideSummary.created,
+            skipped: overrideSummary.skipped,
+          });
+        } else {
+          console.log('[OVERRIDE_PAYOUT] No override recipients for this session', {
+            sessionId,
+          });
+        }
+      }
+    } catch (overrideErr) {
+      console.error('[OVERRIDE_PAYOUT] Failed to process override payout', {
+        sessionId,
+        error: overrideErr.message,
+      });
+      // Non-fatal to preserve current webhook behavior.
+    }
   }
 
   // Part D: Send referrer commission email (ALWAYS send if referrerEmail exists, regardless of points or totals)

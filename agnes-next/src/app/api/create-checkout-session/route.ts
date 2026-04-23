@@ -208,10 +208,23 @@ export async function POST(req: NextRequest) {
       });
     }
     
+    const checkoutRequestAt = new Date().toISOString();
+    const referralQueryRef =
+      refFromQuery && refFromQuery.trim() && refFromQuery.trim() !== '...'
+        ? refFromQuery.trim()
+        : undefined;
+    const referralCookieRef =
+      refCookie && refCookie.trim() && refCookie.trim() !== '...'
+        ? refCookie.trim()
+        : undefined;
+
     const proxyBody = {
       product,
       qty: body?.qty || 1,
       ref, // Only send valid codes, not placeholders
+      referralQueryRef,
+      referralCookieRef,
+      checkoutRequestAt,
       textafriendDiscount,
       src: body?.src || body?.metadata?.src,
       v: body?.v || body?.metadata?.v,
@@ -225,6 +238,9 @@ export async function POST(req: NextRequest) {
         contest_user_id: userId || body?.contestPlayerId || undefined, // Always pass canonical userId
         contest_user_code: userCode || undefined, // Always pass canonical code
         contestPlayerId: userId || body?.contestPlayerId || undefined, // Backward compatibility
+        referral_query_ref: referralQueryRef || undefined,
+        referral_cookie_ref: referralCookieRef || undefined,
+        checkout_request_at: checkoutRequestAt,
       },
       success_url: successUrl,
       cancel_url: cancelUrl,
