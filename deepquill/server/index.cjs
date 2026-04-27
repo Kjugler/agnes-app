@@ -226,6 +226,10 @@ console.log(
   '✅ Mounted /api/admin/jobs (send-engaged-reminders, send-non-participant-reminders, send-no-purchase-reminders, send-missionary-emails, seed-signal-room, daily-contest-summary)'
 );
 
+const adminEmailRouter = require('./routes/adminEmail.cjs');
+app.use('/api/admin/email', adminEmailRouter);
+console.log('✅ Mounted /api/admin/email (POST /send - template admin email)');
+
 // Contest login endpoint (DB owner)
 const contestLoginHandler = require('../api/contest/login.cjs');
 app.post('/api/contest/login', contestLoginHandler);

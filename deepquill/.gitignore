@@ -34,3 +34,7 @@ data/fulfillments.lock
 assets/ebook/*.epub
 assets/ebook/*.pdf
 assets/ebook/*.mobi
+
+# Email broadcast audit + idempotency files (may contain PII)
+scripts/audit/quiet-reveal/
+scripts/audit/admin-email/
