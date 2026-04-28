@@ -230,6 +230,10 @@ const adminEmailRouter = require('./routes/adminEmail.cjs');
 app.use('/api/admin/email', adminEmailRouter);
 console.log('✅ Mounted /api/admin/email (POST /send - template admin email)');
 
+const adminUsersRouter = require('./routes/adminUsers.cjs');
+app.use('/api/admin/users', adminUsersRouter);
+console.log('✅ Mounted /api/admin/users (POST /set-override)');
+
 // Contest login endpoint (DB owner)
 const contestLoginHandler = require('../api/contest/login.cjs');
 app.post('/api/contest/login', contestLoginHandler);

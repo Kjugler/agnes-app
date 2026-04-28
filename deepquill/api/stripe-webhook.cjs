@@ -2133,16 +2133,14 @@ console.log('[WEBHOOK_CONFIG] Webhook endpoint configured:', {
   currentSiteUrl: siteUrl,
 });
 
-const OVERRIDE_GUS_USER_ID = process.env.OVERRIDE_GUS_USER_ID || null;
-const OVERRIDE_FRANK_USER_ID = process.env.OVERRIDE_FRANK_USER_ID || null;
 const MAX_LINEAGE_DEPTH = 20;
 
 /**
  * Walk referral upline via User.lastReferredByUserId (same field stamped at login / refer-friend).
- * Excludes the starting user; collects ancestor user ids only (for Gus/Frank membership checks).
+ * Excludes the starting user and preserves nearest-to-farthest order.
  */
-async function resolveReferralUplineUserIds(prismaClient, startUserId) {
-  const lineageUserIds = new Set();
+async function resolveReferralUpline(prismaClient, startUserId) {
+  const lineage = [];
   const visited = new Set();
   let cycleDetected = false;
   let truncated = false;
@@ -2150,7 +2148,7 @@ async function resolveReferralUplineUserIds(prismaClient, startUserId) {
 
   let currentId = startUserId || null;
   if (!currentId) {
-    return { lineageUserIds, depth: 0, truncated: false, cycleDetected: false };
+    return { lineage, depth: 0, truncated: false, cycleDetected: false };
   }
 
   while (depth < MAX_LINEAGE_DEPTH) {
@@ -2167,7 +2165,14 @@ async function resolveReferralUplineUserIds(prismaClient, startUserId) {
       break;
     }
     visited.add(nextId);
-    lineageUserIds.add(nextId);
+    const ancestor = await prismaClient.user.findUnique({
+      where: { id: nextId },
+      select: { id: true, email: true, overrideEligible: true, overrideAmount: true },
+    });
+    if (!ancestor) {
+      break;
+    }
+    lineage.push(ancestor);
     currentId = nextId;
     depth += 1;
   }
@@ -2180,38 +2185,34 @@ async function resolveReferralUplineUserIds(prismaClient, startUserId) {
     truncated = !!tail?.lastReferredByUserId;
   }
 
-  return { lineageUserIds, depth, truncated, cycleDetected };
+  return { lineage, depth, truncated, cycleDetected };
 }
 
-function buildOverrideRecipients({ lineageUserIds, gusUserId, frankUserId }) {
-  const gusInLineage = !!gusUserId && lineageUserIds.has(gusUserId);
-  const frankInLineage = !!frankUserId && lineageUserIds.has(frankUserId);
+function collectEligibleOverrideRecipients(lineage) {
+  const seen = new Set();
+  const recipients = [];
+  for (const ancestor of lineage) {
+    if (!ancestor?.id || seen.has(ancestor.id)) continue;
+    seen.add(ancestor.id);
+    if (ancestor?.overrideEligible === true) {
+      recipients.push({
+        userId: ancestor.id,
+        email: ancestor.email || null,
+      });
+    }
+  }
+  return recipients;
+}
 
-  if (gusInLineage && frankInLineage) {
-    return {
-      gusInLineage,
-      frankInLineage,
-      recipients: [
-        { userId: gusUserId, cents: 150, role: 'gus', splitCase: 'both' },
-        { userId: frankUserId, cents: 150, role: 'frank', splitCase: 'both' },
-      ],
-    };
-  }
-  if (gusInLineage) {
-    return {
-      gusInLineage,
-      frankInLineage,
-      recipients: [{ userId: gusUserId, cents: 300, role: 'gus', splitCase: 'gus_only' }],
-    };
-  }
-  if (frankInLineage) {
-    return {
-      gusInLineage,
-      frankInLineage,
-      recipients: [{ userId: frankUserId, cents: 300, role: 'frank', splitCase: 'frank_only' }],
-    };
-  }
-  return { gusInLineage, frankInLineage, recipients: [] };
+function splitOverridePoolCents(totalCents, recipients) {
+  const count = recipients.length;
+  if (!count || totalCents <= 0) return [];
+  const base = Math.floor(totalCents / count);
+  const remainder = totalCents % count;
+  return recipients.map((recipient, idx) => ({
+    ...recipient,
+    cents: base + (idx < remainder ? 1 : 0),
+  }));
 }
 
 /**
@@ -2776,119 +2777,143 @@ async function processReferralCommission({ referrerCode, buyerEmail, buyerUserId
     referralAwardResult = { awarded: 0, reason: 'no_prisma_or_allowlist' };
   }
 
-  // ===== Override cash-only payouts (Gus / Frank) =====
+  // ===== Override cash-only payout (shared pool across all eligible upstream reps) =====
   // Direct sponsor points flow remains unchanged; overrides never award points.
   if (prismaClient && referrer.id !== 'allowlist-fallback') {
     try {
-      const gusUserId = OVERRIDE_GUS_USER_ID;
-      const frankUserId = OVERRIDE_FRANK_USER_ID;
-      if (!gusUserId || !frankUserId) {
-        console.warn('[OVERRIDE_PAYOUT] Skipping override payout - OVERRIDE_GUS_USER_ID / OVERRIDE_FRANK_USER_ID not configured', {
-          sessionId,
-        });
+      const OVERRIDE_POOL_CENTS = 300;
+      const uplineStartUserId = buyerUserId || referrer.id;
+      const lineage = await resolveReferralUpline(prismaClient, uplineStartUserId);
+      const eligibleRecipients = collectEligibleOverrideRecipients(lineage.lineage);
+      const splitRecipients = splitOverridePoolCents(OVERRIDE_POOL_CENTS, eligibleRecipients);
+      console.log('[OVERRIDE_PAYOUT] Lineage evaluation', {
+        sessionId,
+        uplineStartUserId,
+        directSponsorUserId: referrer.id,
+        directSponsorCode: normalizedReferrerCode,
+        canonicalCode,
+        canonicalSource,
+        canonicalAt,
+        lineageDepth: lineage.depth,
+        lineageTruncated: lineage.truncated,
+        cycleDetected: lineage.cycleDetected,
+        overridePoolCents: OVERRIDE_POOL_CENTS,
+        eligibleRecipients: eligibleRecipients.map((r) => ({ userId: r.userId, email: r.email })),
+        splitRecipients: splitRecipients.map((r) => ({ userId: r.userId, cents: r.cents })),
+      });
+
+      if (splitRecipients.length === 0) {
+        console.log('[OVERRIDE_PAYOUT] No override recipient for this session', { sessionId });
       } else {
-        const uplineStartUserId = buyerUserId || referrer.id;
-        const lineage = await resolveReferralUplineUserIds(prismaClient, uplineStartUserId);
-        const overridePlan = buildOverrideRecipients({
-          lineageUserIds: lineage.lineageUserIds,
-          gusUserId,
-          frankUserId,
-        });
-
-        console.log('[OVERRIDE_PAYOUT] Lineage evaluation', {
-          sessionId,
-          directSponsorUserId: referrer.id,
-          canonicalCode,
-          canonicalSource,
-          canonicalAt,
-          gusInLineage: overridePlan.gusInLineage,
-          frankInLineage: overridePlan.frankInLineage,
-          lineageDepth: lineage.depth,
-          lineageTruncated: lineage.truncated,
-          cycleDetected: lineage.cycleDetected,
-          recipients: overridePlan.recipients,
-        });
-
-        if (overridePlan.recipients.length > 0) {
-          const overrideSummary = await prismaClient.$transaction(async (tx) => {
-            let created = 0;
-            let skipped = 0;
-            for (const recipient of overridePlan.recipients) {
-              if (buyerUserId && recipient.userId === buyerUserId) {
-                console.warn('[OVERRIDE_PAYOUT] Skipping recipient equal to buyer (self)', {
-                  sessionId,
-                  role: recipient.role,
-                  buyerUserId,
-                });
-                skipped += 1;
-                continue;
-              }
-              const overrideSessionId = `${sessionId}:override:${recipient.role}`;
-              const existingOverride = await tx.ledger.findUnique({
-                where: {
-                  uniq_ledger_type_session_user: {
-                    sessionId: overrideSessionId,
-                    type: 'REFERRAL_COMMISSION_EARNED',
-                    userId: recipient.userId,
-                  },
-                },
-                select: { id: true },
-              });
-              if (existingOverride) {
-                skipped += 1;
-                continue;
-              }
-
-              await tx.ledger.create({
-                data: {
-                  sessionId: overrideSessionId,
-                  userId: recipient.userId,
-                  type: 'REFERRAL_COMMISSION_EARNED',
-                  points: 0,
-                  amount: recipient.cents,
-                  currency: 'usd',
-                  usd: recipient.cents / 100,
-                  note: `Override payout (${recipient.role}): $${(recipient.cents / 100).toFixed(2)}`,
-                  meta: {
-                    payoutKind: 'override',
-                    recipientRole: recipient.role,
-                    splitCase: recipient.splitCase,
-                    canonicalCode,
-                    canonicalSource,
-                    canonicalAt,
-                    originalSessionId: sessionId,
-                    directSponsorUserId: referrer.id,
-                    directSponsorCode: normalizedReferrerCode,
-                    purchaseId: purchaseId || null,
-                    product: productType,
-                    buyerUserId: buyerUserId || null,
-                    buyerEmail: normalizeEmail(buyerEmail) || null,
-                  },
-                },
-              });
-
-              await tx.user.update({
-                where: { id: recipient.userId },
-                data: {
-                  referralEarningsCents: { increment: recipient.cents },
-                },
-              });
-              created += 1;
+        const overrideSummary = await prismaClient.$transaction(async (tx) => {
+          let created = 0;
+          let skipped = 0;
+          const recipientsOut = [];
+          for (const recipient of splitRecipients) {
+            if (buyerUserId && recipient.userId === buyerUserId) {
+              skipped += 1;
+              continue;
             }
-            return { created, skipped };
+            const overrideSessionId = `${sessionId}:override:${recipient.userId}`;
+            const existingOverride = await tx.ledger.findUnique({
+              where: {
+                uniq_ledger_type_session_user: {
+                  sessionId: overrideSessionId,
+                  type: 'REFERRAL_COMMISSION_EARNED',
+                  userId: recipient.userId,
+                },
+              },
+              select: { id: true },
+            });
+            if (existingOverride) {
+              skipped += 1;
+              recipientsOut.push({
+                userId: recipient.userId,
+                cents: recipient.cents,
+                sessionId: overrideSessionId,
+                action: 'skipped_existing',
+              });
+              continue;
+            }
+
+            await tx.ledger.create({
+              data: {
+                sessionId: overrideSessionId,
+                userId: recipient.userId,
+                type: 'REFERRAL_COMMISSION_EARNED',
+                points: 0,
+                amount: recipient.cents,
+                currency: 'usd',
+                usd: recipient.cents / 100,
+                note: `Override payout split: $${(recipient.cents / 100).toFixed(2)}`,
+                meta: {
+                  payoutKind: 'override',
+                  overridePoolCents: OVERRIDE_POOL_CENTS,
+                  overrideRecipientCount: splitRecipients.length,
+                  overrideAmountCents: recipient.cents,
+                  canonicalCode,
+                  canonicalSource,
+                  canonicalAt,
+                  originalSessionId: sessionId,
+                  directSponsorUserId: referrer.id,
+                  directSponsorCode: normalizedReferrerCode,
+                  purchaseId: purchaseId || null,
+                  product: productType,
+                  buyerUserId: buyerUserId || null,
+                  buyerEmail: normalizeEmail(buyerEmail) || null,
+                },
+              },
+            });
+
+            await tx.user.update({
+              where: { id: recipient.userId },
+              data: {
+                referralEarningsCents: { increment: recipient.cents },
+              },
+            });
+            created += 1;
+            recipientsOut.push({
+              userId: recipient.userId,
+              cents: recipient.cents,
+              sessionId: overrideSessionId,
+              action: 'created',
+            });
+          }
+
+          await tx.event.create({
+            data: {
+              userId: referrer.id,
+              type: 'OVERRIDE_PAYOUT_SPLIT',
+              meta: {
+                payoutKind: 'override',
+                overridePoolCents: OVERRIDE_POOL_CENTS,
+                overrideRecipientCount: splitRecipients.length,
+                qualifyingRepUserIds: splitRecipients.map((r) => r.userId),
+                recipients: recipientsOut,
+                canonicalCode,
+                canonicalSource,
+                canonicalAt,
+                directSponsorUserId: referrer.id,
+                directSponsorCode: normalizedReferrerCode,
+                originalSessionId: sessionId,
+                purchaseId: purchaseId || null,
+                product: productType,
+                buyerUserId: buyerUserId || null,
+                buyerEmail: normalizeEmail(buyerEmail) || null,
+              },
+            },
           });
 
-          console.log('[OVERRIDE_PAYOUT] Applied override payout plan', {
-            sessionId,
-            recipients: overridePlan.recipients,
-            created: overrideSummary.created,
-            skipped: overrideSummary.skipped,
           });
-        } else {
-          console.log('[OVERRIDE_PAYOUT] No override recipients for this session', {
-            sessionId,
-          });
-        }
+
+          return { created, skipped, recipients: recipientsOut };
+        });
+
+        console.log('[OVERRIDE_PAYOUT] Override payout result', {
+          sessionId,
+          overridePoolCents: OVERRIDE_POOL_CENTS,
+          ...overrideSummary,
+        });
       }
     } catch (overrideErr) {
       console.error('[OVERRIDE_PAYOUT] Failed to process override payout', {

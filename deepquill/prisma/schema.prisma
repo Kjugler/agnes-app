@@ -45,6 +45,8 @@ model User {
   handleTiktok                 String?
   handleTruth                  String?
   referralEarningsCents        Int                  @default(0)
+  overrideEligible             Boolean              @default(false)
+  overrideAmount               Int                  @default(0)
   associateBalanceCents        Int                  @default(0)
   associateLifetimeEarnedCents Int                  @default(0)
   associateFriendsSavedCents   Int                  @default(0)
