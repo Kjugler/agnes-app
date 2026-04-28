@@ -11,6 +11,11 @@ function isAdminAuthorized(req) {
   return !!process.env.ADMIN_KEY && key === process.env.ADMIN_KEY;
 }
 
+function hasValidAdminKey(req) {
+  const key = req.headers['x-admin-key'];
+  return !!process.env.ADMIN_KEY && key === process.env.ADMIN_KEY;
+}
+
 router.use((req, res, next) => {
   if (!isAdminAuthorized(req)) {
     return res.status(403).json({ error: 'Forbidden - x-admin-key required in production' });
@@ -20,7 +25,10 @@ router.use((req, res, next) => {
 
 router.post('/send', async (req, res) => {
   try {
-    const out = await runAdminEmailSend(prisma, req.body || {});
+    const out = await runAdminEmailSend(prisma, {
+      ...(req.body || {}),
+      adminAuthorized: hasValidAdminKey(req),
+    });
     const status = out.ok === false ? 400 : 200;
     res.status(status).json(out);
   } catch (e) {

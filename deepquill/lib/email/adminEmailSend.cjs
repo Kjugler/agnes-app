@@ -28,6 +28,74 @@ function isLocalLikeDatasource(resolved) {
   return false;
 }
 
+function hasRailwayProductionSignals(resolved) {
+  const db = String(resolved || '');
+  return (
+    process.env.RAILWAY_ENVIRONMENT === 'production' ||
+    !!process.env.RAILWAY_PROJECT_ID ||
+    !!process.env.RAILWAY_SERVICE_ID ||
+    !!process.env.RAILWAY_PRIVATE_DOMAIN ||
+    !!process.env.RAILWAY_PUBLIC_DOMAIN ||
+    /railway|rlwy|\.up\.railway\.app/i.test(db)
+  );
+}
+
+function classifyDatabase(resolved) {
+  const db = String(resolved || '').trim();
+  const s = db.toLowerCase();
+  const railwaySignals = hasRailwayProductionSignals(db);
+
+  const isRailwayVolumeSqlite =
+    /^file:\/*data\/.+\.db$/i.test(db) ||
+    /^file:\/data\/.+\.db$/i.test(db) ||
+    /^file:\\data\\.+\.db$/i.test(db);
+  if (isRailwayVolumeSqlite && railwaySignals) {
+    return {
+      label: 'railway_volume_sqlite',
+      isLocalDev: false,
+      reason: 'SQLite file path on /data with Railway/production signals',
+    };
+  }
+
+  const isExplicitLocalPath =
+    s.includes('c:\\') ||
+    s.includes('/users/') ||
+    s.includes('/home/') ||
+    s.includes('/workspaces/') ||
+    s.includes('/src/') ||
+    s.includes('/dev/ag') ||
+    s.includes('/dev/agnes') ||
+    s.includes('\\dev\\');
+  const isLocalDevDb =
+    s.includes('localhost') ||
+    s.includes('127.0.0.1') ||
+    s.includes('0.0.0.0') ||
+    s.includes(':memory:') ||
+    (s.includes('dev.db') && (s.includes('/users/') || s.includes('\\dev\\') || s.includes('c:\\')));
+
+  if ((s.startsWith('file:') && !isRailwayVolumeSqlite) || isExplicitLocalPath || isLocalDevDb) {
+    return {
+      label: 'local_dev',
+      isLocalDev: true,
+      reason: 'Local file/sqlite/loopback datasource',
+    };
+  }
+
+  if (/^postgres(ql)?:\/\//i.test(db)) {
+    return {
+      label: 'remote_postgres',
+      isLocalDev: false,
+      reason: railwaySignals ? 'Remote Postgres with Railway signals' : 'Remote Postgres',
+    };
+  }
+
+  return {
+    label: 'unknown',
+    isLocalDev: isLocalLikeDatasource(db),
+    reason: 'Datasource could not be confidently classified',
+  };
+}
+
 function ensureDirForTemplate(template) {
   const dir = path.join(__dirname, '../..', 'scripts', 'audit', 'admin-email');
   fs.mkdirSync(dir, { recursive: true });
@@ -147,6 +215,9 @@ async function runAdminEmailSend(prisma, body) {
   const testEmail = normalizeEmail(body?.testEmail || '');
   const emailsIn = Array.isArray(body?.emails) ? body.emails : [];
   const excludeExample = body?.excludeExampleEmails !== false;
+  const allowLocalSend = process.env.ALLOW_LOCAL_SEND === 'true' || body?.allowLocalSend === true;
+  const adminAuthorized = body?.adminAuthorized === true;
+  const initialDatabase = classifyDatabase((process.env.DATABASE_URL || '').trim());
 
   const emptyResponse = (extra = {}) => ({
     mode,
@@ -158,6 +229,7 @@ async function runAdminEmailSend(prisma, body) {
     failed: 0,
     resultsSummary: 'No op',
     error: null,
+    database: initialDatabase,
     ...extra,
   });
 
@@ -173,6 +245,7 @@ async function runAdminEmailSend(prisma, body) {
 
   ensureDatabaseUrl();
   const resolvedDb = (process.env.DATABASE_URL || '').trim();
+  const database = classifyDatabase(resolvedDb);
   const siteUrl = process.env.SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || '';
 
   const content = getTemplateContent(template, { siteUrl });
@@ -181,31 +254,42 @@ async function runAdminEmailSend(prisma, body) {
   const fromName = 'The Agnes Protocol';
 
   const willSend = mode === 'test' || mode === 'selected' || mode === 'all';
-  if (willSend && isLocalLikeDatasource(resolvedDb) && process.env.ALLOW_LOCAL_SEND !== 'true') {
+  if (willSend && database.label === 'railway_volume_sqlite' && !adminAuthorized) {
     return {
-      ...emptyResponse(),
+      ...emptyResponse({ database }),
+      ok: false,
+      error: 'Refusing send: valid x-admin-key is required for Railway volume SQLite sends.',
+    };
+  }
+  if (willSend && database.isLocalDev && !allowLocalSend) {
+    return {
+      ...emptyResponse({ database }),
       ok: false,
       error:
-        'Refusing send: DATABASE_URL looks like local dev. Set ALLOW_LOCAL_SEND=true to override, or run on production.',
+        'Refusing send: DATABASE_URL looks like local dev. Set ALLOW_LOCAL_SEND=true or allowLocalSend=true to override, or run on production.',
     };
   }
 
   const client = willSend ? getMailchimpClient() : null;
   if (willSend && !client) {
-    return { ...emptyResponse(), ok: false, error: 'Mailchimp not configured (MAILCHIMP_TRANSACTIONAL_KEY missing)' };
+    return {
+      ...emptyResponse({ database }),
+      ok: false,
+      error: 'Mailchimp not configured (MAILCHIMP_TRANSACTIONAL_KEY missing)',
+    };
   }
 
   if (mode === 'selected' && !confirm) {
-    return { ...emptyResponse(), ok: false, error: 'confirm: true is required for mode=selected' };
+    return { ...emptyResponse({ database }), ok: false, error: 'confirm: true is required for mode=selected' };
   }
   if (mode === 'all' && !confirm) {
-    return { ...emptyResponse(), ok: false, error: 'confirm: true is required for mode=all' };
+    return { ...emptyResponse({ database }), ok: false, error: 'confirm: true is required for mode=all' };
   }
   if (mode === 'test' && !testEmail) {
-    return { ...emptyResponse(), ok: false, error: 'testEmail is required for mode=test' };
+    return { ...emptyResponse({ database }), ok: false, error: 'testEmail is required for mode=test' };
   }
   if (mode === 'selected' && emailsIn.length === 0) {
-    return { ...emptyResponse(), ok: false, error: 'emails: non-empty array is required for mode=selected' };
+    return { ...emptyResponse({ database }), ok: false, error: 'emails: non-empty array is required for mode=selected' };
   }
 
   const candidateRows = await collectCandidateRows(prisma);
@@ -223,6 +307,7 @@ async function runAdminEmailSend(prisma, body) {
       ok: true,
       mode,
       template,
+      database,
       totalCandidates,
       eligible: baseEligible.length,
       skipped: baseSkip,
@@ -241,6 +326,7 @@ async function runAdminEmailSend(prisma, body) {
       return {
         ...emptyResponse({ totalCandidates, eligible: 0, skipped: baseSkip }),
         ok: false,
+        database,
         error: 'testEmail is on Mailchimp reject list',
       };
     }
@@ -248,6 +334,7 @@ async function runAdminEmailSend(prisma, body) {
       return {
         ...emptyResponse(),
         ok: false,
+        database,
         error: 'testEmail matches excluded @example.com (set excludeExampleEmails: false to allow)',
       };
     }
@@ -356,6 +443,7 @@ async function runAdminEmailSend(prisma, body) {
     ok: true,
     mode,
     template,
+    database,
     totalCandidates,
     eligible: targets.length,
     skipped: skippedOut,
