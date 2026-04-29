@@ -2904,8 +2904,6 @@ async function processReferralCommission({ referrerCode, buyerEmail, buyerUserId
             },
           });
 
-          });
-
           return { created, skipped, recipients: recipientsOut };
         });
 
