@@ -2167,7 +2167,7 @@ async function resolveReferralUpline(prismaClient, startUserId) {
     visited.add(nextId);
     const ancestor = await prismaClient.user.findUnique({
       where: { id: nextId },
-      select: { id: true, email: true, overrideEligible: true, overrideAmount: true },
+      select: { id: true, email: true, overrideEligible: true, overrideAmount: true, overrideRepRole: true },
     });
     if (!ancestor) {
       break;
@@ -2188,29 +2188,37 @@ async function resolveReferralUpline(prismaClient, startUserId) {
   return { lineage, depth, truncated, cycleDetected };
 }
 
-function collectEligibleOverrideRecipients(lineage) {
-  const seen = new Set();
-  const recipients = [];
-  for (const ancestor of lineage) {
-    if (!ancestor?.id || seen.has(ancestor.id)) continue;
-    seen.add(ancestor.id);
-    if (ancestor?.overrideEligible === true) {
-      recipients.push({
-        userId: ancestor.id,
-        email: ancestor.email || null,
-      });
-    }
-  }
-  return recipients;
+function isEligibleRegionalOrPodcasterRep(ancestor) {
+  if (!ancestor?.overrideEligible) return false;
+  const role = ancestor.overrideRepRole;
+  return role === 'regional' || role === 'podcaster';
 }
 
-function splitOverridePoolCents(totalCents, recipients) {
-  const count = recipients.length;
-  if (!count || totalCents <= 0) return [];
-  const base = Math.floor(totalCents / count);
-  const remainder = totalCents % count;
-  return recipients.map((recipient, idx) => ({
-    ...recipient,
+/** All eligible regional/podcaster reps in upline order (nearest → farthest), deduped by userId. */
+function collectEligibleOverrideRepsInLineage(lineage) {
+  const seen = new Set();
+  const reps = [];
+  for (const ancestor of lineage) {
+    if (!ancestor?.id || seen.has(ancestor.id)) continue;
+    if (!isEligibleRegionalOrPodcasterRep(ancestor)) continue;
+    seen.add(ancestor.id);
+    reps.push({
+      userId: ancestor.id,
+      email: ancestor.email || null,
+      overrideRepRole: ancestor.overrideRepRole || null,
+    });
+  }
+  return reps;
+}
+
+/** Exact integer-cent split: totalCents = sum of per-recipient amounts (remainder → first recipients). */
+function splitOverridePoolExactCents(totalCents, recipients) {
+  const n = recipients.length;
+  if (!n || totalCents <= 0) return [];
+  const base = Math.floor(totalCents / n);
+  const remainder = totalCents % n;
+  return recipients.map((r, idx) => ({
+    ...r,
     cents: base + (idx < remainder ? 1 : 0),
   }));
 }
@@ -2777,15 +2785,16 @@ async function processReferralCommission({ referrerCode, buyerEmail, buyerUserId
     referralAwardResult = { awarded: 0, reason: 'no_prisma_or_allowlist' };
   }
 
-  // ===== Override cash-only payout (shared pool across all eligible upstream reps) =====
-  // Direct sponsor points flow remains unchanged; overrides never award points.
+  // ===== Override: shared $3 pool split across all eligible regional/podcaster reps in upline =====
+  // Direct sponsor $2 unchanged; exact integer cents (300/N + remainder); idempotent per session+userId.
   if (prismaClient && referrer.id !== 'allowlist-fallback') {
     try {
       const OVERRIDE_POOL_CENTS = 300;
       const uplineStartUserId = buyerUserId || referrer.id;
       const lineage = await resolveReferralUpline(prismaClient, uplineStartUserId);
-      const eligibleRecipients = collectEligibleOverrideRecipients(lineage.lineage);
-      const splitRecipients = splitOverridePoolCents(OVERRIDE_POOL_CENTS, eligibleRecipients);
+      const eligibleReps = collectEligibleOverrideRepsInLineage(lineage.lineage);
+      const splitRecipients = splitOverridePoolExactCents(OVERRIDE_POOL_CENTS, eligibleReps);
+      const splitSum = splitRecipients.reduce((s, r) => s + r.cents, 0);
       console.log('[OVERRIDE_PAYOUT] Lineage evaluation', {
         sessionId,
         uplineStartUserId,
@@ -2798,12 +2807,13 @@ async function processReferralCommission({ referrerCode, buyerEmail, buyerUserId
         lineageTruncated: lineage.truncated,
         cycleDetected: lineage.cycleDetected,
         overridePoolCents: OVERRIDE_POOL_CENTS,
-        eligibleRecipients: eligibleRecipients.map((r) => ({ userId: r.userId, email: r.email })),
+        eligibleCount: eligibleReps.length,
         splitRecipients: splitRecipients.map((r) => ({ userId: r.userId, cents: r.cents })),
+        splitSumCheck: splitSum === OVERRIDE_POOL_CENTS,
       });
 
       if (splitRecipients.length === 0) {
-        console.log('[OVERRIDE_PAYOUT] No override recipient for this session', { sessionId });
+        console.log('[OVERRIDE_PAYOUT] No eligible regional/podcaster rep in upline', { sessionId });
       } else {
         const overrideSummary = await prismaClient.$transaction(async (tx) => {
           let created = 0;
@@ -2812,6 +2822,11 @@ async function processReferralCommission({ referrerCode, buyerEmail, buyerUserId
           for (const recipient of splitRecipients) {
             if (buyerUserId && recipient.userId === buyerUserId) {
               skipped += 1;
+              recipientsOut.push({
+                userId: recipient.userId,
+                cents: recipient.cents,
+                action: 'skipped_buyer_self',
+              });
               continue;
             }
             const overrideSessionId = `${sessionId}:override:${recipient.userId}`;
@@ -2845,12 +2860,13 @@ async function processReferralCommission({ referrerCode, buyerEmail, buyerUserId
                 amount: recipient.cents,
                 currency: 'usd',
                 usd: recipient.cents / 100,
-                note: `Override payout split: $${(recipient.cents / 100).toFixed(2)}`,
+                note: `Override pool split (${eligibleReps.length} rep(s)): $${(recipient.cents / 100).toFixed(2)}`,
                 meta: {
-                  payoutKind: 'override',
+                  payoutKind: 'override_regional_podcaster_split',
                   overridePoolCents: OVERRIDE_POOL_CENTS,
-                  overrideRecipientCount: splitRecipients.length,
+                  overrideRecipientCount: eligibleReps.length,
                   overrideAmountCents: recipient.cents,
+                  overrideRepRole: recipient.overrideRepRole || null,
                   canonicalCode,
                   canonicalSource,
                   canonicalAt,
@@ -2885,11 +2901,12 @@ async function processReferralCommission({ referrerCode, buyerEmail, buyerUserId
               userId: referrer.id,
               type: 'OVERRIDE_PAYOUT_SPLIT',
               meta: {
-                payoutKind: 'override',
+                payoutKind: 'override_regional_podcaster_split',
                 overridePoolCents: OVERRIDE_POOL_CENTS,
-                overrideRecipientCount: splitRecipients.length,
-                qualifyingRepUserIds: splitRecipients.map((r) => r.userId),
+                overrideRecipientCount: eligibleReps.length,
+                qualifyingRepUserIds: eligibleReps.map((r) => r.userId),
                 recipients: recipientsOut,
+                splitSum,
                 canonicalCode,
                 canonicalSource,
                 canonicalAt,

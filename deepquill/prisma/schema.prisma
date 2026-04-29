@@ -47,6 +47,8 @@ model User {
   referralEarningsCents        Int                  @default(0)
   overrideEligible             Boolean              @default(false)
   overrideAmount               Int                  @default(0)
+  /// regional | podcaster when user is an override rep (controls $3 upline payout eligibility)
+  overrideRepRole              String?
   associateBalanceCents        Int                  @default(0)
   associateLifetimeEarnedCents Int                  @default(0)
   associateFriendsSavedCents   Int                  @default(0)

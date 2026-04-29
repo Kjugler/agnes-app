@@ -77,8 +77,8 @@ async function isValidAssociatePublisherRef(ref) {
   // Sanitize: uppercase and trim
   const normalizedRef = ref.trim().toUpperCase();
 
-  // Format validation: allow only [A-Z0-9]{4,12}
-  const formatRegex = /^[A-Z0-9]{4,12}$/;
+  // Format validation: allow only [A-Z0-9]{3,12} (includes short branded codes e.g. GUS, JOE)
+  const formatRegex = /^[A-Z0-9]{3,12}$/;
   if (!formatRegex.test(normalizedRef)) {
     console.log('[CHECKOUT_REF] Invalid format, rejecting:', normalizedRef);
     return { valid: false, method: null };

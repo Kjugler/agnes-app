@@ -71,6 +71,14 @@ export default function AdminHubPage() {
       </Link>
       <p style={descStyle}>Rock-concert metrics (books claimed, leader snapshot).</p>
 
+      <h2 style={sectionTitle}>Regional reps</h2>
+      <Link href="/admin/reps" style={linkStyle}>
+        Regional / podcast reps
+      </Link>
+      <p style={descStyle}>
+        Promote reps, copy referral links and quiet-reveal messages, replace or disable override payouts.
+      </p>
+
       <h2 style={sectionTitle}>Operations</h2>
       <Link href="/admin/ops/archive-beta-sales-once" style={linkStyle}>
         Beta archive (TEMPORARY)

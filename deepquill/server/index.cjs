@@ -232,7 +232,10 @@ console.log('✅ Mounted /api/admin/email (POST /send - template admin email)');
 
 const adminUsersRouter = require('./routes/adminUsers.cjs');
 app.use('/api/admin/users', adminUsersRouter);
-console.log('✅ Mounted /api/admin/users (POST /set-override)');
+console.log('✅ Mounted /api/admin/users (reps, promote-rep, replace, disable-override, overrides)');
+const repAnalyticsRouter = require('./routes/repAnalytics.cjs');
+app.use('/api', repAnalyticsRouter);
+console.log('✅ Mounted /api/reps/sales-ledger and /api/admin/reps/monthly-report');
 
 // Contest login endpoint (DB owner)
 const contestLoginHandler = require('../api/contest/login.cjs');
