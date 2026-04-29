@@ -460,7 +460,11 @@ module.exports = async function handler(req, res) {
         const pb = REFERRAL_SOURCE_TIE_PRIORITY[b.source] || 0;
         return pb - pa; // query > cookie > user_last_referral
       });
-    const canonicalWinner = validAttributionEvents[0] || null;
+    const canonicalQueryOrCookieEvents = validAttributionEvents.filter(
+      (e) => e.source === 'query_ref' || e.source === 'cookie_ref',
+    );
+    // If canonical query/cookie exists, it must remain authoritative.
+    const canonicalWinner = canonicalQueryOrCookieEvents[0] || validAttributionEvents[0] || null;
 
     console.log('[CHECKOUT_ATTRIBUTION] Candidate evaluation', {
       userId: user?.id || null,
@@ -651,6 +655,18 @@ module.exports = async function handler(req, res) {
     // Add product, ref, and tracking params to metadata
     metadata.product = product;
     // Canonical attribution metadata for webhook (authoritative for new sessions).
+    const canonicalReferralExists = !!canonicalWinner;
+    const canonicalSourceLabel =
+      canonicalWinner?.source === 'query_ref'
+        ? 'query'
+        : canonicalWinner?.source === 'cookie_ref'
+          ? 'cookie'
+          : null;
+    const discountFallbackCode =
+      !canonicalReferralExists && refValidationResult?.valid && discountCodeToUse
+        ? String(discountCodeToUse).trim().toUpperCase()
+        : null;
+
     if (canonicalWinner) {
       metadata.ref_canonical_code = String(canonicalWinner.code).trim().toUpperCase();
       metadata.ref_canonical_source = canonicalWinner.source;
@@ -665,6 +681,11 @@ module.exports = async function handler(req, res) {
       // Legacy compatibility metadata mirrors canonical winner for transition period.
       metadata.ref = metadata.ref_canonical_code;
       metadata.ref_valid = 'true';
+      if (canonicalSourceLabel) {
+        metadata.referralSource = canonicalSourceLabel;
+      } else {
+        delete metadata.referralSource;
+      }
 
       metadata.ref_candidates_count = String(attributionEvaluations.length);
       metadata.ref_decision_note = `winner=${canonicalWinner.source}`;
@@ -674,6 +695,14 @@ module.exports = async function handler(req, res) {
       metadata.ref_last_referral_code = activeLastReferral?.code
         ? String(activeLastReferral.code).trim().toUpperCase()
         : '';
+      if (discountFallbackCode) {
+        console.warn('[CHECKOUT_ATTRIBUTION] discount fallback ignored; canonical referral exists', {
+          canonicalCode: metadata.ref_canonical_code,
+          canonicalSource: metadata.ref_canonical_source,
+          discountFallbackCode,
+          discountCodeSource,
+        });
+      }
     } else {
       delete metadata.ref_canonical_code;
       delete metadata.ref_canonical_source;
@@ -681,9 +710,22 @@ module.exports = async function handler(req, res) {
       delete metadata.ref_canonical_valid;
       delete metadata.ref_canonical_version;
 
-      // Keep legacy ref fields empty when no valid attribution winner.
-      delete metadata.ref;
-      delete metadata.ref_valid;
+      if (discountFallbackCode) {
+        // Fallback attribution: use discount code only when no canonical referral exists.
+        metadata.ref = discountFallbackCode;
+        metadata.ref_valid = 'true';
+        metadata.referralSource = 'discount_fallback';
+        console.log('[CHECKOUT_ATTRIBUTION] Using discount fallback attribution', {
+          code: discountFallbackCode,
+          discountCodeSource,
+          userId: user?.id || null,
+        });
+      } else {
+        // Keep legacy ref fields empty when no valid attribution winner/fallback.
+        delete metadata.ref;
+        delete metadata.ref_valid;
+        delete metadata.referralSource;
+      }
     }
     if (req.body?.src) metadata.src = req.body.src;
     if (req.body?.v) metadata.v = req.body.v;
