@@ -55,11 +55,27 @@ async function fetchPublicSignalsFromDeepquill(): Promise<{
   try {
     const res = await fetch(`${getDeepquillBase()}/api/signals?limit=50`, {
       cache: 'no-store',
+      next: { revalidate: 0 },
       headers: { Accept: 'application/json' },
     });
     const data = await res.json();
     if (!res.ok) {
       return { ok: false };
+    }
+    if (process.env.SIGNAL_ROOM_FEED_AUDIT_LOG === "1" && Array.isArray(data?.signals)) {
+      const rows = data.signals as { createdAt?: string; approvedAt?: string | null }[];
+      const times = rows
+        .map((s) => {
+          const t = s.approvedAt || s.createdAt;
+          return t ? new Date(t).getTime() : NaN;
+        })
+        .filter((n) => Number.isFinite(n));
+      const newestMs = times.length ? Math.max(...times) : null;
+      console.log("[SignalRoomFeedAudit]", {
+        deepquillBase: getDeepquillBase(),
+        rawCount: rows.length,
+        newestVisibleIso: newestMs ? new Date(newestMs).toISOString() : null,
+      });
     }
     return data;
   } catch (err) {

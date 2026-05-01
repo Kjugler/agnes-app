@@ -3,6 +3,7 @@
 import React, { useState, useCallback } from 'react';
 import SignalRoomHeader from './SignalRoomHeader';
 import SignalRoomClient from './SignalRoomClient';
+import SignalRoomBuildMarker from './SignalRoomBuildMarker';
 
 type SignalData = {
   id: string;
@@ -79,7 +80,10 @@ export default function SignalRoomContainer({
           </div>
         </div>
       ) : (
-        <SignalRoomClient signals={signals} feedRefreshTrigger={feedRefreshTrigger} />
+        <>
+          <SignalRoomBuildMarker />
+          <SignalRoomClient signals={signals} feedRefreshTrigger={feedRefreshTrigger} />
+        </>
       )}
     </div>
   );
