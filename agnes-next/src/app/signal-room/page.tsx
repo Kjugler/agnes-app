@@ -6,13 +6,21 @@ import SignalRoomContainer from './SignalRoomContainer';
 import SignalRoomHeader from './SignalRoomHeader';
 import SignalRoomGateView from './SignalRoomGateView';
 import { isDailyBulletinTags } from '@/lib/parseFeedTags';
+import { shouldLogSignalRoomLoaderServer } from '@/lib/signalRoomLoaderLog';
+
+/** Published feed must not depend on contest cookies — force dynamic, no static stale snapshot */
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 function getDeepquillBase() {
   return process.env.DEEPQUILL_URL || process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5055';
 }
 
-/** Fetches initial signals from deepquill (same source as creates and load-more) */
-async function fetchInitialSignalsFromDeepquill(cookieHeader: string): Promise<{
+/**
+ * Canonical public signal list: **no** Cookie header — same ordering for every visitor.
+ * DeepQuill /api/signals does not filter rows by user; identity only affects isAuthor (optional client refresh).
+ */
+async function fetchPublicSignalsFromDeepquill(): Promise<{
   ok: boolean;
   signals?: Array<{
     id: string;
@@ -45,22 +53,22 @@ async function fetchInitialSignalsFromDeepquill(cookieHeader: string): Promise<{
   }>;
 }> {
   try {
-    const headers: Record<string, string> = { Accept: 'application/json' };
-    if (cookieHeader) headers.Cookie = cookieHeader;
     const res = await fetch(`${getDeepquillBase()}/api/signals?limit=50`, {
       cache: 'no-store',
-      headers,
+      headers: { Accept: 'application/json' },
     });
     const data = await res.json();
+    if (!res.ok) {
+      return { ok: false };
+    }
     return data;
   } catch (err) {
-    console.error('[SignalRoom] Failed to fetch initial signals from deepquill:', err);
+    console.error('[SignalRoom] Failed to fetch public signals from deepquill:', err);
     return { ok: false };
   }
 }
 
 export default async function SignalRoomPage() {
-  // Get current user email for acknowledge status and access check
   const cookieStore = await cookies();
   const cookieEmail =
     cookieStore.get('contest_email')?.value ||
@@ -70,8 +78,9 @@ export default async function SignalRoomPage() {
     null;
   const accessCookieValue = cookieStore.get(SIGNAL_ROOM_ACCESS_COOKIE)?.value ?? null;
   const userEmail = cookieEmail ? normalizeEmail(cookieEmail) : null;
+  const hasContestCookie = !!cookieEmail?.trim();
+  const hasFulfillmentCookie = !!cookieStore.get('fulfillment-token')?.value?.trim();
 
-  // Gating: when mode is code/eligibility/hybrid, check access
   const mode = getSignalRoomAccessMode();
   const gated = mode !== 'public';
   const canAccess = gated
@@ -102,8 +111,7 @@ export default async function SignalRoomPage() {
     );
   }
 
-  const cookieHeader = cookieStore.getAll().map((c) => `${c.name}=${c.value}`).join('; ');
-  const { ok, signals: rawSignals } = await fetchInitialSignalsFromDeepquill(cookieHeader);
+  const { ok, signals: rawSignals } = await fetchPublicSignalsFromDeepquill();
   const publicSignalRoom = getSignalRoomAccessMode() === 'public';
   const signalsData = ok && Array.isArray(rawSignals)
     ? (publicSignalRoom ? rawSignals.filter((s) => !isDailyBulletinTags(s.tags)) : rawSignals).map((s) => ({
@@ -137,10 +145,22 @@ export default async function SignalRoomPage() {
       }))
     : [];
 
-  const isInitializing = !ok;
+  if (shouldLogSignalRoomLoaderServer()) {
+    console.log('[SignalRoomLoader]', {
+      route: '/signal-room',
+      sourceUsed: ok ? 'public_current_anonymous' : 'none_failed',
+      accessMode: mode,
+      hasContestCookie,
+      hasFulfillmentCookie,
+      publicFeedCount: signalsData.length,
+      personalizedFeedCount: '(client /signals/me)',
+      note: 'SSR uses cookie-less DeepQuill /api/signals so feed matches visitors without contest identity',
+    });
+  }
 
-  return (
-    <SignalRoomContainer signals={signalsData} isInitializing={isInitializing} />
-  );
+  const loadError = ok
+    ? null
+    : 'Unable to load the Signal Room feed. Check that the API is available, then refresh.';
+
+  return <SignalRoomContainer signals={signalsData} loadError={loadError} />;
 }
-

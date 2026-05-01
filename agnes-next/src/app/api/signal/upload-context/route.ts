@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { staffSignalActingHeaders } from '@/lib/staffSignalIdentity';
 
 const API_BASE_URL =
   process.env.DEEPQUILL_URL || process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5055';
@@ -10,8 +11,9 @@ const API_BASE_URL =
 export async function GET(req: NextRequest) {
   try {
     const cookie = req.headers.get('cookie') || '';
+    const staff = staffSignalActingHeaders(req);
     const res = await fetch(`${API_BASE_URL}/api/signal/upload-auth`, {
-      headers: { cookie },
+      headers: { cookie, ...staff },
       cache: 'no-store',
     });
     const data = await res.json().catch(() => ({}));

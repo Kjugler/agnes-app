@@ -33,14 +33,14 @@ type SignalData = {
 
 type SignalRoomContainerProps = {
   signals: SignalData[];
-  isInitializing: boolean;
+  /** When set, feed failed to load — do not show an endless “initializing” state */
+  loadError?: string | null;
 };
 
 export default function SignalRoomContainer({
   signals,
-  isInitializing,
+  loadError = null,
 }: SignalRoomContainerProps) {
-  // Do not key SignalRoomClient by signals[0] — remounting would reset client feed state.
   const [feedRefreshTrigger, setFeedRefreshTrigger] = useState(0);
   const bumpFeedRefresh = useCallback(() => {
     setFeedRefreshTrigger((t) => t + 1);
@@ -60,7 +60,7 @@ export default function SignalRoomContainer({
       }}
     >
       <SignalRoomHeader onReviewSubmitted={bumpFeedRefresh} onSignalSubmitted={bumpFeedRefresh} />
-      {isInitializing ? (
+      {loadError ? (
         <div
           style={{
             flex: 1,
@@ -71,13 +71,11 @@ export default function SignalRoomContainer({
             textAlign: 'center',
           }}
         >
-          <div>
-            <p style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>
-              Signal Room is initializing.
+          <div style={{ maxWidth: '28rem' }}>
+            <p style={{ fontSize: '1.1rem', marginBottom: '1rem', color: '#fca5a5' }}>
+              Signal Room feed unavailable
             </p>
-            <p style={{ fontSize: '0.9rem', opacity: 0.7 }}>
-              Please refresh in a moment.
-            </p>
+            <p style={{ fontSize: '0.95rem', opacity: 0.85, lineHeight: 1.5 }}>{loadError}</p>
           </div>
         </div>
       ) : (

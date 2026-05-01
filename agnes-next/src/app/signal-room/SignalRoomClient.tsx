@@ -9,6 +9,7 @@ import EditReviewModal from './EditReviewModal';
 import SignalMedia from './SignalMedia';
 import RibbonTicker from './RibbonTicker';
 import { parseFeedTags } from '@/lib/parseFeedTags';
+import { shouldLogSignalRoomLoaderClient } from '@/lib/signalRoomLoaderLog';
 
 function formatRelativeTime(date: Date | string): string {
   const now = new Date();
@@ -199,6 +200,16 @@ export default function SignalRoomClient({
   useEffect(() => {
     setSignals(excludeDailyBulletinSignals(initialSignals));
   }, [initialSignals]);
+
+  useEffect(() => {
+    if (shouldLogSignalRoomLoaderClient()) {
+      console.log('[SignalRoomLoader:client]', {
+        route: '/signal-room',
+        sourceUsed: 'ssr_initial_props',
+        publicFeedCount: excludeDailyBulletinSignals(initialSignals).length,
+      });
+    }
+  }, [initialSignals]);
   const [reviews, setReviews] = useState<ReviewData[]>([]);
   const [replyModalSignalId, setReplyModalSignalId] = useState<string | null>(null);
   const [editSignal, setEditSignal] = useState<SignalData | null>(null);
@@ -256,6 +267,13 @@ export default function SignalRoomClient({
           rejectedAt: (s.rejectedAt as string) ?? null,
         }));
         setMySignals(mapped);
+        if (shouldLogSignalRoomLoaderClient()) {
+          console.log('[SignalRoomLoader:client]', {
+            route: '/signal-room',
+            sourceUsed: 'signals_me',
+            personalizedFeedCount: mapped.length,
+          });
+        }
       })
       .catch(() => {});
     return () => {
@@ -292,9 +310,15 @@ export default function SignalRoomClient({
       (entries) => {
         if (entries[0]?.isIntersecting && hasMore && !loadingMore) {
           setLoadingMore(true);
-          fetch(`/api/signals?limit=20&offset=${signals.length}`)
+          fetch(`/api/signals?limit=20&offset=${signals.length}`, {
+            credentials: 'include',
+            cache: 'no-store',
+          })
             .then((r) => r.json())
             .then((d) => {
+              if (d.error && shouldLogSignalRoomLoaderClient()) {
+                console.warn('[SignalRoomLoader:client] load-more blocked or failed', { d });
+              }
               if (d.ok && d.signals?.length) {
                 const newIds = new Set(signals.map((s) => s.id));
                 const toAdd = d.signals

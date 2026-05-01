@@ -15,6 +15,8 @@ export interface ProxyOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   headers?: Record<string, string>;
   body?: any;
+  /** Incoming header names (case-insensitive) not to forward — avoids client spoofing when routes set authoritative headers */
+  omitForwardHeaders?: string[];
 }
 
 /**
@@ -69,25 +71,23 @@ export async function proxyJson(
     }
   }
 
-  // Merge headers
+  const omitForward = new Set((options.omitForwardHeaders ?? []).map((h) => h.toLowerCase()));
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...options.headers,
   };
 
-  // Forward relevant headers from original request
+  // Forward relevant headers from original request (options.headers applied last so routes can override)
   const forwardHeaders = ['x-user-email', 'x-admin-key', 'x-vercel-ip-country', 'x-vercel-ip-country-region', 'authorization', 'cookie'];
   forwardHeaders.forEach((key) => {
+    if (omitForward.has(key.toLowerCase())) return;
     const value = req.headers.get(key);
     if (value) {
       headers[key] = value;
     }
   });
 
-  // Add internal proxy secret if provided in options (for agnes-next → deepquill calls)
-  if (options.headers?.['x-internal-proxy']) {
-    headers['x-internal-proxy'] = options.headers['x-internal-proxy'];
-  }
+  Object.assign(headers, options.headers ?? {});
 
   try {
     const response = await fetch(url, {

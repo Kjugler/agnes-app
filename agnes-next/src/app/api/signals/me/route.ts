@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { proxyJson } from '@/lib/deepquillProxy';
 import { hasSignalRoomAccess, getSignalRoomAccessMode, SIGNAL_ROOM_ACCESS_COOKIE } from '@/lib/signal-room-access';
 import { normalizeEmail } from '@/lib/email';
+import { staffSignalActingHeaders } from '@/lib/staffSignalIdentity';
 
 export async function GET(req: NextRequest) {
   try {
@@ -23,7 +24,12 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const { data, status } = await proxyJson('/api/signals/me', req, { method: 'GET' });
+    const staff = staffSignalActingHeaders(req);
+    const { data, status } = await proxyJson('/api/signals/me', req, {
+      method: 'GET',
+      omitForwardHeaders: ['x-user-email'],
+      headers: staff,
+    });
     return NextResponse.json(data, { status });
   } catch (err: unknown) {
     console.error('[signals/me] Proxy error', err);

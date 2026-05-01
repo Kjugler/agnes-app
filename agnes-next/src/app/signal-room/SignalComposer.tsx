@@ -82,11 +82,13 @@ export default function SignalComposer({ isOpen, onClose, onSubmitted }: SignalC
     setUploadProgress(0);
     setUploadPhase('preparing');
     try {
-      const ctx = await fetch('/api/signal/upload-context');
+      const ctx = await fetch('/api/signal/upload-context', { credentials: 'include', cache: 'no-store' });
       const ctxJson = await ctx.json().catch(() => ({}));
       if (!ctx.ok) {
         throw new Error(
-          ctxJson.error === 'UNAUTHORIZED' ? 'Sign in to upload video.' : 'Could not start upload.'
+          ctxJson.error === 'UNAUTHORIZED'
+            ? 'Admin session expired — go to /admin and sign in again.'
+            : 'Could not start upload.'
         );
       }
       const userId = ctxJson.userId as string;
@@ -133,11 +135,13 @@ export default function SignalComposer({ isOpen, onClose, onSubmitted }: SignalC
     setUploadProgress(0);
     setUploadPhase('preparing');
     try {
-      const ctx = await fetch('/api/signal/upload-context');
+      const ctx = await fetch('/api/signal/upload-context', { credentials: 'include', cache: 'no-store' });
       const ctxJson = await ctx.json().catch(() => ({}));
       if (!ctx.ok) {
         throw new Error(
-          ctxJson.error === 'UNAUTHORIZED' ? 'Sign in to upload documents.' : 'Could not start upload.'
+          ctxJson.error === 'UNAUTHORIZED'
+            ? 'Admin session expired — go to /admin and sign in again.'
+            : 'Could not start upload.'
         );
       }
       const userId = ctxJson.userId as string;

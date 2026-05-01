@@ -61,6 +61,7 @@ async function postModeration(
 ): Promise<void> {
   const res = await fetch(path, {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify({ id }),
   });
@@ -131,9 +132,14 @@ export default function SignalAdminClient() {
   const fetchSignals = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/admin/signals', { headers: getAdminHeaders() });
-      if (res.status === 403) {
-        setError('Admin access required. Enter ADMIN_KEY in production.');
+      const res = await fetch('/api/admin/signals', {
+        credentials: 'include',
+        headers: getAdminHeaders(),
+      });
+      if (res.status === 401 || res.status === 403) {
+        setError(
+          'Admin session expired — go to /admin/fulfillment/auth and sign in again. If you use a manual key, paste ADMIN_KEY from env.'
+        );
         setSignals([]);
         return;
       }
@@ -519,7 +525,11 @@ export default function SignalAdminClient() {
                     setActionBusy(`${s.id}:del`);
                     setError(null);
                     try {
-                      const res = await fetch(`/api/admin/signals/${s.id}`, { method: 'DELETE', headers: hdrs });
+                      const res = await fetch(`/api/admin/signals/${s.id}`, {
+                        method: 'DELETE',
+                        credentials: 'include',
+                        headers: hdrs,
+                      });
                       if (!res.ok) {
                         const d = await res.json().catch(() => ({}));
                         throw new Error((d as { error?: string }).error || res.statusText);
@@ -572,7 +582,7 @@ function SignalForm({ signalId, onClose, onSaved, headers }: SignalFormProps) {
 
   useEffect(() => {
     if (!signalId) return;
-    fetch(`/api/admin/signals/${signalId}`, { headers })
+    fetch(`/api/admin/signals/${signalId}`, { credentials: 'include', headers })
       .then((r) => r.json())
       .then((d) => {
         if (d.ok && d.signal) {
@@ -611,6 +621,7 @@ function SignalForm({ signalId, onClose, onSaved, headers }: SignalFormProps) {
       const method = signalId ? 'PATCH' : 'POST';
       const res = await fetch(url, {
         method,
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json', ...headers },
         body: JSON.stringify(body),
       });

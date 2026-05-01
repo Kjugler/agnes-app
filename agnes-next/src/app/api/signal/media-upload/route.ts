@@ -1,5 +1,6 @@
 import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
 import { NextRequest, NextResponse } from 'next/server';
+import { staffSignalActingHeaders } from '@/lib/staffSignalIdentity';
 
 export const runtime = 'nodejs';
 
@@ -13,8 +14,9 @@ const MAX_DOCUMENT_BYTES = 50 * 1024 * 1024;
 
 async function resolveUploadUserId(request: NextRequest): Promise<string | null> {
   const cookie = request.headers.get('cookie') || '';
+  const staff = staffSignalActingHeaders(request);
   const res = await fetch(`${API_BASE_URL}/api/signal/upload-auth`, {
-    headers: { cookie },
+    headers: { cookie, ...staff },
     cache: 'no-store',
   });
   if (!res.ok) return null;
