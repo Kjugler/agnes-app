@@ -54,6 +54,12 @@ function formatWhen(iso: string | null | undefined): string {
   return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
+function truncateMiddle(str: string, maxLen: number): string {
+  if (str.length <= maxLen) return str;
+  const half = Math.floor((maxLen - 3) / 2);
+  return `${str.slice(0, half)}…${str.slice(-half)}`;
+}
+
 async function postModeration(
   path: string,
   id: string,
@@ -423,10 +429,26 @@ export default function SignalAdminClient() {
                     )}
                     <div>
                       <span style={{ color: '#d1d5db' }}>Feed:</span>{' '}
-                      {publicLive ? 'visible' : isHiddenApproved ? 'unpublished (draft)' : 'not public'}
+                      {publicLive
+                        ? 'visible (public)'
+                        : status === 'HELD'
+                          ? 'not public — moderation queue (upload/video/content held until approved)'
+                          : status === 'REJECTED'
+                            ? 'not public (rejected)'
+                            : isHiddenApproved
+                              ? 'unpublished (draft)'
+                              : 'not public'}
                       {' · '}
                       <span style={{ color: '#d1d5db' }}>Publish:</span> {s.publishStatus || 'PUBLISHED'}
                     </div>
+                    {s.mediaUrl ? (
+                      <div style={{ wordBreak: 'break-all' }}>
+                        <span style={{ color: '#d1d5db' }}>Attachment:</span>{' '}
+                        <span style={{ color: '#93c5fd' }}>{s.mediaType || 'media'}</span>
+                        {' · '}
+                        <span title={s.mediaUrl}>{truncateMiddle(s.mediaUrl, 96)}</span>
+                      </div>
+                    ) : null}
                     <div style={{ color: '#6b7280' }}>
                       {s.type || 'NARRATIVE'}
                       {s.discussionEnabled ? ' · discussion on' : ' · discussion off'}
@@ -514,7 +536,27 @@ export default function SignalAdminClient() {
                 )}
 
                 {status === 'REJECTED' && (
-                  <span style={{ fontSize: '0.8rem', color: '#9ca3af' }}>Rejected — use Delete to purge</span>
+                  <>
+                    <button
+                      type="button"
+                      disabled={busy('ap')}
+                      onClick={() => {
+                        if (
+                          !confirm(
+                            'Approve and restore this signal? It will go live in the public feed (same as overriding a rejection).'
+                          )
+                        )
+                          return;
+                        run('ap', () => postModeration('/api/admin/moderation/approve-signal', s.id, hdrs));
+                      }}
+                      style={adminPrimaryBtn}
+                    >
+                      {busy('ap') ? '…' : 'Approve / restore to feed'}
+                    </button>
+                    <span style={{ fontSize: '0.8rem', color: '#9ca3af' }}>
+                      Rejected — approve above to publish, or Delete to remove permanently
+                    </span>
+                  </>
                 )}
 
                 <button
