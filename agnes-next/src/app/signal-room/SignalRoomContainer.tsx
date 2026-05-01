@@ -4,6 +4,7 @@ import React, { useState, useCallback } from 'react';
 import SignalRoomHeader from './SignalRoomHeader';
 import SignalRoomClient from './SignalRoomClient';
 import SignalRoomBuildMarker from './SignalRoomBuildMarker';
+import { useSignalRoomPostingIdentity } from './useSignalRoomPostingIdentity';
 
 type SignalData = {
   id: string;
@@ -46,6 +47,8 @@ export default function SignalRoomContainer({
   const bumpFeedRefresh = useCallback(() => {
     setFeedRefreshTrigger((t) => t + 1);
   }, []);
+  const { loading: postingIdentityLoading, canPost: canPostSignals, mySignals } =
+    useSignalRoomPostingIdentity(feedRefreshTrigger);
 
   return (
     <div
@@ -60,7 +63,12 @@ export default function SignalRoomContainer({
         overflowX: 'hidden',
       }}
     >
-      <SignalRoomHeader onReviewSubmitted={bumpFeedRefresh} onSignalSubmitted={bumpFeedRefresh} />
+      <SignalRoomHeader
+        canPostSignals={canPostSignals}
+        postingEligibilityLoading={postingIdentityLoading}
+        onReviewSubmitted={bumpFeedRefresh}
+        onSignalSubmitted={bumpFeedRefresh}
+      />
       {loadError ? (
         <div
           style={{
@@ -82,7 +90,14 @@ export default function SignalRoomContainer({
       ) : (
         <>
           <SignalRoomBuildMarker />
-          <SignalRoomClient signals={signals} feedRefreshTrigger={feedRefreshTrigger} />
+          <SignalRoomClient
+            signals={signals}
+            feedRefreshTrigger={feedRefreshTrigger}
+            mySignals={mySignals}
+            canPostSignals={canPostSignals}
+            postingIdentityLoading={postingIdentityLoading}
+            onMySignalsInvalidate={bumpFeedRefresh}
+          />
         </>
       )}
     </div>

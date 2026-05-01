@@ -1,14 +1,19 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { validateDocumentPasteUrl } from '@/lib/signalDocumentUrl';
+import { ENTER_CONTEST_TO_SUBMIT_SIGNAL } from '@/lib/signalRoomContestGate';
 
 type SignalComposerProps = {
   isOpen: boolean;
   onClose: () => void;
   /** Fires after a signal is successfully created (held or approved) so the room can refetch “my submissions”. */
   onSubmitted?: () => void;
+  /** False when visitor has no contest / User identity (not admin — do not use admin error copy). */
+  canPostSignals: boolean;
+  postingEligibilityLoading?: boolean;
 };
 
 type SubmitState = 'idle' | 'submitting' | 'approved' | 'held' | 'error';
@@ -40,7 +45,13 @@ function isValidMediaUrl(url: string): boolean {
   }
 }
 
-export default function SignalComposer({ isOpen, onClose, onSubmitted }: SignalComposerProps) {
+export default function SignalComposer({
+  isOpen,
+  onClose,
+  onSubmitted,
+  canPostSignals,
+  postingEligibilityLoading = false,
+}: SignalComposerProps) {
   const router = useRouter();
   const [text, setText] = useState('');
   const [mediaType, setMediaType] = useState<MediaTypeOption>('none');
@@ -70,6 +81,10 @@ export default function SignalComposer({ isOpen, onClose, onSubmitted }: SignalC
 
   const handleVideoFile = async (file: File | null) => {
     if (!file) return;
+    if (!canPostSignals || postingEligibilityLoading) {
+      setError(ENTER_CONTEST_TO_SUBMIT_SIGNAL);
+      return;
+    }
     setError(null);
     if (!ALLOWED_VIDEO_TYPES.includes(file.type)) {
       setError('Use MP4 or WebM only.');
@@ -86,9 +101,7 @@ export default function SignalComposer({ isOpen, onClose, onSubmitted }: SignalC
       const ctxJson = await ctx.json().catch(() => ({}));
       if (!ctx.ok) {
         throw new Error(
-          ctxJson.error === 'UNAUTHORIZED'
-            ? 'Admin session expired — go to /admin and sign in again.'
-            : 'Could not start upload.'
+          ctxJson.error === 'UNAUTHORIZED' ? ENTER_CONTEST_TO_SUBMIT_SIGNAL : 'Could not start upload.'
         );
       }
       const userId = ctxJson.userId as string;
@@ -117,6 +130,10 @@ export default function SignalComposer({ isOpen, onClose, onSubmitted }: SignalC
 
   const handleDocumentFile = async (file: File | null) => {
     if (!file) return;
+    if (!canPostSignals || postingEligibilityLoading) {
+      setError(ENTER_CONTEST_TO_SUBMIT_SIGNAL);
+      return;
+    }
     setError(null);
     const allowedMime = new Set<string>(ALLOWED_DOCUMENT_TYPES);
     if (!allowedMime.has(file.type)) {
@@ -139,9 +156,7 @@ export default function SignalComposer({ isOpen, onClose, onSubmitted }: SignalC
       const ctxJson = await ctx.json().catch(() => ({}));
       if (!ctx.ok) {
         throw new Error(
-          ctxJson.error === 'UNAUTHORIZED'
-            ? 'Admin session expired — go to /admin and sign in again.'
-            : 'Could not start upload.'
+          ctxJson.error === 'UNAUTHORIZED' ? ENTER_CONTEST_TO_SUBMIT_SIGNAL : 'Could not start upload.'
         );
       }
       const userId = ctxJson.userId as string;
@@ -171,6 +186,7 @@ export default function SignalComposer({ isOpen, onClose, onSubmitted }: SignalC
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canPostSignals || postingEligibilityLoading) return;
     setError(null);
 
     // Validate media when selected
@@ -221,6 +237,7 @@ export default function SignalComposer({ isOpen, onClose, onSubmitted }: SignalC
 
       const response = await fetch('/api/signal/create', {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -230,7 +247,13 @@ export default function SignalComposer({ isOpen, onClose, onSubmitted }: SignalC
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to create signal');
+        const msg =
+          response.status === 401 || data?.error === 'UNAUTHORIZED'
+            ? ENTER_CONTEST_TO_SUBMIT_SIGNAL
+            : typeof data?.error === 'string'
+              ? data.error
+              : 'Failed to create signal';
+        throw new Error(msg);
       }
 
       if (data.ok) {
@@ -321,16 +344,51 @@ export default function SignalComposer({ isOpen, onClose, onSubmitted }: SignalC
           >
             Transmit a Signal
           </h2>
-          <p
-            style={{
-              fontSize: '0.9em',
-              color: '#888',
-              marginBottom: '1.5rem',
-            }}
-          >
-            Describe your experience — don't quote the book.
-          </p>
+          {!postingEligibilityLoading && canPostSignals && (
+            <p
+              style={{
+                fontSize: '0.9em',
+                color: '#888',
+                marginBottom: '1.5rem',
+              }}
+            >
+              Describe your experience — don't quote the book.
+            </p>
+          )}
 
+          {postingEligibilityLoading && (
+            <p style={{ color: '#888', marginBottom: '1.5rem' }}>Loading…</p>
+          )}
+
+          {!postingEligibilityLoading && !canPostSignals && (
+            <div style={{ marginBottom: '1.5rem' }}>
+              <p style={{ color: '#e0e0e0', lineHeight: 1.6, marginBottom: '1rem' }}>{ENTER_CONTEST_TO_SUBMIT_SIGNAL}</p>
+              <Link href="/contest" style={{ color: '#00ffe0', fontWeight: 600, textDecoration: 'none' }}>
+                Go to Contest Hub →
+              </Link>
+              <div style={{ marginTop: '1.25rem' }}>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    backgroundColor: '#1a1f3a',
+                    border: '1px solid #2a3a4a',
+                    borderRadius: '4px',
+                    color: '#e0e0e0',
+                    cursor: 'pointer',
+                    fontFamily: '"Courier New", monospace',
+                    fontSize: '0.9em',
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!postingEligibilityLoading && canPostSignals && (
+            <>
           {submitState === 'approved' && (
             <div
               style={{
@@ -802,6 +860,8 @@ export default function SignalComposer({ isOpen, onClose, onSubmitted }: SignalC
               </button>
             </div>
           </form>
+            </>
+          )}
         </div>
       </div>
     </>

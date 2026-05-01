@@ -8,6 +8,10 @@ import ReviewComposer from './ReviewComposer';
 type SignalRoomHeaderProps = {
   /** When true (gate view), hide composer and reviews - user has no access yet */
   gated?: boolean;
+  /** Contest / DB user identity — required to submit signals, reviews, or uploads (not admin auth) */
+  canPostSignals?: boolean;
+  /** True while /api/signals/me is loading */
+  postingEligibilityLoading?: boolean;
   /** Called after a review is submitted (for feed refresh) */
   onReviewSubmitted?: () => void;
   /** Called after a signal is created (held or approved) so “my submissions” can refresh */
@@ -16,6 +20,8 @@ type SignalRoomHeaderProps = {
 
 export default function SignalRoomHeader({
   gated = false,
+  canPostSignals = true,
+  postingEligibilityLoading = false,
   onReviewSubmitted,
   onSignalSubmitted,
 }: SignalRoomHeaderProps) {
@@ -112,19 +118,27 @@ export default function SignalRoomHeader({
         </div>
       </header>
 
-      <SignalComposer
-        isOpen={isComposerOpen}
-        onClose={() => setIsComposerOpen(false)}
-        onSubmitted={onSignalSubmitted}
-      />
-      <ReviewComposer
-        isOpen={isReviewComposerOpen}
-        onClose={() => setIsReviewComposerOpen(false)}
-        onSubmitted={() => {
-          onReviewSubmitted?.();
-          setIsReviewComposerOpen(false);
-        }}
-      />
+      {!gated && (
+        <>
+          <SignalComposer
+            isOpen={isComposerOpen}
+            onClose={() => setIsComposerOpen(false)}
+            onSubmitted={onSignalSubmitted}
+            canPostSignals={canPostSignals}
+            postingEligibilityLoading={postingEligibilityLoading}
+          />
+          <ReviewComposer
+            isOpen={isReviewComposerOpen}
+            onClose={() => setIsReviewComposerOpen(false)}
+            onSubmitted={() => {
+              onReviewSubmitted?.();
+              setIsReviewComposerOpen(false);
+            }}
+            canPostSignals={canPostSignals}
+            postingEligibilityLoading={postingEligibilityLoading}
+          />
+        </>
+      )}
     </>
   );
 }

@@ -36,6 +36,7 @@ export default function ReplyModal({ isOpen, signalId, onClose }: ReplyModalProp
     try {
       const response = await fetch('/api/signal/reply', {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },

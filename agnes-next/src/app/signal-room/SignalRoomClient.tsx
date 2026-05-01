@@ -11,6 +11,8 @@ import RibbonTicker from './RibbonTicker';
 import { parseFeedTags } from '@/lib/parseFeedTags';
 import { shouldLogSignalRoomLoaderClient } from '@/lib/signalRoomLoaderLog';
 import { filterPublicSignalRoomFeed } from '@/lib/signalRoomFeedPolicy';
+import { ENTER_CONTEST_TO_SUBMIT_SIGNAL } from '@/lib/signalRoomContestGate';
+import type { MappedMySignal } from '@/lib/mapSignalsMeResponse';
 
 function formatRelativeTime(date: Date | string): string {
   const now = new Date();
@@ -175,6 +177,12 @@ type FeedItem =
 type SignalRoomClientProps = {
   signals: SignalData[];
   feedRefreshTrigger?: number;
+  /** From /api/signals/me — empty when visitor has no contest user identity */
+  mySignals: MappedMySignal[];
+  canPostSignals: boolean;
+  postingIdentityLoading: boolean;
+  /** Refetch /api/signals/me in parent after local delete */
+  onMySignalsInvalidate?: () => void;
 };
 
 function visibleAtMsSignal(s: SignalData): number {
@@ -190,6 +198,10 @@ function visibleAtMsReview(r: ReviewData): number {
 export default function SignalRoomClient({
   signals: initialSignals,
   feedRefreshTrigger = 0,
+  mySignals,
+  canPostSignals,
+  postingIdentityLoading,
+  onMySignalsInvalidate,
 }: SignalRoomClientProps) {
   const router = useRouter();
   const [signals, setSignals] = useState<SignalData[]>(() => initialSignals);
@@ -230,58 +242,34 @@ export default function SignalRoomClient({
       .catch(() => {});
   }, [feedRefreshTrigger]);
 
-  const [mySignals, setMySignals] = useState<SignalData[]>([]);
+  const [participationNotice, setParticipationNotice] = useState<string | null>(null);
+
   useEffect(() => {
-    let cancelled = false;
-    fetch('/api/signals/me', { credentials: 'include', cache: 'no-store' })
-      .then((r) => r.json())
-      .then((d: Record<string, unknown>) => {
-        if (cancelled || !d.ok || !Array.isArray(d.signals)) return;
-        const mapped: SignalData[] = (d.signals as Record<string, unknown>[]).map((s) => ({
-          id: String(s.id),
-          text: String(s.text ?? ''),
-          title: (s.title as string) ?? null,
-          type: (s.type as string) ?? null,
-          content: (s.content as string) ?? null,
-          mediaType: (s.mediaType as string) ?? null,
-          mediaUrl: (s.mediaUrl as string) ?? null,
-          locationTag: (s.locationTag as string) ?? null,
-          tags: s.tags,
-          discussionEnabled: s.discussionEnabled !== false,
-          isSystem: !!(s.isSystem as boolean),
-          createdAt: s.createdAt as string,
-          userEmail: (s.userEmail as string) ?? null,
-          userFirstName: (s.userFirstName as string) ?? null,
-          isAuthor: true,
-          replyCount: 0,
-          acknowledgeCount: 0,
-          acknowledged: false,
-          replies: [],
-          approvedAt: (s.approvedAt as string) ?? null,
-          moderationStatus: (s.moderationStatus as string) ?? null,
-          heldReason: (s.heldReason as string) ?? null,
-          heldAt: (s.heldAt as string) ?? null,
-          rejectedAt: (s.rejectedAt as string) ?? null,
-        }));
-        setMySignals(mapped);
-        if (shouldLogSignalRoomLoaderClient()) {
-          console.log('[SignalRoomLoader:client]', {
-            route: '/signal-room',
-            sourceUsed: 'signals_me',
-            personalizedFeedCount: mapped.length,
-          });
-        }
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [feedRefreshTrigger]);
+    if (shouldLogSignalRoomLoaderClient()) {
+      console.log('[SignalRoomLoader:client]', {
+        route: '/signal-room',
+        sourceUsed: 'signals_me',
+        personalizedFeedCount: mySignals.length,
+      });
+    }
+  }, [feedRefreshTrigger, mySignals]);
 
   const pendingMySignals = useMemo(
-    () => mySignals.filter((s) => s.moderationStatus === 'HELD' || s.moderationStatus === 'REJECTED'),
+    () =>
+      mySignals.filter(
+        (s) => s.moderationStatus === 'HELD' || s.moderationStatus === 'REJECTED'
+      ) as SignalData[],
     [mySignals]
   );
+
+  const requestReplyToSignal = (signalId: string) => {
+    if (!canPostSignals) {
+      setParticipationNotice(ENTER_CONTEST_TO_SUBMIT_SIGNAL);
+      window.setTimeout(() => setParticipationNotice(null), 9000);
+      return;
+    }
+    setReplyModalSignalId(signalId);
+  };
 
   /** Unified chronological feed: newest public-visible content first (approvedAt ?? createdAt). */
   const feedItems: FeedItem[] = useMemo(() => {
@@ -479,7 +467,7 @@ export default function SignalRoomClient({
       });
       if (res.ok) {
         setSignals((prev) => prev.filter((s) => s.id !== signalId));
-        setMySignals((prev) => prev.filter((s) => s.id !== signalId));
+        onMySignalsInvalidate?.();
         router.refresh();
       } else {
         const data = await res.json();
@@ -740,7 +728,7 @@ export default function SignalRoomClient({
             </div>
             {signal.discussionEnabled !== false && (
               <div
-                onClick={() => setReplyModalSignalId(signal.id)}
+                onClick={() => requestReplyToSignal(signal.id)}
                 style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#888', fontSize: '0.85em', cursor: 'pointer' }}
               >
                 ↻ Theory {signal.replyCount > 0 && `(${signal.replyCount})`}
@@ -934,6 +922,46 @@ export default function SignalRoomClient({
           gap: '1rem',
         }}
       >
+        {participationNotice && (
+          <section
+            role="status"
+            onClick={() => setParticipationNotice(null)}
+            style={{
+              backgroundColor: '#1e1a12',
+              border: '1px solid #5c4a1a',
+              borderRadius: 8,
+              padding: '0.85rem 1.1rem',
+              marginBottom: '1rem',
+              color: '#fcd34d',
+              fontSize: '0.92rem',
+              lineHeight: 1.45,
+              cursor: 'pointer',
+            }}
+          >
+            {participationNotice}{' '}
+            <span style={{ color: '#888', fontSize: '0.85em' }}>(tap to dismiss)</span>
+          </section>
+        )}
+        {!postingIdentityLoading && !canPostSignals && (
+          <section
+            aria-live="polite"
+            style={{
+              backgroundColor: '#121826',
+              border: '1px solid #1e3a5f',
+              borderRadius: 8,
+              padding: '1rem 1.25rem',
+              marginBottom: '1rem',
+              color: '#cbd5e1',
+              fontSize: '0.92rem',
+              lineHeight: 1.5,
+            }}
+          >
+            <p style={{ margin: '0 0 0.65rem 0' }}>{ENTER_CONTEST_TO_SUBMIT_SIGNAL}</p>
+            <Link href="/contest" style={{ color: '#00ffe0', fontWeight: 600, textDecoration: 'none' }}>
+              Go to Contest Hub →
+            </Link>
+          </section>
+        )}
         {pendingMySignals.length > 0 && (
           <section
             style={{

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import ReviewComposer from './ReviewComposer';
+import { useSignalRoomPostingIdentity } from './useSignalRoomPostingIdentity';
 
 type ReviewData = {
   id: string;
@@ -53,6 +54,9 @@ function getDisplayName(review: { userFirstName: string | null; userEmail: strin
 }
 
 export default function ReviewsPanel({ isOpen, onClose }: ReviewsPanelProps) {
+  const [meRefresh, setMeRefresh] = useState(0);
+  const { loading: postingEligibilityLoading, canPost: canPostSignals } =
+    useSignalRoomPostingIdentity(meRefresh);
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [reviews, setReviews] = useState<ReviewData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -104,7 +108,8 @@ export default function ReviewsPanel({ isOpen, onClose }: ReviewsPanelProps) {
   };
 
   const handleReviewSubmitted = () => {
-    refreshReviews(); // Refresh data after review submission
+    setMeRefresh((k) => k + 1);
+    void refreshReviews();
   };
 
   if (!isOpen) return null;
@@ -387,6 +392,8 @@ export default function ReviewsPanel({ isOpen, onClose }: ReviewsPanelProps) {
         isOpen={isComposerOpen}
         onClose={() => setIsComposerOpen(false)}
         onSubmitted={handleReviewSubmitted}
+        canPostSignals={canPostSignals}
+        postingEligibilityLoading={postingEligibilityLoading}
       />
     </>
   );

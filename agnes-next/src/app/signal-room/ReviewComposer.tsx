@@ -1,17 +1,27 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { ENTER_CONTEST_TO_SUBMIT_SIGNAL } from '@/lib/signalRoomContestGate';
 
 type ReviewComposerProps = {
   isOpen: boolean;
   onClose: () => void;
   onSubmitted: () => void;
+  canPostSignals: boolean;
+  postingEligibilityLoading?: boolean;
 };
 
 type SubmitState = 'idle' | 'submitting' | 'approved' | 'held' | 'error';
 
-export default function ReviewComposer({ isOpen, onClose, onSubmitted }: ReviewComposerProps) {
+export default function ReviewComposer({
+  isOpen,
+  onClose,
+  onSubmitted,
+  canPostSignals,
+  postingEligibilityLoading = false,
+}: ReviewComposerProps) {
   const router = useRouter();
   const [rating, setRating] = useState<number>(0);
   const [text, setText] = useState('');
@@ -36,6 +46,7 @@ export default function ReviewComposer({ isOpen, onClose, onSubmitted }: ReviewC
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canPostSignals || postingEligibilityLoading) return;
     setError(null);
 
     if (rating === 0) {
@@ -48,6 +59,7 @@ export default function ReviewComposer({ isOpen, onClose, onSubmitted }: ReviewC
     try {
       const res = await fetch('/api/reviews/create', {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -138,16 +150,54 @@ export default function ReviewComposer({ isOpen, onClose, onSubmitted }: ReviewC
           >
             Write a Review
           </h2>
-          <p
-            style={{
-              fontSize: '0.9em',
-              color: '#888',
-              marginBottom: '1.5rem',
-            }}
-          >
-            Share your experience — don't quote the book.
-          </p>
+          {!postingEligibilityLoading && canPostSignals && (
+            <p
+              style={{
+                fontSize: '0.9em',
+                color: '#888',
+                marginBottom: '1.5rem',
+              }}
+            >
+              Share your experience — don't quote the book.
+            </p>
+          )}
 
+          {postingEligibilityLoading && (
+            <p style={{ color: '#888', marginBottom: '1.5rem' }}>Loading…</p>
+          )}
+
+          {!postingEligibilityLoading && !canPostSignals && (
+            <div style={{ marginBottom: '1.5rem' }}>
+              <p style={{ color: '#e0e0e0', lineHeight: 1.6, marginBottom: '1rem' }}>{ENTER_CONTEST_TO_SUBMIT_SIGNAL}</p>
+              <Link href="/contest" style={{ color: '#00ffe0', fontWeight: 600, textDecoration: 'none' }}>
+                Go to Contest Hub →
+              </Link>
+              <div style={{ marginTop: '1.25rem' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetForm();
+                    onClose();
+                  }}
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    backgroundColor: '#1a1f3a',
+                    border: '1px solid #2a3a4a',
+                    borderRadius: '4px',
+                    color: '#e0e0e0',
+                    cursor: 'pointer',
+                    fontFamily: '"Courier New", monospace',
+                    fontSize: '0.9em',
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!postingEligibilityLoading && canPostSignals && (
+            <>
           {submitState === 'held' && (
             <div
               style={{
@@ -348,6 +398,8 @@ export default function ReviewComposer({ isOpen, onClose, onSubmitted }: ReviewC
               </button>
             </div>
           </form>
+            </>
+          )}
         </div>
       </div>
     </>

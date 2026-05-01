@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import SignalRoomHeader from './SignalRoomHeader';
+import { useSignalRoomPostingIdentity } from './useSignalRoomPostingIdentity';
 import SignalMedia from './SignalMedia';
 import EditSignalModal from './EditSignalModal';
 
@@ -70,6 +71,8 @@ type SignalData = {
 
 export default function SignalDetailClient({ signal }: { signal: SignalData }) {
   const router = useRouter();
+  const { loading: postingEligibilityLoading, canPost: canPostSignals } =
+    useSignalRoomPostingIdentity(0);
   const [theoryText, setTheoryText] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -168,7 +171,10 @@ export default function SignalDetailClient({ signal }: { signal: SignalData }) {
 
   return (
     <>
-      <SignalRoomHeader />
+      <SignalRoomHeader
+        canPostSignals={canPostSignals}
+        postingEligibilityLoading={postingEligibilityLoading}
+      />
       <main
         style={{
           flex: 1,
