@@ -10,6 +10,7 @@ import SignalMedia from './SignalMedia';
 import RibbonTicker from './RibbonTicker';
 import { parseFeedTags } from '@/lib/parseFeedTags';
 import { shouldLogSignalRoomLoaderClient } from '@/lib/signalRoomLoaderLog';
+import { filterPublicSignalRoomFeed } from '@/lib/signalRoomFeedPolicy';
 
 function formatRelativeTime(date: Date | string): string {
   const now = new Date();
@@ -342,7 +343,7 @@ export default function SignalRoomClient({
                     acknowledged: s.acknowledged ?? false,
                     replies: (s.replies as ReplyData[]) ?? [],
                   })) as SignalData[];
-                setSignals((prev) => [...prev, ...toAdd]);
+                setSignals((prev) => filterPublicSignalRoomFeed([...prev, ...toAdd]));
                 setNextCursor(d.nextCursor ?? null);
                 setHasMore(!!d.hasMore);
               } else {

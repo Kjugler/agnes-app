@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { normalizeEmail } from '@/lib/email';
 import { hasSignalRoomAccess, getSignalRoomAccessMode, SIGNAL_ROOM_ACCESS_COOKIE } from '@/lib/signal-room-access';
 import SignalDetailClient from '../SignalDetailClient';
+import { isBetaDailyBulletinHiddenFromPublic } from '@/lib/signalRoomFeedPolicy';
 import SignalRoomHeader from '../SignalRoomHeader';
 import SignalRoomGateView from '../SignalRoomGateView';
 async function fetchSignalFromDeepquill(id: string, cookieHeader: string) {
@@ -59,6 +60,9 @@ export default async function SignalDetailPage({ params }: { params: Promise<{ i
   if (!data?.ok || !data?.signal) notFound();
 
   const s = data.signal;
+  if (mode === 'public' && isBetaDailyBulletinHiddenFromPublic(s)) {
+    notFound();
+  }
   const signalData = {
     id: s.id,
     text: s.text,

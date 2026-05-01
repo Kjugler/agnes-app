@@ -6,6 +6,7 @@ import SignalRoomContainer from './SignalRoomContainer';
 import SignalRoomHeader from './SignalRoomHeader';
 import SignalRoomGateView from './SignalRoomGateView';
 import { shouldLogSignalRoomLoaderServer } from '@/lib/signalRoomLoaderLog';
+import { filterPublicSignalRoomFeed } from '@/lib/signalRoomFeedPolicy';
 
 /** Published feed must not depend on contest cookies — force dynamic, no static stale snapshot */
 export const dynamic = 'force-dynamic';
@@ -127,9 +128,11 @@ export default async function SignalRoomPage() {
   }
 
   const { ok, signals: rawSignals } = await fetchPublicSignalsFromDeepquill();
-  /** Include daily_bulletin rows so “current activity” (e.g. May headlines) is visible — do not strip in public mode */
+  /** Quiet Reveal: hide beta bulletins before 2026-04-30; at most one post-cutoff daily bulletin */
+  const curated =
+    ok && Array.isArray(rawSignals) ? filterPublicSignalRoomFeed(rawSignals) : [];
   const signalsData = ok && Array.isArray(rawSignals)
-    ? rawSignals.map((s) => ({
+    ? curated.map((s) => ({
         id: s.id,
         text: s.text,
         title: s.title ?? null,
