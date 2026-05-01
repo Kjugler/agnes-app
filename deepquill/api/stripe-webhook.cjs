@@ -227,6 +227,13 @@ router.post(
               customerEmail = session.customer.email;
               emailSource = 'customer.email';
             }
+
+            // Wallet / rare layouts: email may appear on billing_details only; still require it before fulfillment email.
+            const billingEarly = session.billing_details || null;
+            if (!customerEmail && billingEarly?.email) {
+              customerEmail = billingEarly.email;
+              emailSource = 'billing_details.email';
+            }
             
             console.log('[WEBHOOK] session.id=' + session.id + ' email=' + (customerEmail || 'MISSING') + ' amount_total=' + (session.amount_total || 0));
             console.log('[WEBHOOK] Buyer email source: ' + emailSource);
@@ -2057,6 +2064,12 @@ router.post(
                 purchaseId: finalPurchase.id,
               });
             }
+          } else {
+            console.log('[WEBHOOK] checkout.session.completed — skipping fulfillment (payment not completed)', {
+              sessionId: session.id,
+              paymentStatus,
+              note: 'Purchase + confirmation email only run when payment_status is paid',
+            });
           }
           
           } catch (checkoutErr) {

@@ -1,8 +1,12 @@
 'use client';
 
 import { useSearchParams, useRouter } from 'next/navigation';
-import { useMemo, useEffect } from 'react';
-import { PRODUCTS } from '@/lib/products';
+import { useMemo, useEffect, useState } from 'react';
+import { PRODUCTS, type ProductId } from '@/lib/products';
+
+function isDigitalDownloadProduct(id: ProductId) {
+  return id === 'ebook' || id === 'audio_preorder';
+}
 
 export default function CatalogClient() {
   const searchParams = useSearchParams();
@@ -35,6 +39,21 @@ export default function CatalogClient() {
     params.set('product', product);
     router.push(`/checkout?${params.toString()}`);
   };
+
+  const [walletHintEligible, setWalletHintEligible] = useState(false);
+
+  useEffect(() => {
+    try {
+      const ApplePaySession = (
+        window as Window & { ApplePaySession?: { canMakePayments?: () => boolean } }
+      ).ApplePaySession;
+      setWalletHintEligible(
+        typeof ApplePaySession?.canMakePayments === 'function' && ApplePaySession.canMakePayments()
+      );
+    } catch {
+      setWalletHintEligible(false);
+    }
+  }, []);
 
   return (
     <main style={{
@@ -92,6 +111,46 @@ export default function CatalogClient() {
                 {product.displayPrice}
               </div>
 
+              {isDigitalDownloadProduct(product.id) && (
+                <div style={{ marginBottom: '16px', textAlign: 'left' }}>
+                  <p
+                    style={{
+                      margin: '0 0 8px 0',
+                      fontSize: '14px',
+                      lineHeight: 1.45,
+                      color: 'rgba(245, 245, 245, 0.58)',
+                      fontWeight: 400,
+                    }}
+                  >
+                    You&apos;ll receive your download instantly after checkout is completed.
+                  </p>
+                  {walletHintEligible ? (
+                    <p
+                      style={{
+                        margin: 0,
+                        fontSize: '12px',
+                        lineHeight: 1.45,
+                        color: 'rgba(245, 245, 245, 0.48)',
+                      }}
+                    >
+                      Tap Apple Pay and complete confirmation to receive your download.
+                    </p>
+                  ) : (
+                    <p
+                      style={{
+                        margin: 0,
+                        fontSize: '12px',
+                        lineHeight: 1.45,
+                        color: 'rgba(245, 245, 245, 0.48)',
+                      }}
+                    >
+                      On Stripe checkout, finish Link or wallet prompts completely—your download
+                      arrives only after payment succeeds.
+                    </p>
+                  )}
+                </div>
+              )}
+
               <button
                 onClick={() => handleBuyClick(product.id)}
                 style={{
@@ -117,6 +176,22 @@ export default function CatalogClient() {
             </div>
           ))}
         </div>
+
+        <p
+          style={{
+            marginTop: '40px',
+            maxWidth: '520px',
+            marginLeft: 'auto',
+            marginRight: 'auto',
+            textAlign: 'center',
+            fontSize: '13px',
+            lineHeight: 1.5,
+            color: 'rgba(245, 245, 245, 0.45)',
+          }}
+        >
+          If you didn&apos;t receive an email, your purchase likely didn&apos;t complete. You can
+          safely try again.
+        </p>
       </div>
     </main>
   );

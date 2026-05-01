@@ -12,5 +12,9 @@ export default function SuccessClient() {
     router.replace(`/contest/thank-you${sid ? `?session_id=${encodeURIComponent(sid)}` : ''}`);
   }, [router, qp]);
 
-  return <p style={{padding:16}}>Finishing up your order…</p>;
+  return (
+    <p style={{ padding: 16, color: 'rgba(245,245,245,0.85)', textAlign: 'center' }}>
+      Taking you to your confirmation…
+    </p>
+  );
 }

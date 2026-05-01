@@ -784,12 +784,21 @@ module.exports = async function handler(req, res) {
       success_url,
       cancel_url,
       metadata,
-      locale: 'en',            // quiet the "./en" warning in the browser
-      shipping_address_collection: {
-        allowed_countries: ['US'], // ok to expand later
-      },
-      phone_number_collection: { enabled: true },
+      locale: 'en', // quiet the "./en" warning in the browser
     };
+
+    // Physical goods: collect shipping (+ phone for carrier / contact).
+    // Digital (ebook, audio_preorder): email + payment only — no shipping or phone (reduces abandonment).
+    if (product === 'paperback') {
+      sessionParams.shipping_address_collection = {
+        allowed_countries: ['US'], // ok to expand later
+      };
+      sessionParams.phone_number_collection = { enabled: true };
+    } else {
+      sessionParams.phone_number_collection = { enabled: false };
+      // Let Stripe collect billing details only when needed (e.g. AVS); avoids full address step when possible.
+      sessionParams.billing_address_collection = 'auto';
+    }
     
     // Prefill customer email if available (improves UX for logged-in users)
     if (customerEmail && typeof customerEmail === 'string' && customerEmail.includes('@')) {

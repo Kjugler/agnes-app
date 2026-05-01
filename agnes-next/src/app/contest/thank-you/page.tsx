@@ -108,48 +108,59 @@ export default async function ContestThankYou({
           style={{
             fontSize: '32px',
             fontWeight: '700',
-            margin: '0 0 4px 0',
+            margin: '0 0 12px 0',
             textAlign: 'center',
             color: '#f5f5f5',
           }}
         >
-          Purchase Confirmed
+          Your purchase is complete.
         </h1>
 
-        {/* Sub-title - distinct line */}
         <p
           style={{
             fontSize: '18px',
             fontWeight: '500',
+            margin: '0 0 8px 0',
+            textAlign: 'center',
+            color: 'rgba(245, 245, 245, 0.92)',
+          }}
+        >
+          Check your email for your download link.
+        </p>
+
+        <p
+          style={{
+            fontSize: '14px',
+            margin: '0 0 16px 0',
+            textAlign: 'center',
+            color: 'rgba(245, 245, 245, 0.5)',
+            lineHeight: 1.45,
+          }}
+        >
+          Didn&apos;t receive an email? Check spam or try again safely.
+        </p>
+
+        {/* Contest context */}
+        <p
+          style={{
+            fontSize: '16px',
+            fontWeight: '500',
             margin: '0 0 4px 0',
             textAlign: 'center',
-            color: 'rgba(245, 245, 245, 0.9)',
+            color: 'rgba(245, 245, 245, 0.85)',
           }}
         >
           Your entry is live.
         </p>
 
-        {/* Flavor line - cinematic accent */}
         <p
           className="text-sm md:text-base text-neutral-400 tracking-wide mt-1"
           style={{
-            margin: '0 0 16px 0',
+            margin: '0 0 24px 0',
             textAlign: 'center',
           }}
         >
           Welcome deeper into The Agnes Protocol.
-        </p>
-
-        {/* Body */}
-        <p
-          style={{
-            fontSize: '16px',
-            margin: '0 0 32px 0',
-            textAlign: 'center',
-            color: 'rgba(245, 245, 245, 0.7)',
-          }}
-        >
-          Your order is being processed. A confirmation email is on the way.
         </p>
 
         {/* Client component for verification and product details */}
