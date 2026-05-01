@@ -5,7 +5,6 @@ import { hasSignalRoomAccess, getSignalRoomAccessMode, SIGNAL_ROOM_ACCESS_COOKIE
 import SignalRoomContainer from './SignalRoomContainer';
 import SignalRoomHeader from './SignalRoomHeader';
 import SignalRoomGateView from './SignalRoomGateView';
-import { isDailyBulletinTags } from '@/lib/parseFeedTags';
 import { shouldLogSignalRoomLoaderServer } from '@/lib/signalRoomLoaderLog';
 
 /** Published feed must not depend on contest cookies — force dynamic, no static stale snapshot */
@@ -128,9 +127,9 @@ export default async function SignalRoomPage() {
   }
 
   const { ok, signals: rawSignals } = await fetchPublicSignalsFromDeepquill();
-  const publicSignalRoom = getSignalRoomAccessMode() === 'public';
+  /** Include daily_bulletin rows so “current activity” (e.g. May headlines) is visible — do not strip in public mode */
   const signalsData = ok && Array.isArray(rawSignals)
-    ? (publicSignalRoom ? rawSignals.filter((s) => !isDailyBulletinTags(s.tags)) : rawSignals).map((s) => ({
+    ? rawSignals.map((s) => ({
         id: s.id,
         text: s.text,
         title: s.title ?? null,

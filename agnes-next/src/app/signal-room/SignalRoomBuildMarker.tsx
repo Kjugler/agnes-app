@@ -1,11 +1,12 @@
 'use client';
 
 /**
- * Proves which Next.js bundle is live. Enable with NEXT_PUBLIC_SIGNAL_ROOM_BUILD_MARKER=1 on Vercel.
+ * Proves which Next.js bundle is live.
+ * Shown by default; set NEXT_PUBLIC_SIGNAL_ROOM_BUILD_MARKER=0 on Vercel to hide after verification.
  * NEXT_PUBLIC_BUILD_STAMP / NEXT_PUBLIC_GIT_SHA come from next.config.ts at build time.
  */
 export default function SignalRoomBuildMarker() {
-  if (process.env.NEXT_PUBLIC_SIGNAL_ROOM_BUILD_MARKER !== '1') {
+  if (process.env.NEXT_PUBLIC_SIGNAL_ROOM_BUILD_MARKER === '0') {
     return null;
   }
   const stamp = process.env.NEXT_PUBLIC_BUILD_STAMP ?? '?';

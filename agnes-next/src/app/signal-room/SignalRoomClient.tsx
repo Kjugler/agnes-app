@@ -176,10 +176,6 @@ type SignalRoomClientProps = {
   feedRefreshTrigger?: number;
 };
 
-function excludeDailyBulletinSignals(signals: SignalData[]): SignalData[] {
-  return signals.filter((s) => parseFeedTags(s.tags)?.feedStyle !== 'daily_bulletin');
-}
-
 function visibleAtMsSignal(s: SignalData): number {
   const d = s.approvedAt ?? s.createdAt;
   return new Date(d).getTime();
@@ -195,10 +191,10 @@ export default function SignalRoomClient({
   feedRefreshTrigger = 0,
 }: SignalRoomClientProps) {
   const router = useRouter();
-  const [signals, setSignals] = useState<SignalData[]>(() => excludeDailyBulletinSignals(initialSignals));
+  const [signals, setSignals] = useState<SignalData[]>(() => initialSignals);
 
   useEffect(() => {
-    setSignals(excludeDailyBulletinSignals(initialSignals));
+    setSignals(initialSignals);
   }, [initialSignals]);
 
   useEffect(() => {
@@ -206,7 +202,7 @@ export default function SignalRoomClient({
       console.log('[SignalRoomLoader:client]', {
         route: '/signal-room',
         sourceUsed: 'ssr_initial_props',
-        publicFeedCount: excludeDailyBulletinSignals(initialSignals).length,
+        publicFeedCount: initialSignals.length,
       });
     }
   }, [initialSignals]);
@@ -346,8 +342,7 @@ export default function SignalRoomClient({
                     acknowledged: s.acknowledged ?? false,
                     replies: (s.replies as ReplyData[]) ?? [],
                   })) as SignalData[];
-                const filtered = excludeDailyBulletinSignals(toAdd);
-                setSignals((prev) => [...prev, ...filtered]);
+                setSignals((prev) => [...prev, ...toAdd]);
                 setNextCursor(d.nextCursor ?? null);
                 setHasMore(!!d.hasMore);
               } else {
