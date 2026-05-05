@@ -47,6 +47,7 @@ type RepRow = {
   overrideActive: boolean;
   referralLink: string;
   chapter9Link: string;
+  readyToSendMessage?: string;
 };
 
 type MonthlyRow = {
@@ -319,21 +320,11 @@ export default function AdminRepsPage() {
                     disabled={busy}
                     onClick={() =>
                       void (async () => {
-                        const msg = [
-                          'Something is opening — quietly.',
-                          '',
-                          'Not everything is being explained yet.',
-                          '',
-                          'Start here:',
-                          row.referralLink,
-                          '',
-                          'Or read this first:',
-                          row.chapter9Link,
-                          '',
-                          'Take your time.',
-                          '',
-                          '— Simon McQuade',
-                        ].join('\n');
+                        const msg = row.readyToSendMessage?.trim();
+                        if (!msg) {
+                          showToast('Message not loaded — refresh the rep list');
+                          return;
+                        }
                         await copyText('Message', msg);
                       })()
                     }

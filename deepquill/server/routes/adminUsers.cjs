@@ -40,7 +40,7 @@ function repResponsePayload(user) {
     chapter9Link,
     discountCode,
     overrideEligible: !!user.overrideEligible,
-    readyToSendMessage: buildReadyToSendMessage(referralLink, chapter9Link),
+    readyToSendMessage: buildReadyToSendMessage(referralCode),
   };
 }
 
@@ -79,6 +79,7 @@ router.get('/reps', async (_req, res) => {
         overrideActive: !!u.overrideEligible,
         referralLink,
         chapter9Link,
+        readyToSendMessage: referralCode ? buildReadyToSendMessage(referralCode) : '',
       };
     });
 

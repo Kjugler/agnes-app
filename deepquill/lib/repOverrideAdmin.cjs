@@ -27,22 +27,27 @@ function buildDiscountCode(referralCode) {
   return `${code}15`;
 }
 
-function buildReadyToSendMessage(referralLink, chapter9Link) {
-  return [
-    'Something is opening — quietly.',
-    '',
-    'Not everything is being explained yet.',
-    '',
-    'Start here:',
-    referralLink,
-    '',
-    'Or read this first:',
-    chapter9Link,
-    '',
-    'Take your time.',
-    '',
-    '— Simon McQuade',
-  ].join('\n');
+function buildReadyToSendMessage(referralCode) {
+  const code = normalizeReferralCode(referralCode);
+  if (!code) return '';
+  const referralLink = buildReferralLink(code);
+  const chapter9Link = buildChapter9Link(code);
+
+  return `Something is opening — quietly.
+
+Read this first:
+${chapter9Link}
+
+This part stood out to me. Curious what you think.
+
+If you want to go further, use this:
+${referralLink}
+
+(It'll take 15% off, and if you end up sharing it too, you'll get the same deal.)
+
+Take your time.
+
+— Simon McQuade`;
 }
 
 function normalizeRepRole(role) {
