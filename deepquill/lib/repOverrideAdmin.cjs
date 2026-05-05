@@ -16,24 +16,28 @@ function buildReferralLink(referralCode) {
   return `${base}/start?ref=${encodeURIComponent(code)}`;
 }
 
+function buildChapter9Link(referralCode) {
+  const base = getSiteUrl();
+  const code = normalizeReferralCode(referralCode);
+  return `${base}/read/chapter9?ref=${encodeURIComponent(code)}&source=chapter9`;
+}
+
 function buildDiscountCode(referralCode) {
   const code = normalizeReferralCode(referralCode);
   return `${code}15`;
 }
 
-function buildReadyToSendMessage(referralLink) {
+function buildReadyToSendMessage(referralLink, chapter9Link) {
   return [
     'Something is opening — quietly.',
     '',
     'Not everything is being explained yet.',
     '',
-    'A small group is getting early access before anything is officially announced.',
+    'Start here:',
+    referralLink,
     '',
-    'No rollout. No noise. Just… access.',
-    '',
-    'April 30 – May 1',
-    '',
-    `Start here:\n${referralLink}`,
+    'Or read this first:',
+    chapter9Link,
     '',
     'Take your time.',
     '',
@@ -60,6 +64,7 @@ module.exports = {
   REP_ROLES,
   getSiteUrl,
   buildReferralLink,
+  buildChapter9Link,
   buildDiscountCode,
   buildReadyToSendMessage,
   normalizeRepRole,

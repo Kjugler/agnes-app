@@ -3,6 +3,7 @@ const { prisma } = require('../prisma.cjs');
 const { normalizeEmail } = require('../../src/lib/normalize.cjs');
 const {
   buildReferralLink,
+  buildChapter9Link,
   buildDiscountCode,
   buildReadyToSendMessage,
   normalizeRepRole,
@@ -27,6 +28,7 @@ router.use((req, res, next) => {
 function repResponsePayload(user) {
   const referralCode = user.referralCode || user.code;
   const referralLink = buildReferralLink(referralCode);
+  const chapter9Link = buildChapter9Link(referralCode);
   const discountCode = buildDiscountCode(referralCode);
   return {
     userId: user.id,
@@ -35,9 +37,10 @@ function repResponsePayload(user) {
     role: user.overrideRepRole || null,
     referralCode,
     referralLink,
+    chapter9Link,
     discountCode,
     overrideEligible: !!user.overrideEligible,
-    readyToSendMessage: buildReadyToSendMessage(referralLink),
+    readyToSendMessage: buildReadyToSendMessage(referralLink, chapter9Link),
   };
 }
 
@@ -65,6 +68,7 @@ router.get('/reps', async (_req, res) => {
     const rows = users.map((u) => {
       const referralCode = u.referralCode || u.code || '';
       const referralLink = referralCode ? buildReferralLink(referralCode) : '';
+      const chapter9Link = referralCode ? buildChapter9Link(referralCode) : '';
       return {
         id: u.id,
         name: u.firstName || u.fname || '',
@@ -74,6 +78,7 @@ router.get('/reps', async (_req, res) => {
         discountCode: u.preferredDiscountCode || (referralCode ? buildDiscountCode(referralCode) : ''),
         overrideActive: !!u.overrideEligible,
         referralLink,
+        chapter9Link,
       };
     });
 

@@ -46,6 +46,7 @@ type RepRow = {
   discountCode: string;
   overrideActive: boolean;
   referralLink: string;
+  chapter9Link: string;
 };
 
 type MonthlyRow = {
@@ -265,6 +266,7 @@ export default function AdminRepsPage() {
             <th style={thtd}>Role</th>
             <th style={thtd}>Referral code</th>
             <th style={thtd}>Discount code</th>
+            <th style={thtd}>Chapter 9 link</th>
             <th style={thtd}>Override</th>
             <th style={thtd}>Actions</th>
           </tr>
@@ -272,7 +274,7 @@ export default function AdminRepsPage() {
         <tbody>
           {activeRows.length === 0 ? (
             <tr>
-              <td colSpan={7} style={{ ...thtd, color: '#64748b' }}>
+              <td colSpan={8} style={{ ...thtd, color: '#64748b' }}>
                 No active override reps (or list empty).
               </td>
             </tr>
@@ -288,6 +290,11 @@ export default function AdminRepsPage() {
                 <td style={thtd}>
                   <code>{row.discountCode}</code>
                 </td>
+                <td style={thtd}>
+                  <span style={{ display: 'block', maxWidth: 220, wordBreak: 'break-word' }}>
+                    {row.chapter9Link || '—'}
+                  </span>
+                </td>
                 <td style={thtd}>{row.overrideActive ? 'yes' : 'no'}</td>
                 <td style={thtd}>
                   <button
@@ -302,6 +309,14 @@ export default function AdminRepsPage() {
                     type="button"
                     style={btn}
                     disabled={busy}
+                    onClick={() => void copyText('Chapter 9 link', row.chapter9Link)}
+                  >
+                    Copy Chapter 9 link
+                  </button>
+                  <button
+                    type="button"
+                    style={btn}
+                    disabled={busy}
                     onClick={() =>
                       void (async () => {
                         const msg = [
@@ -309,13 +324,11 @@ export default function AdminRepsPage() {
                           '',
                           'Not everything is being explained yet.',
                           '',
-                          'A small group is getting early access before anything is officially announced.',
+                          'Start here:',
+                          row.referralLink,
                           '',
-                          'No rollout. No noise. Just… access.',
-                          '',
-                          'April 30 – May 1',
-                          '',
-                          `Start here:\n${row.referralLink}`,
+                          'Or read this first:',
+                          row.chapter9Link,
                           '',
                           'Take your time.',
                           '',
