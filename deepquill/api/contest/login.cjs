@@ -37,7 +37,8 @@ async function generateUniqueCode(excludeId) {
 }
 
 /**
- * Ensure User exists and has Associate Publisher code
+ * Ensure User exists and has Associate Publisher code.
+ * Same email as Stripe catalog checkout (webhook-created guest) returns that User — purchases and points stay merged.
  */
 async function ensureAssociateMinimal(email) {
   const normalizedEmail = normalizeEmail(email);

@@ -9,6 +9,7 @@ type LedgerRow = {
   buyerName: string;
   buyerEmail: string;
   productTypeLabel: string;
+  productType: string;
   amount: string;
   saleStatus: string;
   shippingStatusLabel: string;
@@ -18,6 +19,7 @@ type LedgerRow = {
   sessionId: string;
   orderId: string | null;
   purchaseId: string;
+  userId?: string;
 };
 
 type LedgerResponse = {
@@ -48,6 +50,7 @@ export default function SalesLedgerPage() {
   const [data, setData] = useState<LedgerResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [actionNote, setActionNote] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const s = start;
@@ -80,6 +83,41 @@ export default function SalesLedgerPage() {
       setLoading(false);
     }
   }, [start, end, product, saleStatus, shipping]);
+
+  const runResend = useCallback(
+    async (kind: 'confirmation' | 'ebook' | 'claim', purchaseId: string, userId: string) => {
+      setActionNote(null);
+      let path: string;
+      if (kind === 'confirmation') {
+        path = `/api/admin/purchases/${encodeURIComponent(purchaseId)}/resend-confirmation`;
+      } else if (kind === 'ebook') {
+        path = `/api/admin/purchases/${encodeURIComponent(purchaseId)}/resend-ebook-link`;
+      } else {
+        path = `/api/admin/users/${encodeURIComponent(userId)}/send-claim-profile-email`;
+      }
+      try {
+        const res = await fetch(path, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+        const json = (await res.json()) as { ok?: boolean; error?: string; deliveryStatus?: string; rejectReason?: string | null };
+        if (!res.ok || !json.ok) {
+          const detail =
+            json.rejectReason && json.deliveryStatus === 'rejected'
+              ? `Provider rejected: ${json.rejectReason}`
+              : json.error || json.deliveryStatus || `HTTP ${res.status}`;
+          setActionNote(`Failed (${kind}): ${detail}`);
+          return;
+        }
+        setActionNote(`Sent (${kind}) · ${json.deliveryStatus || 'ok'}`);
+      } catch (e) {
+        setActionNote(`Failed (${kind}): ${e instanceof Error ? e.message : 'request error'}`);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     if (!start || !end) return;
@@ -192,6 +230,11 @@ export default function SalesLedgerPage() {
           {err} (Set fulfillment token via Fulfillment auth if 401.)
         </p>
       )}
+      {actionNote && (
+        <p style={{ fontSize: 14, marginBottom: 12, color: actionNote.startsWith('Failed') ? '#b91c1c' : '#15803d' }}>
+          {actionNote}
+        </p>
+      )}
       {loading && <p style={{ fontSize: 14, color: '#64748b' }}>Loading…</p>}
 
       {data?.ok && data.meta && (
@@ -224,6 +267,7 @@ export default function SalesLedgerPage() {
                 <th style={th}>Points</th>
                 <th style={th}>Ship</th>
                 <th style={th}>Session / order id</th>
+                <th style={th}>Resend</th>
               </tr>
             </thead>
             <tbody>
@@ -247,6 +291,35 @@ export default function SalesLedgerPage() {
                       </>
                     ) : null}
                   </td>
+                  <td style={{ ...td, minWidth: 140 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <button
+                        type="button"
+                        onClick={() => runResend('confirmation', r.purchaseId, r.userId || '')}
+                        style={btn}
+                      >
+                        Confirmation
+                      </button>
+                      {r.productType === 'ebook' || r.productType === 'paperback' ? (
+                        <button
+                          type="button"
+                          onClick={() => runResend('ebook', r.purchaseId, r.userId || '')}
+                          style={btn}
+                        >
+                          eBook link
+                        </button>
+                      ) : null}
+                      {r.userId ? (
+                        <button
+                          type="button"
+                          onClick={() => runResend('claim', r.purchaseId, r.userId as string)}
+                          style={btn}
+                        >
+                          Claim email
+                        </button>
+                      ) : null}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -268,3 +341,12 @@ export default function SalesLedgerPage() {
 
 const th: CSSProperties = { padding: '8px 10px', fontWeight: 600, color: '#334155' };
 const td: CSSProperties = { padding: '8px 10px', verticalAlign: 'top' };
+const btn: CSSProperties = {
+  padding: '4px 8px',
+  fontSize: 12,
+  cursor: 'pointer',
+  textAlign: 'left' as const,
+  borderRadius: 6,
+  border: '1px solid #cbd5e1',
+  background: '#fff',
+};

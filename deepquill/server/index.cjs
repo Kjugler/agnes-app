@@ -242,6 +242,10 @@ const contestLoginHandler = require('../api/contest/login.cjs');
 app.post('/api/contest/login', contestLoginHandler);
 console.log('✅ Mounted /api/contest/login');
 
+const contestClaimVerifyHandler = require('../api/contest/claimVerify.cjs');
+app.get('/api/contest/claim-verify', contestClaimVerifyHandler);
+console.log('✅ Mounted GET /api/contest/claim-verify');
+
 const contestJoinHandler = require('../api/contest/join.cjs');
 app.post('/api/contest/join', contestJoinHandler);
 console.log('✅ Mounted /api/contest/join');
@@ -299,6 +303,10 @@ console.log('⚠️ TEMP Mounted POST /api/admin/ops/archive-beta-sales-once (re
 const adminSalesLedgerRouter = require('./routes/adminSalesLedger.cjs');
 app.use('/api/admin', adminSalesLedgerRouter);
 console.log('✅ Mounted GET /api/admin/sales-ledger');
+
+const adminPurchaseResendRouter = require('./routes/adminPurchaseResend.cjs');
+app.use('/api/admin/purchases', adminPurchaseResendRouter);
+console.log('✅ Mounted POST /api/admin/purchases/:purchaseId/resend-confirmation, resend-ebook-link');
 
 // Terminal discovery bonus (SPEC 3: +250 pts for hidden path discovery)
 const contestTerminalDiscoveryHandler = require('../api/contest/terminalDiscovery.cjs');

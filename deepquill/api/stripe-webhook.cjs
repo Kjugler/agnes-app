@@ -20,11 +20,14 @@ const envConfig = require('../src/config/env.cjs');
 const { awardPurchaseDailyPoints, awardReferralSponsorPoints } = require('../lib/points/awardPoints.cjs');
 const { recordLedgerEntry } = require('../lib/ledger/recordLedger.cjs');
 const { getPointsRollupForUser } = require('../lib/pointsRollup.cjs');
+const { normalizeEmailDeliveryOutcome } = require('../lib/email/mandrillDeliveryOutcome.cjs');
+const { signReaderClaimToken } = require('../src/lib/readerClaimToken.cjs');
 
 // Use single Prisma singleton with explicit datasourceUrl
 // fulfillmentPrisma: Order model (canonical fulfillment) - same DB as prisma when FULFILLMENT_DATABASE_URL unset
 const { prisma, fulfillmentPrisma, datasourceUrl, dbPath, ensureDatabaseUrl } = require('../server/prisma.cjs');
 const fs = require('fs');
+const { findOrCreateGuestUserForStripePurchase } = require('../lib/webhook/guestStripeBuyer.cjs');
 
 // CRITICAL: Ensure DATABASE_URL is ALWAYS set before any Prisma query
 // The adapter reads DATABASE_URL at query time, not just initialization
@@ -46,70 +49,6 @@ function getMailchimpClient() {
     return null;
   }
   return mailchimp(apiKey);
-}
-
-/**
- * Normalize Mailchimp Transactional API response to canonical delivery outcome
- * 
- * Maps Mailchimp response to:
- * - deliveryStatus: sent | queued | rejected | error
- * - providerMessageId: _id if present
- * - rejectReason: reject_reason if present
- * - queuedReason: queued_reason if present
- * 
- * @param {any} emailResult - Mailchimp API response (array or object)
- * @returns {object} Normalized delivery outcome
- */
-function normalizeEmailDeliveryOutcome(emailResult) {
-  // Default outcome
-  let outcome = {
-    deliveryStatus: 'error',
-    providerMessageId: 'unknown',
-    rejectReason: null,
-    queuedReason: null,
-    rawStatus: 'unknown',
-  };
-
-  try {
-    // Handle array response (most common for Mandrill)
-    let firstResult = null;
-    if (Array.isArray(emailResult) && emailResult.length > 0) {
-      firstResult = emailResult[0];
-    } else if (emailResult && typeof emailResult === 'object') {
-      firstResult = emailResult;
-    }
-
-    if (firstResult) {
-      const status = firstResult.status || 'unknown';
-      outcome.rawStatus = status;
-      outcome.providerMessageId = firstResult._id || firstResult.id || firstResult.messageId || 'unknown';
-      outcome.rejectReason = firstResult.reject_reason || null;
-      outcome.queuedReason = firstResult.queued_reason || null;
-
-      // Map status to canonical deliveryStatus
-      if (status === 'sent') {
-        outcome.deliveryStatus = 'sent';
-      } else if (status === 'queued') {
-        outcome.deliveryStatus = 'queued';
-      } else if (status === 'rejected') {
-        outcome.deliveryStatus = 'rejected';
-      } else if (status === 'invalid' || status === 'error' || status === 'bounced') {
-        outcome.deliveryStatus = 'error';
-      } else {
-        // Unknown status - treat as error
-        outcome.deliveryStatus = 'error';
-      }
-    } else {
-      // Unexpected response format
-      outcome.deliveryStatus = 'error';
-    }
-  } catch (err) {
-    // Error parsing response - treat as error
-    outcome.deliveryStatus = 'error';
-    outcome.rejectReason = `Parse error: ${err.message}`;
-  }
-
-  return outcome;
 }
 
 // IMPORTANT: Use express.raw() to preserve exact body bytes for signature verification
@@ -415,6 +354,10 @@ router.post(
             // NEVER use email for attribution if contest_user_id is available
             let buyerUser = null;
             let buyerAttributionMethod = 'none';
+            /** Log taxonomy: metadata_user | email_existing_user | email_new_guest_user | unresolved_missing_email */
+            let buyerResolutionPath = null;
+            /** When true, skip implicit CONTEST_JOIN ledger (guest bought via catalog; join only when they enter contest). */
+            let skipImplicitContestJoinAfterPurchase = false;
             
             // [PRINCIPAL] Log metadata availability
             console.log('[PRINCIPAL] Resolving buyer principal from webhook metadata', {
@@ -458,11 +401,15 @@ router.post(
                     });
                     if (buyerUser) {
                       buyerAttributionMethod = 'contest_user_id';
+                      buyerResolutionPath = 'metadata_user';
                       console.log('[PRINCIPAL] Buyer principal resolved by contest_user_id', {
                         userId: buyerUser.id,
                         email: buyerUser.email || 'MISSING',
                         code: buyerUser.code || buyerUser.referralCode || 'MISSING',
                       });
+                      console.log(
+                        `[BUYER_RESOLUTION] path=metadata_user sessionId=${session.id} userId=${buyerUser.id}`,
+                      );
                     } else {
                       console.warn('[PRINCIPAL] MISMATCH - contest_user_id provided but User not found', {
                         contestUserId: trimmedUserId,
@@ -492,11 +439,15 @@ router.post(
                       });
                       if (buyerUser) {
                         buyerAttributionMethod = 'contest_user_code';
+                        buyerResolutionPath = 'metadata_user';
                         console.log('[PRINCIPAL] Buyer principal resolved by contest_user_code', {
                           userId: buyerUser.id,
                           email: buyerUser.email || 'MISSING',
                           code: buyerUser.code || buyerUser.referralCode || 'MISSING',
                         });
+                        console.log(
+                          `[BUYER_RESOLUTION] path=metadata_user sessionId=${session.id} userId=${buyerUser.id}`,
+                        );
                       }
                     }
                   } catch (err) {
@@ -509,31 +460,52 @@ router.post(
                   }
                 }
                 
-                // LAST RESORT FALLBACK: Use email if contest_user_id and contest_user_code both failed
-                // This handles cases where user purchased from catalog without contestUserId in metadata
-                // BUT: only use email if we have a valid customer email from Stripe
+                // Stripe email fallback: find existing User OR create guest (no contest cookies required)
                 if (!buyerUser && customerEmail && typeof customerEmail === 'string') {
                   try {
-                    const normalizedEmail = normalizeEmail(customerEmail);
-                    if (normalizedEmail) {
-                      ensureDatabaseUrl(); // Ensure before query
-                      buyerUser = await prismaClient.user.findUnique({
-                        where: { email: normalizedEmail },
-                      });
-                      if (buyerUser) {
-                        buyerAttributionMethod = 'email_fallback';
-                        console.warn('[PRINCIPAL] Buyer principal resolved by email fallback (contest_user_id missing)', {
-                          userId: buyerUser.id,
-                          email: buyerUser.email || 'MISSING',
-                          code: buyerUser.code || buyerUser.referralCode || 'MISSING',
-                          warning: 'contest_user_id should be provided in checkout metadata',
-                        });
+                    ensureDatabaseUrl();
+                    const nameFromStripe =
+                      (session.customer_details && session.customer_details.name) ||
+                      (session.shipping_details && session.shipping_details.name) ||
+                      (session.collected_information &&
+                        session.collected_information.shipping_details &&
+                        session.collected_information.shipping_details.name) ||
+                      null;
+                    const guestOutcome = await findOrCreateGuestUserForStripePurchase(
+                      prismaClient,
+                      customerEmail,
+                      nameFromStripe,
+                    );
+                    if (guestOutcome.user) {
+                      buyerUser = guestOutcome.user;
+                      buyerResolutionPath = guestOutcome.resolution;
+                      buyerAttributionMethod = guestOutcome.resolution;
+                      if (guestOutcome.resolution === 'email_new_guest_user') {
+                        skipImplicitContestJoinAfterPurchase = true;
                       }
+                      console.log('[BUYER_RESOLUTION]', {
+                        path: buyerResolutionPath,
+                        sessionId: session.id,
+                        userId: buyerUser.id,
+                        created: guestOutcome.created,
+                      });
+                      console.log(
+                        `[BUYER_RESOLUTION] path=${buyerResolutionPath} sessionId=${session.id} userId=${buyerUser.id} created=${guestOutcome.created}`,
+                      );
+                    } else {
+                      buyerResolutionPath = guestOutcome.resolution || 'unresolved_missing_email';
+                      console.warn('[BUYER_RESOLUTION]', {
+                        path: buyerResolutionPath,
+                        sessionId: session.id,
+                        customerEmail: customerEmail ? '(present)' : 'MISSING',
+                      });
+                      console.warn(`[BUYER_RESOLUTION] path=${buyerResolutionPath} sessionId=${session.id}`);
                     }
                   } catch (err) {
-                    console.warn('[PRINCIPAL] Error looking up by email', {
+                    console.warn('[BUYER_RESOLUTION] findOrCreateGuestUserForStripePurchase failed', {
                       error: err.message,
                       customerEmail,
+                      sessionId: session.id,
                     });
                   }
                 }
@@ -545,14 +517,17 @@ router.post(
                     email: buyerUser.email || 'MISSING',
                     code: buyerUser.code || buyerUser.referralCode || 'MISSING',
                     method: buyerAttributionMethod,
+                    buyerResolutionPath: buyerResolutionPath || buyerAttributionMethod,
                     sessionId: session.id,
                   });
                 } else {
+                  buyerResolutionPath = buyerResolutionPath || 'unresolved_missing_email';
                   console.error('[PRINCIPAL] Buyer principal NOT resolved - cannot attribute purchase', {
                     sessionId: session.id,
                     contestUserId: contestUserId || 'MISSING',
                     contestUserCode: contestUserCode || 'MISSING',
                     customerEmail: customerEmail || 'MISSING',
+                    buyerResolutionPath,
                     message: 'No buyer user found. Points will NOT be awarded.',
                   });
                 }
@@ -568,23 +543,39 @@ router.post(
                 // Try email fallback as last resort even if attribution failed
                 if (!buyerUser && customerEmail && typeof customerEmail === 'string') {
                   try {
-                    const normalizedEmail = normalizeEmail(customerEmail);
-                    if (normalizedEmail) {
-                      ensureDatabaseUrl(); // Ensure before query
-                      buyerUser = await prismaClient.user.findUnique({
-                        where: { email: normalizedEmail },
-                      });
-                      if (buyerUser) {
-                        buyerAttributionMethod = 'email_fallback_recovery';
-                        console.log('[ATTRIBUTION_BUYER] Recovered via email fallback after error', {
-                          buyerId: buyerUser.id,
-                          buyerCode: buyerUser.code || buyerUser.referralCode || 'MISSING',
-                          buyerEmail: buyerUser.email || 'MISSING',
-                        });
+                    const nameFromStripe =
+                      (session.customer_details && session.customer_details.name) ||
+                      (session.shipping_details && session.shipping_details.name) ||
+                      (session.collected_information &&
+                        session.collected_information.shipping_details &&
+                        session.collected_information.shipping_details.name) ||
+                      null;
+                    ensureDatabaseUrl();
+                    const guestOutcome = await findOrCreateGuestUserForStripePurchase(
+                      prismaClient,
+                      customerEmail,
+                      nameFromStripe,
+                    );
+                    if (guestOutcome.user) {
+                      buyerUser = guestOutcome.user;
+                      buyerResolutionPath = guestOutcome.resolution;
+                      buyerAttributionMethod = `${guestOutcome.resolution}_recovery`;
+                      if (guestOutcome.resolution === 'email_new_guest_user') {
+                        skipImplicitContestJoinAfterPurchase = true;
                       }
+                      console.log('[BUYER_RESOLUTION]', {
+                        path: buyerResolutionPath,
+                        sessionId: session.id,
+                        userId: buyerUser.id,
+                        note: 'recovery_after_attribution_error',
+                        created: guestOutcome.created,
+                      });
+                      console.log(
+                        `[BUYER_RESOLUTION] path=${buyerResolutionPath} sessionId=${session.id} userId=${buyerUser.id} created=${guestOutcome.created} note=recovery`,
+                      );
                     }
                   } catch (recoveryErr) {
-                    console.error('[ATTRIBUTION_BUYER] Email fallback recovery also failed', {
+                    console.error('[ATTRIBUTION_BUYER] Guest user recovery also failed', {
                       error: recoveryErr.message,
                     });
                   }
@@ -595,6 +586,13 @@ router.post(
                 sessionId: session.id,
               });
             }
+
+            console.log('[ATTRIBUTION_RESOLVED]', {
+              sessionId: session.id,
+              buyerResolutionPath: buyerResolutionPath || null,
+              buyerUserId: buyerUser?.id || null,
+              unresolved: !buyerUser,
+            });
             
                 // ALWAYS create Purchase row (idempotent) - even if buyer not found
                 // This ensures /api/contest/score can always find the purchase
@@ -1097,53 +1095,65 @@ router.post(
                       }
                       
                       // ===== LEDGER: Ensure implicit CONTEST_JOIN exists (idempotent) =====
-                      // After purchase, user is implicitly in contest - create CONTEST_JOIN if missing
-                      try {
-                        const { hasContestJoin } = require('../lib/contest/hasContestJoin.cjs');
-                        const alreadyJoined = await hasContestJoin(prismaClient, buyerUser.id);
-                        
-                        if (!alreadyJoined) {
-                          const CONTEST_JOIN_SESSION_ID = 'contest_join';
-                          await recordLedgerEntry(prismaClient, {
-                            sessionId: CONTEST_JOIN_SESSION_ID,
-                            userId: buyerUser.id,
-                            type: 'CONTEST_JOIN',
-                            points: 500,
-                            amount: 500,
-                            currency: 'points',
-                            note: 'Implicit contest entry via purchase',
-                            meta: {
-                              entryMethod: 'purchase',
+                      // Skip for catalog-only guests (email_new_guest_user) — they join via /api/contest/join later; purchase/points stay merged by email.
+                      if (!skipImplicitContestJoinAfterPurchase) {
+                        try {
+                          const { hasContestJoin } = require('../lib/contest/hasContestJoin.cjs');
+                          const alreadyJoined = await hasContestJoin(prismaClient, buyerUser.id);
+
+                          if (!alreadyJoined) {
+                            const CONTEST_JOIN_SESSION_ID = 'contest_join';
+                            await recordLedgerEntry(prismaClient, {
+                              sessionId: CONTEST_JOIN_SESSION_ID,
+                              userId: buyerUser.id,
+                              type: 'CONTEST_JOIN',
+                              points: 500,
+                              amount: 500,
+                              currency: 'points',
+                              note: 'Implicit contest entry via purchase',
+                              meta: {
+                                entryMethod: 'purchase',
+                                purchaseId: createdPurchase.id,
+                                entryAt: new Date().toISOString(),
+                              },
+                            });
+                            console.log('[WEBHOOK] Created implicit CONTEST_JOIN', {
+                              userId: buyerUser.id,
                               purchaseId: createdPurchase.id,
-                              entryAt: new Date().toISOString(),
-                            },
-                          });
-                          console.log('[WEBHOOK] Created implicit CONTEST_JOIN', {
-                            userId: buyerUser.id,
-                            purchaseId: createdPurchase.id,
-                            sessionId: session.id,
-                          });
-                        } else {
-                          console.log('[WEBHOOK] User already has CONTEST_JOIN (skipping implicit entry)', {
-                            userId: buyerUser.id,
-                            purchaseId: createdPurchase.id,
-                          });
+                              sessionId: session.id,
+                            });
+                          } else {
+                            console.log('[WEBHOOK] User already has CONTEST_JOIN (skipping implicit entry)', {
+                              userId: buyerUser.id,
+                              purchaseId: createdPurchase.id,
+                            });
+                          }
+                        } catch (contestJoinErr) {
+                          // Handle unique constraint violation (race condition)
+                          if (contestJoinErr.code === 'P2002' || contestJoinErr.message?.includes('Unique constraint')) {
+                            console.log('[WEBHOOK] CONTEST_JOIN already exists (race condition)', {
+                              userId: buyerUser.id,
+                              purchaseId: createdPurchase.id,
+                            });
+                          } else {
+                            console.error('[WEBHOOK] Failed to create implicit CONTEST_JOIN', {
+                              error: contestJoinErr.message,
+                              sessionId: session.id,
+                              userId: buyerUser.id,
+                            });
+                            // Don't fail webhook - implicit entry is non-critical
+                          }
                         }
-                      } catch (contestJoinErr) {
-                        // Handle unique constraint violation (race condition)
-                        if (contestJoinErr.code === 'P2002' || contestJoinErr.message?.includes('Unique constraint')) {
-                          console.log('[WEBHOOK] CONTEST_JOIN already exists (race condition)', {
-                            userId: buyerUser.id,
-                            purchaseId: createdPurchase.id,
-                          });
-                        } else {
-                          console.error('[WEBHOOK] Failed to create implicit CONTEST_JOIN', {
-                            error: contestJoinErr.message,
-                            sessionId: session.id,
-                            userId: buyerUser.id,
-                          });
-                          // Don't fail webhook - implicit entry is non-critical
-                        }
+                      } else {
+                        console.log('[WEBHOOK] Skipping implicit CONTEST_JOIN (catalog guest checkout)', {
+                          userId: buyerUser.id,
+                          purchaseId: createdPurchase.id,
+                          sessionId: session.id,
+                          buyerResolutionPath,
+                        });
+                        console.log(
+                          `[WEBHOOK] skip_implicit_contest_join=1 path=${buyerResolutionPath || 'email_new_guest_user'} sessionId=${session.id} userId=${buyerUser.id}`,
+                        );
                       }
                       
                       // ===== STEP 4: LOG SUCCESS =====
@@ -1157,6 +1167,7 @@ router.post(
                         paymentIntentId: paymentIntentId || 'none',
                         pointsAwarded: PURCHASE_POINTS,
                         method: buyerAttributionMethod,
+                        buyerResolutionPath,
                       });
                       
                       // ===== CUSTOMER/FULFILLMENT PERSISTENCE (ATTRIBUTION FLOW) =====
@@ -1258,6 +1269,7 @@ router.post(
                         contestUserId: contestUserId || 'MISSING',
                         contestUserCode: contestUserCode || 'MISSING',
                         customerEmail: customerEmail || 'MISSING',
+                        buyerResolutionPath: buyerResolutionPath || 'unresolved_missing_email',
                       });
                       // Return 500 so Stripe retries - buyer attribution may succeed on retry
                       return res.status(500).json({ 
@@ -1883,7 +1895,27 @@ router.post(
               
               // Get actual points award result (or default if not awarded yet)
               const pointsAwardResult = purchaseAwardResultForEmail || { awarded: 0, reason: 'not_awarded_yet' };
-              
+
+              let claimAccountLink = null;
+              if (buyerUser && finalPurchase?.id && session?.id) {
+                try {
+                  const em = normalizeEmail(customerEmail || buyerUser.email || '');
+                  if (em) {
+                    const claimTok = signReaderClaimToken({
+                      userId: buyerUser.id,
+                      email: em,
+                      purchaseId: finalPurchase.id,
+                      sessionId: session.id,
+                    });
+                    const siteUrlForClaim =
+                      process.env.APP_BASE_URL || envConfig.SITE_URL || 'https://theagnesprotocol.com';
+                    claimAccountLink = `${String(siteUrlForClaim).replace(/\/$/, '')}/contest/claim?token=${encodeURIComponent(claimTok)}`;
+                  }
+                } catch (claimErr) {
+                  console.warn('[WEBHOOK] Could not build reader claim link', { error: claimErr?.message });
+                }
+              }
+
               const { subject, text, html } = buildPurchaseConfirmationEmail({
                 email: customerEmail,
                 sessionId: session.id,
@@ -1893,6 +1925,7 @@ router.post(
                 downloadUrl,
                 pointsAwarded: pointsAwardResult, // Pass full award result
                 totalPoints: buyerTotalPoints, // Total points user has
+                claimAccountLink,
               });
               
               // Apply global email banner

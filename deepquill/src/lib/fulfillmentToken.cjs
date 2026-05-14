@@ -82,6 +82,11 @@ function verifyToken(token) {
     const payloadStr = Buffer.from(payloadB64, 'base64url').toString('utf8');
     const payload = JSON.parse(payloadStr);
 
+    // Reject non–eBook-download payloads (e.g. reader_claim tokens share the same secret).
+    if (payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'typ')) {
+      return null;
+    }
+
     // Verify signature
     const hmac = crypto.createHmac('sha256', secret);
     hmac.update(payloadStr);

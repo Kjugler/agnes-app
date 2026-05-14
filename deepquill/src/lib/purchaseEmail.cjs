@@ -13,9 +13,20 @@
  * @param {string} params.downloadUrl - Download URL for eBook (optional)
  * @param {Object|number} params.pointsAwarded - Points award result {awarded: number, reason: string} OR number (for backward compat)
  * @param {number} params.totalPoints - Total points the user has (optional)
+ * @param {string} [params.claimAccountLink] - Signed claim URL when a User exists for this purchase
  * @returns {Object} { subject, text, html }
  */
-function buildPurchaseConfirmationEmail({ email, sessionId, product, amountTotal, currency = 'usd', downloadUrl, pointsAwarded = 500, totalPoints }) {
+function buildPurchaseConfirmationEmail({
+  email,
+  sessionId,
+  product,
+  amountTotal,
+  currency = 'usd',
+  downloadUrl,
+  pointsAwarded = 500,
+  totalPoints,
+  claimAccountLink,
+}) {
   // Handle both new format (object) and old format (number) for backward compatibility
   const awardResult = typeof pointsAwarded === 'object' && pointsAwarded !== null 
     ? pointsAwarded 
@@ -58,7 +69,11 @@ function buildPurchaseConfirmationEmail({ email, sessionId, product, amountTotal
     let reasonText = '';
     let optimizationTip = '';
     
-    if (awardResult.reason === 'daily_cap') {
+    if (awardResult.reason === 'admin_resend') {
+      reasonText =
+        'This is a copy of your order confirmation, resent by our team. Your purchase and contest history are unchanged.';
+      optimizationTip = 'If anything looks wrong, contact hello@theagnesprotocol.com.';
+    } else if (awardResult.reason === 'daily_cap') {
       reasonText = 'No additional purchase points were awarded today because purchase points are capped at 500 points per day, and you\'ve already received today\'s purchase credit.';
       optimizationTip = 'Come back on a different day to purchase another catalog item — you can earn purchase points on up to three separate days.';
     } else if (awardResult.reason === 'lifetime_cap') {
@@ -93,6 +108,35 @@ function buildPurchaseConfirmationEmail({ email, sessionId, product, amountTotal
               </div>`;
   }
 
+  const readerCtaText = claimAccountLink
+    ? `
+
+We found your purchase and created your reader profile.
+
+Want to activate sharing rewards, contest tracking, early releases, and your reader dashboard?
+
+Claim your reader account:
+${claimAccountLink}
+`
+    : '';
+
+  const readerCtaHtml = claimAccountLink
+    ? `
+              <div style="background-color:#ecfdf5;border-left:4px solid #00ff7f;border-radius:6px;padding:20px;margin:24px 0;">
+                <p style="margin:0 0 12px 0;font-size:15px;line-height:1.6;color:#0a0a0a;">
+                  We found your purchase and created your reader profile.
+                </p>
+                <p style="margin:0 0 16px 0;font-size:14px;line-height:1.6;color:#333333;">
+                  Want to activate sharing rewards, contest tracking, early releases, and your reader dashboard?
+                </p>
+                <div style="text-align:center;margin-top:8px;">
+                  <a href="${claimAccountLink}" style="display:inline-block;padding:12px 24px;background-color:#00ff7f;color:#000000;text-decoration:none;border-radius:6px;font-weight:bold;font-size:15px;">
+                    Claim your reader account
+                  </a>
+                </div>
+              </div>`
+    : '';
+
   const text = `
 Thank you for your purchase!
 
@@ -101,6 +145,7 @@ Order Details:
 - Amount: $${amount} ${currency.toUpperCase()}
 - Order ID: ${sessionId}
 ${pointsText}
+${readerCtaText}
 
 ${(product === 'ebook' || product === 'paperback') && downloadUrl ? `
 ${product === 'ebook' ? 'Your eBook is ready for download! Click the link below to access your copy.' : 'As promised, your free eBook is ready! Click the link below to download your copy.'}
@@ -161,6 +206,8 @@ DeepQuill LLC
               
               ${pointsHtml}
               
+              ${readerCtaHtml}
+              
               ${(product === 'ebook' || product === 'paperback') && downloadUrl ? `
               <div style="margin:30px 0;text-align:center;">
                 <p style="margin:0 0 12px 0;font-size:13px;line-height:1.5;color:#6b7280;">
@@ -213,7 +260,63 @@ DeepQuill LLC
   return { subject, text, html };
 }
 
+/**
+ * Standalone “claim reader profile” email (admin resend).
+ * @param {{ claimAccountLink: string, toEmail?: string }} params
+ */
+function buildClaimReaderProfileEmail({ claimAccountLink, toEmail }) {
+  const subject = 'Claim your reader profile — The Agnes Protocol';
+  const text = `
+We found your purchase and linked it to a reader profile for ${toEmail || 'your email'}.
+
+Want to activate sharing rewards, contest tracking, early releases, and your reader dashboard?
+
+Claim your reader account:
+${claimAccountLink}
+
+If you did not make this purchase, contact hello@theagnesprotocol.com.
+
+—Vector 🛰️
+DeepQuill LLC
+  `.trim();
+
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Claim reader profile</title></head>
+<body style="margin:0;padding:0;background-color:#f5f5f5;font-family:Arial,Helvetica,sans-serif;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f5f5f5;">
+    <tr><td align="center" style="padding:40px 20px;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 4px rgba(0,0,0,0.1);">
+        <tr><td style="padding:40px 30px;">
+          <h1 style="margin:0 0 16px 0;font-size:22px;color:#0a0a0a;">Claim your reader account</h1>
+          <p style="margin:0 0 12px 0;font-size:15px;line-height:1.6;color:#333333;">
+            We found your purchase and created your reader profile.
+          </p>
+          <p style="margin:0 0 20px 0;font-size:14px;line-height:1.6;color:#333333;">
+            Want to activate sharing rewards, contest tracking, early releases, and your reader dashboard?
+          </p>
+          <div style="text-align:center;margin:24px 0;">
+            <a href="${claimAccountLink}" style="display:inline-block;padding:14px 28px;background-color:#00ff7f;color:#000000;text-decoration:none;border-radius:6px;font-weight:bold;font-size:16px;">
+              Claim your reader account
+            </a>
+          </div>
+          <p style="margin:20px 0 0 0;font-size:13px;line-height:1.6;color:#666666;">
+            Questions? <a href="mailto:hello@theagnesprotocol.com" style="color:#00ff7f;">hello@theagnesprotocol.com</a>
+          </p>
+          <p style="margin:20px 0 0 0;font-size:13px;line-height:1.6;color:#999999;">—Vector 🛰️<br>DeepQuill LLC</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>
+  `.trim();
+
+  return { subject, text, html };
+}
+
 module.exports = {
   buildPurchaseConfirmationEmail,
+  buildClaimReaderProfileEmail,
 };
 

@@ -10,6 +10,8 @@ const {
   validateRepReferralCode,
 } = require('../../lib/repOverrideAdmin.cjs');
 
+const { sendClaimReaderProfileEmail } = require('../../lib/email/resendPurchaseEmails.cjs');
+
 const router = express.Router();
 
 function isAdminAuthorized(req) {
@@ -519,6 +521,33 @@ router.post('/disable-override', async (req, res) => {
     });
   } catch (err) {
     console.error('[adminUsers] disable-override', err);
+    return res.status(500).json({ ok: false, error: err?.message || 'Internal error' });
+  }
+});
+
+/**
+ * POST /api/admin/users/:userId/send-claim-profile-email
+ */
+router.post('/:userId/send-claim-profile-email', async (req, res) => {
+  const userId = req.params.userId;
+  if (!userId?.trim()) {
+    return res.status(400).json({ ok: false, error: 'userId required' });
+  }
+  try {
+    const out = await sendClaimReaderProfileEmail(prisma, userId.trim());
+    if (out.error === 'user_not_found_or_missing_email') {
+      return res.status(404).json({ ok: false, ...out });
+    }
+    if (out.error === 'no_purchase_for_user' || out.error === 'missing_customer_email') {
+      return res.status(400).json({ ok: false, ...out });
+    }
+    if (!out.ok && out.error === 'mailchimp_not_configured') {
+      return res.status(500).json({ ok: false, ...out });
+    }
+    const status = out.ok ? 200 : out.deliveryStatus === 'rejected' ? 502 : 500;
+    return res.status(status).json({ ok: out.ok, ...out });
+  } catch (err) {
+    console.error('[adminUsers] send-claim-profile-email', err);
     return res.status(500).json({ ok: false, error: err?.message || 'Internal error' });
   }
 });

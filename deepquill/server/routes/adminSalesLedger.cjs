@@ -222,6 +222,7 @@ router.get('/sales-ledger', async (req, res) => {
         sessionId: sid,
         orderId: order ? order.id : null,
         purchaseId: p.id,
+        userId: p.userId,
       };
 
       if (productFilter !== 'all' && productType !== productFilter) continue;
