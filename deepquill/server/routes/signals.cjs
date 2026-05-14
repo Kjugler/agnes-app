@@ -714,19 +714,38 @@ router.post('/signal/ack', async (req, res) => {
 
 // --- Admin routes ---
 
+const ADMIN_SIGNALS_APPROVED_RECENT_TAKE = 800;
+
+const signalAdminInclude = {
+  user: { select: { email: true, firstName: true } },
+  _count: { select: { comments: true, replies: true } },
+};
+
 // GET /api/admin/signals
 router.get('/admin/signals', async (req, res) => {
   if (!isAdminAuthorized(req)) return res.status(403).json({ error: 'Forbidden' });
   try {
-    const signals = await prisma.signal.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 200,
-      include: {
-        user: { select: { email: true, firstName: true } },
-        _count: { select: { comments: true, replies: true } },
-      },
-    });
-    res.json({ ok: true, signals });
+    /** Always include every HELD/REJECTED row — do not let a global take=200 drop older queue items behind newer APPROVED/system posts */
+    const [moderationSignals, approvedRecent] = await Promise.all([
+      prisma.signal.findMany({
+        where: { status: { in: ['HELD', 'REJECTED'] } },
+        orderBy: { createdAt: 'desc' },
+        include: signalAdminInclude,
+      }),
+      prisma.signal.findMany({
+        where: { status: 'APPROVED' },
+        orderBy: { createdAt: 'desc' },
+        take: ADMIN_SIGNALS_APPROVED_RECENT_TAKE,
+        include: signalAdminInclude,
+      }),
+    ]);
+    const moderationIds = new Set(moderationSignals.map((s) => s.id));
+    const merged = [
+      ...moderationSignals,
+      ...approvedRecent.filter((s) => !moderationIds.has(s.id)),
+    ];
+    merged.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    res.json({ ok: true, signals: merged });
   } catch (err) {
     console.error('[admin/signals] Error', err);
     res.status(500).json({ error: err?.message || 'Unknown error' });
