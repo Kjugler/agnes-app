@@ -44,9 +44,13 @@ export default function FulfillmentHelpersPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/fulfillment/users');
-      if (!res.ok) throw new Error('Failed to load helpers');
-      const data = await res.json();
+      const res = await fetch('/api/fulfillment/users', { credentials: 'include', cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          (typeof data?.error === 'string' && data.error) || `Failed to load helpers (HTTP ${res.status})`
+        );
+      }
       setHelpers(Array.isArray(data) ? data : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load helpers');
@@ -67,6 +71,7 @@ export default function FulfillmentHelpersPage() {
     try {
       const res = await fetch('/api/fulfillment/user', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: addName.trim(), email: addEmail.trim() }),
       });
@@ -90,6 +95,7 @@ export default function FulfillmentHelpersPage() {
     try {
       const res = await fetch(`/api/fulfillment/user/${helper.id}`, {
         method: 'PATCH',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ active: !helper.active }),
       });
@@ -125,6 +131,7 @@ export default function FulfillmentHelpersPage() {
     try {
       const res = await fetch('/api/fulfillment/payments', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           fulfillmentUserId: paymentHelperId,
