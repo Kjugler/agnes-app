@@ -791,7 +791,9 @@ module.exports = async function handler(req, res) {
     // Digital (ebook, audio_preorder): email + payment only — no shipping or phone (reduces abandonment).
     if (product === 'paperback') {
       sessionParams.shipping_address_collection = {
-        allowed_countries: ['US'], // ok to expand later
+        // US + DK: direct international paperback shipment (Denmark enabled).
+        // Broader EU expansion later, after international fulfillment/shipping costs are validated.
+        allowed_countries: ['US', 'DK'],
       };
       sessionParams.phone_number_collection = { enabled: true };
     } else {
