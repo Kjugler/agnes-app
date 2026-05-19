@@ -92,6 +92,7 @@ export default function ContestClient() {
   // Additional query params that might be used
   const referralCode = qp.get('ref') ?? '';
   const embed = qp.get('embed') === '1';
+  const terminalPass = qp.get('terminalPass') === '1';
   
   // Computed booleans derived from state (must be declared before useMemo/useEffect/useCallback)
   // These are safe to compute here because they're simple boolean expressions
@@ -122,12 +123,14 @@ export default function ContestClient() {
     });
   }, [statusLoaded, isUserCommitted, greetingName, contestJoinedAtIso]);
 
-  // SPEC 3: Terminal discovery - when v=terminal, award bonus and show unlock panel
+  // SPEC 3: Terminal discovery - when v=terminal, award bonus; modal only without terminalPass
   useEffect(() => {
     const v = qp.get('v') || qp.get('variant');
     if (v !== 'terminal') return;
 
-    setShowTerminalUnlockPanel(true);
+    if (!terminalPass) {
+      setShowTerminalUnlockPanel(true);
+    }
 
     // Mark terminal discovery complete so returning users get protocol/contest by default (not forced back to terminal)
     try {
@@ -143,14 +146,22 @@ export default function ContestClient() {
       .then((res) => res.json())
       .then((data) => {
         setTerminalDiscoveryJustAwarded(data?.awarded ?? false);
-        if (data?.awarded) {
+        if (terminalPass || data?.awarded) {
           setTerminalDiscoveryBannerActive(true);
           setTimeout(() => setTerminalDiscoveryBannerActive(false), 2500);
-          window.dispatchEvent(new CustomEvent('contest:points-updated'));
+          if (data?.awarded) {
+            window.dispatchEvent(new CustomEvent('contest:points-updated'));
+          }
         }
       })
       .catch(() => {});
-  }, [qp]);
+
+    if (terminalPass && typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('terminalPass');
+      window.history.replaceState({}, '', url.pathname + (url.search || ''));
+    }
+  }, [qp, terminalPass]);
 
   // Handle fresh=1 param: clear identity storage before rendering
   useEffect(() => {
@@ -939,7 +950,11 @@ export default function ContestClient() {
   const ribbonExtraSegments = useMemo(() => {
     const segs: string[] = [...BANNER_MOTIVATIONAL];
     if (terminalDiscoveryBannerActive) {
-      segs.unshift('⚡ Hidden terminal discovered — bonus points awarded');
+      segs.unshift(
+        terminalDiscoveryJustAwarded === false
+          ? '⚡ Hidden terminal path — discovery bonus already claimed'
+          : '⚡ Hidden terminal discovered — bonus points awarded',
+      );
     }
     if (liveStats) {
       if (liveStats.currentLeaderPoints > 0 && liveStats.currentLeaderName) {
@@ -959,7 +974,7 @@ export default function ContestClient() {
       }
     }
     return segs;
-  }, [liveStats, terminalDiscoveryBannerActive]);
+  }, [liveStats, terminalDiscoveryBannerActive, terminalDiscoveryJustAwarded]);
 
   const handleChangeAccount = useCallback(async () => {
     associateStatusForEmailRef.current = null;
@@ -1025,6 +1040,7 @@ export default function ContestClient() {
     const url = new URL(window.location.href);
     url.searchParams.delete('v');
     url.searchParams.delete('variant');
+    url.searchParams.delete('terminalPass');
     window.history.replaceState({}, '', url.pathname + (url.search || ''));
   }, []);
 
@@ -1043,7 +1059,7 @@ export default function ContestClient() {
       }}
     >
       {/* SPEC 3: Terminal discovery unlock panel */}
-      {showTerminalUnlockPanel && (
+      {showTerminalUnlockPanel && !terminalPass && (
         <div
           style={{
             position: 'fixed',

@@ -1,6 +1,6 @@
 'use client';
 
-import TerminalClient from '@/components/terminal/TerminalClient';
+import TerminalPassThrough from '@/components/terminal/TerminalPassThrough';
 
 export default function TerminalPage() {
   return (
@@ -14,7 +14,7 @@ export default function TerminalPage() {
         background: '#000',
       }}
     >
-      <TerminalClient />
+      <TerminalPassThrough />
     </div>
   );
 }

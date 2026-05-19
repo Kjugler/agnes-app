@@ -1,6 +1,6 @@
 // /app/lightening/page.tsx
 // Spec 1: Lightning-first entry. Variant routing happens ONLY after video/continue.
-// User lands → Lightning plays → Continue or video ends → THEN route to protocol/contest (or /terminal only if ?v=terminal).
+// User lands → Lightning plays → Continue or video ends → THEN route to protocol/contest (terminal branch → contest pass-through).
 
 "use client";
 
@@ -146,11 +146,13 @@ export default function LighteningClient() {
     const queryString = qs ? `?${qs}` : '';
 
     if (variant === 'terminal') {
-      params.set('embed', '1');
-      params.set('skipLoad', '1');
-      const terminalUrl = `/terminal?${params.toString()}`;
-      console.log('[Lightening] Routing to terminal (after bridge):', terminalUrl);
-      pendingRouteRef.current = terminalUrl;
+      params.delete('embed');
+      params.delete('skipLoad');
+      params.set('v', 'terminal');
+      params.set('terminalPass', '1');
+      const contestTerminalUrl = `/contest?${params.toString()}`;
+      console.log('[Lightening] Routing to contest terminal pass (after bridge):', contestTerminalUrl);
+      pendingRouteRef.current = contestTerminalUrl;
       setPostLightningGlitch(true);
       return;
     }
