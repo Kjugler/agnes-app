@@ -4,13 +4,17 @@ import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { readContestEmail } from '@/lib/identity';
 import { buildTextThisSceneSmsBody } from '@/lib/textThisScene';
+import {
+  TEXT_A_FRIEND_BOOK_IMAGE_PATH,
+  TEXT_A_FRIEND_CHAPTER9_IMAGE_PATH,
+} from '@/lib/textAFriendOg';
 
 /** Production site for SMS links; short path /t/:video expands to full attribution on the server. */
 const LANDING_ORIGIN = 'https://www.theagnesprotocol.com';
 
-/** Thumbnails for chooser (same assets as main site OG + Chapter 9 link preview). */
-const THUMB_SHARE_MAIN_SITE = '/og/ghost-writers.jpg';
-const THUMB_SHARE_CHAPTER_9 = '/images/fb/chapter9.jpg';
+/** Thumbnails for chooser (same assets as Text-a-Friend OG link previews). */
+const THUMB_SHARE_MAIN_SITE = TEXT_A_FRIEND_BOOK_IMAGE_PATH;
+const THUMB_SHARE_CHAPTER_9 = TEXT_A_FRIEND_CHAPTER9_IMAGE_PATH;
 
 type TextAFriendOption = 'share_this' | 'share_scene';
 
