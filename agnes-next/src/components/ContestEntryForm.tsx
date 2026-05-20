@@ -20,6 +20,7 @@ import {
   type AssociateCache,
 } from '@/lib/identity';
 import { normalizeEmail } from '@/lib/email';
+import { friendlyContestEntryError } from '@/lib/contestEntryErrors';
 
 const initialState = {
   firstName: '',
@@ -225,33 +226,31 @@ export function ContestEntryForm({
       }
 
       if (!res.ok) {
-        let errorMessage = `Failed to save (status ${res.status})`;
+        let errorKey: string | undefined;
         try {
           const errorData = await res.json();
-          console.error('[ContestEntryForm] API error response', errorData);
-          if (errorData?.error) {
-            errorMessage = errorData.error === 'missing_user_email' 
-              ? 'Email is required. Please refresh and try again.'
-              : errorData.error === 'email_mismatch'
-              ? 'Email mismatch. Please use the email you signed in with.'
-              : errorData.error === 'missing_fields'
-              ? 'Please fill in all required fields.'
-              : errorData.error === 'server_error'
-              ? `Server error: ${errorData.message || 'Please try again or contact support.'}`
-              : errorData.error || 'Could not save. Please try again.';
-          }
+          errorKey = errorData?.error;
+          console.error(
+            '[contest-entry:client]',
+            JSON.stringify({
+              step: 'upsert',
+              endpoint: '/api/associate/upsert',
+              status: res.status,
+              errorKey: errorKey ?? null,
+              email: targetEmail,
+            }),
+          );
         } catch (parseError) {
           console.error('[ContestEntryForm] Failed to parse error response', parseError);
-          // If response isn't JSON, use default message
         }
-        throw new Error(errorMessage);
+        throw new Error(friendlyContestEntryError(errorKey));
       }
 
       const data = (await res.json()) as
         | { ok: true; id: string; email: string; name: string; code: string }
         | { ok: false; error?: string };
       if (!data.ok) {
-        throw new Error(data.error || 'Could not save. Please try again.');
+        throw new Error(friendlyContestEntryError(data.error));
       }
 
       const associatePayload: AssociateCache = {

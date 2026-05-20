@@ -98,9 +98,16 @@ export async function proxyJson(
 
     const data = await response.json().catch(() => ({}));
     return { data, status: response.status };
-  } catch (error: any) {
-    console.error(`[deepquill-proxy] Failed to proxy ${method} ${path}:`, error.message);
-    throw new Error(`Proxy request failed: ${error.message}`);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    const isEntryPath =
+      path.includes('/associate/upsert') ||
+      path.includes('/contest/join') ||
+      path.includes('/contest/explicit-enter');
+    if (!isEntryPath) {
+      console.error(`[deepquill-proxy] Failed to proxy ${method} ${path}:`, message);
+    }
+    throw new Error(`Proxy request failed: ${message}`);
   }
 }
 

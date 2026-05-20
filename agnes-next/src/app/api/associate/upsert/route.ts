@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { normalizeEmail } from '@/lib/email';
 import { proxyJson } from '@/lib/deepquillProxy';
+import { logContestEntry, principalFromRequest } from '@/lib/contestEntryLog';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+const ENDPOINT = '/api/associate/upsert';
 
 function normalizePhone(input: string | null | undefined): string | null {
   if (!input) return null;
@@ -43,28 +46,36 @@ type Payload = {
 };
 
 export async function POST(req: NextRequest) {
-  try {
-    console.log('[associate/upsert] Request received', {
-      method: req.method,
-      url: req.url,
-      hasBody: !!req.body,
-      headers: {
-        'content-type': req.headers.get('content-type'),
-        'x-user-email': req.headers.get('x-user-email'),
-      },
-    });
+  const principal = principalFromRequest(req);
 
+  try {
     const headerEmailRaw = req.headers.get('x-user-email');
     if (!headerEmailRaw) {
-      console.error('[associate/upsert] Missing X-User-Email header');
+      logContestEntry({
+        step: 'upsert',
+        endpoint: ENDPOINT,
+        status: 400,
+        ok: false,
+        errorKey: 'missing_user_email',
+        email: principal.email,
+        userId: principal.userId,
+      });
       return NextResponse.json({ ok: false, error: 'missing_user_email' }, { status: 400 });
     }
 
     let body: Partial<Payload>;
     try {
       body = (await req.json()) as Partial<Payload>;
-    } catch (parseErr) {
-      console.error('[associate/upsert] Failed to parse request body', parseErr);
+    } catch {
+      logContestEntry({
+        step: 'upsert',
+        endpoint: ENDPOINT,
+        status: 400,
+        ok: false,
+        errorKey: 'invalid_request_body',
+        email: principal.email,
+        userId: principal.userId,
+      });
       return NextResponse.json({ ok: false, error: 'invalid_request_body' }, { status: 400 });
     }
 
@@ -75,6 +86,15 @@ export async function POST(req: NextRequest) {
     const headerEmail = normalizeEmail(headerEmailRaw);
 
     if (!firstName || !lastName || !email) {
+      logContestEntry({
+        step: 'upsert',
+        endpoint: ENDPOINT,
+        status: 400,
+        ok: false,
+        errorKey: 'missing_fields',
+        email: email || principal.email,
+        userId: principal.userId,
+      });
       return NextResponse.json(
         { ok: false, error: 'missing_fields' },
         { status: 400 },
@@ -82,6 +102,15 @@ export async function POST(req: NextRequest) {
     }
 
     if (email !== headerEmail) {
+      logContestEntry({
+        step: 'upsert',
+        endpoint: ENDPOINT,
+        status: 400,
+        ok: false,
+        errorKey: 'email_mismatch',
+        email,
+        userId: principal.userId,
+      });
       return NextResponse.json(
         { ok: false, error: 'email_mismatch' },
         { status: 400 },
@@ -95,14 +124,6 @@ export async function POST(req: NextRequest) {
     const handleTiktok = cleanHandle(handles.tiktok);
     const handleTruth = cleanHandle(handles.truth);
 
-    console.log('[associate/upsert] Processing request', {
-      email,
-      firstName,
-      lastName,
-      hasHandles: !!(handles.x || handles.instagram || handles.tiktok || handles.truth),
-    });
-
-    // Proxy to deepquill for canonical DB writes
     try {
       const { data, status } = await proxyJson('/api/associate/upsert', req, {
         method: 'POST',
@@ -124,10 +145,14 @@ export async function POST(req: NextRequest) {
       });
 
       if (status === 200 && data?.ok) {
-        console.log('[associate/upsert] Proxied to deepquill', {
-          id: data.id,
-          email: data.email,
-          code: data.code,
+        logContestEntry({
+          step: 'upsert',
+          endpoint: ENDPOINT,
+          status: 200,
+          ok: true,
+          email: data.email ?? email,
+          userId: data.id ?? principal.userId,
+          deepquillStatus: status,
         });
 
         const res = NextResponse.json({
@@ -138,58 +163,78 @@ export async function POST(req: NextRequest) {
           code: data.code,
         });
 
-        // Set cookies on response (Next.js 15 compatible)
         res.cookies.set('mockEmail', email, { httpOnly: false, path: '/', maxAge: 60 * 60 * 24 * 365 });
         res.cookies.set('ref', data.code, { httpOnly: false, path: '/', maxAge: 60 * 60 * 24 * 365 });
 
         return res;
       }
 
-      // No fallback - deepquill is the only source of truth
-      console.error('[associate/upsert] Deepquill proxy failed', { status, data });
+      const errorKey = data?.error || 'associate_service_unavailable';
+      logContestEntry({
+        step: 'upsert',
+        endpoint: ENDPOINT,
+        status: 503,
+        ok: false,
+        errorKey,
+        email,
+        userId: principal.userId,
+        deepquillStatus: status,
+      });
       return NextResponse.json(
-        { ok: false, error: data?.error || 'associate_service_unavailable' },
-        { status: 503 }
+        { ok: false, error: errorKey },
+        { status: 503 },
       );
     } catch (proxyErr) {
-      console.error('[associate/upsert] Proxy error', {
-        error: proxyErr instanceof Error ? proxyErr.message : String(proxyErr),
+      const message = proxyErr instanceof Error ? proxyErr.message : String(proxyErr);
+      logContestEntry({
+        step: 'upsert',
+        endpoint: ENDPOINT,
+        status: 503,
+        ok: false,
+        errorKey: 'associate_service_unavailable',
+        email,
+        userId: principal.userId,
+        proxyFailed: true,
+        message,
       });
       return NextResponse.json(
         { ok: false, error: 'associate_service_unavailable' },
-        { status: 503 }
+        { status: 503 },
       );
     }
-  } catch (err: any) {
-    console.error('[associate/upsert] error', {
-      message: err?.message,
-      stack: err?.stack,
-      name: err?.name,
-      cause: err?.cause,
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    logContestEntry({
+      step: 'upsert',
+      endpoint: ENDPOINT,
+      status: 500,
+      ok: false,
+      errorKey: 'server_error',
+      email: principal.email,
+      userId: principal.userId,
+      message,
     });
-    
-    const errorResponse = NextResponse.json(
-      { 
-        ok: false, 
+
+    return NextResponse.json(
+      {
+        ok: false,
         error: 'server_error',
-        message: process.env.NODE_ENV === 'development' ? err?.message : 'An unexpected error occurred. Please try again.',
-      }, 
-      { 
+        message:
+          process.env.NODE_ENV === 'development' ? message : 'An unexpected error occurred. Please try again.',
+      },
+      {
         status: 500,
         headers: {
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'POST, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type, X-User-Email',
         },
-      }
+      },
     );
-    
-    return errorResponse;
   }
 }
 
-// Handle OPTIONS for CORS preflight
-export async function OPTIONS(req: NextRequest) {
+export async function OPTIONS() {
   return new NextResponse(null, {
     status: 200,
     headers: {

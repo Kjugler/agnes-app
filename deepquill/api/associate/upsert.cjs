@@ -139,13 +139,6 @@ async function handleAssociateUpsert(req, res) {
     const handleTiktok = cleanHandle(handles.tiktok);
     const handleTruth = cleanHandle(handles.truth);
 
-    console.log('[associate/upsert] Processing request', {
-      email,
-      firstName,
-      lastName,
-      hasHandles: !!(handles.x || handles.instagram || handles.tiktok || handles.truth),
-    });
-
     // Ensure user exists
     const base = await ensureAssociateMinimal(email);
 
@@ -168,11 +161,18 @@ async function handleAssociateUpsert(req, res) {
       ? `${updated.fname} ${updated.lname}`
       : `${firstName} ${lastName}`.trim();
 
-    console.log('[associate/upsert] Successfully upserted user', {
-      id: updated.id,
-      email: updated.email,
-      code: updated.referralCode,
-    });
+    console.log(
+      '[contest-entry]',
+      JSON.stringify({
+        step: 'upsert',
+        endpoint: '/api/associate/upsert',
+        status: 200,
+        ok: true,
+        email: updated.email,
+        userId: updated.id,
+        ts: new Date().toISOString(),
+      }),
+    );
 
     return res.json({
       ok: true,
@@ -182,10 +182,18 @@ async function handleAssociateUpsert(req, res) {
       code: updated.referralCode,
     });
   } catch (err) {
-    console.error('[associate/upsert] Error', {
-      message: err?.message,
-      stack: err?.stack,
-    });
+    console.log(
+      '[contest-entry]',
+      JSON.stringify({
+        step: 'upsert',
+        endpoint: '/api/associate/upsert',
+        status: 500,
+        ok: false,
+        errorKey: 'server_error',
+        message: err?.message,
+        ts: new Date().toISOString(),
+      }),
+    );
     return res.status(500).json({
       ok: false,
       error: 'server_error',

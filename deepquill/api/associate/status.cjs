@@ -6,6 +6,12 @@ const { normalizeEmail } = require('../../src/lib/normalize.cjs');
 const { ensureDatabaseUrl } = require('../../server/prisma.cjs');
 const { hasContestJoin } = require('../../lib/contest/hasContestJoin.cjs');
 
+const STATUS_DEBUG = process.env.ASSOCIATE_STATUS_DEBUG === '1';
+
+function statusDebug(...args) {
+  if (STATUS_DEBUG) console.log(...args);
+}
+
 async function handleAssociateStatus(req, res) {
   try {
     ensureDatabaseUrl();
@@ -55,7 +61,7 @@ async function handleAssociateStatus(req, res) {
           userId = user.id;
           email = user.email;
           principalResolutionMethod = 'cookie_userId';
-          console.log('[PRINCIPAL] Principal resolved by userId cookie', { userId, email });
+          statusDebug('[PRINCIPAL] Principal resolved by userId cookie', { userId, email });
         } else {
           console.warn('[PRINCIPAL] MISMATCH - userId cookie provided but User not found', { userIdCookie });
         }
@@ -71,7 +77,7 @@ async function handleAssociateStatus(req, res) {
         email = normalizeEmail(emailRaw);
         if (email) {
           principalResolutionMethod = userIdCookie ? 'email_fallback' : 'email';
-          console.log('[PRINCIPAL] Principal resolved by email', {
+          statusDebug('[PRINCIPAL] Principal resolved by email', {
             email,
             method: principalResolutionMethod,
             hadUserIdCookie: !!userIdCookie,
@@ -110,8 +116,7 @@ async function handleAssociateStatus(req, res) {
 
     let newlyCreated = false;
 
-    // [PRINCIPAL] Log final resolution
-    console.log('[PRINCIPAL] Principal resolved for associate/status', {
+    statusDebug('[PRINCIPAL] Principal resolved for associate/status', {
       userId: userId || user?.id || 'MISSING',
       email: email || user?.email || 'MISSING',
       method: principalResolutionMethod,
