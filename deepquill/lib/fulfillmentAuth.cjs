@@ -6,13 +6,18 @@ const ADMIN_KEY = process.env.ADMIN_KEY || null;
 
 /**
  * Validate fulfillment request. Returns { valid: true } or { valid: false, status, message }.
+ * Accepts either header independently (no token || adminKey precedence).
  */
 function validateFulfillmentAuth(req) {
   const token = (req.headers['x-fulfillment-token'] || '').trim();
   const adminKey = (req.headers['x-admin-key'] || '').trim();
 
-  const expectedToken = FULFILLMENT_TOKEN || ADMIN_KEY;
-  if (!expectedToken) {
+  const expectedFulfillmentToken = FULFILLMENT_TOKEN
+    ? String(FULFILLMENT_TOKEN).trim()
+    : '';
+  const expectedAdminKey = ADMIN_KEY ? String(ADMIN_KEY).trim() : '';
+
+  if (!expectedFulfillmentToken && !expectedAdminKey) {
     return {
       valid: false,
       status: 503,
@@ -20,16 +25,19 @@ function validateFulfillmentAuth(req) {
     };
   }
 
-  const provided = token || adminKey;
-  if (!provided || provided !== expectedToken) {
-    return {
-      valid: false,
-      status: 401,
-      message: 'Invalid or missing x-fulfillment-token (or x-admin-key).',
-    };
+  const fulfillmentTokenOk =
+    !!expectedFulfillmentToken && token === expectedFulfillmentToken;
+  const adminKeyOk = !!expectedAdminKey && adminKey === expectedAdminKey;
+
+  if (fulfillmentTokenOk || adminKeyOk) {
+    return { valid: true };
   }
 
-  return { valid: true };
+  return {
+    valid: false,
+    status: 401,
+    message: 'Invalid or missing x-fulfillment-token (or x-admin-key).',
+  };
 }
 
 /**
