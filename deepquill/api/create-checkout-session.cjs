@@ -796,6 +796,16 @@ module.exports = async function handler(req, res) {
         allowed_countries: ['US', 'DK'],
       };
       sessionParams.phone_number_collection = { enabled: true };
+
+      const shippingRateId = envConfig.STRIPE_PAPERBACK_SHIPPING_RATE_ID;
+      if (!shippingRateId || !String(shippingRateId).startsWith('shr_')) {
+        return res.status(500).json({
+          error: 'Paperback shipping is not configured',
+          detail:
+            'Set STRIPE_PAPERBACK_SHIPPING_RATE_ID to a Stripe Shipping Rate ID (shr_...)',
+        });
+      }
+      sessionParams.shipping_options = [{ shipping_rate: shippingRateId }];
     } else {
       sessionParams.phone_number_collection = { enabled: false };
       // Let Stripe collect billing details only when needed (e.g. AVS); avoids full address step when possible.
