@@ -1,4 +1,6 @@
 import { readContestEmail } from './identity';
+import { getProduct, type ProductId } from './products';
+import { PAPERBACK_SHIPPING_CENTS, trackTikTok } from './tiktokPixel';
 
 // Non-blocking tracker: prefer sendBeacon; fallback to keepalive fetch
 function trackCheckoutStarted(source: string, path: string) {
@@ -119,6 +121,18 @@ export async function startCheckout(opts: StartCheckoutOpts = {}) {
     if (src) metadata.src = src;
     if (v) metadata.v = v;
     if (origin) metadata.origin = origin;
+
+    const productInfo = getProduct(product as ProductId);
+    let checkoutValueCents = productInfo?.priceCents ?? 0;
+    if (product === 'paperback') {
+      checkoutValueCents += PAPERBACK_SHIPPING_CENTS;
+    }
+
+    trackTikTok('InitiateCheckout', {
+      content_id: product,
+      value: checkoutValueCents / 100,
+      currency: 'USD',
+    });
 
     const res = await fetch('/api/create-checkout-session', {
       method: 'POST',

@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import '@/styles/button-glow.css';
+import { trackTikTok } from '@/lib/tiktokPixel';
 
 interface SessionData {
   paid?: boolean;
@@ -40,6 +41,7 @@ export default function ThankYouClient({ sessionId }: ThankYouClientProps) {
   const pollCountRef = useRef(0);
   const maxPolls = 10; // Poll up to 10 times (20 seconds total)
   const hasRedirectedRef = useRef(false);
+  const purchaseTrackedRef = useRef(false);
 
   // Helper to mask email
   function maskEmail(email: string): string {
@@ -120,6 +122,16 @@ export default function ThankYouClient({ sessionId }: ThankYouClientProps) {
             }
           } catch {
             /* ignore */
+          }
+
+          if (!purchaseTrackedRef.current) {
+            purchaseTrackedRef.current = true;
+            trackTikTok('CompletePayment', {
+              event_id: currentSessionId,
+              content_id: data.productType || 'unknown',
+              value: (data.amountTotal || 0) / 100,
+              currency: (data.currency || 'usd').toUpperCase(),
+            });
           }
 
           // Start polling for webhook processing (nice-to-have)

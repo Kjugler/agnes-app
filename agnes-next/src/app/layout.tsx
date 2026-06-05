@@ -5,6 +5,8 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import CheckoutWiring from "./contest/CheckoutWiring";
 import StressTestChrome from "@/components/StressTestChrome";
+import TikTokPixel from "@/components/analytics/TikTokPixel";
+import TikTokPageView from "@/components/analytics/TikTokPageView";
 
 const SITE_URL = "https://www.theagnesprotocol.com";
 /** Absolute URL for crawlers (og:image, Twitter cards). */
@@ -48,10 +50,12 @@ export default function RootLayout({
         <link rel="preload" as="image" href="/images/score-bg.jpg" />
       </head>
       <body suppressHydrationWarning={true}>
+        <TikTokPixel />
         <StressTestChrome>{children}</StressTestChrome>
         {/* Global, invisible, zero animation/layout impact */}
         <Suspense fallback={null}>
           <CheckoutWiring />
+          <TikTokPageView />
         </Suspense>
       </body>
     </html>

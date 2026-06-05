@@ -1,8 +1,9 @@
 'use client';
 
 import { useSearchParams, useRouter } from 'next/navigation';
-import { useMemo, useEffect, useState } from 'react';
+import { useMemo, useEffect, useState, useRef } from 'react';
 import { PRODUCTS, type ProductId } from '@/lib/products';
+import { trackTikTok } from '@/lib/tiktokPixel';
 
 function isDigitalDownloadProduct(id: ProductId) {
   return id === 'ebook' || id === 'audio_preorder';
@@ -17,6 +18,16 @@ export default function CatalogClient() {
     if (process.env.NODE_ENV === 'development') {
       console.log('[catalog] prices', PRODUCTS.map(p => ({ id: p.id, price: p.displayPrice })));
     }
+  }, []);
+
+  const browseFiredRef = useRef(false);
+  useEffect(() => {
+    if (browseFiredRef.current) return;
+    browseFiredRef.current = true;
+    trackTikTok('Browse', {
+      content_type: 'product_group',
+      content_name: 'The Agnes Protocol Catalog',
+    });
   }, []);
 
   // Preserve all tracking params

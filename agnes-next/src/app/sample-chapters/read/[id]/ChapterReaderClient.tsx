@@ -1,10 +1,11 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { getChapter, isValidChapterId } from '../../chapters';
 import { readAssociate } from '@/lib/identity';
 import { buildTextThisSceneSmsBody, openSmsWithPrefilledBody } from '@/lib/textThisScene';
+import { trackTikTok } from '@/lib/tiktokPixel';
 
 interface ChapterReaderClientProps {
   chapterId: string;
@@ -12,6 +13,19 @@ interface ChapterReaderClientProps {
 
 export default function ChapterReaderClient({ chapterId }: ChapterReaderClientProps) {
   const chapter = getChapter(chapterId);
+  const viewContentFiredRef = useRef(false);
+
+  useEffect(() => {
+    if (!chapter || !isValidChapterId(chapterId)) return;
+    if (viewContentFiredRef.current) return;
+    viewContentFiredRef.current = true;
+
+    trackTikTok('ViewContent', {
+      content_id: `sample-chapter-${chapterId}`,
+      content_name: chapter.title,
+      content_type: 'product',
+    });
+  }, [chapterId, chapter]);
 
   if (!chapter || !isValidChapterId(chapterId)) {
     return (
