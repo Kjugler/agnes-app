@@ -17,7 +17,7 @@ export default function MetaPageView() {
       return;
     }
 
-    pageMeta();
+    pageMeta(pathname);
   }, [pathname]);
 
   return null;

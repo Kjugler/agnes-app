@@ -29,11 +29,42 @@ export function isMetaPixelEnabled(): boolean {
   return Boolean(getMetaPixelId());
 }
 
-/** True when ?pixel_debug=1 or NEXT_PUBLIC_META_PIXEL_DEBUG=true */
+const META_PIXEL_DEBUG_SESSION_KEY = 'meta_pixel_debug';
+
+/** Persist ?pixel_debug=1 for the browser tab session (survives client-side navigation). */
+export function activateMetaPixelDebugSession(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(META_PIXEL_DEBUG_SESSION_KEY, '1');
+  } catch {
+    /* swallow */
+  }
+}
+
+export function clearMetaPixelDebugSession(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.removeItem(META_PIXEL_DEBUG_SESSION_KEY);
+  } catch {
+    /* swallow */
+  }
+}
+
+/** True when ?pixel_debug=1, sticky session flag, or NEXT_PUBLIC_META_PIXEL_DEBUG=true */
 export function isMetaPixelDebugMode(): boolean {
   if (process.env.NEXT_PUBLIC_META_PIXEL_DEBUG === 'true') return true;
   if (typeof window === 'undefined') return false;
-  return new URLSearchParams(window.location.search).get('pixel_debug') === '1';
+
+  if (new URLSearchParams(window.location.search).get('pixel_debug') === '1') {
+    activateMetaPixelDebugSession();
+    return true;
+  }
+
+  try {
+    return sessionStorage.getItem(META_PIXEL_DEBUG_SESSION_KEY) === '1';
+  } catch {
+    return false;
+  }
 }
 
 /** Record an event in the debug panel / console without calling fbq. */
@@ -63,11 +94,14 @@ function recordMetaPixelDebugInternal(event: string, props?: Record<string, unkn
   }
 }
 
-export function pageMeta(): void {
+export function pageMeta(pathname?: string): void {
   if (typeof window === 'undefined' || !isMetaPixelEnabled()) return;
   try {
     window.fbq?.('track', 'PageView');
-    recordMetaPixelDebugInternal('PageView');
+    recordMetaPixelDebugInternal(
+      'PageView',
+      pathname ? { pathname } : undefined,
+    );
   } catch {
     /* swallow */
   }

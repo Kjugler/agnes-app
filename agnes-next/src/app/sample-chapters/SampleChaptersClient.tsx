@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { BuyBookButton } from '@/components/BuyBookButton';
 import HelpButton from '@/components/HelpButton';
+import { trackMeta } from '@/lib/metaPixel';
+import { trackTikTok } from '@/lib/tiktokPixel';
 
 declare global {
   interface Window {
@@ -21,6 +23,23 @@ export default function SampleChaptersClient() {
   const rightVideoRef = useRef<HTMLIFrameElement>(null);
   const leftPlayerRef = useRef<any>(null);
   const rightPlayerRef = useRef<any>(null);
+  const viewContentFiredRef = useRef(false);
+
+  useEffect(() => {
+    if (viewContentFiredRef.current) return;
+    viewContentFiredRef.current = true;
+    trackTikTok('ViewContent', {
+      content_id: 'sample-chapters',
+      content_name: 'Sample Chapters',
+      content_type: 'product',
+    });
+    trackMeta('ViewContent', {
+      content_ids: ['sample-chapters'],
+      content_name: 'Sample Chapters',
+      content_type: 'product',
+    });
+  }, []);
+
   // Preserve referral code from URL to localStorage/cookie (if not already stored)
   useEffect(() => {
     if (typeof window === 'undefined') return;

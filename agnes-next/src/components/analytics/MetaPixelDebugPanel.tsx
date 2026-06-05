@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import {
+  activateMetaPixelDebugSession,
   getMetaPixelId,
   isMetaPixelDebugMode,
   isMetaPixelEnabled,
@@ -10,17 +11,22 @@ import {
 } from '@/lib/metaPixel';
 
 /**
- * On-page verifier: append ?pixel_debug=1 to any URL (or set NEXT_PUBLIC_META_PIXEL_DEBUG=true).
- * Shows recent Meta Pixel events and fbq load status.
+ * On-page verifier: append ?pixel_debug=1 once (sticky for the tab session),
+ * or set NEXT_PUBLIC_META_PIXEL_DEBUG=true.
  */
 export default function MetaPixelDebugPanel() {
   const searchParams = useSearchParams();
+  const pathname = usePathname();
   const [events, setEvents] = useState<MetaPixelDebugEntry[]>([]);
   const [fbqLoaded, setFbqLoaded] = useState(false);
+  const [debugActive, setDebugActive] = useState(false);
 
-  const debugActive =
-    searchParams.get('pixel_debug') === '1' ||
-    process.env.NEXT_PUBLIC_META_PIXEL_DEBUG === 'true';
+  useEffect(() => {
+    if (searchParams.get('pixel_debug') === '1') {
+      activateMetaPixelDebugSession();
+    }
+    setDebugActive(isMetaPixelDebugMode());
+  }, [searchParams, pathname]);
 
   useEffect(() => {
     if (!debugActive) return;
@@ -78,13 +84,14 @@ export default function MetaPixelDebugPanel() {
           {events.map((ev, i) => (
             <li key={`${ev.at}-${i}`}>
               {ev.event}
+              {ev.props?.pathname ? ` (${String(ev.props.pathname)})` : ''}
               {ev.props?.value != null ? ` ($${ev.props.value})` : ''}
             </li>
           ))}
         </ul>
       )}
       <div style={{ marginTop: 6, opacity: 0.65, fontSize: 10 }}>
-        Remove ?pixel_debug=1 to hide. Also use Meta Pixel Helper (Chrome).
+        Sticky this tab session after ?pixel_debug=1. Close tab to hide. Use Meta Pixel Helper too.
       </div>
     </div>
   );
