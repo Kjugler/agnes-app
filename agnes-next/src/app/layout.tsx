@@ -7,6 +7,9 @@ import CheckoutWiring from "./contest/CheckoutWiring";
 import StressTestChrome from "@/components/StressTestChrome";
 import TikTokPixel from "@/components/analytics/TikTokPixel";
 import TikTokPageView from "@/components/analytics/TikTokPageView";
+import MetaPixel from "@/components/analytics/MetaPixel";
+import MetaPageView from "@/components/analytics/MetaPageView";
+import MetaPixelDebugPanel from "@/components/analytics/MetaPixelDebugPanel";
 
 const SITE_URL = "https://www.theagnesprotocol.com";
 /** Absolute URL for crawlers (og:image, Twitter cards). */
@@ -51,11 +54,14 @@ export default function RootLayout({
       </head>
       <body suppressHydrationWarning={true}>
         <TikTokPixel />
+        <MetaPixel />
         <StressTestChrome>{children}</StressTestChrome>
         {/* Global, invisible, zero animation/layout impact */}
         <Suspense fallback={null}>
           <CheckoutWiring />
           <TikTokPageView />
+          <MetaPageView />
+          <MetaPixelDebugPanel />
         </Suspense>
       </body>
     </html>

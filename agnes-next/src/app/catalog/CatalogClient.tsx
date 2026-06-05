@@ -4,6 +4,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useMemo, useEffect, useState, useRef } from 'react';
 import { PRODUCTS, type ProductId } from '@/lib/products';
 import { trackTikTok } from '@/lib/tiktokPixel';
+import { trackMeta } from '@/lib/metaPixel';
 
 function isDigitalDownloadProduct(id: ProductId) {
   return id === 'ebook' || id === 'audio_preorder';
@@ -27,6 +28,11 @@ export default function CatalogClient() {
     trackTikTok('Browse', {
       content_type: 'product_group',
       content_name: 'The Agnes Protocol Catalog',
+    });
+    trackMeta('ViewContent', {
+      content_type: 'product_group',
+      content_name: 'The Agnes Protocol Catalog',
+      content_ids: PRODUCTS.map((p) => p.id),
     });
   }, []);
 

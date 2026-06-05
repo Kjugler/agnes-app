@@ -6,6 +6,7 @@ import { getChapter, isValidChapterId } from '../../chapters';
 import { readAssociate } from '@/lib/identity';
 import { buildTextThisSceneSmsBody, openSmsWithPrefilledBody } from '@/lib/textThisScene';
 import { trackTikTok } from '@/lib/tiktokPixel';
+import { trackMeta } from '@/lib/metaPixel';
 
 interface ChapterReaderClientProps {
   chapterId: string;
@@ -22,6 +23,11 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
 
     trackTikTok('ViewContent', {
       content_id: `sample-chapter-${chapterId}`,
+      content_name: chapter.title,
+      content_type: 'product',
+    });
+    trackMeta('ViewContent', {
+      content_ids: [`sample-chapter-${chapterId}`],
       content_name: chapter.title,
       content_type: 'product',
     });

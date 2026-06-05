@@ -1,6 +1,7 @@
 import { readContestEmail } from './identity';
 import { getProduct, type ProductId } from './products';
 import { PAPERBACK_SHIPPING_CENTS, trackTikTok } from './tiktokPixel';
+import { trackMeta } from './metaPixel';
 
 // Non-blocking tracker: prefer sendBeacon; fallback to keepalive fetch
 function trackCheckoutStarted(source: string, path: string) {
@@ -132,6 +133,13 @@ export async function startCheckout(opts: StartCheckoutOpts = {}) {
       content_id: product,
       value: checkoutValueCents / 100,
       currency: 'USD',
+    });
+
+    trackMeta('InitiateCheckout', {
+      content_ids: [product],
+      value: checkoutValueCents / 100,
+      currency: 'USD',
+      num_items: qty,
     });
 
     const res = await fetch('/api/create-checkout-session', {

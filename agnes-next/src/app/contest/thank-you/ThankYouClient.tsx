@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import '@/styles/button-glow.css';
 import { trackTikTok } from '@/lib/tiktokPixel';
+import { trackMeta } from '@/lib/metaPixel';
 
 interface SessionData {
   paid?: boolean;
@@ -132,6 +133,16 @@ export default function ThankYouClient({ sessionId }: ThankYouClientProps) {
               value: (data.amountTotal || 0) / 100,
               currency: (data.currency || 'usd').toUpperCase(),
             });
+            trackMeta(
+              'Purchase',
+              {
+                content_ids: [data.productType || 'unknown'],
+                content_type: 'product',
+                value: (data.amountTotal || 0) / 100,
+                currency: (data.currency || 'usd').toUpperCase(),
+              },
+              { eventID: currentSessionId },
+            );
           }
 
           // Start polling for webhook processing (nice-to-have)
