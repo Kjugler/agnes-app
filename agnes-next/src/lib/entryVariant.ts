@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { isEntryFunnelContestOnly, isEntryFunnelOverrideAllowed } from './funnelConfig';
 
 export type EntryVariant = 'terminal' | 'protocol' | 'contest' | null;
 
@@ -13,7 +14,9 @@ export type EntryFunnelDecision =
   | 'sticky_settled'
   | 'sticky_discovery_replace_terminal'
   /** Sticky cookie was terminal — IBM removed from public funnel, reroll protocol/contest */
-  | 'sticky_terminal_removed_public_funnel';
+  | 'sticky_terminal_removed_public_funnel'
+  /** NEXT_PUBLIC_ENTRY_FUNNEL_CONTEST_ONLY — all traffic to /contest */
+  | 'contest_only_config';
 
 const SEEN_MAX_AGE = 60 * 60 * 24 * 365; // 1 year — experience memory
 const STICKY_MAX_AGE = 60 * 60 * 24 * 7; // 7 days — settled visitor sticky variant
@@ -137,7 +140,8 @@ export function assignWeightedVariantNoTerminal(): 'protocol' | 'contest' {
   const protocol = parseInt(process.env.NEXT_PUBLIC_ENTRY_SPLIT_PROTOCOL || '40', 10) || 40;
   const contest = parseInt(process.env.NEXT_PUBLIC_ENTRY_SPLIT_CONTEST || '40', 10) || 40;
   const total = protocol + contest;
-  const r = Math.random() * (total || 100);
+  if (total <= 0) return 'contest';
+  const r = Math.random() * total;
   return r < protocol ? 'protocol' : 'contest';
 }
 
@@ -160,12 +164,13 @@ function pickWeightedUnseen(
   const weighted: Array<{ variant: V; weight: number }> = [];
   for (const v of unseen) {
     const weight = weightFor(v);
+    if (weight <= 0) continue;
     total += weight;
     weighted.push({ variant: v, weight });
   }
 
-  if (total <= 0) {
-    return unseen[Math.floor(Math.random() * unseen.length)];
+  if (total <= 0 || weighted.length === 0) {
+    return 'contest';
   }
 
   let r = Math.random() * total;
@@ -196,6 +201,11 @@ export function resolveEntryFunnelClient(): EntryFunnelResolution {
 
   const params = new URLSearchParams(window.location.search);
   const queryV = params.get('v');
+
+  if (isEntryFunnelContestOnly() && !isEntryFunnelOverrideAllowed()) {
+    return { variant: 'contest', phase: 1, decision: 'contest_only_config' };
+  }
+
   const discovery = hasTerminalDiscoveryComplete();
   const allowQueryTerminal = !discovery;
   const allowTerminalWeighted = canOfferTerminalInWeightedFunnel();
