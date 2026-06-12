@@ -19,6 +19,7 @@ import ReferFriendButton from '@/components/refer/ReferFriendButton';
 import TextAFriendModal from '@/components/refer/TextAFriendModal';
 import SocialHandleModal from './SocialHandleModal';
 import HelpButton from '@/components/HelpButton';
+import { isContestEntryUxArchived } from '@/lib/funnelConfig';
 
 function clamp(min: number, v: number, max: number) {
   return Math.max(min, Math.min(max, v));
@@ -651,15 +652,27 @@ export default function ScoreClient() {
   }, [router]);
 
   const handleRequireContestEntry = useCallback(() => {
+    if (isContestEntryUxArchived()) {
+      const params = new URLSearchParams();
+      const keysToPreserve = ['ref', 'src', 'v', 'origin', 'code', 'utm_source', 'utm_medium', 'utm_campaign'];
+      if (typeof window !== 'undefined') {
+        const urlParams = new URLSearchParams(window.location.search);
+        keysToPreserve.forEach((key) => {
+          const value = urlParams.get(key);
+          if (value) params.set(key, value);
+        });
+      }
+      router.push(`/catalog${params.toString() ? `?${params.toString()}` : ''}`);
+      return;
+    }
     setShowEntryFormForCheckout(true);
-    // Optionally scroll into view
     setTimeout(() => {
       const formElement = document.querySelector('[data-contest-entry-form]');
       if (formElement) {
         formElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
     }, 100);
-  }, []);
+  }, [router]);
 
   const handleContestEntryCompletedFromBuy = useCallback(() => {
     // Preserve tracking params and route to catalog
@@ -1671,7 +1684,7 @@ export default function ScoreClient() {
       />
 
       {/* Sync status indicator (shown during refresh loop) */}
-      {syncingExplicitEntry && (
+      {syncingExplicitEntry && !isContestEntryUxArchived() && (
         <div
           style={{
             marginTop: '1rem',
@@ -1701,7 +1714,10 @@ export default function ScoreClient() {
       )}
 
       {/* Officially Enter Button (Part F: shown only when contestJoined && !explicitContestEntry) - hidden on mobile (use fixed action bar instead) */}
-      {contestJoined && !explicitContestEntry && !showEntryFormForCheckout && (
+      {!isContestEntryUxArchived() &&
+        contestJoined &&
+        !explicitContestEntry &&
+        !showEntryFormForCheckout && (
         <div
           style={{
             marginTop: '2rem',
@@ -1740,7 +1756,7 @@ export default function ScoreClient() {
       )}
 
       {/* Contest Entry Form (shown when Buy button requires entry OR explicit entry clicked) */}
-      {showEntryFormForCheckout && (
+      {!isContestEntryUxArchived() && showEntryFormForCheckout && (
         <div
           data-contest-entry-form
           style={{
@@ -1787,7 +1803,7 @@ export default function ScoreClient() {
         >
           ← Back to Contest
         </Link>
-        {contestJoined && !explicitContestEntry && (
+        {!isContestEntryUxArchived() && contestJoined && !explicitContestEntry && (
           <button
             type="button"
             onClick={handleExplicitEntryClick}

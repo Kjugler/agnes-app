@@ -19,6 +19,7 @@ import {
 } from '@/lib/identity';
 import RequestAccessModal from '@/components/auth/RequestAccessModal';
 import SiteRibbonTicker from '@/components/SiteRibbonTicker';
+import { isContestEntryUxArchived } from '@/lib/funnelConfig';
 
 declare global {
   interface Window {
@@ -1020,15 +1021,24 @@ export default function ContestClient() {
   };
 
   const handleRequireContestEntry = useCallback(() => {
+    if (isContestEntryUxArchived()) {
+      const params = new URLSearchParams();
+      const keysToPreserve = ['ref', 'src', 'v', 'origin', 'code', 'utm_source', 'utm_medium', 'utm_campaign'];
+      keysToPreserve.forEach((key) => {
+        const value = qp.get(key);
+        if (value) params.set(key, value);
+      });
+      router.push(`/catalog${params.toString() ? `?${params.toString()}` : ''}`);
+      return;
+    }
     setShowEntryFormForCheckout(true);
-    // Optionally scroll into view
     setTimeout(() => {
       const formElement = document.querySelector('[data-contest-entry-form]');
       if (formElement) {
         formElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
     }, 100);
-  }, []);
+  }, [qp, router]);
 
   const handleContestEntryCompletedFromBuy = useCallback(() => {
     setShowEntryFormForCheckout(false);
@@ -1393,7 +1403,7 @@ export default function ContestClient() {
       )}
 
       {/* Contest Entry Form (shown when Buy button requires entry) */}
-      {showEntryFormForCheckout && (
+      {!isContestEntryUxArchived() && showEntryFormForCheckout && (
         <div
           data-contest-entry-form
           style={{
