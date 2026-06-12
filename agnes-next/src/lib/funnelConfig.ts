@@ -1,5 +1,6 @@
 /**
  * Public funnel routing + contest-entry UX flags (build-time NEXT_PUBLIC_*).
+ * See agnes-next/.env.example for Vercel configuration.
  */
 
 /** Lightning → /contest only. Set NEXT_PUBLIC_ENTRY_FUNNEL_CONTEST_ONLY=false to restore weighted split. */
