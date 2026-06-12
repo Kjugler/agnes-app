@@ -8,6 +8,8 @@ interface ReferFriendButtonProps {
   referralCode: string; // personal code for the current user
   referrerEmail?: string; // referrer's email for Reply-To
   className?: string;
+  label?: string;
+  onRequireEmail?: () => void;
   onReferralSent?: () => void | Promise<void>; // Callback after successful referral send
 }
 
@@ -15,6 +17,8 @@ export default function ReferFriendButton({
   referralCode,
   referrerEmail,
   className = '',
+  label = 'Share with Friends',
+  onRequireEmail,
   onReferralSent,
 }: ReferFriendButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -62,22 +66,23 @@ export default function ReferFriendButton({
     };
   }, [referrerEmail]); // Only depend on referrerEmail to prevent loops
 
-  // Show button even if code is loading (will be disabled until code loads)
-  if (!referrerEmail) {
-    return null; // Don't show button if no email
-  }
+  const handleClick = () => {
+    if (!referrerEmail) {
+      onRequireEmail?.();
+      return;
+    }
+    if (resolvedCode) {
+      setIsOpen(true);
+    }
+  };
 
   return (
     <>
       <div className="refer-friend-stack" style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center' }}>
         <button
           type="button"
-          onClick={() => {
-            if (resolvedCode) {
-              setIsOpen(true);
-            }
-          }}
-          disabled={!resolvedCode || loadingCode}
+          onClick={handleClick}
+          disabled={Boolean(referrerEmail) && (!resolvedCode || loadingCode)}
           className={`button-glow button-glow--orange ${className}`}
           style={{
             display: 'inline-flex',
@@ -88,20 +93,20 @@ export default function ReferFriendButton({
             borderRadius: 16,
             padding: '0 24px',
             color: '#fff',
-            background: resolvedCode ? '#ea580c' : '#666666',
+            background: !referrerEmail || resolvedCode ? '#ea580c' : '#666666',
             outline: 'none',
             border: 'none',
             textDecoration: 'none',
-            cursor: resolvedCode ? 'pointer' : 'not-allowed',
-            opacity: loadingCode ? 0.6 : 1,
+            cursor: !referrerEmail || resolvedCode ? 'pointer' : 'not-allowed',
+            opacity: referrerEmail && loadingCode ? 0.6 : 1,
           }}
           onMouseEnter={(e) => {
-            if (resolvedCode) {
+            if (!referrerEmail || resolvedCode) {
               e.currentTarget.style.background = '#c2410c';
             }
           }}
           onMouseLeave={(e) => {
-            if (resolvedCode) {
+            if (!referrerEmail || resolvedCode) {
               e.currentTarget.style.background = '#ea580c';
             }
           }}
@@ -113,7 +118,7 @@ export default function ReferFriendButton({
             fontSize: 'clamp(18px, 2vw, 24px)',
             fontWeight: 800,
           }}>
-            Refer a Friend
+            {label}
           </div>
           <div style={{
             fontSize: 14,
@@ -131,7 +136,6 @@ export default function ReferFriendButton({
           style={{
           fontSize: '11px',
           lineHeight: 1.4,
-          color: 'rgba(255,255,255,0.85)',
           textAlign: 'center',
           maxWidth: '200px',
           padding: '0 8px',
@@ -149,7 +153,7 @@ export default function ReferFriendButton({
         </div>
       </div>
 
-      {isOpen && resolvedCode && (
+      {isOpen && resolvedCode && referrerEmail && (
         <ReferFriendModal
           isOpen={isOpen}
           onClose={() => setIsOpen(false)}

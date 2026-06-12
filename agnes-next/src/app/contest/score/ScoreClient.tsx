@@ -957,6 +957,10 @@ export default function ScoreClient() {
       }, 300);
     }, 300);
   };
+  const promptContestIdentity = useCallback(() => {
+    alert('Please enter the contest first so we know who to credit.');
+  }, []);
+
   const handleShareClick = (
     platform: 'x' | 'ig' | 'fb' | 'truth' | 'tiktok',
     e: React.MouseEvent<HTMLAnchorElement>
@@ -965,7 +969,7 @@ export default function ScoreClient() {
 
     const email = contestEmail;
     if (!email) {
-      alert('Please enter the contest first so we know who to credit.');
+      promptContestIdentity();
       return;
     }
 
@@ -1557,41 +1561,6 @@ export default function ScoreClient() {
             colorBase="#e11d48"
             colorHover="#be123c"
           />
-          <ActionButton
-            label="Share to X"
-            sub="100 pts"
-            href="/share/x/1"
-            hoverKey="x"
-            onClick={(e: any) => handleShareClick('x', e)}
-            colorBase="#000000"
-            colorHover="#262626"
-          />
-          <ActionButton
-            label="Share to Instagram"
-            sub="100 pts"
-            href="/share/ig?source=score"
-            hoverKey="ig"
-            onClick={(e: any) => handleShareClick('ig', e)}
-            colorBase="#c026d3"
-            colorHover="#a21caf"
-          />
-          <ActionButton
-            label="Share to Facebook"
-            sub="100 pts"
-            href="/share/fb/3"
-            hoverKey="fb"
-            onClick={(e: any) => handleShareClick('fb', e)}
-            colorBase="#1877f2"
-            colorHover="#1565c0"
-          />
-          <ActionButton
-            label="Join the Contest"
-            sub="250 pts"
-            href="/contest"
-            hoverKey="contest"
-            colorBase="#4f46e5"
-            colorHover="#4338ca"
-          />
           <div
             className="score-refer-slot"
             style={{
@@ -1605,24 +1574,30 @@ export default function ScoreClient() {
             onFocus={() => onButtonEnter('refer')}
             onBlur={onButtonLeave}
           >
-            {/* Show ReferFriendButton if we have email (code will be fetched if missing) */}
-            {contestEmail && (
-              <ReferFriendButton
-                referralCode={associate?.code || ''}
-                referrerEmail={associate?.email || contestEmail || undefined}
-                className=""
-                onReferralSent={refreshPoints}
-              />
-            )}
+            <ReferFriendButton
+              referralCode={associate?.code || ''}
+              referrerEmail={associate?.email || contestEmail || undefined}
+              onRequireEmail={promptContestIdentity}
+              onReferralSent={refreshPoints}
+            />
           </div>
           <ActionButton
-            label="Share to Truth"
+            label="Share to Facebook"
             sub="100 pts"
-            href="/share/truth/1"
-            hoverKey="truth"
-            onClick={(e: any) => handleShareClick('truth', e)}
-            colorBase="#6366f1"
-            colorHover="#4f46e5"
+            href="/share/fb/3"
+            hoverKey="fb"
+            onClick={(e: any) => handleShareClick('fb', e)}
+            colorBase="#1877f2"
+            colorHover="#1565c0"
+          />
+          <ActionButton
+            label="Share to Instagram"
+            sub="100 pts"
+            href="/share/ig?source=score"
+            hoverKey="ig"
+            onClick={(e: any) => handleShareClick('ig', e)}
+            colorBase="#c026d3"
+            colorHover="#a21caf"
           />
           <ActionButton
             label="Share to TikTok"
@@ -1632,6 +1607,24 @@ export default function ScoreClient() {
             onClick={(e: any) => handleShareClick('tiktok', e)}
             colorBase="#1a1a1a"
             colorHover="#2d2d2d"
+          />
+          <ActionButton
+            label="Share to X"
+            sub="100 pts"
+            href="/share/x/1"
+            hoverKey="x"
+            onClick={(e: any) => handleShareClick('x', e)}
+            colorBase="#000000"
+            colorHover="#262626"
+          />
+          <ActionButton
+            label="Share to Truth"
+            sub="100 pts"
+            href="/share/truth/1"
+            hoverKey="truth"
+            onClick={(e: any) => handleShareClick('truth', e)}
+            colorBase="#6366f1"
+            colorHover="#4f46e5"
           />
           <ActionButton
             label="Send Signal"
@@ -1826,26 +1819,24 @@ export default function ScoreClient() {
             {submittingExplicitEntry ? 'Processing...' : 'Officially Enter (+500 pts)'}
           </button>
         )}
-        {contestEmail && (
-          <Link
-            href="/refer"
-            style={{
-              flex: '1 1 auto',
-              minWidth: 100,
-              padding: '12px 16px',
-              borderRadius: 10,
-              fontSize: 14,
-              fontWeight: 600,
-              textDecoration: 'none',
-              textAlign: 'center',
-              border: '1px solid rgba(148, 163, 184, 0.4)',
-              background: 'rgba(15, 23, 42, 0.8)',
-              color: '#e2e8f0',
-            }}
-          >
-            Refer a Friend
-          </Link>
-        )}
+        <Link
+          href="/refer"
+          style={{
+            flex: '1 1 auto',
+            minWidth: 100,
+            padding: '12px 16px',
+            borderRadius: 10,
+            fontSize: 14,
+            fontWeight: 600,
+            textDecoration: 'none',
+            textAlign: 'center',
+            border: '1px solid rgba(234, 88, 12, 0.5)',
+            background: 'rgba(234, 88, 12, 0.2)',
+            color: '#fb923c',
+          }}
+        >
+          Share with Friends
+        </Link>
       </div>
       
       {/* CSS for sync spinner animation */}
