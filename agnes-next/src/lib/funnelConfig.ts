@@ -19,3 +19,8 @@ export function isEntryFunnelOverrideAllowed(): boolean {
 export function isContestEntryUxArchived(): boolean {
   return process.env.NEXT_PUBLIC_CONTEST_ENTRY_UX_ENABLED !== 'true';
 }
+
+/** Cruise ship score background archived. Set NEXT_PUBLIC_SCORE_CRUISE_VISUAL_ENABLED=true to restore. */
+export function isScoreCruiseVisualArchived(): boolean {
+  return process.env.NEXT_PUBLIC_SCORE_CRUISE_VISUAL_ENABLED !== 'true';
+}

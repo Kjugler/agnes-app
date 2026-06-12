@@ -42,6 +42,39 @@
   filter: brightness(1) saturate(1.05);
 }
 
+/* Simplified funnel: neutral score page (cruise bg archived; restore via NEXT_PUBLIC_SCORE_CRUISE_VISUAL_ENABLED=true) */
+.score-wrap.score-wrap--neutral {
+  color: #0f172a;
+  background: #f8fafc;
+}
+
+.score-wrap.score-wrap--neutral::before {
+  display: none;
+}
+
+.score-wrap.score-wrap--neutral .ship-mist {
+  display: none;
+}
+
+.score-wrap.score-wrap--neutral .score-sidebar {
+  background: rgba(241, 245, 249, 0.95);
+  border-left: 1px solid #e2e8f0;
+}
+
+@media (max-width: 1100px) {
+  .score-wrap.score-wrap--neutral .score-sidebar {
+    background: #f1f5f9;
+    border-left: none;
+    border-top: 1px solid #e2e8f0;
+  }
+}
+
+@media (max-width: 767px) {
+  .score-wrap.score-wrap--neutral .score-mobile-action-bar {
+    background: rgba(248, 250, 252, 0.98);
+    border-top-color: #e2e8f0;
+  }
+}
 
 .score-confetti {
   position: fixed;

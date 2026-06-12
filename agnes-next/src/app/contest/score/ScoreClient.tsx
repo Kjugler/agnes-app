@@ -19,7 +19,7 @@ import ReferFriendButton from '@/components/refer/ReferFriendButton';
 import TextAFriendModal from '@/components/refer/TextAFriendModal';
 import SocialHandleModal from './SocialHandleModal';
 import HelpButton from '@/components/HelpButton';
-import { isContestEntryUxArchived } from '@/lib/funnelConfig';
+import { isContestEntryUxArchived, isScoreCruiseVisualArchived } from '@/lib/funnelConfig';
 
 function clamp(min: number, v: number, max: number) {
   return Math.max(min, Math.min(max, v));
@@ -1065,9 +1065,11 @@ export default function ScoreClient() {
 
   const topFog = Math.min(mist, 0.85);
   const midFog = Math.max(mist - 0.35, 0);
+  const cruiseVisualArchived = isScoreCruiseVisualArchived();
   const wrapClassName = [
     'score-wrap',
-    hovered && 'is-hovered',
+    cruiseVisualArchived && 'score-wrap--neutral',
+    hovered && !cruiseVisualArchived && 'is-hovered',
     isMobile && 'score-mobile',
   ].filter(Boolean).join(' ');
 
