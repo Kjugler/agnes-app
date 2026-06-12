@@ -140,7 +140,7 @@ export default function SignalRoomGateView({ showCodeInput }: SignalRoomGateView
             marginTop: '1rem',
           }}
         >
-          ← Back to Contest Hub
+          ← Back to Hub
         </Link>
       </div>
     </div>

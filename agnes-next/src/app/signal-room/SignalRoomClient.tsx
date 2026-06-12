@@ -958,7 +958,7 @@ export default function SignalRoomClient({
           >
             <p style={{ margin: '0 0 0.65rem 0' }}>{ENTER_CONTEST_TO_SUBMIT_SIGNAL}</p>
             <Link href="/contest" style={{ color: '#00ffe0', fontWeight: 600, textDecoration: 'none' }}>
-              Go to Contest Hub →
+              Go to Hub →
             </Link>
           </section>
         )}
@@ -1041,7 +1041,7 @@ export default function SignalRoomClient({
               fontSize: '1rem',
             }}
           >
-            Back to Contest Hub
+            Back to Hub
           </Link>
         </div>
       </main>

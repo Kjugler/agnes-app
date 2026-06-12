@@ -135,7 +135,7 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
               textDecoration: 'none',
             }}
           >
-            ← Back to Contest Hub
+            ← Back to Hub
           </Link>
         </div>
         

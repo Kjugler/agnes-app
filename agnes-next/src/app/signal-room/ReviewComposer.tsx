@@ -170,7 +170,7 @@ export default function ReviewComposer({
             <div style={{ marginBottom: '1.5rem' }}>
               <p style={{ color: '#e0e0e0', lineHeight: 1.6, marginBottom: '1rem' }}>{ENTER_CONTEST_TO_SUBMIT_SIGNAL}</p>
               <Link href="/contest" style={{ color: '#00ffe0', fontWeight: 600, textDecoration: 'none' }}>
-                Go to Contest Hub →
+                Go to Hub →
               </Link>
               <div style={{ marginTop: '1.25rem' }}>
                 <button

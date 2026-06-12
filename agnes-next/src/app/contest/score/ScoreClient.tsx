@@ -1316,7 +1316,7 @@ export default function ScoreClient() {
             e.currentTarget.style.borderColor = 'rgba(148, 163, 184, 0.6)';
           }}
         >
-          ← Back to Contest
+          ← Back to Hub
         </Link>
         {contestEmail && (
           <button
@@ -1801,7 +1801,7 @@ export default function ScoreClient() {
             color: '#34d399',
           }}
         >
-          ← Back to Contest
+          ← Back to Hub
         </Link>
         {!isContestEntryUxArchived() && contestJoined && !explicitContestEntry && (
           <button

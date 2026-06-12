@@ -23,7 +23,7 @@ export default function ThankYouButtons() {
           textDecoration: 'none',
         }}
       >
-        Back to Contest
+        Back to Hub
       </a>
 
       {/* Secondary: View Scoreboard - Full-width, same height, outline only */}

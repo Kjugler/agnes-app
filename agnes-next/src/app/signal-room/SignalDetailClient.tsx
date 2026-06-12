@@ -195,7 +195,7 @@ export default function SignalDetailClient({ signal }: { signal: SignalData }) {
             href="/contest"
             style={{ color: '#00ffe0', fontSize: '0.9em', textDecoration: 'none' }}
           >
-            ← Back to Contest Hub
+            ← Back to Hub
           </Link>
         </div>
 

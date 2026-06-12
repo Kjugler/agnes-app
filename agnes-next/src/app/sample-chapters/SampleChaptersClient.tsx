@@ -348,7 +348,7 @@ export default function SampleChaptersClient() {
             display: 'inline-block',
           }}
         >
-          ← Back to Contest Hub
+          ← Back to Hub
         </Link>
       </div>
       <h1 style={{ marginTop: '20px', fontSize: '1.6em' }}>
@@ -490,7 +490,7 @@ export default function SampleChaptersClient() {
             textDecoration: 'none',
           }}
         >
-          Back to Contest Hub
+          Back to Hub
         </Link>
       </div>
 

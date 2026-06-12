@@ -55,7 +55,7 @@ export default function SignalRoomHeader({
               textDecoration: 'none',
             }}
           >
-            ← Back to Contest Hub
+            ← Back to Hub
           </Link>
           <span
             style={{

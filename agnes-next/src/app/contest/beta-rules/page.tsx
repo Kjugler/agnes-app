@@ -24,7 +24,7 @@ export default function BetaRulesPage() {
             fontSize: '14px',
           }}
         >
-          ← Back to Contest Hub
+          ← Back to Hub
         </Link>
 
         <div style={{
