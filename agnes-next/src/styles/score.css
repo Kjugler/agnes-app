@@ -6,7 +6,8 @@
   grid-template-rows: minmax(260px, 40vh) minmax(0, 1fr);
   height: 100vh;
   overflow: hidden;
-  color: #f8fafc;
+  color: #0f172a;
+  background: #f8fafc;
 }
 
 /* Wrapper for scrollable content on mobile; on desktop uses display:contents so children participate in grid */
@@ -20,7 +21,44 @@
   }
 }
 
-.score-wrap::before {
+.score-wrap .ship-mist {
+  display: none;
+}
+
+.score-wrap .score-sidebar {
+  background: rgba(241, 245, 249, 0.95);
+  border-left: 1px solid #e2e8f0;
+}
+
+@media (max-width: 1100px) {
+  .score-wrap .score-sidebar {
+    background: #f1f5f9;
+    border-left: none;
+    border-top: 1px solid #e2e8f0;
+  }
+}
+
+@media (max-width: 767px) {
+  .score-wrap .score-mobile-action-bar {
+    background: rgba(248, 250, 252, 0.98);
+    border-top-color: #e2e8f0;
+  }
+}
+
+.score-stage,
+.buttons-grid,
+.score-sidebar {
+  position: relative;
+  z-index: 10;
+}
+
+/* Archived cruise/vacation score stage — restore via NEXT_PUBLIC_SCORE_CRUISE_VISUAL_ENABLED=true */
+.score-wrap.score-wrap--cruise {
+  color: #f8fafc;
+  background: transparent;
+}
+
+.score-wrap.score-wrap--cruise::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -31,48 +69,31 @@
   pointer-events: none;
 }
 
-.score-stage,
-.buttons-grid,
-.score-sidebar {
-  position: relative;
-  z-index: 10;
+.score-wrap.score-wrap--cruise .ship-mist {
+  display: block;
 }
 
-.score-wrap.is-hovered::before {
+.score-wrap.score-wrap--cruise .score-sidebar {
+  background: rgba(4, 7, 19, 0.35);
+  border-left: none;
+  backdrop-filter: blur(8px);
+}
+
+.score-wrap.score-wrap--cruise.is-hovered::before {
   filter: brightness(1) saturate(1.05);
 }
 
-/* Simplified funnel: neutral score page (cruise bg archived; restore via NEXT_PUBLIC_SCORE_CRUISE_VISUAL_ENABLED=true) */
-.score-wrap.score-wrap--neutral {
-  color: #0f172a;
-  background: #f8fafc;
-}
-
-.score-wrap.score-wrap--neutral::before {
-  display: none;
-}
-
-.score-wrap.score-wrap--neutral .ship-mist {
-  display: none;
-}
-
-.score-wrap.score-wrap--neutral .score-sidebar {
-  background: rgba(241, 245, 249, 0.95);
-  border-left: 1px solid #e2e8f0;
-}
-
 @media (max-width: 1100px) {
-  .score-wrap.score-wrap--neutral .score-sidebar {
-    background: #f1f5f9;
-    border-left: none;
-    border-top: 1px solid #e2e8f0;
+  .score-wrap.score-wrap--cruise .score-sidebar {
+    background: rgba(4, 7, 19, 0.45);
+    border-top: none;
   }
 }
 
 @media (max-width: 767px) {
-  .score-wrap.score-wrap--neutral .score-mobile-action-bar {
-    background: rgba(248, 250, 252, 0.98);
-    border-top-color: #e2e8f0;
+  .score-wrap.score-wrap--cruise .score-mobile-action-bar {
+    background: rgba(4, 7, 19, 0.95);
+    border-top-color: rgba(148, 163, 184, 0.3);
   }
 }
 

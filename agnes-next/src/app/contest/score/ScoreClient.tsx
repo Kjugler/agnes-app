@@ -1068,7 +1068,7 @@ export default function ScoreClient() {
   const cruiseVisualArchived = isScoreCruiseVisualArchived();
   const wrapClassName = [
     'score-wrap',
-    cruiseVisualArchived && 'score-wrap--neutral',
+    !cruiseVisualArchived && 'score-wrap--cruise',
     hovered && !cruiseVisualArchived && 'is-hovered',
     isMobile && 'score-mobile',
   ].filter(Boolean).join(' ');
