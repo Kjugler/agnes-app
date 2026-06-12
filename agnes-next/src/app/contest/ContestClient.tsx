@@ -921,15 +921,15 @@ export default function ContestClient() {
       },
       {
         id: 'contestBtn',
-        label: userHasJoinedContest ? 'See Your Progress' : 'Officially Enter (500 pts)',
-        microPrompt: userHasJoinedContest ? 'View your progress' : 'Start earning points',
-        text: userHasJoinedContest ? 'View your contest score and progress' : 'You can win this for your family!',
-        href: userHasJoinedContest ? '/contest/score' : '/contest/signup?from=/contest',
+        label: 'Share the Experience',
+        microPrompt: 'See your progress and points',
+        text: 'View your score, shares, and progress.',
+        href: '/contest/score',
         type: 'link' as const,
       },
       {
         id: 'pointsBtn',
-        label: 'Send Signal',
+        label: 'Send a Signal',
         microPrompt: 'Send your first signal',
         text: 'Tap here to win points.',
         href: '/signal-room',
@@ -943,7 +943,7 @@ export default function ContestClient() {
         type: 'button' as const,
       },
     ],
-    [userHasJoinedContest],
+    [],
   );
 
   /** Motivational + live stats + terminal flash — merged into the same ticker as `/api/signal/events` (SiteRibbonTicker). */
@@ -1334,34 +1334,7 @@ export default function ContestClient() {
             >
               {btn.microPrompt}
             </div>
-            {btn.id === 'contestBtn' ? (
-              <button
-                type="button"
-                disabled={statusLoading}
-                onClick={() => {
-                  if (!btn.href) {
-                    alert("That entry link isn't available yet.");
-                    return;
-                  }
-                  handleContestEntry(btn.href);
-                }}
-                style={{
-                  padding: '1rem',
-                  backgroundColor: '#111',
-                  border: '2px solid green',
-                  color: 'white',
-                  fontSize: '1rem',
-                  cursor: statusLoading ? 'not-allowed' : 'pointer',
-                  transition: 'all 0.3s',
-                  minWidth: '160px', // E1: Smaller min width for mobile
-                  width: '100%', // E1: Full width on mobile
-                  maxWidth: '100%', // E1: Don't exceed container
-                  opacity: statusLoading ? 0.6 : 1,
-                }}
-              >
-                {statusLoading ? 'Checking...' : btn.label}
-              </button>
-            ) : btn.type === 'button' ? (
+            {btn.type === 'button' ? (
               <BuyBookButton
                 source="contest"
                 successPath="/contest/thank-you"
