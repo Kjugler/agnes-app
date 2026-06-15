@@ -15,3 +15,9 @@ export const TEXT_A_FRIEND_BOOK_DESCRIPTION =
 export const TEXT_A_FRIEND_CHAPTER9_TITLE = 'This scene really hit home.';
 export const TEXT_A_FRIEND_CHAPTER9_DESCRIPTION =
   'A free sample chapter from The Agnes Protocol — see what stood out to your friend.';
+
+export const SAMPLE_CHAPTERS_OG_IMAGE_PATH = '/og/book-cover-og.jpg';
+export const SAMPLE_CHAPTERS_OG_IMAGE_URL = `${TEXT_A_FRIEND_SITE_URL}${SAMPLE_CHAPTERS_OG_IMAGE_PATH}`;
+export const SAMPLE_CHAPTERS_OG_TITLE = 'Sample Chapters from The Agnes Protocol';
+export const SAMPLE_CHAPTERS_OG_DESCRIPTION =
+  'Read free sample chapters from The Agnes Protocol — a political thriller about truth, media, and trust.';
