@@ -16,7 +16,7 @@ import { ScoreCaptionRotator } from '@/components/ScoreCaptionRotator';
 import { BuyBookButton } from '@/components/BuyBookButton';
 import { ContestEntryForm } from '@/components/ContestEntryForm';
 import ReferFriendButton from '@/components/refer/ReferFriendButton';
-import TextAFriendModal from '@/components/refer/TextAFriendModal';
+import { openScoreTextAFriendSms } from '@/lib/textAFriendScore';
 import SocialHandleModal from './SocialHandleModal';
 import HelpButton from '@/components/HelpButton';
 import { isContestEntryUxArchived, isScoreCruiseVisualArchived } from '@/lib/funnelConfig';
@@ -96,7 +96,6 @@ export default function ScoreClient() {
       window.matchMedia('(prefers-reduced-motion: reduce)').matches
   );
   const [isMobile, setIsMobile] = useState(false);
-  const [textFriendModalOpen, setTextFriendModalOpen] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1556,7 +1555,7 @@ export default function ScoreClient() {
             hoverKey="textfriend"
             onClick={(e) => {
               e.preventDefault();
-              setTextFriendModalOpen(true);
+              openScoreTextAFriendSms(associate?.code ?? null);
             }}
             colorBase="#e11d48"
             colorHover="#be123c"
@@ -1670,12 +1669,6 @@ export default function ScoreClient() {
         platformName={socialHandleModal.platformName}
         onSave={handleSaveSocialHandle}
         onCancel={() => setSocialHandleModal({ ...socialHandleModal, isOpen: false })}
-      />
-
-      <TextAFriendModal
-        isOpen={textFriendModalOpen}
-        onClose={() => setTextFriendModalOpen(false)}
-        referralCode={associate?.code ?? null}
       />
 
       {/* Sync status indicator (shown during refresh loop) */}
