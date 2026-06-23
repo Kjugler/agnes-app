@@ -11,6 +11,7 @@ import MetaPixel from "@/components/analytics/MetaPixel";
 import MetaPageView from "@/components/analytics/MetaPageView";
 import MetaPixelDebugPanel from "@/components/analytics/MetaPixelDebugPanel";
 import MicrosoftUET from "@/components/analytics/MicrosoftUET";
+import MicrosoftUETPageView from "@/components/analytics/MicrosoftUETPageView";
 
 const SITE_URL = "https://www.theagnesprotocol.com";
 /** Absolute URL for crawlers (og:image, Twitter cards). */
@@ -63,6 +64,7 @@ export default function RootLayout({
           <CheckoutWiring />
           <TikTokPageView />
           <MetaPageView />
+          <MicrosoftUETPageView />
           <MetaPixelDebugPanel />
         </Suspense>
       </body>
