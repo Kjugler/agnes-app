@@ -143,12 +143,12 @@ export default function ReferFriendButton({
         >
           <div style={{ marginBottom: '4px', fontWeight: 600 }}>How this works</div>
           <div style={{ fontSize: '10px', opacity: 0.9 }}>
-            Send friends a private email with your discount link. They save $3.90. You earn $2 per purchase.
+            Send friends a private email with your sample-chapters link and reader discount.
             <br />
-            Plus: 5 pts per email (up to 20 emails / 100 pts per day).
+            They save on the book; you earn $2 when they purchase using your code.
           </div>
           <div style={{ marginTop: '6px', fontSize: '10px', fontWeight: 500, opacity: 0.95 }}>
-            ⏰ Most purchases happen in the first 4 months—start sharing now!
+            Most reader referrals happen in the first few months — start sharing now.
           </div>
         </div>
       </div>

@@ -10,6 +10,38 @@
   background: #f8fafc;
 }
 
+/* Reader Sharing Tools — single column, no rank/rabbit sidebar */
+.score-wrap.score-wrap--sharing-tools {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.score-wrap.score-wrap--sharing-tools .score-sidebar {
+  display: none;
+}
+
+.score-tools-heading {
+  text-align: center;
+  padding: 0 1rem;
+  margin-top: 0.5rem;
+  position: relative;
+  z-index: 20;
+}
+
+.score-tools-heading h1 {
+  margin: 0;
+  font-size: clamp(1.35rem, 3.5vw, 1.75rem);
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+
+.score-tools-heading p {
+  margin: 0.35rem 0 0;
+  font-size: clamp(0.95rem, 2.5vw, 1.1rem);
+  color: #475569;
+  font-weight: 600;
+}
+
 /* Wrapper for scrollable content on mobile; on desktop uses display:contents so children participate in grid */
 .score-content {
   /* Mobile styles in @media (max-width: 767px) below */

@@ -60,21 +60,68 @@ function maybeSetTextafriendDiscountCookie(request: NextRequest, response: NextR
   }
 }
 
+/** Set ap_ref / ref cookies from ?ref= on redirect responses. */
+function applyReferralCookiesFromRequest(request: NextRequest, response: NextResponse) {
+  const ref = request.nextUrl.searchParams.get('ref');
+  if (ref && ref.trim() && ref.trim() !== '...') {
+    const activeRef = ref.trim();
+    response.cookies.set('ap_ref', activeRef, {
+      maxAge: 60 * 60 * 24 * 365,
+      path: '/',
+      sameSite: 'lax',
+      secure: request.nextUrl.protocol === 'https:',
+    });
+    response.cookies.set('ref', activeRef, {
+      maxAge: 60 * 60 * 24 * 365,
+      path: '/',
+      sameSite: 'lax',
+      secure: request.nextUrl.protocol === 'https:',
+    });
+  }
+}
+
+/** Redirect to target path, preserving the full query string and referral/discount cookies. */
+function redirectPreservingQuery(request: NextRequest, targetPathname: string): NextResponse {
+  const destinationUrl = withSameOrigin(request, targetPathname);
+  request.nextUrl.searchParams.forEach((value, key) => {
+    destinationUrl.searchParams.set(key, value);
+  });
+  const response = NextResponse.redirect(destinationUrl);
+  applyReferralCookiesFromRequest(request, response);
+  maybeSetTextafriendDiscountCookie(request, response);
+  return response;
+}
+
+/** Public contest/game routes → book-sales entry (Phase 1). */
+const SALES_SITE_REDIRECTS: Record<string, string> = {
+  '/': '/sample-chapters',
+  '/entry': '/sample-chapters',
+  '/start': '/sample-chapters',
+  '/lightening': '/sample-chapters',
+  '/lightning': '/sample-chapters',
+  '/contest': '/sample-chapters',
+  '/contest/signup': '/sample-chapters',
+  '/contest/access': '/sample-chapters',
+  '/contest/ascension': '/sample-chapters',
+  '/contest/beta-rules': '/sample-chapters',
+  '/contest/Badges': '/sample-chapters',
+  '/contest/share/tiktok': '/sample-chapters',
+  '/contest/share/truth': '/sample-chapters',
+  '/the-protocol-challenge': '/sample-chapters',
+  '/badge': '/sample-chapters',
+  '/posted': '/sample-chapters',
+  '/terminal': '/sample-chapters',
+};
+
 export function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   // Exclude ALL terminal-proxy routes from splitter logic (pass through)
-  // Handle: /terminal-proxy, /terminal-proxy/, /terminal-proxy/*
   if (
     pathname === '/terminal-proxy' ||
     pathname === '/terminal-proxy/' ||
     pathname.startsWith('/terminal-proxy/')
   ) {
-    return NextResponse.next();
-  }
-
-  // Exclude /terminal route (it's a Next page, not a redirect target)
-  if (pathname === '/terminal' || pathname.startsWith('/terminal/')) {
     return NextResponse.next();
   }
 
@@ -101,75 +148,30 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  // Spec 1: Root route → Lightning (single cinematic entry)
-  if (pathname === '/') {
-    const destinationUrl = withSameOrigin(request, '/lightening');
-    request.nextUrl.searchParams.forEach((value, key) => {
-      destinationUrl.searchParams.set(key, value);
-    });
-
-    // Create redirect response
-    const response = NextResponse.redirect(destinationUrl);
-
-    // Capture ?ref=CODE and store in cookie as ap_ref (canonical referral cookie)
-    const ref = request.nextUrl.searchParams.get('ref');
-    if (ref) {
-      response.cookies.set('ap_ref', ref, {
-        maxAge: 60 * 60 * 24 * 365, // 1 year
-        path: '/',
-        sameSite: 'lax',
-      });
-      // Also set legacy 'ref' cookie for backward compatibility
-      response.cookies.set('ref', ref, {
-        maxAge: 60 * 60 * 24 * 365, // 1 year
-        path: '/',
-      });
-    }
-
-    maybeSetTextafriendDiscountCookie(request, response);
-
-    return response;
+  // Legacy contest thank-you → neutral checkout success (preserve session_id)
+  if (pathname === '/contest/thank-you') {
+    return redirectPreservingQuery(request, '/checkout/success');
   }
 
-  // Spec 1: /entry and /start → Lightning (backward compat). /entry does NOT render.
-  // EntryClient remains in codebase for future secret path reuse (direct nav to /entry would need a bypass).
-  if (pathname === '/entry' || pathname === '/start') {
-    const destinationUrl = withSameOrigin(request, '/lightening');
-    request.nextUrl.searchParams.forEach((value, key) => {
-      destinationUrl.searchParams.set(key, value);
-    });
+  // Reader claim: legacy contest path → neutral reader claim (preserve token)
+  if (pathname === '/contest/claim') {
+    return redirectPreservingQuery(request, '/reader/claim');
+  }
 
-    const response = NextResponse.redirect(destinationUrl);
-
-    const ref = request.nextUrl.searchParams.get('ref');
-    if (ref && ref.trim() && ref.trim() !== '...') {
-      response.cookies.set('ap_ref', ref.trim(), {
-        maxAge: 60 * 60 * 24 * 365,
-        path: '/',
-        sameSite: 'lax',
-      });
-      response.cookies.set('ref', ref.trim(), {
-        maxAge: 60 * 60 * 24 * 365,
-        path: '/',
-      });
-    }
-
-    maybeSetTextafriendDiscountCookie(request, response);
-
-    return response;
+  // Phase 1: redirect retired public contest routes
+  const salesRedirect = SALES_SITE_REDIRECTS[pathname];
+  if (salesRedirect) {
+    return redirectPreservingQuery(request, salesRedirect);
   }
 
   // Device classification for share routes (single source of truth)
-  // /share/* and /api/share/* - set dq_device cookie; do NOT run for /p/fb/* (OG preview)
   const isShareRoute = pathname.startsWith('/share/') || pathname.startsWith('/api/share/');
   const isOgPreviewRoute = pathname.startsWith('/p/fb/');
   if (isShareRoute && !isOgPreviewRoute) {
     const response = NextResponse.next();
-    // Bot safeguard: never set mobile flows for crawlers (protects OG)
     if (isBot(request)) {
       return response;
     }
-    // Debug override: ?device=ios|android|desktop
     const deviceOverride = request.nextUrl.searchParams.get('device');
     let device: 'desktop' | 'ios' | 'android' = 'desktop';
     if (deviceOverride === 'ios' || deviceOverride === 'android' || deviceOverride === 'desktop') {
@@ -178,12 +180,11 @@ export function middleware(request: NextRequest) {
       device = detectDevice(request);
     }
     response.cookies.set('dq_device', device, {
-      maxAge: 60 * 60 * 24, // 1 day
+      maxAge: 60 * 60 * 24,
       path: '/',
       sameSite: 'lax',
       secure: request.nextUrl.protocol === 'https:',
     });
-    // Visitor ID for asset rotation (stable per user)
     if (!request.cookies.get('dq_visitor')) {
       const visitorId = `v${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
       response.cookies.set('dq_visitor', visitorId, {
@@ -193,7 +194,6 @@ export function middleware(request: NextRequest) {
         secure: request.nextUrl.protocol === 'https:',
       });
     }
-    // Preserve ref, target, secret - do not redirect
     const ref = request.nextUrl.searchParams.get('ref');
     if (ref && ref.trim() && ref.trim() !== '...') {
       response.cookies.set('ap_ref', ref.trim(), {
@@ -212,14 +212,10 @@ export function middleware(request: NextRequest) {
     return response;
   }
 
-  // Part 2B: For non-root routes, handle existing cookie logic
-  // IMPORTANT: Do NOT redirect based on ref param - only set cookies
-  // Routes like /catalog, /checkout, /contest/thank-you should NOT be redirected
   const response = NextResponse.next();
 
   maybeSetTextafriendDiscountCookie(request, response);
 
-  // Part 1A: Log redirects (for debugging)
   if (process.env.NODE_ENV === 'development') {
     const isRedirect = response.status === 307 || response.status === 308 || response.status === 301 || response.status === 302;
     if (isRedirect) {
@@ -232,28 +228,22 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  // Root Cause A Fix: ref query param must always override cookie
-  // Capture ?ref=CODE and store in cookie as ap_ref (canonical referral cookie)
-  // This does NOT cause redirects - only sets cookies
   const ref = request.nextUrl.searchParams.get('ref');
   if (ref && ref.trim() && ref.trim() !== '...') {
     const activeRef = ref.trim();
-    // Root Cause A: Query param ref always overrides cookie (prevents stale referral context)
     response.cookies.set('ap_ref', activeRef, {
-      maxAge: 60 * 60 * 24 * 365, // 1 year
+      maxAge: 60 * 60 * 24 * 365,
       path: '/',
       sameSite: 'lax',
       secure: request.nextUrl.protocol === 'https:',
     });
-    // Also set legacy 'ref' cookie for backward compatibility
     response.cookies.set('ref', activeRef, {
-      maxAge: 60 * 60 * 24 * 365, // 1 year
+      maxAge: 60 * 60 * 24 * 365,
       path: '/',
       sameSite: 'lax',
       secure: request.nextUrl.protocol === 'https:',
     });
-    
-    // Log when ref query param overrides cookie
+
     const existingCookie = request.cookies.get('ap_ref')?.value || request.cookies.get('ref')?.value;
     if (existingCookie && existingCookie !== activeRef) {
       console.log('[Middleware] Referral code from query param overrides cookie', {
@@ -265,11 +255,10 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  // Allow ?mockEmail=... for dev testing
   const mockEmail = request.nextUrl.searchParams.get('mockEmail');
   if (mockEmail) {
     response.cookies.set('mockEmail', mockEmail, {
-      maxAge: 60 * 60 * 24, // 1 day
+      maxAge: 60 * 60 * 24,
       path: '/',
     });
   }
@@ -279,15 +268,7 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - api (API routes)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     */
     '/((?!api|_next/static|_next/image|favicon.ico).*)',
-    // Include api/share for device classification
     '/api/share/:path*',
   ],
 };

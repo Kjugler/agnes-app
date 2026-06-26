@@ -4,7 +4,6 @@ import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import CheckoutWiring from './CheckoutWiring'; // ← invisible helper that wires the Buy button
-import CurrentScoreButton from './CurrentScoreButton';
 import { BuyBookButton } from '@/components/BuyBookButton';
 import { ContestEntryForm } from '@/components/ContestEntryForm';
 import HelpButton from '@/components/HelpButton';
@@ -28,14 +27,8 @@ declare global {
   }
 }
 
-const BANNER_MOTIVATIONAL = [
-  'Join the game. It takes less than 30 seconds.',
-  'Solve the mystery. Earn points. Climb the leaderboard.',
-  'Top players qualify for the 6-Day, 7-Night Family Vacation drawing.',
-  'Every signal earns points. Every point moves you closer.',
-  "You're already here. Join the game.",
-  "It's fun. Everyone is doing it.",
-];
+const HUB_RIBBON_COPY =
+  'Read four free sample chapters • Meet Simon McQuade • The Agnes Protocol';
 
 export default function ContestClient() {
   const qp = useSearchParams();
@@ -49,7 +42,6 @@ export default function ContestClient() {
   const sessionId = qp.get('session_id');
   const justPurchased = qp.get('justPurchased') === '1';
   
-  const [showScoreButton, setShowScoreButton] = useState(false);
   const [contestEmail, setContestEmail] = useState<string | null>(null);
   const [associate, setAssociate] = useState<AssociateCache | null>(null);
   const [hasProfile, setHasProfile] = useState(false);
@@ -67,18 +59,7 @@ export default function ContestClient() {
   const [showIdentityBanner, setShowIdentityBanner] = useState(false);
   const [showYouTubeOverlay, setShowYouTubeOverlay] = useState(true);
   const [showRequestAccessModal, setShowRequestAccessModal] = useState(false);
-  const [liveStats, setLiveStats] = useState<{
-    playersExploring: number;
-    currentLeaderName: string | null;
-    currentLeaderPoints: number;
-    friendsSavedCents: number;
-    associateRewardsCents: number;
-    booksClaimed: number;
-  } | null>(null);
-  const [liveStatsHighlight, setLiveStatsHighlight] = useState<Set<string>>(new Set());
   const [showTerminalUnlockPanel, setShowTerminalUnlockPanel] = useState(false);
-  const [terminalDiscoveryBannerActive, setTerminalDiscoveryBannerActive] = useState(false);
-  const [terminalDiscoveryJustAwarded, setTerminalDiscoveryJustAwarded] = useState<boolean | null>(null);
   const videoRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
 
@@ -146,13 +127,8 @@ export default function ContestClient() {
     })
       .then((res) => res.json())
       .then((data) => {
-        setTerminalDiscoveryJustAwarded(data?.awarded ?? false);
-        if (terminalPass || data?.awarded) {
-          setTerminalDiscoveryBannerActive(true);
-          setTimeout(() => setTerminalDiscoveryBannerActive(false), 2500);
-          if (data?.awarded) {
-            window.dispatchEvent(new CustomEvent('contest:points-updated'));
-          }
+        if (data?.awarded) {
+          window.dispatchEvent(new CustomEvent('contest:points-updated'));
         }
       })
       .catch(() => {});
@@ -503,74 +479,6 @@ export default function ContestClient() {
     };
   }, [contestEmail]);
 
-  // Live stats for Rock Concert Mode (read-only)
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/contest/live-stats', { cache: 'no-store' })
-      .then((res) => res.json())
-      .then((data) => {
-        if (cancelled || !data?.ok) return;
-        setLiveStats({
-          playersExploring: data.playersExploring ?? 0,
-          currentLeaderName: data.currentLeaderName ?? null,
-          currentLeaderPoints: data.currentLeaderPoints ?? 0,
-          friendsSavedCents: data.friendsSavedCents ?? 0,
-          associateRewardsCents: data.associateRewardsCents ?? 0,
-          booksClaimed: data.booksClaimed ?? 0,
-        });
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
-
-  // Poll live stats every 30s
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetch('/api/contest/live-stats', { cache: 'no-store' })
-        .then((res) => res.json())
-        .then((data) => {
-          if (!data?.ok) return;
-          setLiveStats((prev) => {
-            if (!prev) return {
-              playersExploring: data.playersExploring ?? 0,
-              currentLeaderName: data.currentLeaderName ?? null,
-              currentLeaderPoints: data.currentLeaderPoints ?? 0,
-              friendsSavedCents: data.friendsSavedCents ?? 0,
-              associateRewardsCents: data.associateRewardsCents ?? 0,
-              booksClaimed: data.booksClaimed ?? 0,
-            };
-            const next = {
-              playersExploring: data.playersExploring ?? 0,
-              currentLeaderName: data.currentLeaderName ?? null,
-              currentLeaderPoints: data.currentLeaderPoints ?? 0,
-              friendsSavedCents: data.friendsSavedCents ?? 0,
-              associateRewardsCents: data.associateRewardsCents ?? 0,
-              booksClaimed: data.booksClaimed ?? 0,
-            };
-            const toHighlight: string[] = [];
-            if (prev.playersExploring === 0 && next.playersExploring > 0) toHighlight.push('playersExploring');
-            if (prev.currentLeaderPoints === 0 && next.currentLeaderPoints > 0) toHighlight.push('currentLeaderPoints');
-            if (prev.friendsSavedCents === 0 && next.friendsSavedCents > 0) toHighlight.push('friendsSavedCents');
-            if (prev.associateRewardsCents === 0 && next.associateRewardsCents > 0) toHighlight.push('associateRewardsCents');
-            if (prev.booksClaimed === 0 && next.booksClaimed > 0) toHighlight.push('booksClaimed');
-            if (toHighlight.length > 0) {
-              setLiveStatsHighlight((p) => new Set([...p, ...toHighlight]));
-              setTimeout(() => {
-                setLiveStatsHighlight((p) => {
-                  const n = new Set(p);
-                  toHighlight.forEach((k) => n.delete(k));
-                  return n;
-                });
-              }, 600);
-            }
-            return next;
-          });
-        })
-        .catch(() => {});
-    }, 10000);
-    return () => clearInterval(interval);
-  }, []);
-
   // R6: Listen for contest:points-updated event to refresh join status immediately
   useEffect(() => {
     const handlePointsUpdated = () => {
@@ -896,20 +804,6 @@ export default function ContestClient() {
     };
   }, []); // Empty deps - run once on mount
 
-  // Make visibility sticky for the session
-  useEffect(() => {
-    const key = 'contest:has-points';
-    const already = typeof window !== 'undefined' ? window.localStorage.getItem(key) === '1' : false;
-    const nowQualified = Boolean(sessionId || justPurchased);
-
-    if (nowQualified) {
-      try { window.localStorage.setItem(key, '1'); } catch {}
-      setShowScoreButton(true);
-    } else {
-      setShowScoreButton(already);
-    }
-  }, [sessionId, justPurchased]);
-
   const buttons = useMemo(
     () => [
       {
@@ -923,16 +817,16 @@ export default function ContestClient() {
       {
         id: 'contestBtn',
         label: 'Share the Experience',
-        microPrompt: 'See your progress and points',
-        text: 'View your score, shares, and progress.',
+        microPrompt: 'Share the story',
+        text: 'Text, email, and social tools for readers.',
         href: '/contest/score',
         type: 'link' as const,
       },
       {
         id: 'pointsBtn',
         label: 'Send a Signal',
-        microPrompt: 'Send your first signal',
-        text: 'Tap here to win points.',
+        microPrompt: 'Join the conversation',
+        text: 'Share your thoughts with other readers.',
         href: '/signal-room',
         type: 'link' as const,
       },
@@ -954,36 +848,6 @@ export default function ContestClient() {
     ],
     [],
   );
-
-  /** Motivational + live stats + terminal flash — merged into the same ticker as `/api/signal/events` (SiteRibbonTicker). */
-  const ribbonExtraSegments = useMemo(() => {
-    const segs: string[] = [...BANNER_MOTIVATIONAL];
-    if (terminalDiscoveryBannerActive) {
-      segs.unshift(
-        terminalDiscoveryJustAwarded === false
-          ? '⚡ Hidden terminal path — discovery bonus already claimed'
-          : '⚡ Hidden terminal discovered — bonus points awarded',
-      );
-    }
-    if (liveStats) {
-      if (liveStats.currentLeaderPoints > 0 && liveStats.currentLeaderName) {
-        segs.push(`⚡ Current leader: ${liveStats.currentLeaderName} — ${liveStats.currentLeaderPoints.toLocaleString()} pts`);
-      }
-      if (liveStats.playersExploring > 0) {
-        segs.push(`⚡ ${liveStats.playersExploring} players exploring the system`);
-      }
-      if (liveStats.friendsSavedCents > 0) {
-        segs.push(`⚡ Friends have saved $${(liveStats.friendsSavedCents / 100).toFixed(0)} through shared links`);
-      }
-      if (liveStats.associateRewardsCents > 0) {
-        segs.push(`⚡ Associate publishers have earned $${(liveStats.associateRewardsCents / 100).toFixed(0)} in rewards`);
-      }
-      if (liveStats.booksClaimed > 0) {
-        segs.push(`⚡ ${liveStats.booksClaimed} books claimed through the system`);
-      }
-    }
-    return segs;
-  }, [liveStats, terminalDiscoveryBannerActive, terminalDiscoveryJustAwarded]);
 
   const handleChangeAccount = useCallback(async () => {
     associateStatusForEmailRef.current = null;
@@ -1101,20 +965,13 @@ export default function ContestClient() {
             }}
           >
             <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#00ffe0', marginBottom: '1rem' }}>
-              ⚡ TERMINAL ACCESS DETECTED
+              You found a side door into the story
             </div>
             <p style={{ color: '#d1d5db', marginBottom: '0.75rem', lineHeight: 1.5 }}>
-              You discovered a hidden system entry point.
-            </p>
-            <p style={{ color: '#00ffe0', fontWeight: 600, marginBottom: '0.75rem' }}>
-              {terminalDiscoveryJustAwarded === true
-                ? '+250 bonus points awarded.'
-                : terminalDiscoveryJustAwarded === false
-                ? 'You already received this bonus.'
-                : '+250 bonus points awarded.'}
+              The Agnes Protocol has more layers than meet the eye.
             </p>
             <p style={{ color: '#9ca3af', fontSize: '0.9rem', marginBottom: '1.5rem', lineHeight: 1.5 }}>
-              Keep exploring. Not everything in the system is obvious.
+              Keep reading sample chapters and exploring when you&apos;re ready.
             </p>
             <button
               type="button"
@@ -1184,102 +1041,11 @@ export default function ContestClient() {
           <h2 style={{ fontSize: '1.5rem', fontWeight: 600, marginBottom: '0.5rem' }}>
             {hasProfile ? 'Welcome back' : 'Welcome'}, {greetingName}.
           </h2>
-          <p style={{ fontSize: '1.1rem', fontWeight: 700, color: '#00ffe0', marginBottom: '0.5rem', textShadow: '0 0 8px rgba(0, 255, 224, 0.5)' }}>
-            WIN A 6-DAY • 7-NIGHT FAMILY VACATION
-          </p>
-          <p style={{ fontSize: '1rem', color: '#9ca3af' }}>
-            You&apos;re in. Let&apos;s play.
-          </p>
         </div>
       ) : null}
 
-      {/* LIVE CONTEST STATUS PANEL */}
-      {liveStats && (
-        <div
-          style={{
-            marginTop: '1rem',
-            marginBottom: '0.5rem',
-            padding: '1rem 1.25rem',
-            backgroundColor: 'rgba(0, 255, 224, 0.05)',
-            border: '1px solid rgba(0, 255, 224, 0.25)',
-            borderRadius: '0.5rem',
-            maxWidth: '600px',
-            marginLeft: 'auto',
-            marginRight: 'auto',
-            textAlign: 'left',
-          }}
-        >
-          <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#00ffe0', marginBottom: '0.75rem' }}>
-            ⚡ LIVE CONTEST STATUS
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.9rem', color: '#d1d5db' }}>
-            {liveStats.playersExploring > 0 && (
-              <div
-                style={{
-                  transition: 'all 0.3s ease',
-                  ...(liveStatsHighlight.has('playersExploring')
-                    ? { color: '#00ffe0', textShadow: '0 0 8px rgba(0, 255, 224, 0.6)', animation: 'liveStatPulse 0.6s ease' }
-                    : {}),
-                }}
-              >
-                {liveStats.playersExploring} players exploring the system
-              </div>
-            )}
-            {liveStats.currentLeaderPoints > 0 && liveStats.currentLeaderName && (
-              <div
-                style={{
-                  transition: 'all 0.3s ease',
-                  ...(liveStatsHighlight.has('currentLeaderPoints')
-                    ? { color: '#00ffe0', textShadow: '0 0 8px rgba(0, 255, 224, 0.6)', animation: 'liveStatPulse 0.6s ease' }
-                    : {}),
-                }}
-              >
-                Current leader: {liveStats.currentLeaderName} — {liveStats.currentLeaderPoints.toLocaleString()} pts
-              </div>
-            )}
-            {liveStats.friendsSavedCents > 0 && (
-              <div
-                style={{
-                  transition: 'all 0.3s ease',
-                  ...(liveStatsHighlight.has('friendsSavedCents')
-                    ? { color: '#00ffe0', textShadow: '0 0 8px rgba(0, 255, 224, 0.6)', animation: 'liveStatPulse 0.6s ease' }
-                    : {}),
-                }}
-              >
-                Friends saved so far: ${(liveStats.friendsSavedCents / 100).toFixed(0)}
-              </div>
-            )}
-            {liveStats.associateRewardsCents > 0 && (
-              <div
-                style={{
-                  transition: 'all 0.3s ease',
-                  ...(liveStatsHighlight.has('associateRewardsCents')
-                    ? { color: '#00ffe0', textShadow: '0 0 8px rgba(0, 255, 224, 0.6)', animation: 'liveStatPulse 0.6s ease' }
-                    : {}),
-                }}
-              >
-                Associate rewards earned: ${(liveStats.associateRewardsCents / 100).toFixed(0)}
-              </div>
-            )}
-            {liveStats.booksClaimed > 0 && (
-              <div
-                style={{
-                  transition: 'all 0.3s ease',
-                  ...(liveStatsHighlight.has('booksClaimed')
-                    ? { color: '#00ffe0', textShadow: '0 0 8px rgba(0, 255, 224, 0.6)', animation: 'liveStatPulse 0.6s ease' }
-                    : {}),
-                }}
-              >
-                Books claimed: {liveStats.booksClaimed}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Tapsy COMMENT */}
       <div style={{ textAlign: 'center', marginTop: '2rem', fontSize: '1.2rem', color: '#d1d5db' }}>
-        Explore the story, join the contest, and more — tap a button below.
+        Explore the story, meet the author, and start reading.
       </div>
 
       {contestEmail ? (
@@ -1403,13 +1169,6 @@ export default function ContestClient() {
         })}
       </div>
 
-      {/* “VIEW YOUR POINTS” — animated component */}
-      {showScoreButton && (
-        <div style={{ marginTop: '0.75rem' }}>
-          <CurrentScoreButton />
-        </div>
-      )}
-
       {/* Contest Entry Form (shown when Buy button requires entry) */}
       {!isContestEntryUxArchived() && showEntryFormForCheckout && (
         <div
@@ -1429,16 +1188,12 @@ export default function ContestClient() {
         </div>
       )}
 
-      {/* Unified ribbon: same continuous ticker as Signal Room / Protocol — signal events + motivational + live stats */}
-      <SiteRibbonTicker extraSegments={ribbonExtraSegments} pollIntervalMs={60000} />
+      <SiteRibbonTicker
+        bookHubMode
+        extraSegments={[HUB_RIBBON_COPY]}
+      />
 
-      {/* ANIMATIONS */}
       <style jsx global>{`
-        @keyframes liveStatPulse {
-          0% { opacity: 1; box-shadow: 0 0 0 rgba(0, 255, 224, 0); }
-          50% { opacity: 1; box-shadow: 0 0 12px rgba(0, 255, 224, 0.5); }
-          100% { opacity: 1; box-shadow: 0 0 0 rgba(0, 255, 224, 0); }
-        }
         a.contestHubSampleLink {
           border: 2px solid rgba(52, 211, 153, 0.72) !important;
           box-shadow: 0 0 14px rgba(34, 197, 94, 0.22);

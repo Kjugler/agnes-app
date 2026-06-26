@@ -19,7 +19,7 @@ import ReferFriendButton from '@/components/refer/ReferFriendButton';
 import { openScoreTextAFriendSms } from '@/lib/textAFriendScore';
 import SocialHandleModal from './SocialHandleModal';
 import HelpButton from '@/components/HelpButton';
-import { isContestEntryUxArchived, isScoreCruiseVisualArchived } from '@/lib/funnelConfig';
+import { isContestEntryUxArchived } from '@/lib/funnelConfig';
 
 function clamp(min: number, v: number, max: number) {
   return Math.max(min, Math.min(max, v));
@@ -175,22 +175,21 @@ export default function ScoreClient() {
   const [greetingIndex, setGreetingIndex] = useState(0);
 
   const infoLines = [
-    "Everything is up from here—have fun using the site and you'll earn points toward a family vacation and BIG money!",
-    'Games, social media, referrals—everything you do earns points!',
+    'Your personal link sends friends to free sample chapters — with your reader discount code attached.',
+    'Text, email, or post on social — every share helps another reader find the book.',
   ];
 
   // Button hover captions
   const hoverCaptions: Record<string, ReactNode> = {
-    buy: 'You bought the book! +500 pts. After you read it, play trivia and earn +250 more.',
-    x: 'Nice one—+100 pts today. You can earn +100 again tomorrow by sharing again.',
-    ig: 'Nice one—+100 pts today. You can earn +100 again tomorrow by sharing again.',
-    fb: '+100 pts today. Share again tomorrow for another +100.',
-    truth: '+100 pts today. Share again tomorrow for another +100.',
-    tt: '+100 pts today. Share again tomorrow for another +100.',
-    contest: 'Game on! Enter the contest for +250 pts and a shot at the cruise.',
-    refer: 'Referrals: they save $3.90; you earn $2 each. It adds up fast.',
-    textfriend: 'Send a prewritten text with a link—opens your SMS app with autocomplete.',
-    rabbit: 'Catch the Rabbit and earn +500 points.',
+    buy: 'Get The Agnes Protocol — 15% off and a FREE eBook with your reader link.',
+    x: 'Open the X share flow with your caption and sample-chapters link ready to paste.',
+    ig: 'Download the clip, copy your caption, and post to Instagram.',
+    fb: 'Share a video post on Facebook with your reader discount link.',
+    truth: 'Share on Truth Social with your caption and link.',
+    tt: 'Download the video and post to TikTok with your link in the caption.',
+    refer: 'Send friends a private email with your sample-chapters link and discount.',
+    textfriend: 'Opens your SMS app with a prewritten message and your referral link.',
+    signal: 'Join the conversation in the Signal Room.',
   };
 
   // success banners
@@ -276,28 +275,7 @@ export default function ScoreClient() {
   const totalPoints = data?.totalPoints ?? 0;
   const rabbitTarget = data?.rabbitTarget ?? null;
   const rabbitSeq = data?.rabbitSeq ?? 1;
-  const nextRankThreshold = data?.nextRankThreshold ?? 500;
-  // CANONICAL DISPLAY POINTS: Single source of truth for both headline and pill
-  // Priority: sessionScore.totalPoints > data?.totalPoints > 0
-  // This ensures headline and pill always match
-  // Format points with thousands separator
-  const formatPoints = (points: number) => {
-    if (typeof points !== 'number') return String(points || 0);
-    return points.toLocaleString('en-US');
-  };
-
-  const displayPoints = useMemo(() => {
-    let rawPoints = 0;
-    if (sessionScore) {
-      rawPoints = sessionScore.totalPoints;
-    } else {
-      rawPoints = data?.totalPoints ?? 0;
-    }
-    return formatPoints(rawPoints);
-  }, [sessionScore, data?.totalPoints]);
-  
-  // Loading state: true if we're waiting for score data
-  const isScoreLoading = sessionScoreLoading || (data === null && contestEmail !== null);
+  // CANONICAL DISPLAY POINTS: kept for API state; not shown in Reader Sharing Tools UI.
   const refreshPoints = useCallback(async () => {
     if (!contestEmail) {
       setData({ totalPoints: 0 });
@@ -613,7 +591,7 @@ export default function ScoreClient() {
   const awardShare = useCallback(
     async (action: string, targetVariant?: 'challenge' | 'terminal') => {
       if (!contestEmail) {
-        alert('Please enter the contest first so we know who to credit.');
+        alert('Please sign in first so we can record your share.');
         return false;
       }
       try {
@@ -828,45 +806,20 @@ export default function ScoreClient() {
   }, [firstName, sessionScore?.totalPoints, data?.totalPoints, totalPoints, data?.recent, data?.earned?.purchase_book, data?.dailyShares, data?.rabbit1Completed, data?.lastEvent]);
 
   const captionLines = useMemo(() => buildScoreCaption(playerState), [playerState]);
-  
-  // REGRESSION GUARD: Warn if headline and pill don't match (dev only)
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'development') {
-      // Extract score from caption lines (look for "Your current score is X")
-      const scoreLine = captionLines.find(line => 
-        typeof line === 'string' && line.includes('Your current score is')
-      );
-      if (scoreLine) {
-        const match = (scoreLine as string).match(/Your current score is (\d+)/);
-        const headlineScore = match ? parseInt(match[1], 10) : null;
-        const pillScore = sessionScore?.totalPoints ?? data?.totalPoints ?? totalPoints;
-        
-        if (headlineScore !== null && pillScore !== undefined && headlineScore !== pillScore) {
-          console.warn('[Score Mismatch] Headline shows', headlineScore, 'but pill shows', pillScore, {
-            sessionScore: sessionScore?.totalPoints,
-            dataTotalPoints: data?.totalPoints,
-            displayPoints,
-          });
-        }
-      }
-    }
-  }, [captionLines, displayPoints, sessionScore?.totalPoints, data?.totalPoints]);
 
   // Dynamic greeting based on first-time vs returning visitor
   const greetingLines = useMemo(() => {
     if (data?.createdNow === false) {
-      // Returning visitor - multi-line motivational message
       return [
-        `${firstName} — you're back!`,
-        "Now let's go win that vacation for your family.",
-        'And make you some serious money!',
+        `${firstName} — welcome back.`,
+        'Your sharing tools are ready.',
+        'Invite someone to read the sample chapters today.',
       ];
     }
-    // First-time visitor - keep existing greeting unchanged
     return [
-      `${firstName}—way to go!`,
-      'You made it.',
-      "You're in a good spot—You can win this.",
+      `${firstName} — glad you are here.`,
+      'This is your reader sharing hub.',
+      'Send your link by text, email, or social.',
     ];
   }, [firstName, data?.createdNow]);
 
@@ -957,7 +910,7 @@ export default function ScoreClient() {
     }, 300);
   };
   const promptContestIdentity = useCallback(() => {
-    alert('Please enter the contest first so we know who to credit.');
+    alert('Please sign in first so we can attach your personal referral link.');
   }, []);
 
   const handleShareClick = (
@@ -1052,32 +1005,17 @@ export default function ScoreClient() {
   );
 
 
-  const computedNextBand = nextRankThreshold ?? 500;
-  const prevBand = Math.max(0, computedNextBand - 500);
-  const bandSize = Math.max(1, computedNextBand - prevBand);
-  const rankPct = clamp(0, (totalPoints - prevBand) / bandSize, 1);
-
-  const target = rabbitTarget && rabbitTarget > 0 ? rabbitTarget : (nextRankThreshold ?? 500);
-  const rabbitPct = clamp(0, totalPoints / Math.max(1, target), 1);
-
-  const rankInfo = useMemo(() => ({
-    current: prevBand,
-    next: computedNextBand,
-    pct: rankPct * 100,
-  }), [prevBand, computedNextBand, rankPct]);
-
+  const cruiseVisualArchived = true;
   const topFog = Math.min(mist, 0.85);
   const midFog = Math.max(mist - 0.35, 0);
-  const cruiseVisualArchived = isScoreCruiseVisualArchived();
   const wrapClassName = [
     'score-wrap',
+    'score-wrap--sharing-tools',
     !cruiseVisualArchived && 'score-wrap--cruise',
     hovered && !cruiseVisualArchived && 'is-hovered',
     isMobile && 'score-mobile',
   ].filter(Boolean).join(' ');
 
-  const rankMeterRef = useRef<HTMLDivElement | null>(null);
-  const rabbitMeterRef = useRef<HTMLDivElement | null>(null);
   const celebratedSeqRef = useRef<number | null>(null);
   const catchingRef = useRef(false);
   const celebrationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -1089,45 +1027,10 @@ export default function ScoreClient() {
   }, []);
 
   const triggerRabbitCelebration = useCallback(() => {
-    setStageSequence('rabbit');
-    setStageText(
-      <span>
-        <span style={{ color: '#dc2626', fontWeight: 800 }}>Congratulations, {firstName}!</span>
-        <br />
-        <span>You caught the rabbit and earned </span>
-        <span style={{ color: '#2563eb', fontWeight: 800 }}>+500 pts.</span>
-        <br />
-        <span>Catch him again for 500 more!</span>
-      </span>
-    );
-    setStageVisible(true);
-
     if (!reducedMotion && typeof window !== 'undefined') {
-      const rankRect = rankMeterRef.current?.getBoundingClientRect();
-      const rabbitRect = rabbitMeterRef.current?.getBoundingClientRect();
-      if (rankRect && rabbitRect && window.innerWidth > 0 && window.innerHeight > 0) {
-        const rankCenterX = rankRect.left + rankRect.width / 2;
-        const rabbitCenterX = rabbitRect.left + rabbitRect.width / 2;
-        const rankCenterY = rankRect.top + rankRect.height / 2;
-        const rabbitCenterY = rabbitRect.top + rabbitRect.height / 2;
-        const centerX = ((rankCenterX + rabbitCenterX) / 2) / window.innerWidth;
-        const centerY = ((rankCenterY + rabbitCenterY) / 2) / window.innerHeight;
-        confettiCelebrate({ center: { x: centerX, y: centerY } });
-      } else {
-        confettiCelebrate();
-      }
+      confettiCelebrate();
     }
-
-    const duration = reducedMotion ? 3000 : 6000;
-    if (celebrationTimeoutRef.current) clearTimeout(celebrationTimeoutRef.current);
-    celebrationTimeoutRef.current = setTimeout(() => {
-      setStageVisible(false);
-      setTimeout(() => {
-        setStageSequence((prev) => (prev === 'rabbit' ? 'idle' : prev));
-      }, 400);
-      celebrationTimeoutRef.current = null;
-    }, duration);
-  }, [firstName, reducedMotion]);
+  }, [reducedMotion]);
 
   useEffect(() => {
     if (!contestEmail) return;
@@ -1357,18 +1260,18 @@ export default function ScoreClient() {
             <div className="score-banner-inner">
               <div className="score-banner-text">
                 {sid
-                  ? 'Great job purchasing the book. +500 pts! Now read it and play trivia to earn even more.'
+                  ? 'Thank you for buying The Agnes Protocol. Share sample chapters with a friend when you are ready.'
                   : shared === 'x'
-                  ? "Thanks for sharing on X! +100 if you hadn't already today."
+                  ? 'Thanks for sharing on X — your reader link is out there.'
                   : shared === 'ig'
-                  ? "Thanks for sharing on Instagram! +100 if you hadn't already today."
+                  ? 'Thanks for sharing on Instagram — your reader link is out there.'
                   : shared === 'fb'
-                  ? "Thanks for sharing on Facebook! +100 if you hadn't already today."
+                  ? 'Thanks for sharing on Facebook — your reader link is out there.'
                   : shared === 'truth'
-                  ? "Thanks for sharing on Truth Social! +100 if you hadn't already today."
+                  ? 'Thanks for sharing on Truth Social — your reader link is out there.'
                   : shared === 'tt'
-                  ? "Thanks for sharing on TikTok! +100 if you hadn't already today."
-                  : 'Nice one—+100 pts! You can earn +100 again tomorrow by sharing again.'}
+                  ? 'Thanks for sharing on TikTok — your reader link is out there.'
+                  : 'Nice work sharing the story — come back anytime to reach more readers.'}
               </div>
               <button onClick={() => setDismiss(true)} aria-label="Dismiss" className="score-banner-dismiss">
                 ✕
@@ -1377,8 +1280,11 @@ export default function ScoreClient() {
           </div>
         )}
 
-        {/* Dynamic Score Caption - Rotating Display */}
-        {/* Show caption when data is loaded - displayPoints will use best available value */}
+        <div className="score-tools-heading">
+          <h1>Reader Sharing Tools</h1>
+          <p>Share The Agnes Protocol</p>
+        </div>
+
         {data !== null && <ScoreCaptionRotator lines={captionLines} />}
 
         <div className="caption-wrap">
@@ -1402,67 +1308,6 @@ export default function ScoreClient() {
       </section>
 
       <section className="buttons-grid">
-        <div className="points-pill">
-          Total Points{' '}
-          <span>{isScoreLoading ? '...' : displayPoints}</span>
-        </div>
-        {sessionScore && (
-          <div
-            style={{
-              marginTop: '1rem',
-              padding: '1rem',
-              background: 'rgba(15, 23, 42, 0.6)',
-              borderRadius: 12,
-              border: '1px solid rgba(148, 163, 184, 0.3)',
-            }}
-          >
-            <div style={{ fontSize: '0.875rem', color: '#e2e8f0', marginBottom: '0.5rem', fontWeight: 600 }}>
-              Points Breakdown
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.875rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#cbd5e1' }}>
-                <span>Base Points:</span>
-                <span style={{ fontWeight: 600 }}>{sessionScore.basePoints}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#cbd5e1' }}>
-                <span>Purchase Points:</span>
-                <span style={{ fontWeight: 600, color: '#34d399' }}>+{sessionScore.purchasePoints}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#cbd5e1' }}>
-                <span>Referral Points:</span>
-                <span style={{ fontWeight: 600, color: '#60a5fa' }}>+{sessionScore.referralPoints}</span>
-              </div>
-            </div>
-            {sessionScore.purchasePoints === 0 && sessionId && (
-              <div
-                style={{
-                  marginTop: '0.75rem',
-                  padding: '0.5rem',
-                  background: 'rgba(59, 130, 246, 0.1)',
-                  borderRadius: 6,
-                  fontSize: '0.75rem',
-                  color: '#93c5fd',
-                  textAlign: 'center',
-                }}
-              >
-                Purchase points will appear here once the order is processed.
-              </div>
-            )}
-          </div>
-        )}
-        {sessionScoreLoading && (
-          <div
-            style={{
-              marginTop: '1rem',
-              padding: '1rem',
-              textAlign: 'center',
-              color: '#94a3b8',
-              fontSize: '0.875rem',
-            }}
-          >
-            Loading your score...
-          </div>
-        )}
         {data?.earnings_week_usd !== undefined && data.earnings_week_usd > 0 && (
           <div
             className="points-pill"
@@ -1472,7 +1317,7 @@ export default function ScoreClient() {
               opacity: 0.9,
             }}
           >
-            Referral Earnings{' '}
+            Referral earnings this week{' '}
             <span>${data.earnings_week_usd.toFixed(2)}</span>
           </div>
         )}
@@ -1544,7 +1389,7 @@ export default function ScoreClient() {
                 color: 'rgba(255,255,255,0.9)',
                 marginTop: 4,
               }}>
-                500 pts
+                15% off + eBook
               </div>
             </BuyBookButton>
           </div>
@@ -1574,6 +1419,7 @@ export default function ScoreClient() {
             onBlur={onButtonLeave}
           >
             <ReferFriendButton
+              label="Email a Friend"
               referralCode={associate?.code || ''}
               referrerEmail={associate?.email || contestEmail || undefined}
               onRequireEmail={promptContestIdentity}
@@ -1582,7 +1428,7 @@ export default function ScoreClient() {
           </div>
           <ActionButton
             label="Share to Facebook"
-            sub="100 pts"
+            sub="Your reader link"
             href="/share/fb/3"
             hoverKey="fb"
             onClick={(e: any) => handleShareClick('fb', e)}
@@ -1591,7 +1437,7 @@ export default function ScoreClient() {
           />
           <ActionButton
             label="Share to Instagram"
-            sub="100 pts"
+            sub="Your reader link"
             href="/share/ig?source=score"
             hoverKey="ig"
             onClick={(e: any) => handleShareClick('ig', e)}
@@ -1600,7 +1446,7 @@ export default function ScoreClient() {
           />
           <ActionButton
             label="Share to TikTok"
-            sub="100 pts"
+            sub="Your reader link"
             href="/share/tt/1"
             hoverKey="tt"
             onClick={(e: any) => handleShareClick('tiktok', e)}
@@ -1609,7 +1455,7 @@ export default function ScoreClient() {
           />
           <ActionButton
             label="Share to X"
-            sub="100 pts"
+            sub="Your reader link"
             href="/share/x/1"
             hoverKey="x"
             onClick={(e: any) => handleShareClick('x', e)}
@@ -1618,7 +1464,7 @@ export default function ScoreClient() {
           />
           <ActionButton
             label="Share to Truth"
-            sub="100 pts"
+            sub="Your reader link"
             href="/share/truth/1"
             hoverKey="truth"
             onClick={(e: any) => handleShareClick('truth', e)}
@@ -1636,32 +1482,6 @@ export default function ScoreClient() {
         </div>
       </section>
 
-      <aside className="score-sidebar">
-        <div className="meter" data-key="rank" ref={rankMeterRef}>
-          <div className="label">Rank</div>
-          <div className="track">
-            <div className="fill" style={{ height: `${Math.round(rankPct * 100)}%` }} />
-          </div>
-          <div className="value">{prevBand} → {computedNextBand}</div>
-        </div>
-        <div
-          className="meter"
-          data-key="rabbit"
-          ref={rabbitMeterRef}
-          onMouseEnter={() => onButtonEnter('rabbit')}
-          onMouseLeave={onButtonLeave}
-          onFocus={() => onButtonEnter('rabbit')}
-          onBlur={onButtonLeave}
-          tabIndex={0}
-        >
-          <div className="label">Rabbit</div>
-          <div className="track">
-            <div className="fill" style={{ height: `${Math.round(rabbitPct * 100)}%` }} />
-          </div>
-          <div className="value">{Math.round(rabbitPct * 100)}%</div>
-        </div>
-      </aside>
-      
       {/* Social Handle Modal */}
       <SocialHandleModal
         isOpen={socialHandleModal.isOpen}
@@ -1738,7 +1558,7 @@ export default function ScoreClient() {
               opacity: submittingExplicitEntry ? 0.6 : 1,
             }}
           >
-            {submittingExplicitEntry ? 'Processing...' : 'Officially Enter Contest (+500 pts)'}
+            {submittingExplicitEntry ? 'Processing...' : 'Complete profile'}
           </button>
         </div>
       )}
@@ -1809,7 +1629,7 @@ export default function ScoreClient() {
               cursor: submittingExplicitEntry ? 'not-allowed' : 'pointer',
             }}
           >
-            {submittingExplicitEntry ? 'Processing...' : 'Officially Enter (+500 pts)'}
+            {submittingExplicitEntry ? 'Processing...' : 'Complete profile'}
           </button>
         )}
         <Link

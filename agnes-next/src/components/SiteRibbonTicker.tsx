@@ -12,16 +12,23 @@ export type SiteRibbonTickerProps = {
   extraSegments?: string[];
   /** Refetch events on an interval (e.g. contest hub). Omit or 0 = fetch on mount only. */
   pollIntervalMs?: number;
+  /** Hub pages: skip signal feed; show only extraSegments (book-focused copy). */
+  bookHubMode?: boolean;
 };
 
 /**
  * Site-wide ribbon: same continuous ticker as Signal Room / Protocol — content from
  * GET `/api/signal/events` plus optional extra segments in one flowing stream.
  */
-export default function SiteRibbonTicker({ extraSegments, pollIntervalMs }: SiteRibbonTickerProps) {
+export default function SiteRibbonTicker({
+  extraSegments,
+  pollIntervalMs,
+  bookHubMode = false,
+}: SiteRibbonTickerProps) {
   const [events, setEvents] = useState<SignalRibbonEvent[]>([]);
 
   useEffect(() => {
+    if (bookHubMode) return;
     let cancelled = false;
     const load = () => {
       fetch('/api/signal/events', { cache: 'no-store' })
@@ -44,11 +51,11 @@ export default function SiteRibbonTicker({ extraSegments, pollIntervalMs }: Site
     return () => {
       cancelled = true;
     };
-  }, [pollIntervalMs]);
+  }, [pollIntervalMs, bookHubMode]);
 
   const tickerContent = useMemo(
-    () => mergeRibbonTickerSegments(events, extraSegments),
-    [events, extraSegments]
+    () => mergeRibbonTickerSegments(bookHubMode ? [] : events, extraSegments),
+    [bookHubMode, events, extraSegments]
   );
 
   if (!tickerContent.trim()) {

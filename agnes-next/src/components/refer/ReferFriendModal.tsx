@@ -247,25 +247,17 @@ export default function ReferFriendModal({
             {pointsInfo && pointsInfo.pointsAwarded > 0 ? (
               <div style={{ fontSize: '0.875rem', color: '#666', marginTop: '0.5rem' }}>
                 <p style={{ marginBottom: '0.5rem' }}>
-                  You earned <strong>{pointsInfo.pointsAwarded} points</strong> from this send.
+                  Your friends will receive your sample-chapters link by email.
                 </p>
-                <p style={{ fontSize: '0.75rem', color: '#888' }}>
-                  Today's total from emails: <strong>{pointsInfo.daily.pointsFromEmailsToday}/{pointsInfo.daily.maxPointsPerDay} points</strong> ({pointsInfo.daily.emailsSentToday}/{pointsInfo.daily.maxEmailsPerDay} emails)
-                </p>
-                <p style={{ marginTop: '0.75rem', fontSize: '0.875rem', color: '#666' }}>
-                  You'll earn $2 when your friends buy the book.
+                <p style={{ fontSize: '0.875rem', color: '#666' }}>
+                  You&apos;ll earn $2 when they buy the book using your code.
                 </p>
               </div>
             ) : (
               <div style={{ fontSize: '0.875rem', color: '#666', marginTop: '0.5rem' }}>
                 <p style={{ marginBottom: '0.5rem' }}>
-                  You've already reached today's referral email limit for points, but you can still earn $2 per purchase when people use your code.
+                  Your referral emails were sent. You&apos;ll earn $2 per purchase when friends use your code.
                 </p>
-                {pointsInfo && (
-                  <p style={{ fontSize: '0.75rem', color: '#888' }}>
-                    Today: {pointsInfo.daily.pointsFromEmailsToday}/{pointsInfo.daily.maxPointsPerDay} points ({pointsInfo.daily.emailsSentToday}/{pointsInfo.daily.maxEmailsPerDay} emails)
-                  </p>
-                )}
               </div>
             )}
           </div>
@@ -279,18 +271,12 @@ export default function ReferFriendModal({
                 color: '#1a1a1a',
               }}
             >
-              Refer a Friend
+              Email a Friend
             </h2>
             <div style={{ fontSize: '0.875rem', color: '#666', marginBottom: '1.5rem', lineHeight: 1.6 }}>
-              <p style={{ marginBottom: '0.5rem', fontWeight: 600 }}>Earn points and cash</p>
+              <p style={{ marginBottom: '0.5rem', fontWeight: 600 }}>Share sample chapters by email</p>
               <p style={{ marginBottom: '0.25rem' }}>
-                • 5 points for each valid email you send (up to 20 per day)
-              </p>
-              <p style={{ marginBottom: '0.25rem' }}>
-                • Max 100 points per day from emails
-              </p>
-              <p style={{ marginBottom: '0.25rem' }}>
-                • Your friends save $3.90 on their book
+                • Friends get your reader discount on the book
               </p>
               <p style={{ marginBottom: '0.5rem' }}>
                 • You earn $2.00 for every purchase using your code
