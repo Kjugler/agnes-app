@@ -92,14 +92,13 @@ function redirectPreservingQuery(request: NextRequest, targetPathname: string): 
   return response;
 }
 
-/** Public contest/game routes → book-sales entry (Phase 1). */
+/** Retired legacy public routes → book entry; active hub at /contest is not redirected. */
 const SALES_SITE_REDIRECTS: Record<string, string> = {
-  '/': '/sample-chapters',
+  '/': '/contest',
   '/entry': '/sample-chapters',
   '/start': '/sample-chapters',
   '/lightening': '/sample-chapters',
   '/lightning': '/sample-chapters',
-  '/contest': '/sample-chapters',
   '/contest/signup': '/sample-chapters',
   '/contest/access': '/sample-chapters',
   '/contest/ascension': '/sample-chapters',
