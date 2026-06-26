@@ -943,6 +943,14 @@ export default function ContestClient() {
         text: 'The adventure’s great—and you’re already living it.',
         type: 'button' as const,
       },
+      {
+        id: 'authorBtn',
+        label: 'About the Author',
+        microPrompt: 'Meet Simon McQuade',
+        text: 'The person behind the pen name.',
+        href: '/author',
+        type: 'link' as const,
+      },
     ],
     [],
   );

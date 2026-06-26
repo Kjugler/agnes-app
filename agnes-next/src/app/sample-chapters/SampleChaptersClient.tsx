@@ -8,6 +8,7 @@ import HelpButton from '@/components/HelpButton';
 import SiteFooter from '@/components/SiteFooter';
 import { trackMeta } from '@/lib/metaPixel';
 import { trackTikTok } from '@/lib/tiktokPixel';
+import { useSafeBack } from '@/lib/nav';
 
 declare global {
   interface Window {
@@ -18,6 +19,7 @@ declare global {
 
 export default function SampleChaptersClient() {
   const searchParams = useSearchParams();
+  const goBack = useSafeBack('/contest');
   const [current, setCurrent] = useState(0);
   const [activeVideo, setActiveVideo] = useState<'left' | 'right'>('left');
   const leftVideoRef = useRef<HTMLIFrameElement>(null);
@@ -340,17 +342,21 @@ export default function SampleChaptersClient() {
       }}
     >
       <div style={{ paddingTop: '20px', marginBottom: '0.5rem' }}>
-        <Link
-          href="/catalog"
+        <button
+          type="button"
+          onClick={goBack}
           style={{
             color: '#00ffe5',
-            textDecoration: 'none',
+            background: 'none',
+            border: 'none',
+            fontFamily: 'inherit',
             fontSize: '0.95em',
-            display: 'inline-block',
+            cursor: 'pointer',
+            padding: 0,
           }}
         >
-          ← Browse catalog
-        </Link>
+          ← Back
+        </button>
       </div>
       <h1 style={{ marginTop: '20px', fontSize: '1.6em' }}>
         Explore Sample Chapters from <em>The Agnes Protocol</em>
@@ -474,7 +480,7 @@ export default function SampleChaptersClient() {
           )}
         </BuyBookButton>
         <Link
-          href="/catalog"
+          href="/author"
           style={{
             padding: '10px 14px',
             border: '2px solid #00ffe5',
@@ -491,7 +497,7 @@ export default function SampleChaptersClient() {
             textDecoration: 'none',
           }}
         >
-          Browse catalog
+          About the Author
         </Link>
       </div>
 
