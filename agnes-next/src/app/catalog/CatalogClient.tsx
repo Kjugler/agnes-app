@@ -5,6 +5,7 @@ import { useMemo, useEffect, useState, useRef } from 'react';
 import { PRODUCTS, type ProductId } from '@/lib/products';
 import { trackTikTok } from '@/lib/tiktokPixel';
 import { trackMeta } from '@/lib/metaPixel';
+import SiteFooter from '@/components/SiteFooter';
 
 function isDigitalDownloadProduct(id: ProductId) {
   return id === 'ebook' || id === 'audio_preorder';
@@ -209,6 +210,7 @@ export default function CatalogClient() {
           If you didn&apos;t receive an email, your purchase likely didn&apos;t complete. You can
           safely try again.
         </p>
+        <SiteFooter variant="muted" />
       </div>
     </main>
   );

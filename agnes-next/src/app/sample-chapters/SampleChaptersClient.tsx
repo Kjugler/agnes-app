@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { BuyBookButton } from '@/components/BuyBookButton';
 import HelpButton from '@/components/HelpButton';
+import SiteFooter from '@/components/SiteFooter';
 import { trackMeta } from '@/lib/metaPixel';
 import { trackTikTok } from '@/lib/tiktokPixel';
 
@@ -340,7 +341,7 @@ export default function SampleChaptersClient() {
     >
       <div style={{ paddingTop: '20px', marginBottom: '0.5rem' }}>
         <Link
-          href="/contest"
+          href="/catalog"
           style={{
             color: '#00ffe5',
             textDecoration: 'none',
@@ -348,7 +349,7 @@ export default function SampleChaptersClient() {
             display: 'inline-block',
           }}
         >
-          ← Back to Hub
+          ← Browse catalog
         </Link>
       </div>
       <h1 style={{ marginTop: '20px', fontSize: '1.6em' }}>
@@ -450,7 +451,7 @@ export default function SampleChaptersClient() {
       >
         <BuyBookButton
           source="sample-chapters"
-          successPath="/contest/thank-you"
+          successPath="/checkout/success"
           cancelPath="/sample-chapters"
           style={{
             padding: '10px 14px',
@@ -473,7 +474,7 @@ export default function SampleChaptersClient() {
           )}
         </BuyBookButton>
         <Link
-          href="/contest"
+          href="/catalog"
           style={{
             padding: '10px 14px',
             border: '2px solid #00ffe5',
@@ -490,7 +491,7 @@ export default function SampleChaptersClient() {
             textDecoration: 'none',
           }}
         >
-          Back to Hub
+          Browse catalog
         </Link>
       </div>
 
@@ -509,24 +510,7 @@ export default function SampleChaptersClient() {
         }
       `}</style>
 
-      {/* FOOTER */}
-      <footer
-        style={{
-          textAlign: 'center',
-          marginTop: '40px',
-          fontSize: '0.9rem',
-          color: '#00ff00',
-        }}
-      >
-        <p>© 2025 DeepQuill LLC – All Rights Reserved</p>
-        <p>
-          Contact:{' '}
-          <a href="mailto:hello@theagnesprotocol.com" style={{ color: '#00ff00' }}>
-            hello@theagnesprotocol.com
-          </a>
-        </p>
-        <p>All purchases are final. Contact us with any issues.</p>
-      </footer>
+      <SiteFooter variant="green" />
       <HelpButton />
     </div>
   );
