@@ -79,7 +79,7 @@ router.get('/send-engaged-reminders', async (req, res) => {
       try {
         if (!user.referralCode) { console.warn(`[engaged-reminder] Skipping ${user.email}: no referralCode`); continue; }
         const buyUrl = `${BASE_URL}/sample-chapters`;
-        const challengeUrl = `${BASE_URL}/contest`;
+        const challengeUrl = `${BASE_URL}/sample-chapters`;
         const shareUrl = `${BASE_URL}/refer?code=${user.referralCode}`;
         const journalUrl = `${BASE_URL}/journal`;
         const { subject, html } = buildEngagedReminderEmail({ firstName: user.firstName, buyUrl, challengeUrl, shareUrl, journalUrl });
@@ -150,7 +150,7 @@ router.get('/send-non-participant-reminders', async (req, res) => {
         const referUrl = user.referralCode ? `${BASE_URL}/refer?code=${user.referralCode}` : `${BASE_URL}/refer`;
         const { subject, html } = buildNonParticipantReminderEmail({
           firstName: user.firstName,
-          challengeUrl: `${BASE_URL}/contest`,
+          challengeUrl: `${BASE_URL}/sample-chapters`,
           buyUrl: `${BASE_URL}/sample-chapters`,
           sampleUrl: `${BASE_URL}/sample-chapters`,
           shareUrl: referUrl,
@@ -287,7 +287,7 @@ router.get('/send-missionary-emails', async (req, res) => {
           referUrl,
           shareUrl,
           reviewUrl: `${BASE_URL}/journal`,
-          challengeUrl: `${BASE_URL}/contest`,
+          challengeUrl: `${BASE_URL}/sample-chapters`,
           journalUrl: `${BASE_URL}/journal`,
         });
         const { html: htmlWithBanner, subject: finalSubject } = applyGlobalEmailBanner({ html, subject });

@@ -19,68 +19,34 @@ const {
 const siteRoot = APP_BASE_URL || SITE_ROOT || 'https://theagnesprotocol.com';
 
 /**
- * 🔒 LOCKED COPY — DO NOT REWRITE
- * This email copy is intentionally worded for deliverability + trust + conversion.
- * If you change phrasing, you MUST get approval from Kris/Vector.
- */
-
-/**
  * Template Version Stamp — Used to verify which code produced the email
- * Update this when template changes to track which version is live
  */
-const REFERRAL_TEMPLATE_VERSION = "RF-V3-2026-01-26-0730";
+const REFERRAL_TEMPLATE_VERSION = "RF-V4-2026-06-25-book";
 
-/**
- * Generate referral email subject line
- * @param {string} referrerDisplayName - Full name or email of referrer
- * @returns {string} Subject line
- */
-function REFERRAL_EMAIL_SUBJECT(referrerDisplayName) {
-  return `${referrerDisplayName} believes you'll love this book he found — The Agnes Protocol`;
+function REFERRAL_EMAIL_SUBJECT() {
+  return 'You need to read this.';
 }
 
-/**
- * Generate referral email body text
- * @param {Object} params
- * @param {string} params.referrerDisplayName - Full name or email of referrer
- * @param {string} params.referralCode - Referral code
- * @param {string} params.siteUrl - Site URL with ref param
- * @param {string} params.videoTitle - Selected video title
- * @param {string} params.videoUrl - Video URL (optional)
- * @returns {string} HTML email body
- */
-function REFERRAL_EMAIL_TEXT({ referrerDisplayName, referralCode, siteUrl, videoTitle, videoUrl }) {
-  // Build video section - always show if videoUrl exists
-  const videoSection = videoUrl ? `
-    <p><strong>The video I picked: ${videoTitle}</strong></p>
-    <p>👉 <a href="${videoUrl}" target="_blank" rel="noopener noreferrer">Watch the video</a></p>
-  ` : videoTitle ? `
-    <p>The video I picked: <strong>${videoTitle}</strong></p>
-  ` : '';
-  
-  return `
-    <p>Hey there,</p>
-    <p>${referrerDisplayName} asked us to send you a quick video and a link to a new thriller called <em>The Agnes Protocol</em> — and honestly, the website is off the hook. You'll love it.</p>
-    <p><strong>Your personal discount code:</strong> ${referralCode}</p>
-    <p>Use it to get $3.90 off the list price and join the interactive contest:</p>
-    <p>👉 <a href="${siteUrl}" target="_blank" rel="noopener noreferrer">${siteUrl}</a></p>
-    ${videoSection}
-    <p>If you end up buying the book, I'll earn $2 for every copy purchased using my code — and if you decide to share it with friends, they'll get a discount too, and you can earn $2 as well.</p>
-    <p>— DeepQuill LLC</p>
-  `;
-}
+function buildReferralEmailBody({ sampleChaptersLink }) {
+  const text = `I just finished The Agnes Protocol.
 
-/**
- * Map videoId to video title
- */
-const VIDEO_TITLES = {
-  fb1: 'Video 1 — "Agnes Protocol Intro"',
-  fb2: 'Video 2 — "Truth Under Siege"',
-  fb3: 'Video 3 — "Play. Win. Ascend."',
-  video1: 'Video 1 — "Agnes Protocol Intro"',
-  video2: 'Video 2 — "Truth Under Siege"',
-  video3: 'Video 3 — "Play. Win. Ascend."',
-};
+It rocks!
+
+Use the link below to get 15% off your purchase and a FREE eBook.
+
+You're welcome!
+
+${sampleChaptersLink}`;
+
+  const html = `<p>I just finished <em>The Agnes Protocol</em>.</p>
+<p>It rocks!</p>
+<p>Use the link below to get 15% off your purchase and a FREE eBook.</p>
+<p>You're welcome!</p>
+<p><br></p>
+<p><a href="${sampleChaptersLink}">${sampleChaptersLink}</a></p>`;
+
+  return { text, html };
+}
 
 /**
  * Get referrer display name from available data
@@ -183,17 +149,10 @@ router.post('/', async (req, res) => {
       referrerEmail: (referrerEmail && referrerEmail.trim()) || (fromEmail && fromEmail.trim()),
     });
 
-    const safeFriendName = friendName && friendName.trim() ? friendName.trim() : 'there';
-
-    // ✅ Build referral link - use /start?ref= as canonical entry point (goes through splitter)
-    const refLink = `${siteRoot}/start?ref=${encodeURIComponent(code)}&src=ref_email`;
-
-    // Map videoId to video title (support both videoId and videoVariant)
-    const vidId = videoId || videoVariant;
-    const videoTitle = VIDEO_TITLES[vidId] || VIDEO_TITLES.fb1 || 'Video 1 — "Agnes Protocol Intro"';
-    
-    // Build video URL - always include if videoId exists
-    const videoUrl = vidId ? `${siteRoot}/videos/${vidId}.mp4` : null;
+    const siteBase = siteRoot.replace(/\/$/, '');
+    const sampleChaptersLink = code
+      ? `${siteBase}/sample-chapters?ref=${encodeURIComponent(code)}`
+      : `${siteBase}/sample-chapters`;
 
     const mailchimpClient = getMailchimpClient();
     if (!mailchimpClient) {
@@ -210,26 +169,23 @@ router.post('/', async (req, res) => {
       fromConfigured: Boolean(MAILCHIMP_FROM_EMAIL),
     });
 
-    // 🔒 LOCKED COPY — Use canonical subject and body templates
-    const baseSubject = REFERRAL_EMAIL_SUBJECT(referrerDisplayName);
-    const subject = `${baseSubject} [${REFERRAL_TEMPLATE_VERSION}]`;
+    const subject = REFERRAL_EMAIL_SUBJECT();
+
+    const vidId = videoId || videoVariant;
 
     // Send emails to all recipients and track results
     // Also update lastReferral fields on recipient users (Part A2)
     const sendPromises = emails.map(async (email) => {
       try {
-        // 🔒 LOCKED COPY — Use canonical email template
-        const baseHtml = REFERRAL_EMAIL_TEXT({
-          referrerDisplayName,
-          referralCode: code,
-          siteUrl: refLink,
-          videoTitle,
-          videoUrl: videoUrl || null,
+        const { text: bodyText, html: bodyHtml } = buildReferralEmailBody({
+          sampleChaptersLink,
         });
-        // Inject version stamp at the top of body
-        const html = `<p style="font-size: 10px; color: #999;">Template: ${REFERRAL_TEMPLATE_VERSION}</p>\n${baseHtml}`;
 
-        const { html: finalHtml, subject: finalSubject } = applyGlobalEmailBanner({ html, subject });
+        const { html: finalHtml, text: finalText, subject: finalSubject } = applyGlobalEmailBanner({
+          html: bodyHtml,
+          text: bodyText,
+          subject,
+        });
 
         // Log template version before sending (proves which code ran)
         console.log("[REFER-FRIEND] Using template", REFERRAL_TEMPLATE_VERSION, {
@@ -261,7 +217,8 @@ router.post('/', async (req, res) => {
               from_name: fromDisplayName,
               to: [{ email, type: 'to' }],
               subject: finalSubject || subject,
-              html: finalHtml || html,
+              text: finalText || bodyText,
+              html: finalHtml || bodyHtml,
               headers: { 'Reply-To': replyToAddr },
             },
           });

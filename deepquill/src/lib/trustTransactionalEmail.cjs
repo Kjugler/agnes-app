@@ -30,7 +30,7 @@ Thank you — we've received your order.
 Reference: ${sessionId}
 Item: ${productLabel}
 
-You'll receive a separate email shortly with full order details, points, and any download links.
+You'll receive a separate email shortly with full order details and any download links.
 
 Questions? hello@theagnesprotocol.com
 `.trim();
@@ -42,7 +42,7 @@ Questions? hello@theagnesprotocol.com
   <p style="margin:0 0 12px 0;font-size:16px;">Thank you — we've received your order.</p>
   <p style="margin:0 0 8px 0;font-size:14px;"><strong>Reference:</strong> ${String(sessionId).replace(/</g, '&lt;')}</p>
   <p style="margin:0 0 16px 0;font-size:14px;"><strong>Item:</strong> ${String(productLabel).replace(/</g, '&lt;')}</p>
-  <p style="margin:0 0 12px 0;font-size:14px;color:#444;">You'll receive a separate email shortly with full order details, points, and any download links.</p>
+  <p style="margin:0 0 12px 0;font-size:14px;color:#444;">You'll receive a separate email shortly with full order details and any download links.</p>
   <p style="margin:0;font-size:14px;">Questions? <a href="mailto:hello@theagnesprotocol.com">hello@theagnesprotocol.com</a></p>
 </body></html>
 `.trim();
@@ -61,7 +61,7 @@ We recorded a purchase attributed to your referral.
 
 Reference: ${sessionId}
 
-A separate email follows with full rewards and contest details.
+A separate email follows with full referral reward details.
 `.trim();
 
   const html = `
@@ -70,7 +70,7 @@ A separate email follows with full rewards and contest details.
 <body style="margin:0;padding:24px;font-family:Arial,Helvetica,sans-serif;background:#f5f5f5;color:#111;">
   <p style="margin:0 0 12px 0;font-size:16px;">We recorded a purchase attributed to your referral.</p>
   <p style="margin:0 0 12px 0;font-size:14px;"><strong>Reference:</strong> ${String(sessionId).replace(/</g, '&lt;')}</p>
-  <p style="margin:0;font-size:14px;color:#444;">A separate email follows with full rewards and contest details.</p>
+  <p style="margin:0;font-size:14px;color:#444;">A separate email follows with full referral reward details.</p>
 </body></html>
 `.trim();
 

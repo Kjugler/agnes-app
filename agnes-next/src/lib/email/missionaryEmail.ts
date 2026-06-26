@@ -109,21 +109,17 @@ export function buildMissionaryEmail({
             </td>
           </tr>
 
-          <!-- Inner Circle -->
+          <!-- Keep reading -->
           <tr>
             <td style="padding:16px 24px 8px 24px;font-family:Arial,Helvetica,sans-serif;color:#f5f5f5;border-top:1px solid #222;">
-              <h2 style="margin:0 0 8px 0;font-size:18px;">⭐ Join the Inner Circle</h2>
+              <h2 style="margin:0 0 8px 0;font-size:18px;">⭐ Keep Reading</h2>
               <p style="margin:0 0 16px 0;font-size:15px;color:#d0d0d0;">
-                Keep playing. Keep exploring. New clues and content are coming.
+                Share the book with someone who would love it, or read another sample chapter.
               </p>
 
               <a href="${challengeUrl}" style="display:inline-block;margin-right:12px;margin-bottom:12px;padding:10px 18px;background-color:#00c0ff;color:#000;text-decoration:none;font-size:14px;font-weight:bold;border-radius:4px;">
-                Continue the Challenge
+                Read Sample Chapters
               </a>
-
-              <span style="display:inline-block;margin-bottom:12px;padding:10px 18px;background-color:#333;color:#bbb;font-size:13px;font-weight:bold;border-radius:4px;">
-                Unlock More Clues (Coming Soon)
-              </span>
             </td>
           </tr>
 
