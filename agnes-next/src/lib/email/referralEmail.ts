@@ -1,7 +1,7 @@
 // agnes-next/src/lib/email/referralEmail.ts
 
 import mailchimp from '@mailchimp/mailchimp_transactional';
-import { type ReferVideoId } from '@/config/referVideos';
+import { SAMPLE_CHAPTERS_OG_IMAGE_URL } from '@/lib/textAFriendOg';
 import { applyGlobalEmailBanner } from '@/lib/emailBanner';
 import { shouldSendTransactionalEmails } from '@/lib/emailConfig';
 
@@ -10,8 +10,7 @@ type SendReferralEmailParams = {
   referrerEmail?: string; // Used for Reply-To
   referrerName?: string | null; // Optional: referrer's full name for personalization
   referralUrl: string;
-  thumbnailUrl: string;
-  videoLabel: string;
+  thumbnailUrl?: string;
 };
 
 function getClient() {
@@ -51,13 +50,11 @@ export async function sendReferralEmail(
   const {
     toEmail,
     referralUrl,
-    thumbnailUrl,
-    videoLabel,
+    thumbnailUrl = SAMPLE_CHAPTERS_OG_IMAGE_URL,
     referrerEmail,
     referrerName,
   } = params;
 
-  // Compute display name with fallback
   const baseName =
     referrerName && referrerName.trim().length > 0
       ? referrerName.trim()
@@ -65,7 +62,7 @@ export async function sendReferralEmail(
 
   const fromName = `${baseName} via The Agnes Protocol`;
 
-  const baseSubject = "You've Got to Read This Book!";
+  const baseSubject = "You've got to read this.";
 
   const htmlBody = `
     <!DOCTYPE html>
@@ -75,60 +72,42 @@ export async function sendReferralEmail(
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
       </head>
       <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <p>Hey there,</p>
-        <p>${baseName} is part of the launch team for a new book called <strong>"The Agnes Protocol."</strong></p>
-        <p>If you decide to grab a copy, this link gives you <strong>$3.90 off</strong> the regular price:</p>
+        <p>I just finished <em>The Agnes Protocol</em> and immediately thought of you.</p>
+        <p>Start with the free sample chapters below.</p>
+        <p>If you decide to buy the book, I already got you 15% off.</p>
+        <p>The reviews have been outstanding, but don't take anyone else's word for it.</p>
+        <p>Read the sample chapters.</p>
+        <p>I think you'll understand why readers are recommending this book to their friends.</p>
+        <p style="text-align: center; margin: 20px 0;">
+          <a href="${referralUrl}" style="color: #9333ea;">${referralUrl}</a>
+        </p>
         <p style="text-align: center; margin: 20px 0;">
           <a href="${referralUrl}" style="display: inline-block;">
             <img
               src="${thumbnailUrl}"
-              alt="${videoLabel}"
+              alt="Read sample chapters from The Agnes Protocol"
               style="max-width: 100%; height: auto; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"
             />
           </a>
-        </p>
-        <p style="text-align: center;">
-          <a href="${referralUrl}" style="display: inline-block; padding: 12px 24px; background-color: #9333ea; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">
-            Your discount link: Save $3.90
-          </a>
-        </p>
-        <p style="font-size: 14px; color: #666; margin-top: 30px;">
-          Or click here: <a href="${referralUrl}" style="color: #9333ea;">${referralUrl}</a>
-        </p>
-        <p style="font-size: 14px; color: #666; margin-top: 20px;">
-          Every time someone uses my link, I earn $2—and you still get the full discount.
-        </p>
-        <p style="font-size: 14px; color: #666; margin-top: 20px;">
-          Most people who buy do it in the first four months, so if you're curious, don't wait too long.
-        </p>
-        <p style="font-size: 14px; color: #666; margin-top: 20px;">
-          Either way, thanks for checking it out.
-        </p>
-        <p style="font-size: 14px; color: #666; margin-top: 20px;">
-          — ${baseName}
         </p>
       </body>
     </html>
   `;
 
-  const textBody = `Hey there,
+  const textBody = `I just finished The Agnes Protocol and immediately thought of you.
 
-${baseName} is part of the launch team for a new book called "The Agnes Protocol."
+Start with the free sample chapters below.
 
-If you decide to grab a copy, this link gives you $3.90 off the regular price:
+If you decide to buy the book, I already got you 15% off.
 
-Your discount link:
-${referralUrl}
+The reviews have been outstanding, but don't take anyone else's word for it.
 
-Every time someone uses my link, I earn $2—and you still get the full discount.
+Read the sample chapters.
 
-Most people who buy do it in the first four months, so if you're curious, don't wait too long.
+I think you'll understand why readers are recommending this book to their friends.
 
-Either way, thanks for checking it out.
+${referralUrl}`;
 
-— ${baseName}`;
-
-  // Apply global email banner if enabled (includes subject modification)
   const { html: finalHtml, text: finalText, subject: finalSubject } = applyGlobalEmailBanner({
     html: htmlBody,
     text: textBody,
@@ -179,7 +158,5 @@ Either way, thanks for checking it out.
       toEmail,
       referralUrl,
     });
-    // Don't throw - allow the API to continue even if email fails
   }
 }
-

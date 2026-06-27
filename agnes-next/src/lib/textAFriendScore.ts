@@ -19,11 +19,13 @@ export function buildSampleChaptersShareUrl(referralCode: string | null | undefi
 
 export function buildScoreTextAFriendSmsBody(referralCode: string | null | undefined): string {
   const url = buildSampleChaptersShareUrl(referralCode);
-  return `Hey—came across this and thought of you.
+  return `I just finished *The Agnes Protocol*.
 
-Take a look when you have a second.
+You've got to check this out.
 
-Let me know what you think.
+Start with the free sample chapters below. If you decide to buy the book, I already got you 15% off.
+
+This story pulled me in fast. Read the sample chapters and you'll see what I mean.
 
 ${url}`;
 }

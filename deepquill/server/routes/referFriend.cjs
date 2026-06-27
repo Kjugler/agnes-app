@@ -21,29 +21,47 @@ const siteRoot = APP_BASE_URL || SITE_ROOT || 'https://theagnesprotocol.com';
 /**
  * Template Version Stamp — Used to verify which code produced the email
  */
-const REFERRAL_TEMPLATE_VERSION = "RF-V4-2026-06-25-book";
+const REFERRAL_TEMPLATE_VERSION = 'RF-V5-2026-06-26-reader-advocate';
+
+const SAMPLE_CHAPTERS_THUMBNAIL_PATH = '/og/creator-sample-card-v1.jpg';
 
 function REFERRAL_EMAIL_SUBJECT() {
-  return 'You need to read this.';
+  return "You've got to read this.";
 }
 
-function buildReferralEmailBody({ sampleChaptersLink }) {
-  const text = `I just finished The Agnes Protocol.
+function buildReferralEmailBody({ sampleChaptersLink, thumbnailUrl }) {
+  const text = `I just finished The Agnes Protocol and immediately thought of you.
 
-It rocks!
+Start with the free sample chapters below.
 
-Use the link below to get 15% off your purchase and a FREE eBook.
+If you decide to buy the book, I already got you 15% off.
 
-You're welcome!
+The reviews have been outstanding, but don't take anyone else's word for it.
+
+Read the sample chapters.
+
+I think you'll understand why readers are recommending this book to their friends.
 
 ${sampleChaptersLink}`;
 
-  const html = `<p>I just finished <em>The Agnes Protocol</em>.</p>
-<p>It rocks!</p>
-<p>Use the link below to get 15% off your purchase and a FREE eBook.</p>
-<p>You're welcome!</p>
+  const html = `<p>I just finished <em>The Agnes Protocol</em> and immediately thought of you.</p>
+<p>Start with the free sample chapters below.</p>
+<p>If you decide to buy the book, I already got you 15% off.</p>
+<p>The reviews have been outstanding, but don't take anyone else's word for it.</p>
+<p>Read the sample chapters.</p>
+<p>I think you'll understand why readers are recommending this book to their friends.</p>
 <p><br></p>
-<p><a href="${sampleChaptersLink}">${sampleChaptersLink}</a></p>`;
+<p><a href="${sampleChaptersLink}">${sampleChaptersLink}</a></p>
+<p style="text-align: center; margin: 24px 0 0;">
+  <a href="${sampleChaptersLink}" style="display: inline-block;">
+    <img
+      src="${thumbnailUrl}"
+      alt="Read sample chapters from The Agnes Protocol"
+      width="560"
+      style="max-width: 100%; height: auto; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"
+    />
+  </a>
+</p>`;
 
   return { text, html };
 }
@@ -153,6 +171,7 @@ router.post('/', async (req, res) => {
     const sampleChaptersLink = code
       ? `${siteBase}/sample-chapters?ref=${encodeURIComponent(code)}`
       : `${siteBase}/sample-chapters`;
+    const sampleChaptersThumbnailUrl = `${siteBase}${SAMPLE_CHAPTERS_THUMBNAIL_PATH}`;
 
     const mailchimpClient = getMailchimpClient();
     if (!mailchimpClient) {
@@ -179,6 +198,7 @@ router.post('/', async (req, res) => {
       try {
         const { text: bodyText, html: bodyHtml } = buildReferralEmailBody({
           sampleChaptersLink,
+          thumbnailUrl: sampleChaptersThumbnailUrl,
         });
 
         const { html: finalHtml, text: finalText, subject: finalSubject } = applyGlobalEmailBanner({

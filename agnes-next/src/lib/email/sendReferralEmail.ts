@@ -1,13 +1,11 @@
-import { type ReferVideoId } from '@/config/referVideos';
+import { SAMPLE_CHAPTERS_OG_IMAGE_URL } from '@/lib/textAFriendOg';
 import { applyGlobalEmailBanner } from '@/lib/emailBanner';
 
 export interface SendReferralEmailParams {
   friendEmail: string;
   referrerCode: string;
   referralUrl: string;
-  videoId: ReferVideoId;
-  videoLabel: string;
-  thumbnailUrl: string;
+  thumbnailUrl?: string;
   referrerEmail?: string; // Used for Reply-To
   referrerFirstName?: string; // Optional: referrer's first name for personalization
 }
@@ -18,13 +16,11 @@ export async function sendReferralEmail(
   const {
     friendEmail,
     referralUrl,
-    videoLabel,
-    thumbnailUrl,
+    thumbnailUrl = SAMPLE_CHAPTERS_OG_IMAGE_URL,
     referrerEmail,
     referrerFirstName,
   } = params;
 
-  // Check if email service is configured
   const smtpHost = process.env.HELP_SMTP_HOST;
   const smtpUser = process.env.HELP_SMTP_USER;
   const smtpPass = process.env.HELP_SMTP_PASS;
@@ -35,11 +31,9 @@ export async function sendReferralEmail(
       ? 'Your friend via The Agnes Protocol'
       : process.env.MAILCHIMP_FROM_NAME || 'The Agnes Protocol';
 
-  // Email content
-  const subject = 'I found a wild book you need to see';
+  const subject = "You've got to read this.";
 
-  // Use provided firstName, or extract from email, or fallback
-  const displayFirstName = referrerFirstName || 
+  const displayFirstName = referrerFirstName ||
     (referrerEmail ? referrerEmail.split('@')[0].split('.')[0] : null) ||
     'Your friend';
 
@@ -51,34 +45,23 @@ export async function sendReferralEmail(
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
       </head>
       <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <p>Hey there,</p>
-        <p>I'm part of the launch team for a new book called <strong>"The Agnes Protocol."</strong></p>
-        <p>If you decide to grab a copy, this link gives you <strong>$3.90 off</strong> the regular price:</p>
+        <p>I just finished <em>The Agnes Protocol</em> and immediately thought of you.</p>
+        <p>Start with the free sample chapters below.</p>
+        <p>If you decide to buy the book, I already got you 15% off.</p>
+        <p>The reviews have been outstanding, but don't take anyone else's word for it.</p>
+        <p>Read the sample chapters.</p>
+        <p>I think you'll understand why readers are recommending this book to their friends.</p>
+        <p style="text-align: center; margin: 20px 0;">
+          <a href="${referralUrl}" style="color: #9333ea;">${referralUrl}</a>
+        </p>
         <p style="text-align: center; margin: 20px 0;">
           <a href="${referralUrl}" style="display: inline-block;">
             <img
               src="${thumbnailUrl}"
-              alt="${videoLabel}"
+              alt="Read sample chapters from The Agnes Protocol"
               style="max-width: 100%; height: auto; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"
             />
           </a>
-        </p>
-        <p style="text-align: center;">
-          <a href="${referralUrl}" style="display: inline-block; padding: 12px 24px; background-color: #9333ea; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">
-            Your discount link: Save $3.90
-          </a>
-        </p>
-        <p style="font-size: 14px; color: #666; margin-top: 30px;">
-          Or click here: <a href="${referralUrl}" style="color: #9333ea;">${referralUrl}</a>
-        </p>
-        <p style="font-size: 14px; color: #666; margin-top: 20px;">
-          Every time someone uses my link, I earn $2—and you still get the full discount.
-        </p>
-        <p style="font-size: 14px; color: #666; margin-top: 20px;">
-          Most people who buy do it in the first four months, so if you're curious, don't wait too long.
-        </p>
-        <p style="font-size: 14px; color: #666; margin-top: 20px;">
-          Either way, thanks for checking it out.
         </p>
         <p style="font-size: 14px; color: #666; margin-top: 20px;">
           — ${displayFirstName}
@@ -87,24 +70,22 @@ export async function sendReferralEmail(
     </html>
   `;
 
-  const textBody = `Hey there,
+  const textBody = `I just finished The Agnes Protocol and immediately thought of you.
 
-I'm part of the launch team for a new book called "The Agnes Protocol."
+Start with the free sample chapters below.
 
-If you decide to grab a copy, this link gives you $3.90 off the regular price:
+If you decide to buy the book, I already got you 15% off.
 
-Your discount link:
+The reviews have been outstanding, but don't take anyone else's word for it.
+
+Read the sample chapters.
+
+I think you'll understand why readers are recommending this book to their friends.
+
 ${referralUrl}
-
-Every time someone uses my link, I earn $2—and you still get the full discount.
-
-Most people who buy do it in the first four months, so if you're curious, don't wait too long.
-
-Either way, thanks for checking it out.
 
 — ${displayFirstName}`;
 
-  // Debug logging (dev only)
   if (process.env.NODE_ENV !== 'production') {
     console.log('[REFERRAL_EMAIL] Sending referral to', friendEmail, 'via', fromEmail);
     if (referrerEmail) {
@@ -118,11 +99,9 @@ Either way, thanks for checking it out.
     subject,
   });
 
-  // If SMTP is configured, send via nodemailer (same transport as Help email)
   if (smtpHost && smtpUser && smtpPass) {
     try {
       const nodemailer = await import('nodemailer');
-      // Use the same SMTP transport configuration as Help email
       const transport = nodemailer.default.createTransport({
         host: smtpHost,
         port: smtpPort,
@@ -139,9 +118,7 @@ Either way, thanks for checking it out.
         subject: finalSubject ?? subject,
         text: finalText ?? textBody,
         html: finalHtml ?? htmlBody,
-        ...(referrerEmail
-          ? { replyTo: referrerEmail }
-          : {}), // only set Reply-To if provided
+        ...(referrerEmail ? { replyTo: referrerEmail } : {}),
       });
 
       console.log('[Referral Email] Sent successfully to', friendEmail);
@@ -150,14 +127,10 @@ Either way, thanks for checking it out.
       throw new Error('Failed to send referral email');
     }
   } else {
-    // Development mode: log instead of sending
     console.log('[Referral Email] SMTP not configured. Would send:');
     console.log('To:', friendEmail);
     console.log('Subject:', subject);
     console.log('Referral URL:', referralUrl);
     console.log('Thumbnail:', thumbnailUrl);
-    // In production, you might want to throw an error here
-    // throw new Error('Email service not configured');
   }
 }
-

@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { readContestEmail } from '@/lib/identity';
 import { buildTextThisSceneSmsBody } from '@/lib/textThisScene';
+import { buildScoreTextAFriendSmsBody } from '@/lib/textAFriendScore';
 import {
   TEXT_A_FRIEND_BOOK_IMAGE_PATH,
   TEXT_A_FRIEND_CHAPTER9_IMAGE_PATH,
@@ -18,30 +19,11 @@ const THUMB_SHARE_CHAPTER_9 = TEXT_A_FRIEND_CHAPTER9_IMAGE_PATH;
 
 type TextAFriendOption = 'share_this' | 'share_scene';
 
-function buildShareThisUrl(referralCode: string | null | undefined): string {
-  const path = `${LANDING_ORIGIN}/t/fb1`;
-  const code = referralCode?.trim();
-  if (!code) return path;
-  const u = new URL(path);
-  u.searchParams.set('ref', code);
-  return u.toString();
-}
-
-function buildShareThisMessage(shareUrl: string): string {
-  return `Hey—came across this and thought of you.
-
-Take a look when you have a second.
-
-Let me know what you think.
-
-${shareUrl}`;
-}
-
 function buildMessage(option: TextAFriendOption, referralCode: string | null | undefined): string {
   if (option === 'share_scene') {
     return buildTextThisSceneSmsBody(referralCode);
   }
-  return buildShareThisMessage(buildShareThisUrl(referralCode));
+  return buildScoreTextAFriendSmsBody(referralCode);
 }
 
 type TextAFriendModalProps = {

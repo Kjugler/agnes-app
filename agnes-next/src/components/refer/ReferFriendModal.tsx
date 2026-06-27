@@ -2,7 +2,6 @@
 
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { REFER_VIDEOS, type ReferVideoId } from '@/config/referVideos';
 
 interface ReferFriendModalProps {
   isOpen: boolean;
@@ -20,7 +19,6 @@ export default function ReferFriendModal({
   onReferralSent,
 }: ReferFriendModalProps) {
   const [friendEmailsRaw, setFriendEmailsRaw] = useState('');
-  const [selectedVideoId, setSelectedVideoId] = useState<ReferVideoId>('fb1');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -43,7 +41,6 @@ export default function ReferFriendModal({
     if (!isOpen) {
       // Reset form when modal closes
       setFriendEmailsRaw('');
-      setSelectedVideoId('fb1');
       setError(null);
       setSuccess(false);
     }
@@ -90,7 +87,6 @@ export default function ReferFriendModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           friendEmails: emails,
-          videoId: selectedVideoId,
           referralCode,
           referrerEmail,
         }),
@@ -274,9 +270,11 @@ export default function ReferFriendModal({
               Email a Friend
             </h2>
             <div style={{ fontSize: '0.875rem', color: '#666', marginBottom: '1.5rem', lineHeight: 1.6 }}>
-              <p style={{ marginBottom: '0.5rem', fontWeight: 600 }}>Share sample chapters by email</p>
+              <p style={{ marginBottom: '0.5rem', fontWeight: 600 }}>
+                Recommend the book like you would to a friend
+              </p>
               <p style={{ marginBottom: '0.25rem' }}>
-                • Friends get your reader discount on the book
+                • They get your 15% reader discount
               </p>
               <p style={{ marginBottom: '0.5rem' }}>
                 • You earn $2.00 for every purchase using your code
@@ -332,105 +330,6 @@ export default function ReferFriendModal({
                 </p>
               </div>
 
-              {/* Video Selection */}
-              <div>
-                <label
-                  style={{
-                    display: 'block',
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
-                    marginBottom: '0.5rem',
-                    color: '#1a1a1a',
-                  }}
-                >
-                  Choose a Video
-                </label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  {REFER_VIDEOS.map((video) => (
-                    <div
-                      key={video.id}
-                      onClick={() => setSelectedVideoId(video.id)}
-                      style={{
-                        display: 'flex',
-                        gap: '0.75rem',
-                        padding: '0.75rem',
-                        borderRadius: '0.5rem',
-                        border: `2px solid ${selectedVideoId === video.id ? '#9333ea' : '#e5e7eb'}`,
-                        backgroundColor: selectedVideoId === video.id ? '#faf5ff' : '#f9fafb',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s',
-                      }}
-                      onMouseEnter={(e) => {
-                        if (selectedVideoId !== video.id) {
-                          e.currentTarget.style.borderColor = '#d1d5db';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (selectedVideoId !== video.id) {
-                          e.currentTarget.style.borderColor = '#e5e7eb';
-                        }
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: '80px',
-                          height: '60px',
-                          borderRadius: '0.375rem',
-                          overflow: 'hidden',
-                          flexShrink: 0,
-                          backgroundColor: '#e5e7eb',
-                        }}
-                      >
-                        <img
-                          src={video.thumbnailSrc}
-                          alt={video.label}
-                          style={{
-                            width: '100%',
-                            height: '100%',
-                            objectFit: 'cover',
-                          }}
-                        />
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.5rem',
-                            marginBottom: '0.25rem',
-                          }}
-                        >
-                          <input
-                            type="radio"
-                            checked={selectedVideoId === video.id}
-                            onChange={() => setSelectedVideoId(video.id)}
-                            style={{ cursor: 'pointer' }}
-                          />
-                          <span
-                            style={{
-                              fontSize: '0.875rem',
-                              fontWeight: 600,
-                              color: '#1a1a1a',
-                            }}
-                          >
-                            {video.label}
-                          </span>
-                        </div>
-                        <p
-                          style={{
-                            fontSize: '0.75rem',
-                            color: '#666',
-                            marginLeft: '1.5rem',
-                          }}
-                        >
-                          {video.description}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
               {/* Preview Text */}
               <div
                 style={{
@@ -439,10 +338,11 @@ export default function ReferFriendModal({
                   borderRadius: '0.375rem',
                   fontSize: '0.75rem',
                   color: '#666',
+                  lineHeight: 1.6,
                 }}
               >
-                We'll send a short email from you with this video and your personal referral
-                link.
+                We&apos;ll send a short personal note from you with a link to the free sample
+                chapters and your reader discount.
               </div>
 
               {/* Error Message */}

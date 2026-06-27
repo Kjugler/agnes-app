@@ -1,15 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { REFER_VIDEOS, type ReferVideoId } from '@/config/referVideos';
+import { type ReferVideoId } from '@/config/referVideos';
 import { logReferralInvite } from '@/lib/referrals/logReferralInvite';
 import { rateLimitByIP, rateLimitByEmail } from '@/lib/rateLimit';
 import { proxyJson } from '@/lib/deepquillProxy';
-
-type ReferRequestBody = {
-  friendEmails: string[]; // REQUIRED, non-empty
-  videoId: ReferVideoId;
-  referralCode: string;
-  referrerEmail?: string; // Optional, for Reply-To
-};
 
 export async function POST(req: NextRequest) {
   // Track 2.4: Rate limiting
@@ -76,15 +69,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const videoId = body.videoId as ReferVideoId;
+    const videoId =
+      typeof body.videoId === 'string' && ['fb1', 'fb2', 'fb3'].includes(body.videoId)
+        ? (body.videoId as ReferVideoId)
+        : undefined;
     const referralCode = (body.referralCode || '').trim();
-
-    if (!videoId || !['fb1', 'fb2', 'fb3'].includes(videoId)) {
-      return NextResponse.json(
-        { error: 'Invalid video ID. Must be fb1, fb2, or fb3.' },
-        { status: 400 }
-      );
-    }
 
     if (!referralCode) {
       return NextResponse.json(
@@ -186,7 +175,7 @@ export async function POST(req: NextRequest) {
         body: {
           friendEmails: emails,
           referralCode,
-          videoId,
+          ...(videoId ? { videoId } : {}),
           referrerEmail,
           referrerFirstName,
           referrerLastName,
@@ -233,7 +222,7 @@ export async function POST(req: NextRequest) {
         await logReferralInvite({
           referralCode: normalizedReferralCode,
           friendEmail,
-          videoId,
+          videoId: videoId ?? 'sample_chapters',
           channel: 'email',
         });
       } catch (err: unknown) {
