@@ -76,8 +76,26 @@ model User {
   dailyContestSummariesThird   DailyContestSummary[] @relation("DailyThird")
   dailyContestSummariesLiveLeader DailyContestSummary[] @relation("DailyLiveLeader")
   dailyContestSummariesCashWinner DailyContestSummary[] @relation("DailyCashWinner")
+  readerProfile                ReaderProfile?
 
   @@index([referralCode])
+}
+
+/// Reader CRM record (Phase I) — tracks source, type, and notes for managed readers.
+model ReaderProfile {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source     String?
+  readerType String?
+  notes      String?
+  status     String   @default("active")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([source])
+  @@index([status])
+  @@index([createdAt])
 }
 
 /// Canonical daily contest rollup for ribbons, Signal bulletin, and admin (America/Denver calendar date).

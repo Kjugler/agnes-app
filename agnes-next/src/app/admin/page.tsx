@@ -51,6 +51,15 @@ export default function AdminHubPage() {
         eligibility.
       </p>
 
+      <h2 style={sectionTitle}>Readers</h2>
+      <Link href="/admin/readers" style={linkStyle}>
+        Reader Manager
+      </Link>
+      <p style={descStyle}>
+        CRM for readers from bookstores, gifts, events, ads, and referrals. Add readers, track source,
+        and copy sharing links.
+      </p>
+
       <h2 style={sectionTitle}>Fulfillment</h2>
       <Link href="/admin/fulfillment/labels" style={linkStyle}>
         Print labels

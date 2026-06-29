@@ -233,6 +233,10 @@ console.log('✅ Mounted /api/admin/email (POST /send - template admin email)');
 const adminUsersRouter = require('./routes/adminUsers.cjs');
 app.use('/api/admin/users', adminUsersRouter);
 console.log('✅ Mounted /api/admin/users (reps, promote-rep, replace, disable-override, overrides)');
+
+const adminReadersRouter = require('./routes/adminReaders.cjs');
+app.use('/api/admin/readers', adminReadersRouter);
+console.log('✅ Mounted /api/admin/readers (Reader Manager Phase I)');
 const repAnalyticsRouter = require('./routes/repAnalytics.cjs');
 app.use('/api', repAnalyticsRouter);
 console.log('✅ Mounted /api/reps/sales-ledger and /api/admin/reps/monthly-report');

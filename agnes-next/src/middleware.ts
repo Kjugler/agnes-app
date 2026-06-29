@@ -147,6 +147,15 @@ export function middleware(request: NextRequest) {
     }
   }
 
+  // Reader Manager admin
+  if (pathname.startsWith('/admin/readers')) {
+    const token = request.cookies.get('fulfillment-token')?.value;
+    if (!token || !token.trim()) {
+      const authUrl = withSameOrigin(request, `/admin/fulfillment/auth?redirect=${encodeURIComponent(pathname)}`);
+      return NextResponse.redirect(authUrl);
+    }
+  }
+
   // Legacy contest thank-you → neutral checkout success (preserve session_id)
   if (pathname === '/contest/thank-you') {
     return redirectPreservingQuery(request, '/checkout/success');
