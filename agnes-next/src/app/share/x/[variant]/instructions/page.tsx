@@ -108,42 +108,36 @@ function InstructionsContent() {
     if (pointsAwarded || awarding) return;
     setAwarding(true);
     const email = readContestEmail();
-    if (!email) {
-      alert('Please enter the contest first.');
-      setAwarding(false);
-      return;
-    }
-    try {
-      const res = await fetch('/api/points/award', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Email': email,
-        },
-        body: JSON.stringify({
-          action: 'share_x',
-          source: 'share_page',
-          targetVariant: target,
-          variant,
-        }),
-      });
-      if (res.ok) {
-        setPointsAwarded(true);
-      } else {
-        throw new Error('Award failed');
+    if (email) {
+      try {
+        await fetch('/api/points/award', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-User-Email': email,
+          },
+          body: JSON.stringify({
+            action: 'share_x',
+            source: 'share_page',
+            targetVariant: target,
+            variant,
+          }),
+        });
+      } catch {
+        // silent — public UI does not depend on points
       }
-    } catch (err) {
-      console.error('[instructions] Award failed', err);
-      alert('Failed to record your post. Please try again.');
-    } finally {
-      setAwarding(false);
     }
+    setPointsAwarded(true);
+    setAwarding(false);
   };
 
   const backParams = new URLSearchParams();
   if (refCode) backParams.set('ref', refCode);
   if (target) backParams.set('target', target);
   const backHref = `/share/x/${variant}${backParams.toString() ? `?${backParams.toString()}` : ''}`;
+  const sampleChaptersHref = refCode
+    ? `/sample-chapters?ref=${encodeURIComponent(refCode)}`
+    : '/sample-chapters';
 
   return (
     <div
@@ -294,7 +288,7 @@ function InstructionsContent() {
             <li>Tap in text area → press and hold → <strong>Paste</strong> caption</li>
             <li>Tap <strong>Post</strong></li>
             <li>App switcher → return to browser</li>
-            <li>Tap I Posted ✅ (Claim Points)</li>
+            <li>Tap I Posted ✅</li>
           </ol>
         ) : (
           <ol style={{ margin: 0, paddingLeft: '1.5rem', lineHeight: 2, fontSize: '1rem' }}>
@@ -305,13 +299,18 @@ function InstructionsContent() {
             <li>Tap in text area → <strong>Paste</strong> caption</li>
             <li>Tap <strong>Post</strong></li>
             <li>Recent Apps → return to browser</li>
-            <li>Tap I Posted ✅ (Claim Points)</li>
+            <li>Tap I Posted ✅</li>
           </ol>
         )}
       </div>
 
-      {/* Section: Claim / Footer */}
+      {/* Section: Thanks / Footer */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxWidth: 400, margin: '0 auto' }}>
+        {pointsAwarded && (
+          <p style={{ fontSize: '1.1rem', color: '#10b981', fontWeight: 700, textAlign: 'center', margin: 0 }}>
+            Thanks for sharing!
+          </p>
+        )}
         <button
           type="button"
           onClick={handleIPosted}
@@ -328,16 +327,11 @@ function InstructionsContent() {
             touchAction: 'manipulation',
           }}
         >
-          {awarding ? 'Awarding…' : pointsAwarded ? '✓ Points claimed!' : 'I Posted ✅ (Claim Points)'}
+          {awarding ? 'One moment…' : pointsAwarded ? '✓ Thanks for sharing!' : 'I Posted ✅'}
         </button>
-        {pointsAwarded && (
-          <p style={{ fontSize: '1rem', color: '#10b981', textAlign: 'center' }}>
-            Success! Tap below to return.
-          </p>
-        )}
 
         <Link
-          href="/contest/score"
+          href={sampleChaptersHref}
           style={{
             display: 'block',
             padding: '1.25rem 2rem',
@@ -351,7 +345,25 @@ function InstructionsContent() {
             textDecoration: 'none',
           }}
         >
-          Return to Scoreboard
+          Back to the book
+        </Link>
+
+        <Link
+          href={sampleChaptersHref}
+          style={{
+            display: 'block',
+            padding: '1rem 2rem',
+            borderRadius: 12,
+            border: '1px solid #d1d5db',
+            background: '#f9fafb',
+            color: '#1a1a1a',
+            fontSize: '1rem',
+            fontWeight: 600,
+            textAlign: 'center',
+            textDecoration: 'none',
+          }}
+        >
+          Read sample chapters
         </Link>
 
         <Link
@@ -370,8 +382,8 @@ function InstructionsContent() {
 
         <p style={{ fontSize: '0.85rem', color: '#9ca3af', textAlign: 'center', marginTop: '1.5rem', lineHeight: 1.5 }}>
           If you got lost, reopen the site and go to{' '}
-          <Link href="/posted?platform=x" style={{ color: '#3b82f6', fontWeight: 600, textDecoration: 'underline' }}>
-            /posted?platform=x
+          <Link href={sampleChaptersHref} style={{ color: '#3b82f6', fontWeight: 600, textDecoration: 'underline' }}>
+            sample chapters
           </Link>
           .
         </p>

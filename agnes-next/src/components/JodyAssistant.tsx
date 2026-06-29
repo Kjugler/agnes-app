@@ -165,8 +165,8 @@ export function JodyAssistant({
         Instagram can be a little tricky.
       </div>
       <div style={{ marginBottom: 10, lineHeight: 1.4 }}>
-        I'm Jody. I can walk you through posting this reel so you don't
-        miss out on points — or prizes.
+        I&apos;m Jody. I can walk you through posting this reel so friends can
+        discover the free sample chapters with your reader link.
       </div>
 
       <button
@@ -368,8 +368,8 @@ export function JodyAssistant({
         Truth Social can be a little… particular.
       </div>
       <div style={{ marginBottom: 10, lineHeight: 1.4 }}>
-        I'm Jody. I can walk you through posting this video to Truth Social
-        and making sure your contest points are recorded correctly.
+        I&apos;m Jody. I can walk you through posting this video to Truth Social
+        with your caption and sample-chapters link ready to go.
       </div>
 
       <button
@@ -467,7 +467,8 @@ export function JodyAssistant({
         TikTok can be a little tricky.
       </div>
       <div style={{ marginBottom: 10, lineHeight: 1.4 }}>
-        I'm Jody. Copy the caption, download the video (it saves to Photos or Files), open TikTok, upload, paste, and tap "I Shared" to get your points.
+        I&apos;m Jody. Copy the caption, download the video (it saves to Photos or Files),
+        open TikTok, upload, paste, and tap &ldquo;I Shared&rdquo; when your post is live.
       </div>
 
       <button
@@ -622,10 +623,10 @@ export function JodyAssistant({
                 <strong>Step 5:</strong> Paste the caption and publish.
               </li>
               <li style={{ marginBottom: 6 }}>
-                <strong>Step 6:</strong> Come back here and click "I posted to X" to record your post and get your 100 points.
+                <strong>Step 6:</strong> Come back here and tap &ldquo;✅ I Shared&rdquo; when your post is live.
               </li>
               <li style={{ marginBottom: 0 }}>
-                <strong>Step 7:</strong> Click "Back to Score" — you'll receive an additional 100 points.
+                <strong>Step 7:</strong> Tap &ldquo;← Back to the book&rdquo; when you&apos;re ready to share again.
               </li>
             </ol>
           </div>
@@ -1118,11 +1119,9 @@ const IgTrainingModal: React.FC<IgTrainingModalProps> = ({ onClose }) => {
                 border: '1px solid rgba(255,59,224,0.6)',
               }}
             >
-              <strong>Important:</strong> if the reel doesn't fully post
-              and you move on too quickly, it may not count. DeepQuill LLC
-              reserves the right to audit winning entries to confirm posts
-              were actually live. It would be a shame to lose a prize
-              because one reel never finished uploading.
+              <strong>Important:</strong> wait until Instagram clearly shows the reel
+              has finished posting before you leave the app — a half-uploaded reel
+              won&apos;t reach your friends.
             </div>
 
             <div
@@ -1134,13 +1133,10 @@ const IgTrainingModal: React.FC<IgTrainingModalProps> = ({ onClose }) => {
                 border: '1px solid rgba(0,255,180,0.45)',
               }}
             >
-              <strong>After your reel is posted:</strong> come back to this
-              page and click{' '}
-              <strong>&ldquo;I posted to Instagram&rdquo;</strong> so your
-              points are recorded on the Score page. Remember, you can earn{' '}
-              <strong>100 points per post per day</strong> on each platform
-              — that's up to <strong>500 points every day</strong>, plus
-              extra bonuses when you catch the rabbits.
+              <strong>After your reel is posted:</strong> come back to the share page
+              and tap <strong>&ldquo;✅ I Shared&rdquo;</strong>, then use{' '}
+              <strong>&ldquo;← Back to the book&rdquo;</strong> when you want to
+              share again.
             </div>
           </div>
         </div>

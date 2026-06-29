@@ -25,10 +25,10 @@ export const REFER_VIDEOS: ReferVideoConfig[] = [
   },
   {
     id: 'fb3',
-    label: 'Video 3 – "Play. Win. Ascend."',
+    label: 'Video 3 – "Why Readers Are Talking"',
     thumbnailSrc: '/images/fb/fb3.jpg',
     videoSrc: '/videos/fb3.mp4',
-    description: 'Focuses on contest, prizes, and the game.',
+    description: 'A quick look at The Agnes Protocol and why readers are talking about it.',
   },
 ];
 

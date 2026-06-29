@@ -8,7 +8,7 @@ interface HelpModalProps {
 
 const topics = [
   'Buying the book',
-  'Contest & points',
+  'Sharing & referrals',
   'Social media posting',
   'Technical issue',
   'Other',

@@ -51,7 +51,7 @@ export default async function ReferPage({
           }}
         >
           A friend invited you to check out <strong>The Agnes Protocol</strong>.
-          Watch the short video below, then decide if you&apos;re ready to play.
+          Watch the short video below, then decide if you want to read it.
         </p>
 
         {/* Video player */}
