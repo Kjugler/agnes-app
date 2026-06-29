@@ -1,0 +1,307 @@
+'use client';
+
+import Image from 'next/image';
+import Link from 'next/link';
+import { useMemo, useEffect, useRef, type CSSProperties } from 'react';
+import { useSearchParams } from 'next/navigation';
+import SiteFooter from '@/components/SiteFooter';
+import { trackMeta } from '@/lib/metaPixel';
+import { trackTikTok } from '@/lib/tiktokPixel';
+import {
+  AMAZON_REVIEWS_URL,
+  BARNES_NOBLE_REVIEWS_URL,
+  META_AD_BOOK_COVER_PATH,
+  SAMPLE_CHAPTERS_PATH,
+} from '@/lib/metaAdLanding';
+
+const cardBase: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '12px',
+  padding: '24px 22px',
+  borderRadius: '12px',
+  border: '1px solid rgba(255, 255, 255, 0.12)',
+  background: 'linear-gradient(145deg, rgba(20, 20, 20, 0.95) 0%, rgba(12, 12, 12, 0.98) 100%)',
+  boxShadow: '0 12px 40px rgba(0, 0, 0, 0.45)',
+  textDecoration: 'none',
+  color: '#f5f5f5',
+  transition: 'border-color 0.2s ease, transform 0.2s ease',
+};
+
+const externalCta: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: '12px 20px',
+  borderRadius: '8px',
+  fontSize: '15px',
+  fontWeight: 700,
+  border: '1px solid rgba(255, 255, 255, 0.25)',
+  background: 'rgba(255, 255, 255, 0.06)',
+  color: '#fff',
+  textDecoration: 'none',
+};
+
+const sampleCta: CSSProperties = {
+  ...externalCta,
+  background: '#00ff7f',
+  color: '#0a0a0a',
+  border: 'none',
+  boxShadow: '0 0 24px rgba(0, 255, 127, 0.25)',
+};
+
+function ReviewCard({
+  stars,
+  title,
+  href,
+  cta,
+  external,
+}: {
+  stars: string;
+  title: string;
+  href: string;
+  cta: string;
+  external?: boolean;
+}) {
+  const inner = (
+    <>
+      <div style={{ fontSize: '18px', letterSpacing: '0.06em' }} aria-hidden>
+        {stars}
+      </div>
+      <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, lineHeight: 1.3 }}>{title}</h2>
+      <span style={externalCta}>{cta} →</span>
+    </>
+  );
+
+  if (external) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={cardBase}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.borderColor = 'rgba(220, 38, 38, 0.55)';
+          e.currentTarget.style.transform = 'translateY(-2px)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+          e.currentTarget.style.transform = 'translateY(0)';
+        }}
+      >
+        {inner}
+      </a>
+    );
+  }
+
+  return (
+    <Link
+      href={href}
+      style={{ ...cardBase, borderColor: 'rgba(0, 255, 127, 0.35)' }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = 'rgba(0, 255, 127, 0.65)';
+        e.currentTarget.style.transform = 'translateY(-2px)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = 'rgba(0, 255, 127, 0.35)';
+        e.currentTarget.style.transform = 'translateY(0)';
+      }}
+    >
+      <div style={{ fontSize: '18px', letterSpacing: '0.06em' }} aria-hidden>
+        {stars}
+      </div>
+      <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, lineHeight: 1.3 }}>{title}</h2>
+      <span style={sampleCta}>{cta} →</span>
+    </Link>
+  );
+}
+
+export default function MetaAdLandingClient() {
+  const searchParams = useSearchParams();
+  const viewFiredRef = useRef(false);
+
+  const sampleChaptersHref = useMemo(() => {
+    const params = new URLSearchParams();
+    const keys = ['ref', 'src', 'v', 'origin', 'code', 'utm_source', 'utm_medium', 'utm_campaign', 'fbclid'];
+    keys.forEach((key) => {
+      const value = searchParams.get(key);
+      if (value) params.set(key, value);
+    });
+    const qs = params.toString();
+    return qs ? `${SAMPLE_CHAPTERS_PATH}?${qs}` : SAMPLE_CHAPTERS_PATH;
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (viewFiredRef.current) return;
+    viewFiredRef.current = true;
+    trackMeta('ViewContent', {
+      content_ids: ['meta-ad-readers-cant-put-it-down'],
+      content_name: 'Readers Cant Put It Down Landing',
+      content_type: 'product',
+    });
+    trackTikTok('ViewContent', {
+      content_id: 'meta-ad-readers-cant-put-it-down',
+      content_name: 'Readers Cant Put It Down Landing',
+      content_type: 'product',
+    });
+  }, []);
+
+  return (
+    <main
+      style={{
+        minHeight: '100vh',
+        background: '#050505',
+        color: '#f5f5f5',
+      }}
+    >
+      <section
+        style={{
+          position: 'relative',
+          overflow: 'hidden',
+          padding: '48px 20px 56px',
+          background:
+            'radial-gradient(ellipse 120% 80% at 50% -20%, rgba(185, 28, 28, 0.45) 0%, transparent 55%), linear-gradient(180deg, #0c0c0c 0%, #050505 100%)',
+        }}
+      >
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute',
+            inset: 0,
+            backgroundImage:
+              'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.02) 2px, rgba(255,255,255,0.02) 4px)',
+            pointerEvents: 'none',
+            opacity: 0.4,
+          }}
+        />
+
+        <div
+          style={{
+            position: 'relative',
+            maxWidth: '960px',
+            margin: '0 auto',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: '40px',
+            alignItems: 'center',
+          }}
+        >
+          <div>
+            <p
+              style={{
+                margin: '0 0 16px 0',
+                fontSize: '12px',
+                fontWeight: 700,
+                letterSpacing: '0.2em',
+                textTransform: 'uppercase',
+                color: '#fca5a5',
+              }}
+            >
+              The Agnes Protocol
+            </p>
+            <h1
+              style={{
+                margin: '0 0 16px 0',
+                fontSize: 'clamp(2rem, 5vw, 2.75rem)',
+                fontWeight: 800,
+                lineHeight: 1.1,
+                letterSpacing: '-0.02em',
+              }}
+            >
+              <span style={{ color: '#ffffff' }}>Find Out Why Readers </span>
+              <span style={{ color: '#ef4444', textShadow: '0 0 40px rgba(239, 68, 68, 0.35)' }}>
+                Can&apos;t Put It Down
+              </span>
+            </h1>
+            <p
+              style={{
+                margin: '0 0 20px 0',
+                fontSize: 'clamp(1.05rem, 2.5vw, 1.25rem)',
+                lineHeight: 1.5,
+                color: 'rgba(245, 245, 245, 0.92)',
+                fontWeight: 600,
+              }}
+            >
+              25 Reviews. Nearly All ★★★★★.
+              <br />
+              See what everyone&apos;s talking about.
+            </p>
+            <p
+              style={{
+                margin: 0,
+                fontSize: '16px',
+                lineHeight: 1.65,
+                color: 'rgba(245, 245, 245, 0.72)',
+                maxWidth: '36rem',
+              }}
+            >
+              Don&apos;t take our word for it. Read the reviews, then start the sample chapters.
+            </p>
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}
+          >
+            <div
+              style={{
+                position: 'relative',
+                width: 'min(100%, 280px)',
+                aspectRatio: '2 / 3',
+                borderRadius: '8px',
+                overflow: 'hidden',
+                boxShadow:
+                  '0 24px 60px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255,255,255,0.08), -8px 0 32px rgba(185, 28, 28, 0.25)',
+              }}
+            >
+              <Image
+                src={META_AD_BOOK_COVER_PATH}
+                alt="The Agnes Protocol book cover"
+                fill
+                sizes="(max-width: 768px) 70vw, 280px"
+                style={{ objectFit: 'cover' }}
+                priority
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section style={{ padding: '0 20px 56px', maxWidth: '960px', margin: '0 auto' }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+            gap: '20px',
+          }}
+        >
+          <ReviewCard
+            stars="⭐⭐⭐⭐⭐"
+            title="Amazon Readers"
+            href={AMAZON_REVIEWS_URL}
+            cta="Read the Reviews"
+            external
+          />
+          <ReviewCard
+            stars="⭐⭐⭐⭐⭐"
+            title="Barnes & Noble Readers"
+            href={BARNES_NOBLE_REVIEWS_URL}
+            cta="Read the Reviews"
+            external
+          />
+          <ReviewCard
+            stars="📖"
+            title="Read Free Sample Chapters"
+            href={sampleChaptersHref}
+            cta="Start Reading"
+          />
+        </div>
+      </section>
+
+      <SiteFooter />
+    </main>
+  );
+}
