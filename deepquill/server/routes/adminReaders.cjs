@@ -53,7 +53,7 @@ async function resolveLastActivity(userId) {
 }
 
 function serializeReader(profile, user, lastActivity) {
-  const referralCode = user.referralCode || user.code || '';
+  const referralCode = (user.referralCode || user.code || '').trim();
   const name = displayName(user);
   return {
     id: profile.id,
@@ -179,10 +179,11 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ ok: false, error: 'Reader not found' });
     }
 
+    const { user: ensuredUser } = await ensureReaderUser(prisma, profile.user.email);
     const lastActivity = await resolveLastActivity(profile.userId);
     return res.json({
       ok: true,
-      reader: serializeReader(profile, profile.user, lastActivity),
+      reader: serializeReader(profile, ensuredUser, lastActivity),
     });
   } catch (err) {
     console.error('[admin/readers] get error', err);

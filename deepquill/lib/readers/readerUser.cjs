@@ -45,13 +45,15 @@ async function ensureReaderUser(prisma, emailRaw) {
     return { user, created: true };
   }
 
-  if (!user.code || !user.referralCode) {
+  const existingCode = (user.code || '').trim();
+  const existingReferral = (user.referralCode || '').trim();
+  if (!existingCode || !existingReferral) {
     const code = await generateUniqueCode(prisma, user.id);
     user = await prisma.user.update({
       where: { id: user.id },
       data: {
-        code: user.code || code,
-        referralCode: user.referralCode || code,
+        code: existingCode || code,
+        referralCode: existingReferral || code,
       },
     });
   }

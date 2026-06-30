@@ -187,7 +187,7 @@ export default function ReaderDetailClient({ readerId }: { readerId: string }) {
           <div style={labelStyle}>Referral Code</div>
           <div style={{ fontFamily: 'monospace', fontSize: 15 }}>{reader.referralCode}</div>
         </div>
-        <CopyRow label="Text-a-Friend URL" value={reader.textAFriendUrl} />
+        <CopyRow label="Text-a-Friend Link" value={reader.textAFriendUrl} />
         <CopyRow label="Sample Chapters URL" value={reader.sampleChaptersUrl} />
       </section>
 
