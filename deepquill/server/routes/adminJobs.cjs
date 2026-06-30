@@ -10,6 +10,7 @@ const { buildEngagedReminderEmail } = require('../../lib/email/builders/engagedR
 const { buildNoPurchaseReminderEmail } = require('../../lib/email/builders/noPurchaseReminder.cjs');
 const { buildNonParticipantReminderEmail } = require('../../lib/email/builders/nonParticipantReminder.cjs');
 const { buildMissionaryEmail } = require('../../lib/email/builders/missionaryEmail.cjs');
+const { guardMailableEmail } = require('../../lib/email/guardMailableEmail.cjs');
 
 const router = express.Router();
 
@@ -78,6 +79,8 @@ router.get('/send-engaged-reminders', async (req, res) => {
     for (const user of users) {
       try {
         if (!user.referralCode) { console.warn(`[engaged-reminder] Skipping ${user.email}: no referralCode`); continue; }
+        const mailable = guardMailableEmail(user.email, 'engaged_reminder');
+        if (!mailable) { console.warn(`[engaged-reminder] Skipping non-mailable ${user.email}`); continue; }
         const buyUrl = `${BASE_URL}/sample-chapters`;
         const challengeUrl = `${BASE_URL}/sample-chapters`;
         const shareUrl = `${BASE_URL}/refer?code=${user.referralCode}`;
@@ -88,7 +91,7 @@ router.get('/send-engaged-reminders', async (req, res) => {
           message: {
             from_email: fromEmail,
             subject: finalSubject ?? subject,
-            to: [{ email: user.email, type: 'to' }],
+            to: [{ email: mailable, type: 'to' }],
             html: htmlWithBanner,
             headers: { 'Reply-To': fromEmail },
           },
@@ -147,6 +150,8 @@ router.get('/send-non-participant-reminders', async (req, res) => {
 
     for (const user of users) {
       try {
+        const mailable = guardMailableEmail(user.email, 'non_participant_reminder');
+        if (!mailable) continue;
         const referUrl = user.referralCode ? `${BASE_URL}/refer?code=${user.referralCode}` : `${BASE_URL}/refer`;
         const { subject, html } = buildNonParticipantReminderEmail({
           firstName: user.firstName,
@@ -160,7 +165,7 @@ router.get('/send-non-participant-reminders', async (req, res) => {
           message: {
             from_email: fromEmail,
             subject: finalSubject ?? subject,
-            to: [{ email: user.email, type: 'to' }],
+            to: [{ email: mailable, type: 'to' }],
             html: htmlWithBanner,
             headers: { 'Reply-To': fromEmail },
           },
@@ -206,6 +211,8 @@ router.get('/send-no-purchase-reminders', async (req, res) => {
 
     for (const user of users) {
       try {
+        const mailable = guardMailableEmail(user.email, 'no_purchase_reminder');
+        if (!mailable) continue;
         const shareUrl = `${BASE_URL}/refer?code=${user.referralCode}`;
         const { subject, html } = buildNoPurchaseReminderEmail({
           firstName: user.firstName,
@@ -219,7 +226,7 @@ router.get('/send-no-purchase-reminders', async (req, res) => {
           message: {
             from_email: fromEmail,
             subject: finalSubject ?? subject,
-            to: [{ email: user.email, type: 'to' }],
+            to: [{ email: mailable, type: 'to' }],
             html: htmlWithBanner,
             headers: { 'Reply-To': fromEmail },
           },
@@ -280,6 +287,8 @@ router.get('/send-missionary-emails', async (req, res) => {
 
     for (const user of users) {
       try {
+        const mailable = guardMailableEmail(user.email, 'missionary_email');
+        if (!mailable) continue;
         const referUrl = `${BASE_URL}/refer?code=${user.referralCode}`;
         const shareUrl = referUrl;
         const { subject, html } = buildMissionaryEmail({
@@ -295,7 +304,7 @@ router.get('/send-missionary-emails', async (req, res) => {
           message: {
             from_email: fromEmail,
             subject: finalSubject ?? subject,
-            to: [{ email: user.email, type: 'to' }],
+            to: [{ email: mailable, type: 'to' }],
             html: htmlWithBanner,
             headers: { 'Reply-To': fromEmail },
           },

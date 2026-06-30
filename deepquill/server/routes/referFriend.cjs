@@ -7,6 +7,7 @@ const { normalizeReferralCode } = require('../../src/lib/normalize.cjs');
 const { isSelfReferral, normalizeIdentityEmail } = require('../../src/lib/selfReferralGuards.cjs');
 const { ensureDatabaseUrl } = require('../prisma.cjs');
 const { getMailchimpClient } = require('../../lib/email/sendEmail.cjs');
+const { guardMailableEmail } = require('../../lib/email/guardMailableEmail.cjs');
 
 const {
   MAILCHIMP_TRANSACTIONAL_KEY,
@@ -231,11 +232,15 @@ router.post('/', async (req, res) => {
 
         let emailResult;
         try {
+          const mailableFriend = guardMailableEmail(email, 'refer_friend');
+          if (!mailableFriend) {
+            return { email, success: false, error: 'non_mailable_recipient' };
+          }
           emailResult = await mailchimpClient.messages.send({
             message: {
               from_email: fromEmailAddr,
               from_name: fromDisplayName,
-              to: [{ email, type: 'to' }],
+              to: [{ email: mailableFriend, type: 'to' }],
               subject: finalSubject || subject,
               text: finalText || bodyText,
               html: finalHtml || bodyHtml,

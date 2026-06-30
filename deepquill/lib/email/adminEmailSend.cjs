@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const mailchimp = require('@mailchimp/mailchimp_transactional');
 const { ensureDatabaseUrl } = require('../../server/prisma.cjs');
-const { normalizeEmail } = require('../../src/lib/normalize.cjs');
+const { normalizeEmail, isSyntheticReaderEmail } = require('../../src/lib/normalize.cjs');
 const { getMailchimpClient } = require('./sendEmail.cjs');
 const { getTemplateContent } = require('./adminEmailTemplates.cjs');
 
@@ -162,6 +162,10 @@ function buildEligiblePipeline(candidateRows, { excludeExample, suppressedSet, s
   for (const row of candidateRows) {
     const normalized = normalizeEmail(row.email);
     if (!normalized) {
+      skip.invalid += 1;
+      continue;
+    }
+    if (isSyntheticReaderEmail(normalized)) {
       skip.invalid += 1;
       continue;
     }

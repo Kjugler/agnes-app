@@ -25,6 +25,14 @@ const READER_TYPE_LABELS = {
 
 const READER_STATUSES = ['active', 'inactive'];
 
+const SMS_CONSENT_SOURCES = [
+  'Book Signing',
+  'In person',
+  'Phone call',
+  'Event booth',
+  'Other',
+];
+
 const READER_STATUS_LABELS = {
   active: 'Active',
   inactive: 'Inactive',
@@ -42,13 +50,19 @@ function isValidReaderStatus(value) {
   return typeof value === 'string' && READER_STATUSES.includes(value.trim());
 }
 
+function isValidSmsConsentSource(value) {
+  return typeof value === 'string' && SMS_CONSENT_SOURCES.includes(value.trim());
+}
+
 module.exports = {
   READER_SOURCES,
   READER_TYPES,
   READER_TYPE_LABELS,
   READER_STATUSES,
   READER_STATUS_LABELS,
+  SMS_CONSENT_SOURCES,
   isValidReaderSource,
   isValidReaderType,
   isValidReaderStatus,
+  isValidSmsConsentSource,
 };

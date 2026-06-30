@@ -2,6 +2,7 @@
 // Wraps Mailchimp send; passes content through applyGlobalEmailBanner (no-op; legacy banner removed).
 
 const mailchimp = require('@mailchimp/mailchimp_transactional');
+const { guardMailableEmail } = require('./guardMailableEmail.cjs');
 
 /**
  * Get Mailchimp client (singleton)
@@ -44,8 +45,20 @@ async function sendEmail({ fromEmail, fromName, to, subject, html, text }) {
   const finalText = bannerResult.text;
   const finalSubject = bannerResult.subject;
 
-  // Normalize to array
-  const toList = Array.isArray(to) ? to : [{ email: to }];
+  // Normalize to array; drop synthetic @reader.crm CRM placeholders
+  const rawList = Array.isArray(to) ? to : [{ email: to }];
+  const toList = rawList
+    .map((entry) => {
+      const addr = typeof entry === 'string' ? entry : entry?.email;
+      const mailable = guardMailableEmail(addr, 'sendEmail');
+      if (!mailable) return null;
+      return typeof entry === 'string' ? { email: mailable } : { ...entry, email: mailable };
+    })
+    .filter(Boolean);
+
+  if (toList.length === 0) {
+    throw new Error('[EMAIL] No mailable recipients');
+  }
 
   try {
     const result = await client.messages.send({

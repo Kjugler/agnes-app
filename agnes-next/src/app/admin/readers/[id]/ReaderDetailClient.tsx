@@ -2,7 +2,12 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
-import type { ReaderDetail } from '@/config/readerSources';
+import {
+  formatReaderEmailDisplay,
+  formatReaderPhoneDisplay,
+  formatSmsConsentSummary,
+  type ReaderDetail,
+} from '@/config/readerSources';
 
 function formatDateTime(iso: string | null) {
   if (!iso) return '—';
@@ -156,8 +161,22 @@ export default function ReaderDetailClient({ readerId }: { readerId: string }) {
           </div>
           <div>
             <div style={labelStyle}>Email</div>
-            <div style={{ wordBreak: 'break-all' }}>{reader.email}</div>
+            <div style={{ wordBreak: 'break-all' }}>{formatReaderEmailDisplay(reader)}</div>
           </div>
+          <div>
+            <div style={labelStyle}>Phone</div>
+            <div>{formatReaderPhoneDisplay(reader.phone)}</div>
+          </div>
+          <div>
+            <div style={labelStyle}>SMS Consent</div>
+            <div>{formatSmsConsentSummary(reader)}</div>
+          </div>
+          {reader.smsConsentGranted && reader.smsConsentAt && (
+            <div>
+              <div style={labelStyle}>Consent Recorded</div>
+              <div>{formatDateTime(reader.smsConsentAt)}</div>
+            </div>
+          )}
           <div>
             <div style={labelStyle}>Source</div>
             <div>{reader.source || '—'}</div>
@@ -190,6 +209,27 @@ export default function ReaderDetailClient({ readerId }: { readerId: string }) {
         <CopyRow label="Text-a-Friend Link" value={reader.textAFriendUrl} />
         <CopyRow label="Sample Chapters URL" value={reader.sampleChaptersUrl} />
       </section>
+
+      {reader.smsConsentGranted && (
+        <section style={sectionStyle}>
+          <h2 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 700 }}>SMS consent</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
+            <div>
+              <div style={labelStyle}>Source</div>
+              <div>{reader.smsConsentSource || '—'}</div>
+            </div>
+            <div>
+              <div style={labelStyle}>Recorded</div>
+              <div>{formatDateTime(reader.smsConsentAt)}</div>
+            </div>
+          </div>
+          {reader.smsConsentNotes ? (
+            <p style={{ margin: '12px 0 0', fontSize: 14, color: '#334155', lineHeight: 1.5 }}>
+              {reader.smsConsentNotes}
+            </p>
+          ) : null}
+        </section>
+      )}
 
       <section style={sectionStyle}>
         <h2 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 700 }}>Notes</h2>

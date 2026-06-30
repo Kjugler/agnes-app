@@ -15,6 +15,7 @@ const { signToken } = require('../../src/lib/fulfillmentToken.cjs');
 const { signReaderClaimToken } = require('../../src/lib/readerClaimToken.cjs');
 const { normalizeEmailDeliveryOutcome } = require('./mandrillDeliveryOutcome.cjs');
 const { applyGlobalEmailBanner } = require('../../src/lib/emailBanner.cjs');
+const { guardMailableEmail } = require('./guardMailableEmail.cjs');
 
 function getMailchimpClient() {
   const apiKey = process.env.MAILCHIMP_TRANSACTIONAL_KEY;
@@ -74,6 +75,15 @@ async function loadPurchaseForResend(prismaClient, purchaseId) {
 }
 
 async function sendWithMailchimp({ to, subject, text, html, action, meta = {} }) {
+  const mailableTo = guardMailableEmail(to, action || 'admin_resend');
+  if (!mailableTo) {
+    return {
+      ok: false,
+      error: 'non_mailable_recipient',
+      deliveryStatus: 'skipped',
+    };
+  }
+
   const client = getMailchimpClient();
   if (!client) {
     return {
@@ -90,7 +100,7 @@ async function sendWithMailchimp({ to, subject, text, html, action, meta = {} })
         from_email: fromEmail,
         from_name: 'The Agnes Protocol',
         subject,
-        to: [{ email: to, type: 'to' }],
+        to: [{ email: mailableTo, type: 'to' }],
         text,
         html,
       },
@@ -151,7 +161,7 @@ async function resendPurchaseConfirmation(prismaClient, purchaseId) {
           purchaseId: purchase.id,
           sessionId: session.id,
         });
-        claimAccountLink = `${siteUrl}/contest/claim?token=${encodeURIComponent(claimTok)}`;
+        claimAccountLink = `${siteUrl}/reader/claim?token=${encodeURIComponent(claimTok)}`;
       }
     } catch (e) {
       console.warn('[ADMIN_RESEND] claim link skipped', { error: e?.message, purchaseId });
@@ -285,7 +295,7 @@ async function sendClaimReaderProfileEmail(prismaClient, userId) {
       purchaseId: purchase.id,
       sessionId: session.id,
     });
-    claimAccountLink = `${siteUrl}/contest/claim?token=${encodeURIComponent(claimTok)}`;
+    claimAccountLink = `${siteUrl}/reader/claim?token=${encodeURIComponent(claimTok)}`;
   } catch (e) {
     return { ok: false, error: 'claim_token_failed', detail: e?.message };
   }

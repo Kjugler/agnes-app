@@ -26,6 +26,14 @@ export const READER_STATUSES = [
   { value: 'inactive', label: 'Inactive' },
 ] as const;
 
+export const SMS_CONSENT_SOURCES = [
+  'Book Signing',
+  'In person',
+  'Phone call',
+  'Event booth',
+  'Other',
+] as const;
+
 export type ReaderSource = (typeof READER_SOURCES)[number];
 
 export type ReaderRow = {
@@ -33,6 +41,9 @@ export type ReaderRow = {
   userId: string;
   name: string;
   email: string;
+  displayEmail: string | null;
+  hasRealEmail: boolean;
+  phone: string;
   source: string;
   readerType: string;
   readerTypeLabel: string;
@@ -41,13 +52,42 @@ export type ReaderRow = {
   referralCode: string;
   dateAdded: string;
   lastActivity: string | null;
+  smsConsentGranted: boolean;
+  smsConsentAt: string | null;
+  smsConsentSource: string;
 };
 
 export type ReaderDetail = ReaderRow & {
   firstName: string;
   lastName: string;
   notes: string;
+  smsConsentNotes: string;
+  contactKind: string;
   textAFriendUrl: string;
   sampleChaptersUrl: string;
   userCreatedAt: string;
 };
+
+/** Format email for admin display — never show synthetic CRM placeholders. */
+export function formatReaderEmailDisplay(reader: {
+  displayEmail?: string | null;
+  hasRealEmail?: boolean;
+  email?: string;
+}): string {
+  if (reader.displayEmail) return reader.displayEmail;
+  if (reader.hasRealEmail && reader.email) return reader.email;
+  return '—';
+}
+
+export function formatReaderPhoneDisplay(phone?: string | null): string {
+  const trimmed = (phone || '').trim();
+  return trimmed || '—';
+}
+
+export function formatSmsConsentSummary(reader: {
+  smsConsentGranted: boolean;
+  smsConsentSource?: string;
+}): string {
+  if (!reader.smsConsentGranted) return 'No';
+  return reader.smsConsentSource ? `Yes (${reader.smsConsentSource})` : 'Yes';
+}

@@ -15,6 +15,7 @@ const {
   buildTrustReferralEmail,
 } = require('../src/lib/trustTransactionalEmail.cjs');
 const { normalizeEmail, normalizeReferralCode, extractNameFromEmail } = require('../src/lib/normalize.cjs');
+const { guardMailableEmail } = require('../lib/email/guardMailableEmail.cjs');
 const { isSelfReferral, normalizeIdentityEmail } = require('../src/lib/selfReferralGuards.cjs');
 const envConfig = require('../src/config/env.cjs');
 const { awardPurchaseDailyPoints, awardReferralSponsorPoints } = require('../lib/points/awardPoints.cjs');
@@ -1832,17 +1833,20 @@ router.post(
                     sessionId: session.id,
                     product: product || 'unknown',
                   });
-                  await client.messages.send({
-                    message: {
-                      from_email: trustFromEmail,
-                      from_name: 'The Agnes Protocol',
-                      subject: trust.subject,
-                      to: [{ email: customerEmail, type: 'to' }],
-                      text: trust.text,
-                      html: trust.html,
-                    },
-                  });
-                  console.log('[WEBHOOK] Email: trust transactional (purchase) sent sessionId=' + session.id);
+                  const mailableCustomer = guardMailableEmail(customerEmail, 'webhook_trust_purchase');
+                  if (mailableCustomer) {
+                    await client.messages.send({
+                      message: {
+                        from_email: trustFromEmail,
+                        from_name: 'The Agnes Protocol',
+                        subject: trust.subject,
+                        to: [{ email: mailableCustomer, type: 'to' }],
+                        text: trust.text,
+                        html: trust.html,
+                      },
+                    });
+                    console.log('[WEBHOOK] Email: trust transactional (purchase) sent sessionId=' + session.id);
+                  }
                 } catch (trustErr) {
                   console.warn('[WEBHOOK] Trust transactional email failed (continuing to strategic)', {
                     error: trustErr.message,
@@ -1909,7 +1913,7 @@ router.post(
                     });
                     const siteUrlForClaim =
                       process.env.APP_BASE_URL || envConfig.SITE_URL || 'https://theagnesprotocol.com';
-                    claimAccountLink = `${String(siteUrlForClaim).replace(/\/$/, '')}/contest/claim?token=${encodeURIComponent(claimTok)}`;
+                    claimAccountLink = `${String(siteUrlForClaim).replace(/\/$/, '')}/reader/claim?token=${encodeURIComponent(claimTok)}`;
                   }
                 } catch (claimErr) {
                   console.warn('[WEBHOOK] Could not build reader claim link', { error: claimErr?.message });
@@ -1936,17 +1940,27 @@ router.post(
               });
               
               // Send email
-              const emailResult = await client.messages.send({
+              const mailableCustomer = guardMailableEmail(customerEmail, 'webhook_purchase_confirmation');
+              const emailResult = mailableCustomer
+                ? await client.messages.send({
                 message: {
                   from_email: fromEmail,
                   from_name: 'The Agnes Protocol',
                   subject: finalSubject || subject,
-                  to: [{ email: customerEmail, type: 'to' }],
+                  to: [{ email: mailableCustomer, type: 'to' }],
                   text: finalText || text,
                   html: finalHtml || html,
                 },
-              });
+              })
+                : null;
               
+              if (!emailResult) {
+                console.warn('[WEBHOOK] Email skipped - non-mailable recipient', {
+                  email: customerEmail,
+                  sessionId: session.id,
+                  purchaseId: finalPurchase.id,
+                });
+              } else {
               // Log full Mailchimp Transactional API response JSON for debugging
               console.log('[WEBHOOK] Email: Mailchimp Transactional API response JSON:', JSON.stringify(emailResult, null, 2));
               
@@ -2036,6 +2050,7 @@ router.post(
                     deliveryStatus: deliveryOutcome.deliveryStatus,
                   });
                 }
+              }
               }
               
               // Webhook flow continues regardless of email delivery status
@@ -3000,17 +3015,20 @@ async function processReferralCommission({ referrerCode, buyerEmail, buyerUserId
         if (isTrustSplitEmailEnabled()) {
           try {
             const trust = buildTrustReferralEmail({ sessionId });
-            await client.messages.send({
-              message: {
-                from_email: trustFromEmail,
-                from_name: 'The Agnes Protocol',
-                subject: trust.subject,
-                to: [{ email: referrerEmail, type: 'to' }],
-                text: trust.text,
-                html: trust.html,
-              },
-            });
-            console.log('[TRUST_EMAIL] referral trust sent sessionId=' + sessionId);
+            const mailableReferrer = guardMailableEmail(referrerEmail, 'webhook_trust_referral');
+            if (mailableReferrer) {
+              await client.messages.send({
+                message: {
+                  from_email: trustFromEmail,
+                  from_name: 'The Agnes Protocol',
+                  subject: trust.subject,
+                  to: [{ email: mailableReferrer, type: 'to' }],
+                  text: trust.text,
+                  html: trust.html,
+                },
+              });
+              console.log('[TRUST_EMAIL] referral trust sent sessionId=' + sessionId);
+            }
           } catch (trustErr) {
             console.warn('[TRUST_EMAIL] referral trust send failed (continuing to strategic)', {
               error: trustErr.message,
@@ -3092,16 +3110,19 @@ async function processReferralCommission({ referrerCode, buyerEmail, buyerUserId
         
         let emailResult = null;
         try {
-          emailResult = await client.messages.send({
-            message: {
-              from_email: fromEmail,
-              from_name: 'The Agnes Protocol',
-              subject: finalSubject || subject,
-              to: [{ email: referrerEmail, type: 'to' }],
-              text: finalText || text,
-              html: finalHtml || html,
-            },
-          });
+          const mailableReferrer = guardMailableEmail(referrerEmail, 'webhook_referrer_commission');
+          if (mailableReferrer) {
+            emailResult = await client.messages.send({
+              message: {
+                from_email: fromEmail,
+                from_name: 'The Agnes Protocol',
+                subject: finalSubject || subject,
+                to: [{ email: mailableReferrer, type: 'to' }],
+                text: finalText || text,
+                html: finalHtml || html,
+              },
+            });
+          }
 
           console.log('[AP_SALE_EMAIL] OK', {
             sessionId,

@@ -39,7 +39,7 @@ model User {
   lastRabbitBonusIntent        String?
   rabbitSeq                    Int                  @default(1)
   lastRabbitCatchAt            DateTime?
-  phone                        String?
+  phone                        String?              @unique
   handleX                      String?
   handleInstagram              String?
   handleTiktok                 String?
@@ -88,10 +88,14 @@ model ReaderProfile {
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   source     String?
   readerType String?
-  notes      String?
-  status     String   @default("active")
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  notes             String?
+  status            String    @default("active")
+  smsConsentGranted Boolean   @default(false)
+  smsConsentAt      DateTime?
+  smsConsentSource  String?
+  smsConsentNotes   String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   @@index([source])
   @@index([status])

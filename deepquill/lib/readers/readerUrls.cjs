@@ -1,3 +1,5 @@
+const { isMailableEmail } = require('../../src/lib/normalize.cjs');
+
 function getSiteUrl() {
   return (
     process.env.SITE_URL ||
@@ -10,7 +12,7 @@ function getSiteUrl() {
 function buildTextAFriendUrl(referralCode, email) {
   const base = getSiteUrl();
   const code = (referralCode || '').trim();
-  const em = (email || '').trim().toLowerCase();
+  const em = isMailableEmail(email);
   if (!code) return `${base}/text-a-friend`;
   const u = new URL(`${base}/text-a-friend`);
   u.searchParams.set('ref', code);

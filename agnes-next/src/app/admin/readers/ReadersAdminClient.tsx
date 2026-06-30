@@ -6,6 +6,10 @@ import {
   READER_SOURCES,
   READER_STATUSES,
   READER_TYPES,
+  SMS_CONSENT_SOURCES,
+  formatReaderEmailDisplay,
+  formatReaderPhoneDisplay,
+  formatSmsConsentSummary,
   type ReaderRow,
 } from '@/config/readerSources';
 
@@ -52,19 +56,35 @@ type AddReaderForm = {
   firstName: string;
   lastName: string;
   email: string;
+  phone: string;
   source: string;
   readerType: string;
   notes: string;
+  smsConsentGranted: boolean;
+  smsConsentSource: string;
+  smsConsentNotes: string;
 };
 
 const emptyForm: AddReaderForm = {
   firstName: '',
   lastName: '',
   email: '',
+  phone: '',
   source: '',
   readerType: 'interested',
   notes: '',
+  smsConsentGranted: false,
+  smsConsentSource: '',
+  smsConsentNotes: '',
 };
+
+function hasMeaningfulIdentifier(form: AddReaderForm): boolean {
+  const email = form.email.trim();
+  const phoneDigits = form.phone.replace(/\D/g, '');
+  const hasName = Boolean(form.firstName.trim() || form.lastName.trim());
+  const hasNotes = form.notes.trim().length >= 3;
+  return Boolean(email || phoneDigits.length >= 10 || (hasName && hasNotes));
+}
 
 export default function ReadersAdminClient() {
   const [q, setQ] = useState('');
@@ -111,8 +131,16 @@ export default function ReadersAdminClient() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.email.trim()) {
-      setSaveMessage('Email is required.');
+    if (!hasMeaningfulIdentifier(form)) {
+      setSaveMessage('Provide email, phone number, or name plus notes (at least 3 characters).');
+      return;
+    }
+    if (form.smsConsentGranted && form.phone.replace(/\D/g, '').length < 10) {
+      setSaveMessage('SMS consent requires a valid phone number.');
+      return;
+    }
+    if (form.smsConsentGranted && !form.smsConsentSource.trim()) {
+      setSaveMessage('Select how SMS consent was obtained.');
       return;
     }
     setSaving(true);
@@ -160,7 +188,7 @@ export default function ReadersAdminClient() {
             type="search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Name, email, source, notes…"
+            placeholder="Name, email, phone, source, notes…"
             style={{ ...inputStyle, minWidth: 220 }}
           />
         </label>
@@ -233,6 +261,8 @@ export default function ReadersAdminClient() {
               <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left' }}>
                 <th style={{ padding: '10px 12px', fontWeight: 600 }}>Name</th>
                 <th style={{ padding: '10px 12px', fontWeight: 600 }}>Email</th>
+                <th style={{ padding: '10px 12px', fontWeight: 600 }}>Phone</th>
+                <th style={{ padding: '10px 12px', fontWeight: 600 }}>SMS Consent</th>
                 <th style={{ padding: '10px 12px', fontWeight: 600 }}>Source</th>
                 <th style={{ padding: '10px 12px', fontWeight: 600 }}>Status</th>
                 <th style={{ padding: '10px 12px', fontWeight: 600 }}>Referral Code</th>
@@ -243,7 +273,7 @@ export default function ReadersAdminClient() {
             <tbody>
               {readers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ padding: 16, color: '#64748b' }}>
+                  <td colSpan={9} style={{ padding: 16, color: '#64748b' }}>
                     No readers yet. Add your first reader to start building the CRM.
                   </td>
                 </tr>
@@ -255,7 +285,11 @@ export default function ReadersAdminClient() {
                         {r.name || '—'}
                       </Link>
                     </td>
-                    <td style={{ padding: '10px 12px', wordBreak: 'break-all' }}>{r.email}</td>
+                    <td style={{ padding: '10px 12px', wordBreak: 'break-all' }}>
+                      {formatReaderEmailDisplay(r)}
+                    </td>
+                    <td style={{ padding: '10px 12px' }}>{formatReaderPhoneDisplay(r.phone)}</td>
+                    <td style={{ padding: '10px 12px' }}>{formatSmsConsentSummary(r)}</td>
                     <td style={{ padding: '10px 12px' }}>{r.source || '—'}</td>
                     <td style={{ padding: '10px 12px' }}>{r.statusLabel}</td>
                     <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: 13 }}>
@@ -300,6 +334,9 @@ export default function ReadersAdminClient() {
             onClick={(e) => e.stopPropagation()}
           >
             <h2 style={{ margin: '0 0 16px', fontSize: 18, fontWeight: 700 }}>Add Reader</h2>
+            <p style={{ margin: '0 0 12px', fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>
+              Provide email, phone number, or name plus notes (at least 3 characters).
+            </p>
             <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <label style={{ fontSize: 13 }}>
                 First Name
@@ -320,12 +357,21 @@ export default function ReadersAdminClient() {
                 />
               </label>
               <label style={{ fontSize: 13 }}>
-                Email Address *
+                Email Address
                 <input
                   type="email"
-                  required
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  style={{ ...inputStyle, width: '100%', marginTop: 4, boxSizing: 'border-box' }}
+                />
+              </label>
+              <label style={{ fontSize: 13 }}>
+                Phone Number
+                <input
+                  type="tel"
+                  value={form.phone}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  placeholder="(555) 123-4567"
                   style={{ ...inputStyle, width: '100%', marginTop: 4, boxSizing: 'border-box' }}
                 />
               </label>
@@ -375,6 +421,62 @@ export default function ReadersAdminClient() {
                   }}
                 />
               </label>
+              <div
+                style={{
+                  padding: 12,
+                  borderRadius: 6,
+                  border: '1px solid #e2e8f0',
+                  background: '#f8fafc',
+                }}
+              >
+                <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13 }}>
+                  <input
+                    type="checkbox"
+                    checked={form.smsConsentGranted}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        smsConsentGranted: e.target.checked,
+                        smsConsentSource: e.target.checked ? form.smsConsentSource : '',
+                        smsConsentNotes: e.target.checked ? form.smsConsentNotes : '',
+                      })
+                    }
+                    style={{ marginTop: 3 }}
+                  />
+                  <span>
+                    Gave permission to receive a text about The Agnes Protocol
+                  </span>
+                </label>
+                {form.smsConsentGranted && (
+                  <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <label style={{ fontSize: 13 }}>
+                      Consent source *
+                      <select
+                        value={form.smsConsentSource}
+                        onChange={(e) => setForm({ ...form, smsConsentSource: e.target.value })}
+                        style={{ ...inputStyle, width: '100%', marginTop: 4, boxSizing: 'border-box' }}
+                      >
+                        <option value="">Select source…</option>
+                        {SMS_CONSENT_SOURCES.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label style={{ fontSize: 13 }}>
+                      Consent notes
+                      <input
+                        type="text"
+                        value={form.smsConsentNotes}
+                        onChange={(e) => setForm({ ...form, smsConsentNotes: e.target.value })}
+                        placeholder="Signed bookmark card, verbal at booth…"
+                        style={{ ...inputStyle, width: '100%', marginTop: 4, boxSizing: 'border-box' }}
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
               {saveMessage && (
                 <p
                   style={{

@@ -1,6 +1,8 @@
 // deepquill/src/lib/normalize.cjs
 // Utility functions for normalizing emails, referral codes, and extracting names
 
+const SYNTHETIC_READER_EMAIL_DOMAIN = 'reader.crm';
+
 /**
  * Normalize an email address:
  * - Convert to lowercase
@@ -17,6 +19,52 @@ function normalizeEmail(email) {
     return null;
   }
   return trimmed;
+}
+
+/**
+ * Normalize a phone number (US-first):
+ * - 10 digits → +1XXXXXXXXXX
+ * - 11 digits starting with 1 → +1XXXXXXXXXX
+ * - Returns null if invalid or empty
+ */
+function normalizePhone(input) {
+  if (!input || typeof input !== 'string') {
+    return null;
+  }
+  const digits = input.replace(/\D+/g, '');
+  if (!digits) return null;
+  if (digits.length === 10) {
+    return `+1${digits}`;
+  }
+  if (digits.startsWith('1') && digits.length === 11) {
+    return `+${digits}`;
+  }
+  if (digits.startsWith('0')) {
+    return null;
+  }
+  if (input.trim().startsWith('+') && digits.length >= 10) {
+    return `+${digits}`;
+  }
+  if (digits.length >= 10) {
+    return `+${digits}`;
+  }
+  return null;
+}
+
+/** Internal CRM placeholder emails — never mailable. */
+function isSyntheticReaderEmail(email) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return false;
+  return normalized.endsWith(`@${SYNTHETIC_READER_EMAIL_DOMAIN}`);
+}
+
+/** Real mailable address, or null for synthetic/invalid. */
+function isMailableEmail(email) {
+  const normalized = normalizeEmail(email);
+  if (!normalized || isSyntheticReaderEmail(normalized)) {
+    return null;
+  }
+  return normalized;
 }
 
 /**
@@ -59,7 +107,11 @@ function extractNameFromEmail(email) {
 }
 
 module.exports = {
+  SYNTHETIC_READER_EMAIL_DOMAIN,
   normalizeEmail,
+  normalizePhone,
+  isSyntheticReaderEmail,
+  isMailableEmail,
   normalizeReferralCode,
   extractNameFromEmail,
 };
