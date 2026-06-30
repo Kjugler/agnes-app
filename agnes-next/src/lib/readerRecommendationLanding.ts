@@ -8,6 +8,17 @@ export {
   SAMPLE_CHAPTERS_PATH,
 } from '@/lib/metaAdLanding';
 
+export const READERS_AGREE_PATH = '/readers-agree';
+
+export function buildReadersAgreeShareUrl(referralCode: string | null | undefined): string {
+  const path = `${TEXT_A_FRIEND_SITE_URL}${READERS_AGREE_PATH}`;
+  const code = referralCode?.trim();
+  if (!code) return path;
+  const u = new URL(path);
+  u.searchParams.set('ref', code);
+  return u.toString();
+}
+
 export const READERS_AGREE_OG_IMAGE_PATH = '/og/readers-agree-v1.jpg';
 export const READERS_AGREE_OG_IMAGE_URL = `${TEXT_A_FRIEND_SITE_URL}${READERS_AGREE_OG_IMAGE_PATH}`;
 export const READERS_AGREE_HERO_IMAGE_PATH = '/images/rrf/readers-agree-hero-v1.jpg';

@@ -1,24 +1,13 @@
 /**
- * Simplified Text-a-Friend from the score page: SMS opens immediately with /sample-chapters link.
+ * Simplified Text-a-Friend from the score page: SMS opens with /readers-agree link.
  * Legacy modal + /t/fb1 paths remain in TextAFriendModal.tsx for rollback and old SMS links.
  */
 
 import { readContestEmail } from '@/lib/identity';
-import { TEXT_A_FRIEND_SITE_URL } from '@/lib/textAFriendOg';
-
-const SAMPLE_CHAPTERS_PATH = '/sample-chapters';
-
-export function buildSampleChaptersShareUrl(referralCode: string | null | undefined): string {
-  const path = `${TEXT_A_FRIEND_SITE_URL}${SAMPLE_CHAPTERS_PATH}`;
-  const code = referralCode?.trim();
-  if (!code) return path;
-  const u = new URL(path);
-  u.searchParams.set('ref', code);
-  return u.toString();
-}
+import { buildReadersAgreeShareUrl } from '@/lib/readerRecommendationLanding';
 
 export function buildScoreTextAFriendSmsBody(referralCode: string | null | undefined): string {
-  const url = buildSampleChaptersShareUrl(referralCode);
+  const url = buildReadersAgreeShareUrl(referralCode);
   return `I just finished *The Agnes Protocol*.
 
 You've got to check this out.
@@ -40,7 +29,7 @@ function trackTextFriendShared(): void {
     body: JSON.stringify({
       type: 'TEXT_FRIEND_SHARED',
       email,
-      meta: { option: 'sample_chapters' },
+      meta: { option: 'readers_agree' },
     }),
     keepalive: true,
   }).catch(() => {});
@@ -53,7 +42,7 @@ function trackTextFriendShared(): void {
   }).catch(() => {});
 }
 
-/** Fire tracking/points then open the device SMS editor with sample-chapters link. */
+/** Fire tracking/points then open the device SMS editor with readers-agree link. */
 export function openScoreTextAFriendSms(referralCode: string | null | undefined): void {
   if (typeof window === 'undefined') return;
   trackTextFriendShared();

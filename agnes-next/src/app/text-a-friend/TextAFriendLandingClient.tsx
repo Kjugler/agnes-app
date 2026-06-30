@@ -3,11 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { writeContestEmail } from '@/lib/identity';
-import {
-  buildSampleChaptersShareUrl,
-  buildScoreTextAFriendSmsBody,
-  openScoreTextAFriendSms,
-} from '@/lib/textAFriendScore';
+import { buildReadersAgreeShareUrl } from '@/lib/readerRecommendationLanding';
+import { buildScoreTextAFriendSmsBody, openScoreTextAFriendSms } from '@/lib/textAFriendScore';
 
 function isMobileSmsDevice(): boolean {
   if (typeof navigator === 'undefined') return false;
@@ -52,8 +49,8 @@ export default function TextAFriendLandingClient() {
     () => (refCode ? buildScoreTextAFriendSmsBody(refCode) : ''),
     [refCode]
   );
-  const sampleChaptersUrl = useMemo(
-    () => (refCode ? buildSampleChaptersShareUrl(refCode) : ''),
+  const recommendationLinkUrl = useMemo(
+    () => (refCode ? buildReadersAgreeShareUrl(refCode) : ''),
     [refCode]
   );
 
@@ -138,8 +135,8 @@ export default function TextAFriendLandingClient() {
             Text a Friend
           </button>
           <p style={{ margin: 0, fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>
-            Opens your messaging app with a ready-to-send recommendation and your sample-chapters
-            link.
+            Opens your messaging app with a ready-to-send recommendation and your personal link
+            for your friend.
           </p>
         </div>
       ) : (
@@ -200,16 +197,16 @@ export default function TextAFriendLandingClient() {
             </button>
             <button
               type="button"
-              onClick={() => copyText(sampleChaptersUrl, 'Link copied')}
+              onClick={() => copyText(recommendationLinkUrl, 'Link copied')}
               style={secondaryButtonStyle}
             >
-              Copy Sample Chapters Link
+              Copy Recommendation Link
             </button>
           </div>
 
           <p style={{ margin: 0, fontSize: 13, color: '#64748b', wordBreak: 'break-all' }}>
-            <a href={sampleChaptersUrl} style={{ color: '#2563eb' }}>
-              {sampleChaptersUrl}
+            <a href={recommendationLinkUrl} style={{ color: '#2563eb' }}>
+              {recommendationLinkUrl}
             </a>
           </p>
 
