@@ -29,6 +29,7 @@ const { signReaderClaimToken } = require('../src/lib/readerClaimToken.cjs');
 const { prisma, fulfillmentPrisma, datasourceUrl, dbPath, ensureDatabaseUrl } = require('../server/prisma.cjs');
 const fs = require('fs');
 const { findOrCreateGuestUserForStripePurchase } = require('../lib/webhook/guestStripeBuyer.cjs');
+const { trySyncReaderProfileFromPurchase } = require('../lib/readers/ensureReaderProfileFromPurchase.cjs');
 
 // CRITICAL: Ensure DATABASE_URL is ALWAYS set before any Prisma query
 // The adapter reads DATABASE_URL at query time, not just initialization
@@ -1781,6 +1782,16 @@ router.post(
               return res.status(500).json({ 
                 error: 'Purchase creation failed - cannot send email',
                 details: 'Purchase record was not created successfully'
+              });
+            }
+
+            if (finalPurchase.userId) {
+              trySyncReaderProfileFromPurchase(prismaClient, {
+                userId: finalPurchase.userId,
+                sessionId: session.id,
+                product,
+                purchasedAt: finalPurchase.createdAt,
+                saleStatus: finalPurchase.saleStatus,
               });
             }
 

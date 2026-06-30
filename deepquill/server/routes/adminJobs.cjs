@@ -415,4 +415,31 @@ async function runDailyContestSummaryJob(req, res) {
 router.post('/daily-contest-summary', express.json(), runDailyContestSummaryJob);
 router.get('/daily-contest-summary', runDailyContestSummaryJob);
 
+// GET/POST /api/admin/jobs/backfill-reader-profiles?dryRun=1&includeArchivedBeta=0
+async function runBackfillReaderProfilesJob(req, res) {
+  const { runBackfillReaderProfiles } = require('../../lib/readers/runBackfillReaderProfiles.cjs');
+  try {
+    const dryRunParam = req.query?.dryRun ?? req.body?.dryRun;
+    const dryRun = dryRunParam === undefined || dryRunParam === '1' || dryRunParam === 'true' || dryRunParam === true;
+    const includeParam = req.query?.includeArchivedBeta ?? req.body?.includeArchivedBeta;
+    const includeArchivedBeta = includeParam === '1' || includeParam === 'true' || includeParam === true;
+
+    const summary = await runBackfillReaderProfiles({
+      prisma,
+      dryRun,
+      includeArchivedBeta,
+    });
+
+    console.log('[admin/backfill-reader-profiles]', JSON.stringify(summary));
+
+    return res.json({ ok: true, operation: 'backfill_reader_profiles', ...summary });
+  } catch (err) {
+    console.error('[admin/backfill-reader-profiles]', err);
+    return res.status(500).json({ ok: false, error: err?.message || 'Unknown error' });
+  }
+}
+
+router.get('/backfill-reader-profiles', runBackfillReaderProfilesJob);
+router.post('/backfill-reader-profiles', express.json(), runBackfillReaderProfilesJob);
+
 module.exports = router;
