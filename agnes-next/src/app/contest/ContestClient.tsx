@@ -18,7 +18,18 @@ import {
 } from '@/lib/identity';
 import RequestAccessModal from '@/components/auth/RequestAccessModal';
 import SiteRibbonTicker from '@/components/SiteRibbonTicker';
+import SiteFooter from '@/components/SiteFooter';
 import { isContestEntryUxArchived } from '@/lib/funnelConfig';
+import {
+  HUB_THEME,
+  hubContentWrapStyle,
+  hubEyebrowStyle,
+  hubMicroPromptStyle,
+  hubNavCardStyle,
+  hubPageShellStyle,
+  hubPrimaryButtonStyle,
+  hubSecondaryButtonStyle,
+} from '@/lib/hubTheme';
 
 declare global {
   interface Window {
@@ -927,26 +938,14 @@ export default function ContestClient() {
   }, []);
 
   return (
-    <div
-      style={{
-        backgroundColor: 'black',
-        color: 'white',
-        fontFamily: 'Arial, sans-serif',
-        minHeight: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'flex-start',
-        alignItems: 'center',
-        paddingBottom: '4rem', // leave room for ticker
-      }}
-    >
+    <div style={hubPageShellStyle()}>
       {/* SPEC 3: Terminal discovery unlock panel */}
       {showTerminalUnlockPanel && !terminalPass && (
         <div
           style={{
             position: 'fixed',
             inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.7)',
+            backgroundColor: 'rgba(0, 0, 0, 0.45)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -955,36 +954,46 @@ export default function ContestClient() {
         >
           <div
             style={{
-              backgroundColor: 'rgba(0, 20, 30, 0.95)',
-              border: '2px solid #00ffe0',
+              backgroundColor: HUB_THEME.surface,
+              border: `2px solid ${HUB_THEME.accentCyan}`,
               borderRadius: 12,
               padding: '2rem',
               maxWidth: 420,
               textAlign: 'center',
-              boxShadow: '0 0 24px rgba(0, 255, 224, 0.3)',
+              boxShadow: '0 12px 40px rgba(0, 0, 0, 0.12)',
             }}
           >
-            <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#00ffe0', marginBottom: '1rem' }}>
+            <div
+              style={{
+                fontSize: '1.1rem',
+                fontWeight: 700,
+                color: HUB_THEME.text,
+                marginBottom: '1rem',
+              }}
+            >
               You found a side door into the story
             </div>
-            <p style={{ color: '#d1d5db', marginBottom: '0.75rem', lineHeight: 1.5 }}>
+            <p style={{ color: HUB_THEME.text, marginBottom: '0.75rem', lineHeight: 1.5 }}>
               The Agnes Protocol has more layers than meet the eye.
             </p>
-            <p style={{ color: '#9ca3af', fontSize: '0.9rem', marginBottom: '1.5rem', lineHeight: 1.5 }}>
+            <p
+              style={{
+                color: HUB_THEME.textMuted,
+                fontSize: '0.9rem',
+                marginBottom: '1.5rem',
+                lineHeight: 1.5,
+              }}
+            >
               Keep reading sample chapters and exploring when you&apos;re ready.
             </p>
             <button
               type="button"
               onClick={handleCloseTerminalUnlock}
               style={{
+                ...hubPrimaryButtonStyle(true),
                 padding: '0.75rem 2rem',
-                backgroundColor: '#00ffe0',
-                color: '#000',
-                fontWeight: 600,
-                border: 'none',
-                borderRadius: 8,
-                cursor: 'pointer',
-                fontSize: '1rem',
+                width: 'auto',
+                minWidth: '140px',
               }}
             >
               Continue
@@ -1029,181 +1038,159 @@ export default function ContestClient() {
         )}
       </div>
 
-      {/* Greeting: committed users with a real first name only (no Friend/None/email guesses) */}
-      {isUserCommitted && greetingName ? (
-        <div
-          style={{
-            textAlign: 'center',
-            marginTop: '1rem',
-            marginBottom: '1rem',
-          }}
-        >
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 600, marginBottom: '0.5rem' }}>
-            {hasProfile ? 'Welcome back' : 'Welcome'}, {greetingName}.
-          </h2>
-        </div>
-      ) : null}
-
-      <div style={{ textAlign: 'center', marginTop: '2rem', fontSize: '1.2rem', color: '#d1d5db' }}>
-        Explore the story, meet the author, and start reading.
-      </div>
-
-      {contestEmail ? (
-        <div
-          style={{
-            marginTop: '0.75rem',
-            color: '#9ca3af',
-            fontSize: '0.95rem',
-            display: 'flex',
-            gap: '0.75rem',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-          }}
-        >
-          <span>
-            Signed in as <strong>{contestEmail}</strong>
-            {isUserCommitted && greetingName ? (
-              <>
-                {' · '}
-                {hasProfile ? 'Welcome back' : 'Welcome'}, {greetingName}
-              </>
-            ) : null}
-          </span>
-          <button
-            type="button"
-            onClick={handleChangeAccount}
+      <div style={hubContentWrapStyle()}>
+        {/* Greeting: committed users with a real first name only (no Friend/None/email guesses) */}
+        {isUserCommitted && greetingName ? (
+          <div
             style={{
-              background: 'transparent',
-              border: '1px solid rgba(148, 163, 184, 0.6)',
-              color: '#e5e7eb',
-              padding: '0.35rem 1rem',
-              borderRadius: 999,
-              cursor: 'pointer',
+              textAlign: 'center',
+              marginTop: '2rem',
+              marginBottom: '0.5rem',
             }}
           >
-            Change account
-          </button>
-        </div>
-      ) : null}
-
-      {/* MENU BUTTONS */}
-      {/* E1: Mobile layout - wrap buttons in portrait, ensure all visible */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        gap: '12px', // E1: Consistent gap
-        marginTop: '1.2rem',
-        flexWrap: 'wrap', // E1: Wrap on mobile portrait
-        padding: '0 1rem', // E1: Padding for mobile
-        maxWidth: '100%', // E1: Prevent overflow
-        width: '100%', // E1: Full width container
-      }}>
-        {buttons.map((btn) => {
-          const sampleEmphasis = btn.id === 'sampleBtn';
-          return (
-          <div key={btn.id} style={{ 
-            position: 'relative', 
-            textAlign: 'center',
-            flex: '1 1 auto', // E1: Allow buttons to grow/shrink
-            minWidth: '160px', // E1: Minimum width for readability
-            maxWidth: '100%', // E1: Don't exceed container
-          }}>
-            <div
+            <h2
               style={{
-                fontSize: '0.75rem',
-                color: sampleEmphasis ? '#b8e8d4' : '#9ca3af',
-                marginBottom: '0.35rem',
-                minHeight: '1.2em',
+                fontSize: '1.5rem',
+                fontWeight: 600,
+                marginBottom: '0.5rem',
+                color: HUB_THEME.text,
               }}
             >
-              {btn.microPrompt}
-            </div>
-            {btn.type === 'button' ? (
-              <BuyBookButton
-                source="contest"
-                successPath="/contest/thank-you"
-                cancelPath="/contest"
-                onRequireContestEntry={handleRequireContestEntry}
-                style={{
-                  padding: '1rem',
-                  backgroundColor: '#111',
-                  border: '2px solid green',
-                  color: 'white',
-                  fontSize: '1rem',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s',
-                  minWidth: '160px', // E1: Smaller min width for mobile
-                  width: '100%', // E1: Full width on mobile
-                  maxWidth: '100%', // E1: Don't exceed container
-                }}
-              >
-                {btn.label}
-              </BuyBookButton>
-            ) : (
-              <Link
-                href={btn.href}
-                prefetch={false}
-                className={sampleEmphasis ? 'contestHubSampleLink' : undefined}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '1rem',
-                  backgroundColor: '#111',
-                  border: '2px solid green',
-                  color: 'white',
-                  fontSize: '1rem',
-                  textDecoration: 'none',
-                  cursor: 'pointer',
-                  transition: 'box-shadow 0.2s ease, border-color 0.2s ease',
-                  minWidth: '160px', // E1: Smaller min width for mobile
-                  width: '100%', // E1: Full width on mobile
-                  maxWidth: '100%', // E1: Don't exceed container
-                }}
-              >
-                {btn.label}
-              </Link>
-            )}
+              {hasProfile ? 'Welcome back' : 'Welcome'}, {greetingName}.
+            </h2>
           </div>
-        );
-        })}
-      </div>
+        ) : null}
 
-      {/* Contest Entry Form (shown when Buy button requires entry) */}
-      {!isContestEntryUxArchived() && showEntryFormForCheckout && (
+        <div style={{ textAlign: 'center', marginTop: isUserCommitted && greetingName ? '0.5rem' : '2rem' }}>
+          <p style={hubEyebrowStyle()}>The Agnes Protocol</p>
+          <p
+            style={{
+              fontSize: '1.15rem',
+              color: HUB_THEME.textMuted,
+              margin: 0,
+              lineHeight: 1.5,
+            }}
+          >
+            Explore the story, meet the author, and start reading.
+          </p>
+        </div>
+
+        {contestEmail ? (
+          <div
+            style={{
+              marginTop: '1.25rem',
+              color: HUB_THEME.textMuted,
+              fontSize: '0.95rem',
+              display: 'flex',
+              gap: '0.75rem',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexWrap: 'wrap',
+            }}
+          >
+            <span>
+              Signed in as <strong style={{ color: HUB_THEME.text }}>{contestEmail}</strong>
+              {isUserCommitted && greetingName ? (
+                <>
+                  {' · '}
+                  {hasProfile ? 'Welcome back' : 'Welcome'}, {greetingName}
+                </>
+              ) : null}
+            </span>
+            <button
+              type="button"
+              onClick={handleChangeAccount}
+              style={{
+                ...hubSecondaryButtonStyle(),
+                padding: '0.35rem 1rem',
+                fontSize: '0.85rem',
+                minHeight: 'auto',
+                width: 'auto',
+                minWidth: 'auto',
+              }}
+            >
+              Change account
+            </button>
+          </div>
+        ) : null}
+
+        {/* MENU BUTTONS */}
+        {/* E1: Mobile layout - wrap buttons in portrait, ensure all visible */}
         <div
-          data-contest-entry-form
           style={{
-            marginTop: '2rem',
-            width: '100%',
             display: 'flex',
             justifyContent: 'center',
-            padding: '0 1.5rem',
+            gap: '16px',
+            marginTop: '2rem',
+            flexWrap: 'wrap',
+            maxWidth: '100%',
+            width: '100%',
           }}
         >
-          <ContestEntryForm
-            suppressAscensionRedirect={true}
-            onCompleted={handleContestEntryCompletedFromBuy}
-          />
+          {buttons.map((btn) => {
+            const sampleEmphasis = btn.id === 'sampleBtn';
+            const isPrimary = btn.id === 'sampleBtn' || btn.id === 'buyBtn';
+            return (
+              <div key={btn.id} style={hubNavCardStyle(sampleEmphasis)}>
+                <div style={hubMicroPromptStyle(sampleEmphasis)}>{btn.microPrompt}</div>
+                {btn.type === 'button' ? (
+                  <BuyBookButton
+                    source="contest"
+                    successPath="/contest/thank-you"
+                    cancelPath="/contest"
+                    onRequireContestEntry={handleRequireContestEntry}
+                    style={{
+                      ...hubPrimaryButtonStyle(true),
+                      padding: '12px 22px',
+                      fontSize: '15px',
+                      textTransform: 'none',
+                    }}
+                  >
+                    {btn.label}
+                  </BuyBookButton>
+                ) : (
+                  <Link
+                    href={btn.href}
+                    prefetch={false}
+                    style={
+                      isPrimary
+                        ? hubPrimaryButtonStyle(true)
+                        : hubSecondaryButtonStyle()
+                    }
+                  >
+                    {btn.label}
+                  </Link>
+                )}
+              </div>
+            );
+          })}
         </div>
-      )}
+
+        {/* Contest Entry Form (shown when Buy button requires entry) */}
+        {!isContestEntryUxArchived() && showEntryFormForCheckout && (
+          <div
+            data-contest-entry-form
+            style={{
+              marginTop: '2rem',
+              width: '100%',
+              display: 'flex',
+              justifyContent: 'center',
+            }}
+          >
+            <ContestEntryForm
+              suppressAscensionRedirect={true}
+              onCompleted={handleContestEntryCompletedFromBuy}
+            />
+          </div>
+        )}
+
+        <SiteFooter variant="light" />
+      </div>
 
       <SiteRibbonTicker
         bookHubMode
         extraSegments={[HUB_RIBBON_COPY]}
       />
-
-      <style jsx global>{`
-        a.contestHubSampleLink {
-          border: 2px solid rgba(52, 211, 153, 0.72) !important;
-          box-shadow: 0 0 14px rgba(34, 197, 94, 0.22);
-        }
-        a.contestHubSampleLink:hover,
-        a.contestHubSampleLink:focus-visible {
-          border-color: rgba(110, 231, 183, 0.92) !important;
-          box-shadow: 0 0 18px rgba(52, 211, 153, 0.32);
-        }
-      `}</style>
 
       {/* Invisible behavior: wires Buy button to checkout */}
       <CheckoutWiring />

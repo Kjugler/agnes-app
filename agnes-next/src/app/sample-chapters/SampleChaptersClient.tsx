@@ -9,8 +9,14 @@ import SiteFooter from '@/components/SiteFooter';
 import { trackMeta } from '@/lib/metaPixel';
 import { trackTikTok } from '@/lib/tiktokPixel';
 import { useSafeBack } from '@/lib/nav';
-import { HUB_THEME } from '@/lib/hubTheme';
-import type { CSSProperties } from 'react';
+import {
+  HUB_THEME,
+  hubContentWrapStyle,
+  hubEyebrowStyle,
+  hubPageShellStyle,
+  hubPrimaryButtonStyle,
+  hubSecondaryButtonStyle,
+} from '@/lib/hubTheme';
 
 declare global {
   interface Window {
@@ -330,50 +336,9 @@ export default function SampleChaptersClient() {
     };
   }, []); // Empty deps - run once on mount
 
-  const primaryButtonStyle = (active: boolean): CSSProperties => ({
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '12px 22px',
-    borderRadius: '8px',
-    fontSize: '15px',
-    fontWeight: 700,
-    border: active ? 'none' : `2px solid ${HUB_THEME.primaryGreen}`,
-    background: active ? HUB_THEME.primaryGreen : HUB_THEME.surface,
-    color: active ? '#0a0a0a' : HUB_THEME.text,
-    textDecoration: 'none',
-    boxShadow: active ? '0 0 24px rgba(0, 255, 127, 0.22)' : 'none',
-    minWidth: '200px',
-    transition: 'box-shadow 0.2s ease, transform 0.2s ease',
-  });
-
-  const secondaryButtonStyle: CSSProperties = {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '12px 22px',
-    borderRadius: '8px',
-    fontSize: '15px',
-    fontWeight: 600,
-    border: `2px solid ${HUB_THEME.accentCyan}`,
-    background: HUB_THEME.surface,
-    color: HUB_THEME.text,
-    textDecoration: 'none',
-    minHeight: 48,
-  };
-
   return (
-    <div
-      style={{
-        backgroundColor: HUB_THEME.bg,
-        color: HUB_THEME.text,
-        fontFamily: HUB_THEME.fontFamily,
-        margin: 0,
-        padding: '0 0 4rem',
-        minHeight: '100vh',
-      }}
-    >
-      <div style={{ maxWidth: '960px', margin: '0 auto', padding: '24px 20px 0' }}>
+    <div style={{ ...hubPageShellStyle(), margin: 0 }}>
+      <div style={hubContentWrapStyle()}>
         <button
           type="button"
           onClick={goBack}
@@ -391,16 +356,7 @@ export default function SampleChaptersClient() {
         </button>
 
         <header style={{ textAlign: 'center', marginTop: '28px', marginBottom: '40px' }}>
-          <p
-            style={{
-              margin: '0 0 12px 0',
-              fontSize: '12px',
-              fontWeight: 700,
-              letterSpacing: '0.2em',
-              textTransform: 'uppercase',
-              color: '#b91c1c',
-            }}
-          >
+          <p style={hubEyebrowStyle()}>
             The Agnes Protocol
           </p>
           <h1
@@ -506,7 +462,7 @@ export default function SampleChaptersClient() {
                     justifyContent: 'space-between',
                   }}
                 >
-                  <Link href={btn.link ?? '#'} style={primaryButtonStyle(isActive)}>
+                  <Link href={btn.link ?? '#'} style={hubPrimaryButtonStyle(isActive)}>
                     {btn.label}
                     {isActive && (
                       <span style={{ marginLeft: '10px' }} aria-hidden>
@@ -549,10 +505,9 @@ export default function SampleChaptersClient() {
             successPath="/checkout/success"
             cancelPath="/sample-chapters"
             style={{
-              ...primaryButtonStyle(current === 4),
+              ...hubPrimaryButtonStyle(current === 4),
               minHeight: 48,
               textTransform: 'none',
-              cursor: 'pointer',
             }}
           >
             {buttons[4].label}
@@ -562,7 +517,7 @@ export default function SampleChaptersClient() {
               </span>
             )}
           </BuyBookButton>
-          <Link href="/author" style={secondaryButtonStyle}>
+          <Link href="/author" style={hubSecondaryButtonStyle()}>
             About the Author
           </Link>
         </div>
