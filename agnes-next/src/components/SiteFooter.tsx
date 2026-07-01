@@ -1,13 +1,24 @@
 import Link from 'next/link';
+import { HUB_THEME } from '@/lib/hubTheme';
 
 type SiteFooterProps = {
-  /** Sample chapters uses green accent; catalog/author use muted light */
-  variant?: 'green' | 'muted';
+  /** `green` = legacy terminal sample-chapters; `muted` = dark pages; `light` = light hub pages */
+  variant?: 'green' | 'muted' | 'light';
 };
 
 export default function SiteFooter({ variant = 'muted' }: SiteFooterProps) {
-  const linkColor = variant === 'green' ? '#00ff00' : 'rgba(245, 245, 245, 0.65)';
-  const textColor = variant === 'green' ? '#00ff00' : 'rgba(245, 245, 245, 0.55)';
+  const linkColor =
+    variant === 'green'
+      ? '#00ff00'
+      : variant === 'light'
+        ? HUB_THEME.text
+        : 'rgba(245, 245, 245, 0.65)';
+  const textColor =
+    variant === 'green'
+      ? '#00ff00'
+      : variant === 'light'
+        ? HUB_THEME.textMuted
+        : 'rgba(245, 245, 245, 0.55)';
 
   return (
     <footer
@@ -39,7 +50,7 @@ export default function SiteFooter({ variant = 'muted' }: SiteFooterProps) {
           hello@theagnesprotocol.com
         </a>
       </p>
-      {variant === 'green' && (
+      {(variant === 'green' || variant === 'light') && (
         <p style={{ margin: 0 }}>All purchases are final. Contact us with any issues.</p>
       )}
     </footer>

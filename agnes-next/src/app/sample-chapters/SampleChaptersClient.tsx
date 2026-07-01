@@ -9,6 +9,8 @@ import SiteFooter from '@/components/SiteFooter';
 import { trackMeta } from '@/lib/metaPixel';
 import { trackTikTok } from '@/lib/tiktokPixel';
 import { useSafeBack } from '@/lib/nav';
+import { HUB_THEME } from '@/lib/hubTheme';
+import type { CSSProperties } from 'react';
 
 declare global {
   interface Window {
@@ -328,195 +330,246 @@ export default function SampleChaptersClient() {
     };
   }, []); // Empty deps - run once on mount
 
+  const primaryButtonStyle = (active: boolean): CSSProperties => ({
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '12px 22px',
+    borderRadius: '8px',
+    fontSize: '15px',
+    fontWeight: 700,
+    border: active ? 'none' : `2px solid ${HUB_THEME.primaryGreen}`,
+    background: active ? HUB_THEME.primaryGreen : HUB_THEME.surface,
+    color: active ? '#0a0a0a' : HUB_THEME.text,
+    textDecoration: 'none',
+    boxShadow: active ? '0 0 24px rgba(0, 255, 127, 0.22)' : 'none',
+    minWidth: '200px',
+    transition: 'box-shadow 0.2s ease, transform 0.2s ease',
+  });
+
+  const secondaryButtonStyle: CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '12px 22px',
+    borderRadius: '8px',
+    fontSize: '15px',
+    fontWeight: 600,
+    border: `2px solid ${HUB_THEME.accentCyan}`,
+    background: HUB_THEME.surface,
+    color: HUB_THEME.text,
+    textDecoration: 'none',
+    minHeight: 48,
+  };
 
   return (
     <div
       style={{
-        backgroundColor: 'black',
-        color: '#00ffe5',
-        fontFamily: '"Courier New", Courier, monospace',
+        backgroundColor: HUB_THEME.bg,
+        color: HUB_THEME.text,
+        fontFamily: HUB_THEME.fontFamily,
         margin: 0,
-        padding: 0,
-        textAlign: 'center',
+        padding: '0 0 4rem',
         minHeight: '100vh',
       }}
     >
-      <div style={{ paddingTop: '20px', marginBottom: '0.5rem' }}>
+      <div style={{ maxWidth: '960px', margin: '0 auto', padding: '24px 20px 0' }}>
         <button
           type="button"
           onClick={goBack}
           style={{
-            color: '#00ffe5',
+            color: HUB_THEME.textMuted,
             background: 'none',
             border: 'none',
             fontFamily: 'inherit',
-            fontSize: '0.95em',
+            fontSize: '14px',
             cursor: 'pointer',
             padding: 0,
           }}
         >
           ← Back
         </button>
-      </div>
-      <h1 style={{ marginTop: '20px', fontSize: '1.6em' }}>
-        Explore Sample Chapters from <em>The Agnes Protocol</em>
-      </h1>
 
-      {/* VIDEOS */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'center',
-          gap: '30px',
-          marginTop: '30px',
-          flexWrap: 'wrap',
-        }}
-      >
-        <div
-          id="left-video-player"
-          ref={leftVideoRef}
-          style={{
-            width: '300px',
-            height: '170px',
-            border: '2px solid #00ff00',
-          }}
-        />
-        <div
-          id="right-video-player"
-          ref={rightVideoRef}
-          style={{
-            width: '300px',
-            height: '170px',
-            border: '2px solid #00ff00',
-          }}
-        />
-      </div>
-
-      {/* CHAPTER BUTTONS */}
-      <div
-        style={{
-          margin: '40px auto',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: '18px',
-        }}
-      >
-        {buttons.slice(0, 4).map((btn, index) => (
-          <div
-            key={btn.id}
+        <header style={{ textAlign: 'center', marginTop: '28px', marginBottom: '40px' }}>
+          <p
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '16px',
-              justifyContent: 'center',
+              margin: '0 0 12px 0',
+              fontSize: '12px',
+              fontWeight: 700,
+              letterSpacing: '0.2em',
+              textTransform: 'uppercase',
+              color: '#b91c1c',
             }}
           >
-            <Link
-              href={btn.link ?? '#'}
+            The Agnes Protocol
+          </p>
+          <h1
+            style={{
+              margin: '0 0 14px 0',
+              fontSize: 'clamp(1.65rem, 4vw, 2.25rem)',
+              fontWeight: 800,
+              lineHeight: 1.2,
+              letterSpacing: '-0.02em',
+              color: HUB_THEME.text,
+            }}
+          >
+            Explore Sample Chapters from <em>The Agnes Protocol</em>
+          </h1>
+          <p
+            style={{
+              margin: 0,
+              fontSize: 'clamp(1rem, 2.5vw, 1.15rem)',
+              lineHeight: 1.55,
+              color: HUB_THEME.textMuted,
+              maxWidth: '32rem',
+              marginLeft: 'auto',
+              marginRight: 'auto',
+            }}
+          >
+            Read four chapters free. Decide for yourself.
+          </p>
+        </header>
+
+        {/* VIDEOS */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            gap: '20px',
+            marginBottom: '48px',
+            flexWrap: 'wrap',
+          }}
+        >
+          {(['left', 'right'] as const).map((side) => (
+            <div
+              key={side}
               style={{
-                padding: '12px 24px',
-                border: '2px solid #00ff00',
-                color: current === index ? 'black' : '#00ffe5',
-                backgroundColor: current === index ? '#00ff00' : 'black',
-                textDecoration: 'none',
-                animation: current === index ? 'pulse 1.5s infinite' : 'none',
+                background: HUB_THEME.surface,
+                border: `1px solid ${HUB_THEME.border}`,
+                borderRadius: '12px',
+                padding: '8px',
+                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.06)',
+                opacity: activeVideo === side ? 1 : 0.72,
+                transition: 'opacity 0.3s ease',
               }}
             >
-              {btn.label}
-              {current === index && (
-                <span style={{ marginLeft: '12px', fontSize: '1.2em' }}>👉</span>
-              )}
-            </Link>
-            {current === index && (
-              <span
+              <div
+                id={side === 'left' ? 'left-video-player' : 'right-video-player'}
+                ref={side === 'left' ? leftVideoRef : rightVideoRef}
                 style={{
-                  color: '#00ff00',
-                  fontSize: '0.95em',
-                  fontStyle: 'italic',
-                  maxWidth: '250px',
-                  textAlign: 'left',
+                  width: 'min(100%, 320px)',
+                  height: '180px',
+                  borderRadius: '8px',
+                  overflow: 'hidden',
+                }}
+              />
+            </div>
+          ))}
+        </div>
+
+        {/* CHAPTER BUTTONS */}
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'stretch',
+            gap: '16px',
+            maxWidth: '640px',
+            margin: '0 auto',
+          }}
+        >
+          {buttons.slice(0, 4).map((btn, index) => {
+            const isActive = current === index;
+            return (
+              <div
+                key={btn.id}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px',
+                  padding: '20px 22px',
+                  borderRadius: '12px',
+                  border: `1px solid ${isActive ? 'rgba(0, 255, 127, 0.4)' : HUB_THEME.border}`,
+                  background: HUB_THEME.surface,
+                  boxShadow: isActive
+                    ? '0 12px 32px rgba(0, 0, 0, 0.08)'
+                    : '0 4px 16px rgba(0, 0, 0, 0.04)',
+                  transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
                 }}
               >
-                {btn.text}
+                <div
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    alignItems: 'center',
+                    gap: '16px',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <Link href={btn.link ?? '#'} style={primaryButtonStyle(isActive)}>
+                    {btn.label}
+                    {isActive && (
+                      <span style={{ marginLeft: '10px' }} aria-hidden>
+                        →
+                      </span>
+                    )}
+                  </Link>
+                  {isActive && (
+                    <p
+                      style={{
+                        margin: 0,
+                        flex: '1 1 200px',
+                        fontSize: '15px',
+                        lineHeight: 1.5,
+                        color: HUB_THEME.textMuted,
+                        textAlign: 'left',
+                      }}
+                    >
+                      {btn.text}
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* CTA BUTTONS */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            gap: '16px',
+            marginTop: '40px',
+            flexWrap: 'wrap',
+          }}
+        >
+          <BuyBookButton
+            source="sample-chapters"
+            successPath="/checkout/success"
+            cancelPath="/sample-chapters"
+            style={{
+              ...primaryButtonStyle(current === 4),
+              minHeight: 48,
+              textTransform: 'none',
+              cursor: 'pointer',
+            }}
+          >
+            {buttons[4].label}
+            {current === 4 && (
+              <span style={{ marginLeft: '10px' }} aria-hidden>
+                →
               </span>
             )}
-          </div>
-        ))}
+          </BuyBookButton>
+          <Link href="/author" style={secondaryButtonStyle}>
+            About the Author
+          </Link>
+        </div>
+
+        <SiteFooter variant="light" />
       </div>
 
-      {/* CTA BUTTONS */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'center',
-          gap: '20px',
-          marginTop: '30px',
-          flexWrap: 'wrap',
-        }}
-      >
-        <BuyBookButton
-          source="sample-chapters"
-          successPath="/checkout/success"
-          cancelPath="/sample-chapters"
-          style={{
-            padding: '10px 14px',
-            border: '2px solid #00ffe5',
-            color: current === 4 ? 'black' : '#00ffe5',
-            backgroundColor: current === 4 ? '#00ffe5' : 'black',
-            fontWeight: 'bold',
-            textTransform: 'uppercase',
-            boxShadow: '0 0 12px #00ffe5',
-            minHeight: 48,
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '16px',
-          }}
-        >
-          {buttons[4].label}
-          {current === 4 && (
-            <span style={{ marginLeft: '12px', fontSize: '1.2em' }}>👉</span>
-          )}
-        </BuyBookButton>
-        <Link
-          href="/author"
-          style={{
-            padding: '10px 14px',
-            border: '2px solid #00ffe5',
-            color: '#00ffe5',
-            backgroundColor: 'black',
-            textTransform: 'uppercase',
-            fontWeight: 'bold',
-            boxShadow: '0 0 12px #00ffe5',
-            minHeight: 48,
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '16px',
-            textDecoration: 'none',
-          }}
-        >
-          About the Author
-        </Link>
-      </div>
-
-      {/* PULSE KEYFRAMES */}
-      <style jsx>{`
-        @keyframes pulse {
-          0% {
-            box-shadow: 0 0 10px #00ff00;
-          }
-          50% {
-            box-shadow: 0 0 20px #00ff00;
-          }
-          100% {
-            box-shadow: 0 0 10px #00ff00;
-          }
-        }
-      `}</style>
-
-      <SiteFooter variant="green" />
       <HelpButton />
     </div>
   );
