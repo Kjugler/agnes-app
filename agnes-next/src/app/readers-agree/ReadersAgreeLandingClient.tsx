@@ -8,10 +8,10 @@ import SiteFooter from '@/components/SiteFooter';
 import { trackMeta } from '@/lib/metaPixel';
 import { trackTikTok } from '@/lib/tiktokPixel';
 import {
-  AMAZON_REVIEWS_URL,
-  BARNES_NOBLE_REVIEWS_URL,
+  buildReadersAgreePathWithTracking,
+  READERS_AGREE_GO_AMAZON_PATH,
+  READERS_AGREE_GO_BN_PATH,
   READERS_AGREE_HERO_IMAGE_PATH,
-  READERS_AGREE_TRACKING_PARAM_KEYS,
   SAMPLE_CHAPTERS_PATH,
 } from '@/lib/readerRecommendationLanding';
 
@@ -56,59 +56,42 @@ function ReviewCard({
   title,
   href,
   cta,
-  external,
+  variant,
 }: {
   stars: string;
   title: string;
   href: string;
   cta: string;
-  external?: boolean;
+  variant: 'retailer' | 'sample';
 }) {
-  const inner = (
-    <>
-      <div style={{ fontSize: '18px', letterSpacing: '0.06em' }} aria-hidden>
-        {stars}
-      </div>
-      <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, lineHeight: 1.3 }}>{title}</h2>
-      <span style={external ? externalCta : sampleCta}>{cta} →</span>
-    </>
-  );
-
-  if (external) {
-    return (
-      <a
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        style={cardBase}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.borderColor = 'rgba(220, 38, 38, 0.55)';
-          e.currentTarget.style.transform = 'translateY(-2px)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)';
-          e.currentTarget.style.transform = 'translateY(0)';
-        }}
-      >
-        {inner}
-      </a>
-    );
-  }
+  const isSample = variant === 'sample';
+  const ctaStyle = isSample ? sampleCta : externalCta;
 
   return (
     <Link
       href={href}
-      style={{ ...cardBase, borderColor: 'rgba(0, 255, 127, 0.35)' }}
+      style={{
+        ...cardBase,
+        borderColor: isSample ? 'rgba(0, 255, 127, 0.35)' : undefined,
+      }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = 'rgba(0, 255, 127, 0.65)';
+        e.currentTarget.style.borderColor = isSample
+          ? 'rgba(0, 255, 127, 0.65)'
+          : 'rgba(220, 38, 38, 0.55)';
         e.currentTarget.style.transform = 'translateY(-2px)';
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = 'rgba(0, 255, 127, 0.35)';
+        e.currentTarget.style.borderColor = isSample
+          ? 'rgba(0, 255, 127, 0.35)'
+          : 'rgba(255, 255, 255, 0.12)';
         e.currentTarget.style.transform = 'translateY(0)';
       }}
     >
-      {inner}
+      <div style={{ fontSize: '18px', letterSpacing: '0.06em' }} aria-hidden>
+        {stars}
+      </div>
+      <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, lineHeight: 1.3 }}>{title}</h2>
+      <span style={ctaStyle}>{cta} →</span>
     </Link>
   );
 }
@@ -117,15 +100,20 @@ export default function ReadersAgreeLandingClient() {
   const searchParams = useSearchParams();
   const viewFiredRef = useRef(false);
 
-  const sampleChaptersHref = useMemo(() => {
-    const params = new URLSearchParams();
-    READERS_AGREE_TRACKING_PARAM_KEYS.forEach((key) => {
-      const value = searchParams.get(key);
-      if (value) params.set(key, value);
-    });
-    const qs = params.toString();
-    return qs ? `${SAMPLE_CHAPTERS_PATH}?${qs}` : SAMPLE_CHAPTERS_PATH;
-  }, [searchParams]);
+  const sampleChaptersHref = useMemo(
+    () => buildReadersAgreePathWithTracking(SAMPLE_CHAPTERS_PATH, searchParams),
+    [searchParams]
+  );
+
+  const amazonGoHref = useMemo(
+    () => buildReadersAgreePathWithTracking(READERS_AGREE_GO_AMAZON_PATH, searchParams),
+    [searchParams]
+  );
+
+  const bnGoHref = useMemo(
+    () => buildReadersAgreePathWithTracking(READERS_AGREE_GO_BN_PATH, searchParams),
+    [searchParams]
+  );
 
   useEffect(() => {
     if (viewFiredRef.current) return;
@@ -266,22 +254,23 @@ export default function ReadersAgreeLandingClient() {
           <ReviewCard
             stars="★★★★★"
             title="Amazon Readers"
-            href={AMAZON_REVIEWS_URL}
+            href={amazonGoHref}
             cta="Read the Reviews"
-            external
+            variant="retailer"
           />
           <ReviewCard
             stars="★★★★★"
             title="Barnes & Noble Readers"
-            href={BARNES_NOBLE_REVIEWS_URL}
+            href={bnGoHref}
             cta="Read the Reviews"
-            external
+            variant="retailer"
           />
           <ReviewCard
             stars="📖"
             title="Read 4 FREE Sample Chapters"
             href={sampleChaptersHref}
             cta="Start Reading"
+            variant="sample"
           />
         </div>
       </section>

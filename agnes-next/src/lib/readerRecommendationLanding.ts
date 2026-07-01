@@ -9,6 +9,21 @@ export {
 } from '@/lib/metaAdLanding';
 
 export const READERS_AGREE_PATH = '/readers-agree';
+export const READERS_AGREE_GO_AMAZON_PATH = '/readers-agree/go/amazon';
+export const READERS_AGREE_GO_BN_PATH = '/readers-agree/go/bn';
+
+export function buildReadersAgreePathWithTracking(
+  pathname: string,
+  searchParams: { get: (key: string) => string | null }
+): string {
+  const params = new URLSearchParams();
+  READERS_AGREE_TRACKING_PARAM_KEYS.forEach((key) => {
+    const value = searchParams.get(key);
+    if (value) params.set(key, value);
+  });
+  const qs = params.toString();
+  return qs ? `${pathname}?${qs}` : pathname;
+}
 
 export function buildReadersAgreeShareUrl(referralCode: string | null | undefined): string {
   const path = `${TEXT_A_FRIEND_SITE_URL}${READERS_AGREE_PATH}`;
