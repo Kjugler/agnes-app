@@ -51,6 +51,10 @@ export default function SalesLedgerPage() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [actionNote, setActionNote] = useState<string | null>(null);
+  const [resendBusy, setResendBusy] = useState<string | null>(null);
+  const [rowFeedback, setRowFeedback] = useState<Record<string, { tone: 'ok' | 'err'; message: string }>>({});
+
+  const resendKey = (kind: string, purchaseId: string) => `${purchaseId}:${kind}`;
 
   const load = useCallback(async () => {
     const s = start;
@@ -86,15 +90,34 @@ export default function SalesLedgerPage() {
 
   const runResend = useCallback(
     async (kind: 'confirmation' | 'ebook' | 'claim', purchaseId: string, userId: string) => {
+      const busyKey = resendKey(kind, purchaseId);
+      setResendBusy(busyKey);
       setActionNote(null);
+      setRowFeedback((prev) => {
+        const next = { ...prev };
+        delete next[busyKey];
+        return next;
+      });
+
       let path: string;
       if (kind === 'confirmation') {
         path = `/api/admin/purchases/${encodeURIComponent(purchaseId)}/resend-confirmation`;
       } else if (kind === 'ebook') {
         path = `/api/admin/purchases/${encodeURIComponent(purchaseId)}/resend-ebook-link`;
       } else {
+        if (!userId) {
+          const msg = 'Claim email requires a linked user on this purchase.';
+          setActionNote(`Failed (claim): ${msg}`);
+          setRowFeedback((prev) => ({ ...prev, [busyKey]: { tone: 'err', message: msg } }));
+          setResendBusy(null);
+          return;
+        }
         path = `/api/admin/users/${encodeURIComponent(userId)}/send-claim-profile-email`;
       }
+
+      const label =
+        kind === 'confirmation' ? 'Confirmation' : kind === 'ebook' ? 'eBook link' : 'Claim email';
+
       try {
         const res = await fetch(path, {
           method: 'POST',
@@ -102,18 +125,31 @@ export default function SalesLedgerPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({}),
         });
-        const json = (await res.json()) as { ok?: boolean; error?: string; deliveryStatus?: string; rejectReason?: string | null };
+        const json = (await res.json()) as {
+          ok?: boolean;
+          error?: string;
+          deliveryStatus?: string;
+          rejectReason?: string | null;
+        };
         if (!res.ok || !json.ok) {
           const detail =
             json.rejectReason && json.deliveryStatus === 'rejected'
               ? `Provider rejected: ${json.rejectReason}`
               : json.error || json.deliveryStatus || `HTTP ${res.status}`;
-          setActionNote(`Failed (${kind}): ${detail}`);
+          const msg = `${label} failed: ${detail}`;
+          setActionNote(msg);
+          setRowFeedback((prev) => ({ ...prev, [busyKey]: { tone: 'err', message: msg } }));
           return;
         }
-        setActionNote(`Sent (${kind}) · ${json.deliveryStatus || 'ok'}`);
+        const msg = `${label} sent (${json.deliveryStatus || 'ok'})`;
+        setActionNote(msg);
+        setRowFeedback((prev) => ({ ...prev, [busyKey]: { tone: 'ok', message: msg } }));
       } catch (e) {
-        setActionNote(`Failed (${kind}): ${e instanceof Error ? e.message : 'request error'}`);
+        const msg = `${label} failed: ${e instanceof Error ? e.message : 'request error'}`;
+        setActionNote(msg);
+        setRowFeedback((prev) => ({ ...prev, [busyKey]: { tone: 'err', message: msg } }));
+      } finally {
+        setResendBusy(null);
       }
     },
     []
@@ -231,9 +267,23 @@ export default function SalesLedgerPage() {
         </p>
       )}
       {actionNote && (
-        <p style={{ fontSize: 14, marginBottom: 12, color: actionNote.startsWith('Failed') ? '#b91c1c' : '#15803d' }}>
+        <div
+          role="status"
+          style={{
+            position: 'sticky',
+            top: 12,
+            zIndex: 20,
+            fontSize: 14,
+            marginBottom: 12,
+            padding: '10px 14px',
+            borderRadius: 8,
+            border: `1px solid ${actionNote.includes('failed') ? '#fecaca' : '#bbf7d0'}`,
+            background: actionNote.includes('failed') ? '#fef2f2' : '#f0fdf4',
+            color: actionNote.includes('failed') ? '#b91c1c' : '#15803d',
+          }}
+        >
           {actionNote}
-        </p>
+        </div>
       )}
       {loading && <p style={{ fontSize: 14, color: '#64748b' }}>Loading…</p>}
 
@@ -291,33 +341,55 @@ export default function SalesLedgerPage() {
                       </>
                     ) : null}
                   </td>
-                  <td style={{ ...td, minWidth: 140 }}>
+                  <td style={{ ...td, minWidth: 180 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <button
-                        type="button"
-                        onClick={() => runResend('confirmation', r.purchaseId, r.userId || '')}
-                        style={btn}
-                      >
-                        Confirmation
-                      </button>
-                      {r.productType === 'ebook' || r.productType === 'paperback' ? (
-                        <button
-                          type="button"
-                          onClick={() => runResend('ebook', r.purchaseId, r.userId || '')}
-                          style={btn}
-                        >
-                          eBook link
-                        </button>
-                      ) : null}
-                      {r.userId ? (
-                        <button
-                          type="button"
-                          onClick={() => runResend('claim', r.purchaseId, r.userId as string)}
-                          style={btn}
-                        >
-                          Claim email
-                        </button>
-                      ) : null}
+                      {(['confirmation', 'ebook', 'claim'] as const).map((kind) => {
+                        if (kind === 'ebook' && r.productType !== 'ebook' && r.productType !== 'paperback') {
+                          return null;
+                        }
+                        if (kind === 'claim' && !r.userId) {
+                          return null;
+                        }
+                        const busyKey = resendKey(kind, r.purchaseId);
+                        const busy = resendBusy === busyKey;
+                        const feedback = rowFeedback[busyKey];
+                        const label =
+                          kind === 'confirmation'
+                            ? 'Confirmation'
+                            : kind === 'ebook'
+                              ? 'eBook link'
+                              : 'Claim email';
+                        return (
+                          <div key={kind}>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() =>
+                                runResend(kind, r.purchaseId, r.userId || '')
+                              }
+                              style={{
+                                ...btn,
+                                opacity: busy ? 0.65 : 1,
+                                cursor: busy ? 'wait' : 'pointer',
+                              }}
+                            >
+                              {busy ? `Sending ${label}…` : label}
+                            </button>
+                            {feedback ? (
+                              <p
+                                style={{
+                                  margin: '4px 0 0 0',
+                                  fontSize: 11,
+                                  lineHeight: 1.35,
+                                  color: feedback.tone === 'ok' ? '#15803d' : '#b91c1c',
+                                }}
+                              >
+                                {feedback.message}
+                              </p>
+                            ) : null}
+                          </div>
+                        );
+                      })}
                     </div>
                   </td>
                 </tr>

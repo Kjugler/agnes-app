@@ -545,9 +545,23 @@ router.post('/:userId/send-claim-profile-email', async (req, res) => {
       return res.status(500).json({ ok: false, ...out });
     }
     const status = out.ok ? 200 : out.deliveryStatus === 'rejected' ? 502 : 500;
+    if (out.ok) {
+      console.log('[adminUsers] send-claim-profile-email success', {
+        userId,
+        deliveryStatus: out.deliveryStatus,
+        providerMessageId: out.providerMessageId,
+      });
+    } else {
+      console.error('[adminUsers] send-claim-profile-email failed', {
+        userId,
+        deliveryStatus: out.deliveryStatus,
+        rejectReason: out.rejectReason,
+        error: out.error,
+      });
+    }
     return res.status(status).json({ ok: out.ok, ...out });
   } catch (err) {
-    console.error('[adminUsers] send-claim-profile-email', err);
+    console.error('[adminUsers] send-claim-profile-email', { userId, error: err?.message || err });
     return res.status(500).json({ ok: false, error: err?.message || 'Internal error' });
   }
 });

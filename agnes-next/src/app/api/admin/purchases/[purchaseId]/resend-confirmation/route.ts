@@ -26,6 +26,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ purchaseId
         headers: { 'x-admin-key': adminKey },
       }
     );
+    if (status >= 400 || data?.ok === false) {
+      console.error('[admin/purchases/resend-confirmation] failed', { purchaseId, status, data });
+    } else {
+      console.log('[admin/purchases/resend-confirmation] success', {
+        purchaseId,
+        deliveryStatus: data?.deliveryStatus,
+      });
+    }
     return NextResponse.json(data, { status });
   } catch (err: unknown) {
     console.error('[admin/purchases/resend-confirmation] proxy error', err);

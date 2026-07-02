@@ -1785,8 +1785,8 @@ router.post(
               });
             }
 
-            if (finalPurchase.userId) {
-              trySyncReaderProfileFromPurchase(prismaClient, {
+            if (finalPurchase.userId && prisma) {
+              trySyncReaderProfileFromPurchase(prisma, {
                 userId: finalPurchase.userId,
                 sessionId: session.id,
                 product,
