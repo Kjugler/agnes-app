@@ -442,4 +442,37 @@ async function runBackfillReaderProfilesJob(req, res) {
 router.get('/backfill-reader-profiles', runBackfillReaderProfilesJob);
 router.post('/backfill-reader-profiles', express.json(), runBackfillReaderProfilesJob);
 
+// GET/POST /api/admin/jobs/send-reader-recommendation-outreach?dryRun=1&limit=25
+async function runReaderRecommendationOutreachJob(req, res) {
+  const {
+    runReaderRecommendationOutreach,
+    parseDryRun,
+    parseLimit,
+  } = require('../../lib/email/runReaderRecommendationOutreach.cjs');
+  try {
+    const dryRunParam = req.query?.dryRun ?? req.body?.dryRun;
+    const dryRun = parseDryRun(dryRunParam);
+    const limitParam = req.query?.limit ?? req.body?.limit;
+    const limit = parseLimit(limitParam);
+
+    const result = await runReaderRecommendationOutreach(prisma, { dryRun, limit });
+
+    console.log('[admin/send-reader-recommendation-outreach]', JSON.stringify({
+      dryRun: result.dryRun,
+      eligible: result.eligible,
+      sent: result.sent,
+      wouldSend: result.wouldSend,
+      manualOutreachCount: result.manualOutreachCount,
+    }));
+
+    return res.json(result);
+  } catch (err) {
+    console.error('[admin/send-reader-recommendation-outreach]', err);
+    return res.status(500).json({ ok: false, error: err?.message || 'Unknown error' });
+  }
+}
+
+router.get('/send-reader-recommendation-outreach', runReaderRecommendationOutreachJob);
+router.post('/send-reader-recommendation-outreach', express.json(), runReaderRecommendationOutreachJob);
+
 module.exports = router;

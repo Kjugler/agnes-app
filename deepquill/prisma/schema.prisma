@@ -57,6 +57,7 @@ model User {
   nonParticipantEmailSentAt    DateTime?
   missionaryEmailSentAt        DateTime?
   engagedEmailSentAt           DateTime?
+  readerRecommendationOutreachSentAt DateTime?
   terminalDiscoveryAwarded    Boolean               @default(false)
   events                       Event[]
   badges                       UserBadge[]

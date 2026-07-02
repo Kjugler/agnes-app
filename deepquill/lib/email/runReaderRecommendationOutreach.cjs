@@ -1,0 +1,328 @@
+const mailchimp = require('@mailchimp/mailchimp_transactional');
+const {
+  normalizeEmail,
+  isMailableEmail,
+  isSyntheticReaderEmail,
+} = require('../../src/lib/normalize.cjs');
+const { guardMailableEmail } = require('./guardMailableEmail.cjs');
+const { getMailchimpClient } = require('./sendEmail.cjs');
+const { applyGlobalEmailBanner } = require('../../src/lib/emailBanner.cjs');
+const {
+  buildReaderRecommendationOutreachEmail,
+} = require('./builders/readerRecommendationOutreach.cjs');
+const { buildTextAFriendUrl } = require('../readers/readerUrls.cjs');
+const { displayName } = require('../readers/readerUser.cjs');
+
+const DEFAULT_LIMIT = 25;
+const MAX_LIMIT = 100;
+const SAMPLE_SIZE = 5;
+const PER_EMAIL_DELAY_MS = Math.max(0, Number(process.env.ADMIN_EMAIL_PER_EMAIL_MS || 100));
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function emptySkipped() {
+  return {
+    synthetic: 0,
+    example: 0,
+    fulfillmentStaff: 0,
+    suppressed: 0,
+    alreadySent: 0,
+    noCode: 0,
+    inactive: 0,
+    invalidEmail: 0,
+    other: 0,
+  };
+}
+
+function parseDryRun(value) {
+  if (value === undefined || value === null || value === '') return true;
+  if (value === '0' || value === false || value === 'false') return false;
+  if (value === '1' || value === true || value === 'true') return true;
+  return true;
+}
+
+function parseLimit(value) {
+  if (value === undefined || value === null || value === '') return DEFAULT_LIMIT;
+  const n = parseInt(String(value), 10);
+  if (!Number.isFinite(n) || n < 1) return DEFAULT_LIMIT;
+  return Math.min(n, MAX_LIMIT);
+}
+
+async function fetchSuppressedSet() {
+  const apiKey = process.env.MAILCHIMP_TRANSACTIONAL_KEY;
+  if (!apiKey) {
+    return { set: new Set(), fetched: false, reason: 'missing MAILCHIMP_TRANSACTIONAL_KEY' };
+  }
+  try {
+    const client = mailchimp(apiKey);
+    if (!client?.rejects?.list) {
+      return { set: new Set(), fetched: false, reason: 'rejects.list unavailable' };
+    }
+    const rejects = await client.rejects.list({});
+    const set = new Set(
+      (Array.isArray(rejects) ? rejects : [])
+        .map((r) => normalizeEmail(r?.email))
+        .filter(Boolean),
+    );
+    return { set, fetched: true, reason: null };
+  } catch (err) {
+    return { set: new Set(), fetched: false, reason: err.message || 'rejects list failed' };
+  }
+}
+
+function manualReasonForProfile(profile, user) {
+  const mailable = isMailableEmail(user.email);
+  if (mailable) return null;
+  const normalized = normalizeEmail(user.email);
+  if (!normalized) return 'invalid_email';
+  if (isSyntheticReaderEmail(normalized)) return 'synthetic_email';
+  return 'non_mailable_email';
+}
+
+function serializeManualOutreach(profile, user) {
+  const referralCode = (user.referralCode || user.code || '').trim();
+  return {
+    name: displayName(user) || null,
+    phone: (user.phone || '').trim() || null,
+    referralCode: referralCode || null,
+    smsConsentGranted: Boolean(profile.smsConsentGranted),
+    source: profile.source || null,
+    reasonManual: manualReasonForProfile(profile, user),
+  };
+}
+
+/**
+ * @param {import('@prisma/client').PrismaClient} prisma
+ * @param {{ dryRun?: boolean, limit?: number, transactionalEnabled?: boolean }} options
+ */
+async function runReaderRecommendationOutreach(prisma, options = {}) {
+  const dryRun = options.dryRun !== false;
+  const limit = parseLimit(options.limit);
+  const skipped = emptySkipped();
+  const errors = [];
+  const manualOutreach = [];
+
+  const profiles = await prisma.readerProfile.findMany({
+    include: {
+      user: {
+        select: {
+          id: true,
+          email: true,
+          phone: true,
+          fname: true,
+          lname: true,
+          firstName: true,
+          code: true,
+          referralCode: true,
+          readerRecommendationOutreachSentAt: true,
+        },
+      },
+    },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  const fulfillmentRows = await prisma.fulfillmentUser.findMany({ select: { email: true } });
+  const fulfillmentStaff = new Set(
+    fulfillmentRows.map((r) => normalizeEmail(r.email)).filter(Boolean),
+  );
+
+  const suppressed = await fetchSuppressedSet();
+
+  const eligibleRecipients = [];
+
+  for (const profile of profiles) {
+    const user = profile.user;
+    if (!user) {
+      skipped.other += 1;
+      continue;
+    }
+
+    const manualReason = manualReasonForProfile(profile, user);
+    if (manualReason) {
+      manualOutreach.push(serializeManualOutreach(profile, user));
+      continue;
+    }
+
+    const mailable = isMailableEmail(user.email);
+    if (!mailable) {
+      skipped.invalidEmail += 1;
+      manualOutreach.push(serializeManualOutreach(profile, user));
+      continue;
+    }
+
+    if ((profile.status || 'active') !== 'active') {
+      skipped.inactive += 1;
+      continue;
+    }
+
+    const normalized = normalizeEmail(user.email);
+    if (isSyntheticReaderEmail(normalized)) {
+      skipped.synthetic += 1;
+      continue;
+    }
+    if (normalized.endsWith('@example.com')) {
+      skipped.example += 1;
+      continue;
+    }
+    if (fulfillmentStaff.has(normalized)) {
+      skipped.fulfillmentStaff += 1;
+      continue;
+    }
+    if (suppressed.set.has(normalized)) {
+      skipped.suppressed += 1;
+      continue;
+    }
+    if (user.readerRecommendationOutreachSentAt) {
+      skipped.alreadySent += 1;
+      continue;
+    }
+
+    const readerCode = (user.referralCode || user.code || '').trim();
+    if (!readerCode) {
+      skipped.noCode += 1;
+      continue;
+    }
+
+    eligibleRecipients.push({
+      userId: user.id,
+      email: mailable,
+      firstName: user.firstName || user.fname || null,
+      readerCode,
+      profileId: profile.id,
+    });
+  }
+
+  const targets = eligibleRecipients.slice(0, limit);
+  const recipientSample = targets.slice(0, SAMPLE_SIZE).map((r) => ({
+    email: r.email,
+    firstName: r.firstName,
+    readerCode: r.readerCode,
+    textAFriendUrl: buildTextAFriendUrl(r.readerCode, r.email),
+  }));
+
+  const manualOutreachSample = manualOutreach.slice(0, SAMPLE_SIZE);
+
+  if (dryRun) {
+    return {
+      ok: true,
+      dryRun: true,
+      limit,
+      eligible: eligibleRecipients.length,
+      sent: 0,
+      wouldSend: targets.length,
+      skipped,
+      manualOutreachCount: manualOutreach.length,
+      manualOutreachSample,
+      recipientSample,
+      suppressedListFetched: suppressed.fetched,
+      errors,
+    };
+  }
+
+  const transactionalEnabled =
+    options.transactionalEnabled !== undefined
+      ? options.transactionalEnabled
+      : process.env.TRANSACTIONAL_EMAIL_ENABLED === '1';
+
+  if (!transactionalEnabled) {
+    return {
+      ok: true,
+      dryRun: false,
+      transactionalDisabled: true,
+      reason: 'TRANSACTIONAL_EMAIL_ENABLED not set',
+      limit,
+      eligible: eligibleRecipients.length,
+      sent: 0,
+      skipped,
+      manualOutreachCount: manualOutreach.length,
+      manualOutreachSample,
+      recipientSample,
+      errors,
+    };
+  }
+
+  const client = getMailchimpClient();
+  const fromEmail = process.env.MAILCHIMP_FROM_EMAIL;
+  if (!client || !fromEmail) {
+    return {
+      ok: false,
+      dryRun: false,
+      limit,
+      eligible: eligibleRecipients.length,
+      sent: 0,
+      skipped,
+      manualOutreachCount: manualOutreach.length,
+      manualOutreachSample,
+      recipientSample,
+      errors: ['Email service not configured (MAILCHIMP_TRANSACTIONAL_KEY or MAILCHIMP_FROM_EMAIL missing)'],
+    };
+  }
+
+  let sent = 0;
+
+  for (const recipient of targets) {
+    try {
+      const guarded = guardMailableEmail(recipient.email, 'reader_recommendation_outreach');
+      if (!guarded) {
+        skipped.invalidEmail += 1;
+        continue;
+      }
+
+      const textAFriendUrl = buildTextAFriendUrl(recipient.readerCode, guarded);
+      const { subject, html, text } = buildReaderRecommendationOutreachEmail({
+        firstName: recipient.firstName,
+        textAFriendUrl,
+      });
+      const { html: htmlWithBanner, subject: finalSubject } = applyGlobalEmailBanner({ html, subject });
+
+      await client.messages.send({
+        message: {
+          from_email: fromEmail,
+          from_name: 'Kris Jugler',
+          subject: finalSubject ?? subject,
+          to: [{ email: guarded, type: 'to' }],
+          html: htmlWithBanner,
+          text,
+          headers: { 'Reply-To': fromEmail },
+          metadata: { campaign: 'reader_recommendation_outreach' },
+        },
+      });
+
+      await prisma.user.update({
+        where: { id: recipient.userId },
+        data: { readerRecommendationOutreachSentAt: new Date() },
+      });
+
+      sent += 1;
+      if (PER_EMAIL_DELAY_MS > 0) {
+        await sleep(PER_EMAIL_DELAY_MS);
+      }
+    } catch (err) {
+      errors.push(`Failed to send to ${recipient.email}: ${err?.message || 'Unknown error'}`);
+    }
+  }
+
+  return {
+    ok: true,
+    dryRun: false,
+    limit,
+    eligible: eligibleRecipients.length,
+    sent,
+    skipped,
+    manualOutreachCount: manualOutreach.length,
+    manualOutreachSample,
+    recipientSample,
+    suppressedListFetched: suppressed.fetched,
+    errors,
+  };
+}
+
+module.exports = {
+  runReaderRecommendationOutreach,
+  parseDryRun,
+  parseLimit,
+  DEFAULT_LIMIT,
+  MAX_LIMIT,
+};
