@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   READER_SOURCES,
   SMS_CONSENT_SOURCES,
@@ -162,9 +162,15 @@ function CopyRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-export default function ReaderDetailClient({ readerId }: { readerId: string }) {
-  const searchParams = useSearchParams();
-  const startInEdit = searchParams.get('edit') === '1';
+export default function ReaderDetailClient({
+  readerId,
+  initialEdit = false,
+}: {
+  readerId: string;
+  initialEdit?: boolean;
+}) {
+  const router = useRouter();
+  const initialEditApplied = useRef(false);
 
   const [reader, setReader] = useState<ReaderDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -175,6 +181,25 @@ export default function ReaderDetailClient({ readerId }: { readerId: string }) {
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
   const [archiving, setArchiving] = useState(false);
+
+  const clearEditQuery = useCallback(() => {
+    router.replace(`/admin/readers/${encodeURIComponent(readerId)}`, { scroll: false });
+  }, [router, readerId]);
+
+  const enterEditMode = useCallback((source: ReaderDetail) => {
+    setForm(readerToForm(source));
+    setSaveMessage(null);
+    setEditing(true);
+  }, []);
+
+  const exitEditMode = useCallback((options?: { keepSaveMessage?: boolean }) => {
+    setEditing(false);
+    setForm(null);
+    if (!options?.keepSaveMessage) {
+      setSaveMessage(null);
+    }
+    clearEditQuery();
+  }, [clearEditQuery]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -199,28 +224,28 @@ export default function ReaderDetailClient({ readerId }: { readerId: string }) {
   }, [readerId]);
 
   useEffect(() => {
-    load();
-  }, [load]);
-
-  useEffect(() => {
-    if (startInEdit && reader && !editing) {
-      setForm(readerToForm(reader));
-      setEditing(true);
-    }
-  }, [startInEdit, reader, editing]);
-
-  const beginEdit = useCallback(() => {
-    if (!reader) return;
-    setForm(readerToForm(reader));
-    setSaveMessage(null);
-    setEditing(true);
-  }, [reader]);
-
-  const cancelEdit = useCallback(() => {
+    initialEditApplied.current = false;
     setEditing(false);
     setForm(null);
     setSaveMessage(null);
-  }, []);
+    setShowArchiveConfirm(false);
+    load();
+  }, [readerId, load]);
+
+  useEffect(() => {
+    if (!initialEdit || !reader || initialEditApplied.current) return;
+    initialEditApplied.current = true;
+    enterEditMode(reader);
+  }, [initialEdit, reader, enterEditMode]);
+
+  const beginEdit = useCallback(() => {
+    if (!reader) return;
+    enterEditMode(reader);
+  }, [reader, enterEditMode]);
+
+  const cancelEdit = useCallback(() => {
+    exitEditMode();
+  }, [exitEditMode]);
 
   const hasMailingAddress = Boolean(reader?.mailingAddress);
 
@@ -298,8 +323,7 @@ export default function ReaderDetailClient({ readerId }: { readerId: string }) {
       }
       setReader(json.reader);
       setSaveMessage(json.message || 'Reader updated.');
-      setEditing(false);
-      setForm(null);
+      exitEditMode({ keepSaveMessage: true });
     } catch {
       setSaveMessage('Save failed. Please try again.');
     } finally {
@@ -324,9 +348,8 @@ export default function ReaderDetailClient({ readerId }: { readerId: string }) {
       }
       setReader(json.reader);
       setShowArchiveConfirm(false);
-      setEditing(false);
-      setForm(null);
       setSaveMessage(json.message || 'Reader archived.');
+      exitEditMode({ keepSaveMessage: true });
     } catch {
       setSaveMessage('Archive failed. Please try again.');
     } finally {

@@ -1,13 +1,16 @@
 import Link from 'next/link';
-import { Suspense } from 'react';
 import ReaderDetailClient from './ReaderDetailClient';
 
 export default async function ReaderDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ edit?: string }>;
 }) {
   const { id } = await params;
+  const sp = await searchParams;
+  const initialEdit = sp.edit === '1';
 
   return (
     <div
@@ -25,9 +28,7 @@ export default async function ReaderDetailPage({
         </Link>
       </p>
       <h1 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 20px 0' }}>Reader Detail</h1>
-      <Suspense fallback={<p style={{ color: '#64748b', fontSize: 14 }}>Loading reader…</p>}>
-        <ReaderDetailClient readerId={id} />
-      </Suspense>
+      <ReaderDetailClient key={id} readerId={id} initialEdit={initialEdit} />
     </div>
   );
 }
