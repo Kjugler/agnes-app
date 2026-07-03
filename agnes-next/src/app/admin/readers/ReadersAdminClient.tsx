@@ -12,6 +12,7 @@ import {
   formatSmsConsentSummary,
   type ReaderRow,
 } from '@/config/readerSources';
+import { hasMeaningfulReaderIdentifier, validateReaderEmail } from '@/lib/readerValidation';
 
 const inputStyle: React.CSSProperties = {
   padding: '6px 10px',
@@ -78,18 +79,11 @@ const emptyForm: AddReaderForm = {
   smsConsentNotes: '',
 };
 
-function hasMeaningfulIdentifier(form: AddReaderForm): boolean {
-  const email = form.email.trim();
-  const phoneDigits = form.phone.replace(/\D/g, '');
-  const hasName = Boolean(form.firstName.trim() || form.lastName.trim());
-  const hasNotes = form.notes.trim().length >= 3;
-  return Boolean(email || phoneDigits.length >= 10 || (hasName && hasNotes));
-}
-
 export default function ReadersAdminClient() {
   const [q, setQ] = useState('');
   const [sourceFilter, setSourceFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [showArchived, setShowArchived] = useState(false);
   const [readers, setReaders] = useState<ReaderRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -106,6 +100,7 @@ export default function ReadersAdminClient() {
       if (q.trim()) params.set('q', q.trim());
       if (sourceFilter !== 'all') params.set('source', sourceFilter);
       if (statusFilter !== 'all') params.set('status', statusFilter);
+      if (showArchived || statusFilter === 'archived') params.set('includeArchived', '1');
       const res = await fetch(`/api/admin/readers?${params.toString()}`, {
         credentials: 'include',
         cache: 'no-store',
@@ -123,7 +118,7 @@ export default function ReadersAdminClient() {
     } finally {
       setLoading(false);
     }
-  }, [q, sourceFilter, statusFilter]);
+  }, [q, sourceFilter, statusFilter, showArchived]);
 
   useEffect(() => {
     load();
@@ -131,9 +126,16 @@ export default function ReadersAdminClient() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!hasMeaningfulIdentifier(form)) {
+    if (!hasMeaningfulReaderIdentifier(form)) {
       setSaveMessage('Provide email, phone number, or name plus notes (at least 3 characters).');
       return;
+    }
+    if (form.email.trim()) {
+      const emailCheck = validateReaderEmail(form.email);
+      if (!emailCheck.ok) {
+        setSaveMessage(emailCheck.error);
+        return;
+      }
     }
     if (form.smsConsentGranted && form.phone.replace(/\D/g, '').length < 10) {
       setSaveMessage('SMS consent requires a valid phone number.');
@@ -214,13 +216,30 @@ export default function ReadersAdminClient() {
             onChange={(e) => setStatusFilter(e.target.value)}
             style={inputStyle}
           >
-            <option value="all">All statuses</option>
+            <option value="all">Active readers</option>
             {READER_STATUSES.map((s) => (
               <option key={s.value} value={s.value}>
-                {s.label}
+                {s.label} only
               </option>
             ))}
           </select>
+        </label>
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            fontSize: 13,
+            marginTop: 18,
+            cursor: 'pointer',
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={(e) => setShowArchived(e.target.checked)}
+          />
+          Include archived
         </label>
         <button type="button" onClick={load} style={{ ...btnSecondary, marginTop: 18 }}>
           Refresh
@@ -268,12 +287,13 @@ export default function ReadersAdminClient() {
                 <th style={{ padding: '10px 12px', fontWeight: 600 }}>Referral Code</th>
                 <th style={{ padding: '10px 12px', fontWeight: 600 }}>Date Added</th>
                 <th style={{ padding: '10px 12px', fontWeight: 600 }}>Last Activity</th>
+                <th style={{ padding: '10px 12px', fontWeight: 600 }}></th>
               </tr>
             </thead>
             <tbody>
               {readers.length === 0 ? (
                 <tr>
-                  <td colSpan={9} style={{ padding: 16, color: '#64748b' }}>
+                  <td colSpan={10} style={{ padding: 16, color: '#64748b' }}>
                     No readers yet. Add your first reader to start building the CRM.
                   </td>
                 </tr>
@@ -297,6 +317,19 @@ export default function ReadersAdminClient() {
                     </td>
                     <td style={{ padding: '10px 12px' }}>{formatDate(r.dateAdded)}</td>
                     <td style={{ padding: '10px 12px' }}>{formatDate(r.lastActivity)}</td>
+                    <td style={{ padding: '10px 12px' }}>
+                      <Link
+                        href={`/admin/readers/${r.id}?edit=1`}
+                        style={{
+                          color: '#2563eb',
+                          fontWeight: 600,
+                          fontSize: 13,
+                          textDecoration: 'none',
+                        }}
+                      >
+                        Edit
+                      </Link>
+                    </td>
                   </tr>
                 ))
               )}

@@ -23,7 +23,7 @@ const READER_TYPE_LABELS = {
   interested: 'Interested Reader',
 };
 
-const READER_STATUSES = ['active', 'inactive'];
+const READER_STATUSES = ['active', 'inactive', 'archived'];
 
 const SMS_CONSENT_SOURCES = [
   'Book Signing',
@@ -36,6 +36,7 @@ const SMS_CONSENT_SOURCES = [
 const READER_STATUS_LABELS = {
   active: 'Active',
   inactive: 'Inactive',
+  archived: 'Archived',
 };
 
 function isValidReaderSource(value) {

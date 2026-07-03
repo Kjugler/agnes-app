@@ -24,7 +24,18 @@ export const READER_TYPES = [
 export const READER_STATUSES = [
   { value: 'active', label: 'Active' },
   { value: 'inactive', label: 'Inactive' },
+  { value: 'archived', label: 'Archived' },
 ] as const;
+
+export type MailingAddress = {
+  customerId: string;
+  street: string;
+  city: string;
+  state: string;
+  zip: string;
+  country: string;
+  formatted: string;
+};
 
 export const SMS_CONSENT_SOURCES = [
   'Book Signing',
@@ -66,6 +77,8 @@ export type ReaderDetail = ReaderRow & {
   textAFriendUrl: string;
   sampleChaptersUrl: string;
   userCreatedAt: string;
+  lastUpdated: string;
+  mailingAddress: MailingAddress | null;
 };
 
 /** Format email for admin display — never show synthetic CRM placeholders. */
