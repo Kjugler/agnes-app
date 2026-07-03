@@ -43,6 +43,21 @@ function cleanReferralParam(value) {
   return s;
 }
 
+/** Remove stale contest identity from Stripe session metadata (anonymous checkout default). */
+function stripStaleCheckoutIdentityFromMetadata(meta) {
+  if (!meta || typeof meta !== 'object') return;
+  delete meta.contest_email;
+  delete meta.contest_user_id;
+  delete meta.contest_user_code;
+  delete meta.contestPlayerId;
+}
+
+function resolveExplicitCheckoutEmail(body) {
+  const raw = body?.email;
+  if (!raw || typeof raw !== 'string' || !raw.includes('@')) return null;
+  return normalizeEmail(raw.trim()) || null;
+}
+
 // Log allowlist configuration at startup
 console.log('[CHECKOUT_CONFIG] Discount code allowlist configuration:', {
   mode: envConfig.ASSOCIATE_REF_ALLOWLIST_MODE,
@@ -163,7 +178,7 @@ module.exports = async function handler(req, res) {
     if (!product || typeof product !== 'string') {
       console.error('[CHECKOUT] ❌ Missing product identifier', {
         userId: req.body?.userId || 'unknown',
-        email: req.body?.email || req.body?.metadata?.contest_email || 'unknown',
+        email: req.body?.email || 'unknown',
         product: product || 'missing',
         bodyKeys: Object.keys(req.body || {}),
       });
@@ -193,9 +208,10 @@ module.exports = async function handler(req, res) {
 
     // ===== DISCOUNT CODE RESOLUTION (Priority: request > stored > none) =====
     const metadata = (req.body && req.body.metadata) || {};
-    const customerEmail = req.body?.email || metadata?.contest_email || null;
+    // Anonymous checkout: only prefill Stripe email when explicitly provided on the request body.
+    const customerEmail = resolveExplicitCheckoutEmail(req.body);
     
-    // [PRINCIPAL] Identify canonical User principal for checkout
+    // [PRINCIPAL] Optional buyer lookup — explicit body fields only (never cookies/metadata identity).
     let user = null;
     let discountCodeSource = 'none';
     let discountCodeToUse = null;
@@ -205,8 +221,8 @@ module.exports = async function handler(req, res) {
       try {
         ensureDatabaseUrl();
         
-        // Priority 1: Try to identify user by contest_user_id (canonical - from cookie)
-        const contestUserId = metadata?.contest_user_id;
+        // Priority 1: explicit contest_user_id on request body (legacy/admin callers only)
+        const contestUserId = req.body?.contest_user_id;
         if (contestUserId && typeof contestUserId === 'string' && contestUserId.trim()) {
           user = await prisma.user.findUnique({
             where: { id: contestUserId.trim() },
@@ -236,9 +252,9 @@ module.exports = async function handler(req, res) {
           }
         }
         
-        // Priority 2: Fallback - Try by contest_user_code
-        if (!user && metadata?.contest_user_code) {
-          const contestUserCode = normalizeReferralCode(metadata.contest_user_code);
+        // Priority 2: explicit contest_user_code on request body
+        if (!user && req.body?.contest_user_code) {
+          const contestUserCode = normalizeReferralCode(req.body.contest_user_code);
           if (contestUserCode) {
             user = await prisma.user.findUnique({
               where: { code: contestUserCode },
@@ -265,9 +281,9 @@ module.exports = async function handler(req, res) {
           }
         }
         
-        // Priority 3: Fallback - Try by email (non-canonical, but better than nothing)
+        // Priority 3: explicit checkout email on request body (not metadata/cookies)
         if (!user && customerEmail) {
-          const normalizedEmail = normalizeEmail(customerEmail);
+          const normalizedEmail = customerEmail;
           if (normalizedEmail) {
             user = await prisma.user.findUnique({
               where: { email: normalizedEmail },
@@ -285,11 +301,10 @@ module.exports = async function handler(req, res) {
             if (user) {
               discountCodeSource = 'email';
               principalResolutionMethod = 'email_fallback';
-              console.warn('[PRINCIPAL] Principal resolved by email fallback (contest_user_id missing)', { 
-                userId: user.id, 
+              console.warn('[PRINCIPAL] Principal resolved by explicit checkout email on body', {
+                userId: user.id,
                 email: user.email,
                 code: user.code,
-                warning: 'contest_user_id should be provided in metadata',
               });
             }
           }
@@ -302,14 +317,12 @@ module.exports = async function handler(req, res) {
             email: user.email,
             code: user.code,
             method: principalResolutionMethod,
-            hasContestUserId: !!metadata?.contest_user_id,
-            hasContestUserCode: !!metadata?.contest_user_code,
+            hasContestUserId: !!req.body?.contest_user_id,
+            hasContestUserCode: !!req.body?.contest_user_code,
           });
         } else {
-          console.warn('[PRINCIPAL] Principal NOT resolved - no User found', {
-            contestUserId: metadata?.contest_user_id || 'MISSING',
-            contestUserCode: metadata?.contest_user_code || 'MISSING',
-            customerEmail: customerEmail || 'MISSING',
+          console.log('[PRINCIPAL] Anonymous checkout — no buyer principal at session create', {
+            hasExplicitEmail: !!customerEmail,
           });
         }
       } catch (userErr) {
@@ -649,8 +662,8 @@ module.exports = async function handler(req, res) {
     });
 
     const qty = Math.max(1, Number(req.body?.qty || 1));
-    const successPath = req.body?.successPath || '/contest/thank-you';
-    const cancelPath  = req.body?.cancelPath  || '/contest';
+    const successPath = req.body?.successPath || '/checkout/success';
+    const cancelPath  = req.body?.cancelPath  || '/catalog';
 
     // Add product, ref, and tracking params to metadata
     metadata.product = product;
@@ -812,11 +825,15 @@ module.exports = async function handler(req, res) {
       sessionParams.billing_address_collection = 'auto';
     }
     
-    // Prefill customer email if available (improves UX for logged-in users)
-    if (customerEmail && typeof customerEmail === 'string' && customerEmail.includes('@')) {
-      sessionParams.customer_email = customerEmail.trim().toLowerCase();
-      console.log('[CHECKOUT] Prefilling customer email:', sessionParams.customer_email);
+    // Prefill Stripe email only when explicitly provided on the request body (not from cookies).
+    if (customerEmail) {
+      sessionParams.customer_email = customerEmail;
+      console.log('[CHECKOUT] Prefilling customer email (explicit body only):', sessionParams.customer_email);
+    } else {
+      console.log('[CHECKOUT] Anonymous session — Stripe will collect buyer email');
     }
+
+    stripStaleCheckoutIdentityFromMetadata(metadata);
 
     // Only set discounts OR allow_promotion_codes, never both
     if (appliedDiscount && discounts.length > 0) {

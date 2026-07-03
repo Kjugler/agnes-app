@@ -1,4 +1,3 @@
-import { readContestEmail } from './identity';
 import { getProduct, type ProductId } from './products';
 import { PAPERBACK_SHIPPING_CENTS, trackTikTok } from './tiktokPixel';
 import { trackMeta } from './metaPixel';
@@ -8,19 +7,15 @@ function trackCheckoutStarted(source: string, path: string) {
   const payload = { type: 'CHECKOUT_STARTED', source, meta: { path } };
 
   try {
-    const email = readContestEmail();
     if (typeof navigator !== 'undefined' && 'sendBeacon' in navigator) {
       navigator.sendBeacon(
         '/api/track',
         new Blob([JSON.stringify(payload)], { type: 'application/json' }),
       );
     } else {
-      // fire-and-forget; do NOT await
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (email) headers['X-User-Email'] = email;
       fetch('/api/track', {
         method: 'POST',
-        headers,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
         keepalive: true, // survives navigation
       }).catch(() => {});
@@ -44,24 +39,17 @@ export async function startCheckout(opts: StartCheckoutOpts = {}) {
   const {
     product = 'paperback', // Default to paperback
     qty = 1,
-    successPath = '/contest/thank-you',
-    cancelPath = '/contest',
-    source = 'contest',
-    path = typeof window !== 'undefined' ? window.location.pathname : '/contest',
+    successPath = '/checkout/success',
+    cancelPath = '/catalog',
+    source = 'catalog',
+    path = typeof window !== 'undefined' ? window.location.pathname : '/catalog',
     metadata: providedMetadata = {},
   } = opts;
 
   // 1) fire tracking first (non-blocking — does not affect animations)
   trackCheckoutStarted(source, path);
 
-  // Root Cause B Fix: Email is optional - checkout can proceed without contest auth
-  const email = readContestEmail();
-  if (!email) {
-    console.log('[startCheckout] Proceeding without contest email - Stripe will collect email', {
-      note: 'Checkout does not require contest auth (Root Cause B fix)',
-    });
-    // Continue to checkout - email is optional
-  }
+  // Anonymous checkout: Stripe collects buyer email. Do not send contest cookies/localStorage identity.
 
   // Root Cause A Fix: Capture referral code with correct precedence: query param > cookie > localStorage
   // Query param ref must always override cookie (prevents stale referral context)
@@ -146,7 +134,6 @@ export async function startCheckout(opts: StartCheckoutOpts = {}) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(email ? { 'X-User-Email': email } : {}), // Only include email header if available
       },
       body: JSON.stringify({
         product,

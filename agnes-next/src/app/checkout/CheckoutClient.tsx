@@ -3,7 +3,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { startCheckout } from '@/lib/checkout';
-import { readContestEmail } from '@/lib/identity';
 import StressTestBuyNotice from '@/components/StressTestBuyNotice';
 
 export default function CheckoutClient() {
@@ -31,25 +30,10 @@ export default function CheckoutClient() {
       return;
     }
 
-    // Root Cause B Fix: Catalog + Checkout must never require contest auth
-    // Email is optional - checkout can proceed without it (Stripe will collect email)
-    const email = readContestEmail();
-    if (!email) {
-      console.log('[CHECKOUT] Proceeding without contest email - Stripe will collect email', {
-        pathname: '/checkout',
-        search: searchParams.toString(),
-        hasRefParam: !!searchParams.get('ref'),
-        note: 'Checkout does not require contest auth (Root Cause B fix)',
-      });
-      // Continue to checkout - do NOT redirect to contest
-    }
-    
-    // Part 1B: Log checkout click (for debugging)
-    console.log('[CHECKOUT] Checkout initiated', {
-      product,
-      hasEmail: !!email,
-      hasRefParam: !!searchParams.get('ref'),
+    console.log('[CHECKOUT] Anonymous checkout initiated — Stripe will collect buyer email', {
+      pathname: '/checkout',
       search: searchParams.toString(),
+      hasRefParam: !!searchParams.get('ref'),
     });
 
     // Extract tracking params
@@ -76,7 +60,7 @@ export default function CheckoutClient() {
       product,
       qty: 1,
       source: 'catalog',
-      successPath: '/contest/thank-you',
+      successPath: '/checkout/success',
       cancelPath: '/catalog',
       metadata,
     })

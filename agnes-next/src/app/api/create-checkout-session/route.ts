@@ -50,81 +50,27 @@ export async function POST(req: NextRequest) {
       src?: string;
       v?: string;
       origin?: string;
+      /** Explicit checkout email only — never inferred from cookies (anonymous default). */
       email?: string;
-      contestPlayerId?: string;
     };
 
-    // [PRINCIPAL] Resolve canonical principal identity
-    // Priority: userId cookie > email cookie > header email
     const cookieHeader = req.headers.get('cookie') || '';
-    const userIdMatch = cookieHeader.match(/contest_user_id=([^;]+)/);
-    const userCodeMatch = cookieHeader.match(/contest_user_code=([^;]+)/);
-    const contestEmailMatch = cookieHeader.match(/contest_email=([^;]+)/);
-    const userEmailMatch = cookieHeader.match(/user_email=([^;]+)/);
     const textafriendDiscountMatch = cookieHeader.match(/(?:^|;\s*)textafriend_discount=([^;]+)/);
-    
-    const userIdCookie = userIdMatch?.[1] ? decodeURIComponent(userIdMatch[1]) : null;
-    const userCodeCookie = userCodeMatch?.[1] ? decodeURIComponent(userCodeMatch[1]) : null;
-    const cookieEmail = contestEmailMatch?.[1] || userEmailMatch?.[1];
-    
-    let email: string | null = null;
-    let userId: string | null = userIdCookie;
-    let userCode: string | null = userCodeCookie;
-    
-    // Resolve email
-    const headerEmail = req.headers.get('x-user-email');
-    if (headerEmail) {
-      email = normalizeEmail(headerEmail);
-    } else if (cookieEmail) {
-      try {
-        email = normalizeEmail(decodeURIComponent(cookieEmail));
-      } catch (err) {
-        console.warn('[PRINCIPAL] Failed to decode cookie email', err);
-      }
-    }
-    
-    // Resolve principal via deepquill (canonical DB)
-    if (userId && !email) {
-      try {
-        const { data } = await proxyJson('/api/associate/status', req, { method: 'GET' });
-        if (data?.ok && data?.email) {
-          email = data.email;
-          if (!userCode && data?.code) userCode = data.code;
-        }
-      } catch (err) {
-        console.warn('[PRINCIPAL] Failed to resolve email from deepquill', { userId, error: err });
-      }
-    }
-    if (email && !userId) {
-      try {
-        const path = `/api/associate/status?email=${encodeURIComponent(email)}`;
-        const { data } = await proxyJson(path, req, { method: 'GET' });
-        if (data?.ok && data?.id) {
-          userId = data.id;
-          if (!userCode && data?.code) userCode = data.code;
-        }
-      } catch (err) {
-        console.warn('[PRINCIPAL] Failed to resolve userId from deepquill', { email, error: err });
-      }
-    }
-    
-    // [PRINCIPAL] Log canonical identity resolution
-    console.log('[PRINCIPAL] Principal resolved for checkout', {
-      userId: userId || 'MISSING',
-      email: email || 'MISSING',
-      code: userCode || 'MISSING',
-      method: userIdCookie ? 'cookie_userId' : email ? 'email_fallback' : 'none',
-      hasUserIdCookie: !!userIdCookie,
-      hasEmailCookie: !!cookieEmail,
+
+    // Optional explicit email in request body (not from cookies/headers).
+    const explicitEmail =
+      body?.email && typeof body.email === 'string'
+        ? normalizeEmail(body.email.trim())
+        : null;
+
+    console.log('[create-checkout-session] Anonymous checkout proxy', {
+      hasExplicitEmail: !!explicitEmail,
+      note: 'Contest cookies/localStorage are not sent to Stripe',
     });
-    
-    if (!userId && email) {
-      console.warn('[PRINCIPAL] MISMATCH - userId missing but email present', { email });
-    }
 
     // Use provided paths or fall back to defaults
-    const successPath = body?.successPath || '/contest/score';
-    const cancelPath = body?.cancelPath || '/contest';
+    const successPath = body?.successPath || '/checkout/success';
+    const cancelPath = body?.cancelPath || '/catalog';
     
     // Build absolute URLs for Stripe (Stripe requires absolute URLs)
     // GUARDRAIL: Use request origin, not env vars (prevents stale ngrok URLs)
@@ -137,8 +83,6 @@ export async function POST(req: NextRequest) {
     const product = body?.product;
     if (!product || typeof product !== 'string') {
       console.error('[CHECKOUT] ❌ Missing product identifier', {
-        userId: userId || 'unknown',
-        email: email || body?.email || 'unknown',
         product: product || 'missing',
         bodyKeys: Object.keys(body || {}),
       });
@@ -229,15 +173,11 @@ export async function POST(req: NextRequest) {
       src: body?.src || body?.metadata?.src,
       v: body?.v || body?.metadata?.v,
       origin: body?.origin || body?.metadata?.origin || requestOrigin, // Always pass origin
-      email: body?.email || email || undefined,
+      ...(explicitEmail ? { email: explicitEmail } : {}),
       metadata: {
         ...body?.metadata,
         action: 'buy_book',
-        source: body?.source || 'contest',
-        contest_email: email || 'unknown',
-        contest_user_id: userId || body?.contestPlayerId || undefined, // Always pass canonical userId
-        contest_user_code: userCode || undefined, // Always pass canonical code
-        contestPlayerId: userId || body?.contestPlayerId || undefined, // Backward compatibility
+        source: body?.source || 'catalog',
         referral_query_ref: referralQueryRef || undefined,
         referral_cookie_ref: referralCookieRef || undefined,
         checkout_request_at: checkoutRequestAt,
@@ -317,7 +257,7 @@ export async function POST(req: NextRequest) {
     logEntryVariant('checkout_initiated', variant, {
       sessionId: data.sessionId || null,
       referralCode: proxyBody.ref || null,
-      customerEmail: proxyBody.email || null,
+      customerEmail: explicitEmail,
     });
 
     return response;
