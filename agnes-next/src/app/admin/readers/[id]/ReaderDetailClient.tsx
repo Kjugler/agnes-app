@@ -274,8 +274,8 @@ export default function ReaderDetailClient({
     return null;
   }, [form, reader]);
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSave = async (e?: React.SyntheticEvent) => {
+    e?.preventDefault();
     if (!form || !reader) return;
 
     const validationError = validateForm();
@@ -421,7 +421,12 @@ export default function ReaderDetailClient({
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
           {editing ? (
             <>
-              <button type="submit" form="reader-edit-form" style={btnPrimary} disabled={saving}>
+              <button
+                type="button"
+                style={btnPrimary}
+                disabled={saving}
+                onClick={handleSave}
+              >
                 {saving ? 'Saving…' : 'Save'}
               </button>
               <button type="button" style={btnSecondary} disabled={saving} onClick={cancelEdit}>
@@ -460,7 +465,13 @@ export default function ReaderDetailClient({
       )}
 
       {editing && form ? (
-        <form id="reader-edit-form" onSubmit={handleSave}>
+        <form
+          id="reader-edit-form"
+          autoComplete="off"
+          onSubmit={(e) => {
+            e.preventDefault();
+          }}
+        >
           <section style={sectionStyle}>
             <h2 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700 }}>Edit reader</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
