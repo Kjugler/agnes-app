@@ -58,6 +58,7 @@ model User {
   missionaryEmailSentAt        DateTime?
   engagedEmailSentAt           DateTime?
   readerRecommendationOutreachSentAt DateTime?
+  readerRecommendationOutreachBatch  String?
   terminalDiscoveryAwarded    Boolean               @default(false)
   events                       Event[]
   badges                       UserBadge[]

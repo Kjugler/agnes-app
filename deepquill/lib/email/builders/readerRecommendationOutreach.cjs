@@ -1,25 +1,46 @@
 // Reader Recommendation Outreach — ask readers to recommend via Text-a-Friend.
 
 const { getSiteUrl } = require('../../readers/readerUrls.cjs');
+const {
+  TEMPLATE_BATCH_1,
+  TEMPLATE_CURRENT,
+} = require('../readerRecommendationOutreachConfig.cjs');
 
-const SUBJECT = 'Would you do me a small favor?';
+const SUBJECT_BATCH_1 = 'Would you do me a small favor?';
+const SUBJECT_CURRENT = 'Someone you know would love The Agnes Protocol';
 const CTA_LABEL = 'Recommend The Agnes Protocol';
 const COVER_PATH = '/og/book-cover-og.jpg';
 const COVER_WIDTH_PX = 170;
+
+const FORWARD_INSTRUCTION =
+  "Please don't forward this email. Click the green button below instead. It opens a text message you can edit before sending, your friend receives 15% off automatically, and we can properly thank you for introducing another reader.";
 
 function buildComplianceFooter() {
   return 'You are receiving this email because you are a reader of The Agnes Protocol. Reply to this email to opt out.';
 }
 
-function buildReaderRecommendationOutreachEmail({ firstName, textAFriendUrl, siteUrl }) {
+function resolveSubject(templateId) {
+  return templateId === TEMPLATE_BATCH_1 ? SUBJECT_BATCH_1 : SUBJECT_CURRENT;
+}
+
+function buildReaderRecommendationOutreachEmail({
+  firstName,
+  textAFriendUrl,
+  siteUrl,
+  template = TEMPLATE_CURRENT,
+}) {
   const name = (firstName && String(firstName).trim()) || 'friend';
   const footer = buildComplianceFooter();
   const base = (siteUrl || getSiteUrl()).replace(/\/$/, '');
   const coverImageUrl = `${base}${COVER_PATH}`;
+  const subject = resolveSubject(template);
+  const includeForwardInstruction = template !== TEMPLATE_BATCH_1;
 
-  const text = [
-    `Hi ${name},`,
-    '',
+  const textLines = [`Hi ${name},`, ''];
+  if (includeForwardInstruction) {
+    textLines.push(FORWARD_INSTRUCTION, '');
+  }
+  textLines.push(
     "I'm so glad you enjoyed reading The Agnes Protocol.",
     '',
     'If you think someone you know would enjoy the story, would you recommend it to just one friend?',
@@ -36,14 +57,20 @@ function buildReaderRecommendationOutreachEmail({ firstName, textAFriendUrl, sit
     '(Simon McQuade)',
     '',
     footer,
-  ].join('\n');
+  );
+
+  const text = textLines.join('\n');
+
+  const forwardHtml = includeForwardInstruction
+    ? `<p style="margin:0 0 16px 0;">${FORWARD_INSTRUCTION}</p>`
+    : '';
 
   const html = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>${SUBJECT}</title>
+  <title>${subject}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 </head>
 <body style="margin:0;padding:0;background-color:#fafafa;">
@@ -64,6 +91,7 @@ function buildReaderRecommendationOutreachEmail({ firstName, textAFriendUrl, sit
           <tr>
             <td style="padding:16px 28px 24px 28px;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#222222;font-size:16px;line-height:1.6;">
               <p style="margin:0 0 16px 0;">Hi ${name},</p>
+              ${forwardHtml}
               <p style="margin:0 0 16px 0;">I'm so glad you enjoyed reading <em>The Agnes Protocol</em>.</p>
               <p style="margin:0 0 16px 0;">If you think someone you know would enjoy the story, would you recommend it to just one friend?</p>
               <p style="margin:0 0 16px 0;">If they decide to purchase the book using your recommendation, they'll automatically receive 15% off.</p>
@@ -90,11 +118,13 @@ function buildReaderRecommendationOutreachEmail({ firstName, textAFriendUrl, sit
 </body>
 </html>`.trim();
 
-  return { subject: SUBJECT, html, text };
+  return { subject, html, text };
 }
 
 module.exports = {
   buildReaderRecommendationOutreachEmail,
-  SUBJECT,
+  SUBJECT_BATCH_1,
+  SUBJECT_CURRENT,
   CTA_LABEL,
+  FORWARD_INSTRUCTION,
 };

@@ -448,17 +448,45 @@ async function runReaderRecommendationOutreachJob(req, res) {
     runReaderRecommendationOutreach,
     parseDryRun,
     parseLimit,
+    parseRequirePurchase,
+    parseExcludePreviousBatches,
+    normalizeBatchLabel,
+    resolveTemplateId,
   } = require('../../lib/email/runReaderRecommendationOutreach.cjs');
+  const {
+    BATCH_2_LABEL,
+    TEMPLATE_CURRENT,
+  } = require('../../lib/email/readerRecommendationOutreachConfig.cjs');
   try {
     const dryRunParam = req.query?.dryRun ?? req.body?.dryRun;
     const dryRun = parseDryRun(dryRunParam);
     const limitParam = req.query?.limit ?? req.body?.limit;
     const limit = parseLimit(limitParam);
+    const batchParam = req.query?.batch ?? req.body?.batch;
+    const templateParam = req.query?.template ?? req.body?.template;
+    const requirePurchaseParam = req.query?.requirePurchase ?? req.body?.requirePurchase;
+    const excludeParam =
+      req.query?.excludePreviousBatches ?? req.body?.excludePreviousBatches;
 
-    const result = await runReaderRecommendationOutreach(prisma, { dryRun, limit });
+    const batch = normalizeBatchLabel(batchParam) || BATCH_2_LABEL;
+    const template = resolveTemplateId(templateParam ?? TEMPLATE_CURRENT, batch);
+    const requirePurchase = parseRequirePurchase(requirePurchaseParam ?? '1');
+    const excludePreviousBatches = parseExcludePreviousBatches(excludeParam);
+
+    const result = await runReaderRecommendationOutreach(prisma, {
+      dryRun,
+      limit,
+      batch,
+      template,
+      requirePurchase,
+      excludePreviousBatches,
+    });
 
     console.log('[admin/send-reader-recommendation-outreach]', JSON.stringify({
       dryRun: result.dryRun,
+      batch: result.batch,
+      template: result.template,
+      requirePurchase: result.requirePurchase,
       eligible: result.eligible,
       sent: result.sent,
       wouldSend: result.wouldSend,

@@ -12,8 +12,19 @@ const {
 } = require('./builders/readerRecommendationOutreach.cjs');
 const { buildTextAFriendUrl } = require('../readers/readerUrls.cjs');
 const { displayName } = require('../readers/readerUser.cjs');
+const { validateAdminReaderEmail } = require('../readers/readerEmailValidation.cjs');
+const {
+  BATCH_2_LABEL,
+  TEMPLATE_CURRENT,
+  DEFAULT_BATCH_SIZE,
+  normalizeBatchLabel,
+  resolveTemplateId,
+  parseDryRun,
+  parseLimit,
+  parseRequirePurchase,
+  parseExcludePreviousBatches,
+} = require('./readerRecommendationOutreachConfig.cjs');
 
-const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
 const SAMPLE_SIZE = 5;
 const PER_EMAIL_DELAY_MS = Math.max(0, Number(process.env.ADMIN_EMAIL_PER_EMAIL_MS || 100));
@@ -26,28 +37,16 @@ function emptySkipped() {
   return {
     synthetic: 0,
     example: 0,
+    placeholder: 0,
     fulfillmentStaff: 0,
     suppressed: 0,
     alreadySent: 0,
+    notPurchased: 0,
     noCode: 0,
     inactive: 0,
     invalidEmail: 0,
     other: 0,
   };
-}
-
-function parseDryRun(value) {
-  if (value === undefined || value === null || value === '') return true;
-  if (value === '0' || value === false || value === 'false') return false;
-  if (value === '1' || value === true || value === 'true') return true;
-  return true;
-}
-
-function parseLimit(value) {
-  if (value === undefined || value === null || value === '') return DEFAULT_LIMIT;
-  const n = parseInt(String(value), 10);
-  if (!Number.isFinite(n) || n < 1) return DEFAULT_LIMIT;
-  return Math.min(n, MAX_LIMIT);
 }
 
 async function fetchSuppressedSet() {
@@ -72,6 +71,21 @@ async function fetchSuppressedSet() {
   }
 }
 
+async function loadPurchaserUserIds(prisma) {
+  const purchases = await prisma.purchase.findMany({
+    select: { userId: true, createdAt: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  const ordered = [];
+  const set = new Set();
+  for (const row of purchases) {
+    if (!row.userId || set.has(row.userId)) continue;
+    set.add(row.userId);
+    ordered.push(row.userId);
+  }
+  return { set, ordered };
+}
+
 function manualReasonForProfile(profile, user) {
   const mailable = isMailableEmail(user.email);
   if (mailable) return null;
@@ -93,16 +107,41 @@ function serializeManualOutreach(profile, user) {
   };
 }
 
+function isPlaceholderEmail(email) {
+  const check = validateAdminReaderEmail(email, { required: true });
+  return !check.ok;
+}
+
 /**
  * @param {import('@prisma/client').PrismaClient} prisma
- * @param {{ dryRun?: boolean, limit?: number, transactionalEnabled?: boolean }} options
+ * @param {{
+ *   dryRun?: boolean,
+ *   limit?: number,
+ *   batch?: string,
+ *   template?: string,
+ *   requirePurchase?: boolean,
+ *   excludePreviousBatches?: boolean,
+ *   transactionalEnabled?: boolean,
+ * }} options
  */
 async function runReaderRecommendationOutreach(prisma, options = {}) {
   const dryRun = options.dryRun !== false;
-  const limit = parseLimit(options.limit);
+  const limit = parseLimit(options.limit, DEFAULT_BATCH_SIZE);
+  const batchLabel = normalizeBatchLabel(options.batch) || BATCH_2_LABEL;
+  const templateId = resolveTemplateId(options.template, batchLabel);
+  const requirePurchase = parseRequirePurchase(options.requirePurchase);
+  const excludePreviousBatches =
+    options.excludePreviousBatches !== undefined
+      ? parseExcludePreviousBatches(options.excludePreviousBatches)
+      : true;
+
   const skipped = emptySkipped();
   const errors = [];
   const manualOutreach = [];
+
+  const purchaserData = requirePurchase ? await loadPurchaserUserIds(prisma) : null;
+  const purchaserIds = purchaserData?.set ?? null;
+  const purchaserOrder = purchaserData?.ordered ?? [];
 
   const profiles = await prisma.readerProfile.findMany({
     include: {
@@ -117,6 +156,7 @@ async function runReaderRecommendationOutreach(prisma, options = {}) {
           code: true,
           referralCode: true,
           readerRecommendationOutreachSentAt: true,
+          readerRecommendationOutreachBatch: true,
         },
       },
     },
@@ -139,6 +179,11 @@ async function runReaderRecommendationOutreach(prisma, options = {}) {
       continue;
     }
 
+    if (requirePurchase && purchaserIds && !purchaserIds.has(user.id)) {
+      skipped.notPurchased += 1;
+      continue;
+    }
+
     const manualReason = manualReasonForProfile(profile, user);
     if (manualReason) {
       manualOutreach.push(serializeManualOutreach(profile, user));
@@ -149,6 +194,11 @@ async function runReaderRecommendationOutreach(prisma, options = {}) {
     if (!mailable) {
       skipped.invalidEmail += 1;
       manualOutreach.push(serializeManualOutreach(profile, user));
+      continue;
+    }
+
+    if (isPlaceholderEmail(mailable)) {
+      skipped.placeholder += 1;
       continue;
     }
 
@@ -174,7 +224,7 @@ async function runReaderRecommendationOutreach(prisma, options = {}) {
       skipped.suppressed += 1;
       continue;
     }
-    if (user.readerRecommendationOutreachSentAt) {
+    if (excludePreviousBatches && user.readerRecommendationOutreachSentAt) {
       skipped.alreadySent += 1;
       continue;
     }
@@ -191,7 +241,15 @@ async function runReaderRecommendationOutreach(prisma, options = {}) {
       firstName: user.firstName || user.fname || null,
       readerCode,
       profileId: profile.id,
+      priorBatch: user.readerRecommendationOutreachBatch || null,
     });
+  }
+
+  if (requirePurchase && purchaserOrder.length > 0) {
+    const rank = new Map(purchaserOrder.map((id, index) => [id, index]));
+    eligibleRecipients.sort(
+      (a, b) => (rank.get(a.userId) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.userId) ?? Number.MAX_SAFE_INTEGER),
+    );
   }
 
   const targets = eligibleRecipients.slice(0, limit);
@@ -200,14 +258,25 @@ async function runReaderRecommendationOutreach(prisma, options = {}) {
     firstName: r.firstName,
     readerCode: r.readerCode,
     textAFriendUrl: buildTextAFriendUrl(r.readerCode, r.email),
+    priorBatch: r.priorBatch,
   }));
 
   const manualOutreachSample = manualOutreach.slice(0, SAMPLE_SIZE);
+
+  const campaignMeta = {
+    campaign: 'reader_recommendation_outreach',
+    batch: batchLabel,
+    template: templateId,
+  };
 
   if (dryRun) {
     return {
       ok: true,
       dryRun: true,
+      batch: batchLabel,
+      template: templateId,
+      requirePurchase,
+      excludePreviousBatches,
       limit,
       eligible: eligibleRecipients.length,
       sent: 0,
@@ -218,6 +287,7 @@ async function runReaderRecommendationOutreach(prisma, options = {}) {
       recipientSample,
       suppressedListFetched: suppressed.fetched,
       errors,
+      campaign: campaignMeta,
     };
   }
 
@@ -232,6 +302,10 @@ async function runReaderRecommendationOutreach(prisma, options = {}) {
       dryRun: false,
       transactionalDisabled: true,
       reason: 'TRANSACTIONAL_EMAIL_ENABLED not set',
+      batch: batchLabel,
+      template: templateId,
+      requirePurchase,
+      excludePreviousBatches,
       limit,
       eligible: eligibleRecipients.length,
       sent: 0,
@@ -239,7 +313,7 @@ async function runReaderRecommendationOutreach(prisma, options = {}) {
       manualOutreachCount: manualOutreach.length,
       manualOutreachSample,
       recipientSample,
-      errors,
+      campaign: campaignMeta,
     };
   }
 
@@ -249,6 +323,8 @@ async function runReaderRecommendationOutreach(prisma, options = {}) {
     return {
       ok: false,
       dryRun: false,
+      batch: batchLabel,
+      template: templateId,
       limit,
       eligible: eligibleRecipients.length,
       sent: 0,
@@ -257,10 +333,12 @@ async function runReaderRecommendationOutreach(prisma, options = {}) {
       manualOutreachSample,
       recipientSample,
       errors: ['Email service not configured (MAILCHIMP_TRANSACTIONAL_KEY or MAILCHIMP_FROM_EMAIL missing)'],
+      campaign: campaignMeta,
     };
   }
 
   let sent = 0;
+  const sentRecipients = [];
 
   for (const recipient of targets) {
     try {
@@ -274,6 +352,7 @@ async function runReaderRecommendationOutreach(prisma, options = {}) {
       const { subject, html, text } = buildReaderRecommendationOutreachEmail({
         firstName: recipient.firstName,
         textAFriendUrl,
+        template: templateId,
       });
       const { html: htmlWithBanner, subject: finalSubject } = applyGlobalEmailBanner({ html, subject });
 
@@ -286,13 +365,25 @@ async function runReaderRecommendationOutreach(prisma, options = {}) {
           html: htmlWithBanner,
           text,
           headers: { 'Reply-To': fromEmail },
-          metadata: { campaign: 'reader_recommendation_outreach' },
+          metadata: campaignMeta,
+          tags: ['reader_recommendation_outreach', templateId],
         },
       });
 
+      const sentAt = new Date();
       await prisma.user.update({
         where: { id: recipient.userId },
-        data: { readerRecommendationOutreachSentAt: new Date() },
+        data: {
+          readerRecommendationOutreachSentAt: sentAt,
+          readerRecommendationOutreachBatch: batchLabel,
+        },
+      });
+
+      sentRecipients.push({
+        email: guarded,
+        firstName: recipient.firstName,
+        readerCode: recipient.readerCode,
+        sentAt: sentAt.toISOString(),
       });
 
       sent += 1;
@@ -307,15 +398,21 @@ async function runReaderRecommendationOutreach(prisma, options = {}) {
   return {
     ok: true,
     dryRun: false,
+    batch: batchLabel,
+    template: templateId,
+    requirePurchase,
+    excludePreviousBatches,
     limit,
     eligible: eligibleRecipients.length,
     sent,
+    sentRecipients,
     skipped,
     manualOutreachCount: manualOutreach.length,
     manualOutreachSample,
     recipientSample,
     suppressedListFetched: suppressed.fetched,
     errors,
+    campaign: campaignMeta,
   };
 }
 
@@ -323,6 +420,10 @@ module.exports = {
   runReaderRecommendationOutreach,
   parseDryRun,
   parseLimit,
-  DEFAULT_LIMIT,
+  parseRequirePurchase,
+  parseExcludePreviousBatches,
+  normalizeBatchLabel,
+  resolveTemplateId,
+  DEFAULT_BATCH_SIZE,
   MAX_LIMIT,
 };
