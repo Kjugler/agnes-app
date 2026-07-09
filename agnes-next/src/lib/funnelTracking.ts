@@ -179,6 +179,7 @@ export function useFunnelPageEngagement(options: {
 
   useEffect(() => {
     if (!scrollDepthType) return;
+    const depthEventType = scrollDepthType;
 
     function onScroll() {
       const doc = document.documentElement;
@@ -187,9 +188,13 @@ export function useFunnelPageEngagement(options: {
       const pct = Math.min(100, Math.round((scrollTop / height) * 100));
 
       for (const milestone of SCROLL_MILESTONES) {
-        if (pct >= milestone && !scrollFiredRef.current.has(milestone)) {
+        if (depthEventType && pct >= milestone && !scrollFiredRef.current.has(milestone)) {
           scrollFiredRef.current.add(milestone);
-          trackFunnelEvent(scrollDepthType, { depthPercent: milestone, ...extraEngagementMeta }, { source, searchParams });
+          trackFunnelEvent(
+            depthEventType,
+            { depthPercent: milestone, ...extraEngagementMeta },
+            { source, searchParams },
+          );
         }
       }
     }
@@ -201,11 +206,16 @@ export function useFunnelPageEngagement(options: {
 
   useEffect(() => {
     if (!timeOnPageType) return;
+    const timeEventType = timeOnPageType;
 
     function flushTime() {
       const seconds = Math.round((Date.now() - startRef.current) / 1000);
       if (seconds < 1) return;
-      trackFunnelEvent(timeOnPageType, { secondsOnPage: seconds, ...extraEngagementMeta }, { source, searchParams });
+      trackFunnelEvent(
+        timeEventType,
+        { secondsOnPage: seconds, ...extraEngagementMeta },
+        { source, searchParams },
+      );
     }
 
     function onVisibility() {
