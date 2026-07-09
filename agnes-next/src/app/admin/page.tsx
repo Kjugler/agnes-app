@@ -50,6 +50,19 @@ export default function AdminHubPage() {
         View recent sales, product type, live vs beta status, fulfillment status, and points/shipping
         eligibility.
       </p>
+      <Link href="/admin/funnel" style={linkStyle}>
+        Reader Funnel Report
+      </Link>
+      <p style={descStyle}>
+        Readers Agree → Sample Chapters → Buy → Checkout → Purchase → Recommendation → Text-a-Friend →
+        Referral purchase. First-party Event table + Purchase / ReferralConversion / Ledger.
+      </p>
+      <Link href="/admin/content" style={linkStyle}>
+        Content Performance
+      </Link>
+      <p style={descStyle}>
+        Which chapters and Readers Agree CTAs (Amazon, B&amp;N, Sample Chapters) convert to purchases.
+      </p>
 
       <h2 style={sectionTitle}>Readers</h2>
       <Link href="/admin/readers" style={linkStyle}>

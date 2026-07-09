@@ -8,6 +8,11 @@ import HelpButton from '@/components/HelpButton';
 import SiteFooter from '@/components/SiteFooter';
 import { trackMeta } from '@/lib/metaPixel';
 import { trackTikTok } from '@/lib/tiktokPixel';
+import {
+  FUNNEL_EVENT_TYPES,
+  trackFunnelEvent,
+  useFunnelPageEngagement,
+} from '@/lib/funnelTracking';
 import { useSafeBack } from '@/lib/nav';
 import {
   HUB_THEME,
@@ -35,6 +40,12 @@ export default function SampleChaptersClient() {
   const leftPlayerRef = useRef<any>(null);
   const rightPlayerRef = useRef<any>(null);
   const viewContentFiredRef = useRef(false);
+
+  useFunnelPageEngagement({
+    pageViewType: FUNNEL_EVENT_TYPES.SAMPLE_CHAPTERS_PAGE_VIEW,
+    source: 'sample-chapters',
+    searchParams,
+  });
 
   useEffect(() => {
     if (viewContentFiredRef.current) return;
@@ -341,7 +352,13 @@ export default function SampleChaptersClient() {
       <div style={hubContentWrapStyle()}>
         <button
           type="button"
-          onClick={goBack}
+          onClick={() => {
+            trackFunnelEvent(FUNNEL_EVENT_TYPES.SAMPLE_CHAPTERS_HUB_CLICK, {}, {
+              source: 'sample-chapters',
+              searchParams,
+            });
+            goBack();
+          }}
           style={{
             color: HUB_THEME.textMuted,
             background: 'none',
@@ -502,6 +519,7 @@ export default function SampleChaptersClient() {
         >
           <BuyBookButton
             source="sample-chapters"
+            funnelEventType={FUNNEL_EVENT_TYPES.SAMPLE_CHAPTERS_BUY_CLICK}
             successPath="/checkout/success"
             cancelPath="/sample-chapters"
             style={{

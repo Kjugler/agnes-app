@@ -1,21 +1,24 @@
 'use client';
 
 import { useRouter, useSearchParams } from 'next/navigation';
+import { trackFunnelEvent, type FunnelEventType } from '@/lib/funnelTracking';
 
 type BuyBookButtonProps = {
-  source?: string; // preserved for compatibility but not used
-  successPath?: string; // preserved for compatibility but not used
-  cancelPath?: string; // preserved for compatibility but not used
-  onRequireContestEntry?: () => void; // preserved for compatibility but not used
+  source?: string;
+  funnelEventType?: FunnelEventType;
+  successPath?: string;
+  cancelPath?: string;
+  onRequireContestEntry?: () => void;
   className?: string;
   children?: React.ReactNode;
   style?: React.CSSProperties;
 };
 
 export function BuyBookButton({
-  source = 'contest',
-  successPath = '/contest/thank-you',
-  cancelPath = '/contest',
+  source = 'catalog',
+  funnelEventType,
+  successPath = '/checkout/success',
+  cancelPath = '/catalog',
   onRequireContestEntry,
   className,
   children,
@@ -26,6 +29,10 @@ export function BuyBookButton({
 
   function handleClick(e: React.MouseEvent) {
     e.preventDefault();
+
+    if (funnelEventType) {
+      trackFunnelEvent(funnelEventType, { buttonSource: source }, { source, searchParams });
+    }
     
     // Preserve tracking params
     const params = new URLSearchParams();

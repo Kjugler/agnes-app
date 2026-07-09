@@ -14,6 +14,11 @@ import {
   READERS_AGREE_HERO_IMAGE_PATH,
   SAMPLE_CHAPTERS_PATH,
 } from '@/lib/readerRecommendationLanding';
+import {
+  FUNNEL_EVENT_TYPES,
+  trackFunnelEvent,
+  useFunnelPageEngagement,
+} from '@/lib/funnelTracking';
 
 const cardBase: CSSProperties = {
   display: 'flex',
@@ -57,12 +62,14 @@ function ReviewCard({
   href,
   cta,
   variant,
+  onNavigate,
 }: {
   stars: string;
   title: string;
   href: string;
   cta: string;
   variant: 'retailer' | 'sample';
+  onNavigate?: () => void;
 }) {
   const isSample = variant === 'sample';
   const ctaStyle = isSample ? sampleCta : externalCta;
@@ -70,6 +77,7 @@ function ReviewCard({
   return (
     <Link
       href={href}
+      onClick={() => onNavigate?.()}
       style={{
         ...cardBase,
         borderColor: isSample ? 'rgba(0, 255, 127, 0.35)' : undefined,
@@ -99,6 +107,14 @@ function ReviewCard({
 export default function ReadersAgreeLandingClient() {
   const searchParams = useSearchParams();
   const viewFiredRef = useRef(false);
+
+  useFunnelPageEngagement({
+    pageViewType: FUNNEL_EVENT_TYPES.READERS_AGREE_PAGE_VIEW,
+    timeOnPageType: FUNNEL_EVENT_TYPES.READERS_AGREE_TIME_ON_PAGE,
+    scrollDepthType: FUNNEL_EVENT_TYPES.READERS_AGREE_SCROLL_DEPTH,
+    source: 'readers-agree',
+    searchParams,
+  });
 
   const sampleChaptersHref = useMemo(
     () => buildReadersAgreePathWithTracking(SAMPLE_CHAPTERS_PATH, searchParams),
@@ -257,6 +273,12 @@ export default function ReadersAgreeLandingClient() {
             href={amazonGoHref}
             cta="Read the Reviews"
             variant="retailer"
+            onNavigate={() =>
+              trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK, {}, {
+                source: 'readers-agree',
+                searchParams,
+              })
+            }
           />
           <ReviewCard
             stars="★★★★★"
@@ -264,6 +286,12 @@ export default function ReadersAgreeLandingClient() {
             href={bnGoHref}
             cta="Read the Reviews"
             variant="retailer"
+            onNavigate={() =>
+              trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_BN_CLICK, {}, {
+                source: 'readers-agree',
+                searchParams,
+              })
+            }
           />
           <ReviewCard
             stars="📖"
@@ -271,6 +299,12 @@ export default function ReadersAgreeLandingClient() {
             href={sampleChaptersHref}
             cta="Start Reading"
             variant="sample"
+            onNavigate={() =>
+              trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_SAMPLE_CHAPTERS_CLICK, {}, {
+                source: 'readers-agree',
+                searchParams,
+              })
+            }
           />
         </div>
       </section>

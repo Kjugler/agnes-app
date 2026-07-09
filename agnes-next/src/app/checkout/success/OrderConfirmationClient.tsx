@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, useCallback, type CSSProperties } from 're
 import { useRouter } from 'next/navigation';
 import { trackTikTok } from '@/lib/tiktokPixel';
 import { trackMeta } from '@/lib/metaPixel';
+import { FUNNEL_EVENT_TYPES, trackFunnelEvent } from '@/lib/funnelTracking';
 import { HUB_THEME } from '@/lib/hubTheme';
 
 const HUB_REDIRECT_SECONDS = 7;
@@ -159,6 +160,13 @@ export default function OrderConfirmationClient({ sessionId }: OrderConfirmation
           } catch {
             /* ignore */
           }
+
+          trackFunnelEvent(FUNNEL_EVENT_TYPES.PURCHASE_COMPLETED, {
+            session_id: currentSessionId,
+            productType: data.productType || 'unknown',
+            amount_total: data.amountTotal || 0,
+            currency: data.currency || 'usd',
+          }, { source: 'checkout-success' });
 
           if (!purchaseTrackedRef.current) {
             purchaseTrackedRef.current = true;

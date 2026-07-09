@@ -1,10 +1,13 @@
 import { getProduct, type ProductId } from './products';
 import { PAPERBACK_SHIPPING_CENTS, trackTikTok } from './tiktokPixel';
 import { trackMeta } from './metaPixel';
+import { FUNNEL_EVENT_TYPES, trackFunnelEvent } from './funnelTracking';
 
 // Non-blocking tracker: prefer sendBeacon; fallback to keepalive fetch
 function trackCheckoutStarted(source: string, path: string) {
   const payload = { type: 'CHECKOUT_STARTED', source, meta: { path } };
+
+  trackFunnelEvent(FUNNEL_EVENT_TYPES.CHECKOUT_STARTED, { source, path }, { source });
 
   try {
     if (typeof navigator !== 'undefined' && 'sendBeacon' in navigator) {

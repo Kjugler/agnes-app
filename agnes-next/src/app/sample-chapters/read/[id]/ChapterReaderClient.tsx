@@ -7,6 +7,7 @@ import { readAssociate } from '@/lib/identity';
 import { buildTextThisSceneSmsBody, openSmsWithPrefilledBody } from '@/lib/textThisScene';
 import { trackTikTok } from '@/lib/tiktokPixel';
 import { trackMeta } from '@/lib/metaPixel';
+import { FUNNEL_EVENT_TYPES, useFunnelPageEngagement } from '@/lib/funnelTracking';
 
 interface ChapterReaderClientProps {
   chapterId: string;
@@ -15,6 +16,14 @@ interface ChapterReaderClientProps {
 export default function ChapterReaderClient({ chapterId }: ChapterReaderClientProps) {
   const chapter = getChapter(chapterId);
   const viewContentFiredRef = useRef(false);
+
+  useFunnelPageEngagement({
+    pageViewType: FUNNEL_EVENT_TYPES.SAMPLE_CHAPTER_OPEN,
+    timeOnPageType: FUNNEL_EVENT_TYPES.SAMPLE_CHAPTER_TIME_ON_PAGE,
+    source: 'sample-chapter-reader',
+    extraPageViewMeta: { chapterId },
+    extraEngagementMeta: { chapterId },
+  });
 
   useEffect(() => {
     if (!chapter || !isValidChapterId(chapterId)) return;
@@ -127,7 +136,7 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
             ← Back to Sample Chapters
           </Link>
           <Link
-            href="/contest"
+            href="/catalog"
             style={{
               color: '#00ffe5',
               fontSize: 14,
@@ -135,7 +144,7 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
               textDecoration: 'none',
             }}
           >
-            ← Back to Hub
+            ← Browse catalog
           </Link>
         </div>
         

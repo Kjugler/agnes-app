@@ -308,6 +308,11 @@ const adminSalesLedgerRouter = require('./routes/adminSalesLedger.cjs');
 app.use('/api/admin', adminSalesLedgerRouter);
 console.log('✅ Mounted GET /api/admin/sales-ledger');
 
+const funnelEventsRouter = require('./routes/funnelEvents.cjs');
+app.use('/api/funnel', funnelEventsRouter);
+app.use('/api/admin', funnelEventsRouter);
+console.log('✅ Mounted POST /api/funnel/event, GET /api/admin/funnel-report, GET /api/admin/content-report');
+
 const adminPurchaseResendRouter = require('./routes/adminPurchaseResend.cjs');
 app.use('/api/admin/purchases', adminPurchaseResendRouter);
 console.log('✅ Mounted POST /api/admin/purchases/:purchaseId/resend-confirmation, resend-ebook-link');
