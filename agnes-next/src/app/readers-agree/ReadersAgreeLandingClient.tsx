@@ -158,7 +158,7 @@ export default function ReadersAgreeLandingClient() {
         style={{
           position: 'relative',
           overflow: 'hidden',
-          padding: '32px 16px 40px',
+          padding: '24px 16px 48px',
           background:
             'radial-gradient(ellipse 120% 80% at 50% -20%, rgba(185, 28, 28, 0.45) 0%, transparent 55%), linear-gradient(180deg, #0c0c0c 0%, #050505 100%)',
         }}
@@ -182,46 +182,13 @@ export default function ReadersAgreeLandingClient() {
             margin: '0 auto',
             display: 'flex',
             flexDirection: 'column',
-            gap: '28px',
+            gap: '24px',
           }}
         >
-          <div
-            style={{
-              position: 'relative',
-              width: '100%',
-              borderRadius: '12px',
-              overflow: 'hidden',
-              boxShadow:
-                '0 24px 60px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255,255,255,0.08), 0 0 48px rgba(185, 28, 28, 0.2)',
-            }}
-          >
-            <Image
-              src={READERS_AGREE_HERO_IMAGE_PATH}
-              alt="Readers Agree — The Agnes Protocol"
-              width={1200}
-              height={896}
-              sizes="(max-width: 960px) 100vw, 960px"
-              style={{ width: '100%', height: 'auto', display: 'block' }}
-              priority
-            />
-          </div>
-
           <div style={{ maxWidth: '36rem' }}>
-            <p
-              style={{
-                margin: '0 0 12px 0',
-                fontSize: '12px',
-                fontWeight: 700,
-                letterSpacing: '0.2em',
-                textTransform: 'uppercase',
-                color: '#fca5a5',
-              }}
-            >
-              The Agnes Protocol
-            </p>
             <h1
               style={{
-                margin: '0 0 14px 0',
+                margin: '0 0 12px 0',
                 fontSize: 'clamp(1.75rem, 5vw, 2.5rem)',
                 fontWeight: 800,
                 lineHeight: 1.15,
@@ -235,77 +202,95 @@ export default function ReadersAgreeLandingClient() {
             </h1>
             <p
               style={{
-                margin: '0 0 14px 0',
-                fontSize: 'clamp(1rem, 2.5vw, 1.2rem)',
+                margin: '0 0 10px 0',
+                fontSize: 'clamp(1rem, 2.5vw, 1.15rem)',
                 lineHeight: 1.5,
                 color: 'rgba(245, 245, 245, 0.92)',
                 fontWeight: 600,
               }}
             >
-              A reader you know thought you&apos;d connect with this. Nearly all ★★★★★ reviews.
+              A reader you know thought you&apos;d connect with this.
             </p>
             <p
               style={{
                 margin: 0,
                 fontSize: '16px',
-                lineHeight: 1.65,
+                lineHeight: 1.5,
                 color: 'rgba(245, 245, 245, 0.72)',
               }}
             >
-              Read what real readers said on Amazon and Barnes &amp; Noble — then start with 4 free
-              sample chapters.
+              Start wherever you&apos;d like.
             </p>
           </div>
-        </div>
-      </section>
 
-      <section style={{ padding: '0 16px 56px', maxWidth: '960px', margin: '0 auto' }}>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-            gap: '20px',
-          }}
-        >
-          <ReviewCard
-            stars="★★★★★"
-            title="Amazon Readers"
-            href={amazonGoHref}
-            cta="Read the Reviews"
-            variant="retailer"
-            onNavigate={() =>
-              trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK, {}, {
-                source: 'readers-agree',
-                searchParams,
-              })
-            }
-          />
-          <ReviewCard
-            stars="★★★★★"
-            title="Barnes & Noble Readers"
-            href={bnGoHref}
-            cta="Read the Reviews"
-            variant="retailer"
-            onNavigate={() =>
-              trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_BN_CLICK, {}, {
-                source: 'readers-agree',
-                searchParams,
-              })
-            }
-          />
-          <ReviewCard
-            stars="📖"
-            title="Read 4 FREE Sample Chapters"
-            href={sampleChaptersHref}
-            cta="Start Reading"
-            variant="sample"
-            onNavigate={() =>
-              trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_SAMPLE_CHAPTERS_CLICK, {}, {
-                source: 'readers-agree',
-                searchParams,
-              })
-            }
-          />
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+              gap: '20px',
+            }}
+          >
+            <ReviewCard
+              stars="★★★★★"
+              title="Amazon Readers"
+              href={amazonGoHref}
+              cta="Read the Reviews"
+              variant="retailer"
+              onNavigate={() =>
+                trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK, {}, {
+                  source: 'readers-agree',
+                  searchParams,
+                })
+              }
+            />
+            <ReviewCard
+              stars="★★★★★"
+              title="Barnes & Noble Readers"
+              href={bnGoHref}
+              cta="Read the Reviews"
+              variant="retailer"
+              onNavigate={() =>
+                trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_BN_CLICK, {}, {
+                  source: 'readers-agree',
+                  searchParams,
+                })
+              }
+            />
+            <ReviewCard
+              stars="📖"
+              title="Read 4 FREE Sample Chapters"
+              href={sampleChaptersHref}
+              cta="Start Reading"
+              variant="sample"
+              onNavigate={() =>
+                trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_SAMPLE_CHAPTERS_CLICK, {}, {
+                  source: 'readers-agree',
+                  searchParams,
+                })
+              }
+            />
+          </div>
+
+          <div
+            style={{
+              position: 'relative',
+              width: '100%',
+              marginTop: '8px',
+              borderRadius: '12px',
+              overflow: 'hidden',
+              boxShadow:
+                '0 24px 60px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255,255,255,0.08), 0 0 48px rgba(185, 28, 28, 0.2)',
+            }}
+          >
+            <Image
+              src={READERS_AGREE_HERO_IMAGE_PATH}
+              alt="Readers Agree — The Agnes Protocol"
+              width={1200}
+              height={896}
+              sizes="(max-width: 960px) 100vw, 960px"
+              style={{ width: '100%', height: 'auto', display: 'block' }}
+            />
+          </div>
         </div>
       </section>
 
