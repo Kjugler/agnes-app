@@ -2,9 +2,10 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useEffect, useMemo, useRef, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useSearchParams } from 'next/navigation';
 import SiteFooter from '@/components/SiteFooter';
+import { isReadersAgreeDorothyBridgeEnabled } from '@/lib/funnelConfig';
 import { trackMeta } from '@/lib/metaPixel';
 import { trackTikTok } from '@/lib/tiktokPixel';
 import {
@@ -14,6 +15,13 @@ import {
   READERS_AGREE_HERO_IMAGE_PATH,
   SAMPLE_CHAPTERS_PATH,
 } from '@/lib/readerRecommendationLanding';
+import {
+  clearReadersAgreeMomentum,
+  clearOrphanReadersAgreeValidatedSignal,
+  hasReadersAgreeReviewMomentum,
+  READERS_AGREE_MOMENTUM_STORAGE_KEYS,
+  syncReadersAgreeMomentumState,
+} from '@/lib/readersAgreeMomentum';
 import {
   FUNNEL_EVENT_TYPES,
   trackFunnelEvent,
@@ -63,6 +71,7 @@ function ReviewCard({
   cta,
   variant,
   onNavigate,
+  highlighted,
 }: {
   stars: string;
   title: string;
@@ -70,6 +79,7 @@ function ReviewCard({
   cta: string;
   variant: 'retailer' | 'sample';
   onNavigate?: () => void;
+  highlighted?: boolean;
 }) {
   const isSample = variant === 'sample';
   const ctaStyle = isSample ? sampleCta : externalCta;
@@ -80,7 +90,13 @@ function ReviewCard({
       onClick={() => onNavigate?.()}
       style={{
         ...cardBase,
-        borderColor: isSample ? 'rgba(0, 255, 127, 0.35)' : undefined,
+        width: '100%',
+        borderColor: isSample
+          ? highlighted
+            ? 'rgba(0, 255, 127, 0.65)'
+            : 'rgba(0, 255, 127, 0.35)'
+          : undefined,
+        boxShadow: isSample && highlighted ? '0 0 32px rgba(0, 255, 127, 0.22)' : cardBase.boxShadow,
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.borderColor = isSample
@@ -104,9 +120,12 @@ function ReviewCard({
   );
 }
 
+const MOMENTUM_ENABLED = isReadersAgreeDorothyBridgeEnabled();
+
 export default function ReadersAgreeLandingClient() {
   const searchParams = useSearchParams();
   const viewFiredRef = useRef(false);
+  const [momentumActive, setMomentumActive] = useState(false);
 
   useFunnelPageEngagement({
     pageViewType: FUNNEL_EVENT_TYPES.READERS_AGREE_PAGE_VIEW,
@@ -144,6 +163,58 @@ export default function ReadersAgreeLandingClient() {
       content_name: 'Readers Agree Landing',
       content_type: 'product',
     });
+  }, []);
+
+  useEffect(() => {
+    if (!MOMENTUM_ENABLED) return;
+
+    const applyMomentumIfReady = () => {
+      clearOrphanReadersAgreeValidatedSignal();
+      const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+      if (nav?.type === 'reload' && !hasReadersAgreeReviewMomentum()) {
+        clearReadersAgreeMomentum();
+        setMomentumActive(false);
+        return;
+      }
+      if (syncReadersAgreeMomentumState()) {
+        setMomentumActive(true);
+      }
+    };
+
+    applyMomentumIfReady();
+
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) applyMomentumIfReady();
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return;
+      applyMomentumIfReady();
+    };
+
+    const onWindowFocus = () => {
+      applyMomentumIfReady();
+    };
+
+    const onStorage = (event: StorageEvent) => {
+      if (
+        event.key === READERS_AGREE_MOMENTUM_STORAGE_KEYS.validated ||
+        event.key === READERS_AGREE_MOMENTUM_STORAGE_KEYS.active
+      ) {
+        applyMomentumIfReady();
+      }
+    };
+
+    window.addEventListener('pageshow', onPageShow);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('focus', onWindowFocus);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('pageshow', onPageShow);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('focus', onWindowFocus);
+      window.removeEventListener('storage', onStorage);
+    };
   }, []);
 
   return (
@@ -219,7 +290,7 @@ export default function ReadersAgreeLandingClient() {
                 color: 'rgba(245, 245, 245, 0.72)',
               }}
             >
-              Start wherever you&apos;d like.
+              {momentumActive ? 'Start with four free chapters.' : 'Start wherever you\u2019d like.'}
             </p>
           </div>
 
@@ -256,19 +327,23 @@ export default function ReadersAgreeLandingClient() {
                 })
               }
             />
-            <ReviewCard
-              stars="📖"
-              title="Read 4 FREE Sample Chapters"
-              href={sampleChaptersHref}
-              cta="Start Reading"
-              variant="sample"
-              onNavigate={() =>
-                trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_SAMPLE_CHAPTERS_CLICK, {}, {
-                  source: 'readers-agree',
-                  searchParams,
-                })
-              }
-            />
+            <div style={{ order: momentumActive ? -1 : 0, display: 'flex', width: '100%' }}>
+              <ReviewCard
+                stars="📖"
+                title="Read 4 FREE Sample Chapters"
+                href={sampleChaptersHref}
+                cta="Start Reading"
+                variant="sample"
+                highlighted={momentumActive}
+                onNavigate={() => {
+                  clearReadersAgreeMomentum();
+                  trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_SAMPLE_CHAPTERS_CLICK, {}, {
+                    source: 'readers-agree',
+                    searchParams,
+                  });
+                }}
+              />
+            </div>
           </div>
 
           <div

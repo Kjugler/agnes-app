@@ -9,6 +9,7 @@ import {
   READERS_AGREE_PATH,
   SAMPLE_CHAPTERS_PATH,
 } from '@/lib/readerRecommendationLanding';
+import { markReadersAgreeReviewOpened } from '@/lib/readersAgreeMomentum';
 
 const REDIRECT_DELAY_MS = 2500;
 const BRIDGE_ENABLED = isReadersAgreeDorothyBridgeEnabled();
@@ -255,6 +256,7 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
               href={destinationUrl}
               target="_blank"
               rel="noopener noreferrer"
+              onPointerDown={() => markReadersAgreeReviewOpened()}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
