@@ -40,15 +40,6 @@ export function hasReadersAgreeReviewMomentum(): boolean {
   return read(REVIEW_VALIDATED_KEY) === '1';
 }
 
-function hasMomentumActive(): boolean {
-  if (typeof window === 'undefined') return false;
-  try {
-    return sessionStorage.getItem(MOMENTUM_ACTIVE_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-
 export function clearOrphanReadersAgreeValidatedSignal(): void {
   if (typeof window === 'undefined') return;
   if (hasReadersAgreeReviewMomentum()) return;
@@ -88,3 +79,41 @@ export const READERS_AGREE_MOMENTUM_STORAGE_KEYS = {
   validated: REVIEW_VALIDATED_KEY,
   active: MOMENTUM_ACTIVE_KEY,
 } as const;
+
+const POPUP_BLOCKED_KEY = 'rrf_retailer_popup_blocked';
+
+export function markRetailerPopupBlocked(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(POPUP_BLOCKED_KEY, '1');
+  } catch {
+    // ignore
+  }
+}
+
+export function isRetailerPopupBlocked(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return sessionStorage.getItem(POPUP_BLOCKED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function clearRetailerPopupBlocked(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.removeItem(POPUP_BLOCKED_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+export function isReadersAgreeContinuationActive(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return sessionStorage.getItem(MOMENTUM_ACTIVE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}

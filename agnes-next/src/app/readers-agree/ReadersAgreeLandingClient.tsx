@@ -2,13 +2,16 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useMemo, useRef, type CSSProperties, type MouseEvent } from 'react';
 import { useSearchParams } from 'next/navigation';
 import SiteFooter from '@/components/SiteFooter';
 import { isReadersAgreeDorothyBridgeEnabled } from '@/lib/funnelConfig';
 import { trackMeta } from '@/lib/metaPixel';
 import { trackTikTok } from '@/lib/tiktokPixel';
 import {
+  AMAZON_REVIEWS_URL,
+  BARNES_NOBLE_REVIEWS_URL,
   buildReadersAgreePathWithTracking,
   READERS_AGREE_GO_AMAZON_PATH,
   READERS_AGREE_GO_BN_PATH,
@@ -16,11 +19,8 @@ import {
   SAMPLE_CHAPTERS_PATH,
 } from '@/lib/readerRecommendationLanding';
 import {
-  clearReadersAgreeMomentum,
-  clearOrphanReadersAgreeValidatedSignal,
-  hasReadersAgreeReviewMomentum,
-  READERS_AGREE_MOMENTUM_STORAGE_KEYS,
-  syncReadersAgreeMomentumState,
+  markReadersAgreeReviewOpened,
+  markRetailerPopupBlocked,
 } from '@/lib/readersAgreeMomentum';
 import {
   FUNNEL_EVENT_TYPES,
@@ -40,6 +40,7 @@ const cardBase: CSSProperties = {
   textDecoration: 'none',
   color: '#f5f5f5',
   transition: 'border-color 0.2s ease, transform 0.2s ease',
+  cursor: 'pointer',
 };
 
 const externalCta: CSSProperties = {
@@ -71,7 +72,7 @@ function ReviewCard({
   cta,
   variant,
   onNavigate,
-  highlighted,
+  onRetailerTap,
 }: {
   stars: string;
   title: string;
@@ -79,53 +80,69 @@ function ReviewCard({
   cta: string;
   variant: 'retailer' | 'sample';
   onNavigate?: () => void;
-  highlighted?: boolean;
+  onRetailerTap?: (event: MouseEvent<HTMLAnchorElement>) => void;
 }) {
   const isSample = variant === 'sample';
   const ctaStyle = isSample ? sampleCta : externalCta;
+  const isDorothyRetailer = !isSample && onRetailerTap;
 
-  return (
-    <Link
-      href={href}
-      onClick={() => onNavigate?.()}
-      style={{
-        ...cardBase,
-        width: '100%',
-        borderColor: isSample
-          ? highlighted
-            ? 'rgba(0, 255, 127, 0.65)'
-            : 'rgba(0, 255, 127, 0.35)'
-          : undefined,
-        boxShadow: isSample && highlighted ? '0 0 32px rgba(0, 255, 127, 0.22)' : cardBase.boxShadow,
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = isSample
-          ? 'rgba(0, 255, 127, 0.65)'
-          : 'rgba(220, 38, 38, 0.55)';
-        e.currentTarget.style.transform = 'translateY(-2px)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = isSample
-          ? 'rgba(0, 255, 127, 0.35)'
-          : 'rgba(255, 255, 255, 0.12)';
-        e.currentTarget.style.transform = 'translateY(0)';
-      }}
-    >
+  const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (isDorothyRetailer) {
+      onRetailerTap!(event);
+      return;
+    }
+    onNavigate?.();
+  };
+
+  const cardProps = {
+    href,
+    onClick: handleClick,
+    style: {
+      ...cardBase,
+      width: '100%' as const,
+      borderColor: isSample ? 'rgba(0, 255, 127, 0.35)' : undefined,
+    },
+    onMouseEnter: (e: MouseEvent<HTMLAnchorElement>) => {
+      e.currentTarget.style.borderColor = isSample
+        ? 'rgba(0, 255, 127, 0.65)'
+        : 'rgba(220, 38, 38, 0.55)';
+      e.currentTarget.style.transform = 'translateY(-2px)';
+    },
+    onMouseLeave: (e: MouseEvent<HTMLAnchorElement>) => {
+      e.currentTarget.style.borderColor = isSample
+        ? 'rgba(0, 255, 127, 0.35)'
+        : 'rgba(255, 255, 255, 0.12)';
+      e.currentTarget.style.transform = 'translateY(0)';
+    },
+  };
+
+  const inner = (
+    <>
       <div style={{ fontSize: '18px', letterSpacing: '0.06em' }} aria-hidden>
         {stars}
       </div>
       <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, lineHeight: 1.3 }}>{title}</h2>
       <span style={ctaStyle}>{cta} →</span>
-    </Link>
+    </>
+  );
+
+  if (isSample) {
+    return <Link {...cardProps}>{inner}</Link>;
+  }
+
+  return (
+    <a {...cardProps} {...(isDorothyRetailer ? { rel: 'noopener noreferrer' } : {})}>
+      {inner}
+    </a>
   );
 }
 
-const MOMENTUM_ENABLED = isReadersAgreeDorothyBridgeEnabled();
+const BRIDGE_ENABLED = isReadersAgreeDorothyBridgeEnabled();
 
 export default function ReadersAgreeLandingClient() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const viewFiredRef = useRef(false);
-  const [momentumActive, setMomentumActive] = useState(false);
 
   useFunnelPageEngagement({
     pageViewType: FUNNEL_EVENT_TYPES.READERS_AGREE_PAGE_VIEW,
@@ -165,57 +182,22 @@ export default function ReadersAgreeLandingClient() {
     });
   }, []);
 
-  useEffect(() => {
-    if (!MOMENTUM_ENABLED) return;
-
-    const applyMomentumIfReady = () => {
-      clearOrphanReadersAgreeValidatedSignal();
-      const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
-      if (nav?.type === 'reload' && !hasReadersAgreeReviewMomentum()) {
-        clearReadersAgreeMomentum();
-        setMomentumActive(false);
-        return;
-      }
-      if (syncReadersAgreeMomentumState()) {
-        setMomentumActive(true);
-      }
-    };
-
-    applyMomentumIfReady();
-
-    const onPageShow = (event: PageTransitionEvent) => {
-      if (event.persisted) applyMomentumIfReady();
-    };
-
-    const onVisibilityChange = () => {
-      if (document.visibilityState !== 'visible') return;
-      applyMomentumIfReady();
-    };
-
-    const onWindowFocus = () => {
-      applyMomentumIfReady();
-    };
-
-    const onStorage = (event: StorageEvent) => {
-      if (
-        event.key === READERS_AGREE_MOMENTUM_STORAGE_KEYS.validated ||
-        event.key === READERS_AGREE_MOMENTUM_STORAGE_KEYS.active
-      ) {
-        applyMomentumIfReady();
-      }
-    };
-
-    window.addEventListener('pageshow', onPageShow);
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    window.addEventListener('focus', onWindowFocus);
-    window.addEventListener('storage', onStorage);
-    return () => {
-      window.removeEventListener('pageshow', onPageShow);
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-      window.removeEventListener('focus', onWindowFocus);
-      window.removeEventListener('storage', onStorage);
-    };
-  }, []);
+  const handleRetailerTap = (
+    event: MouseEvent<HTMLAnchorElement>,
+    destinationUrl: string,
+    bridgeHref: string,
+    trackClick: () => void
+  ) => {
+    event.preventDefault();
+    trackClick();
+    const opened = window.open(destinationUrl, '_blank', 'noopener,noreferrer');
+    if (opened) {
+      markReadersAgreeReviewOpened();
+    } else {
+      markRetailerPopupBlocked();
+    }
+    router.push(bridgeHref);
+  };
 
   return (
     <main
@@ -290,7 +272,7 @@ export default function ReadersAgreeLandingClient() {
                 color: 'rgba(245, 245, 245, 0.72)',
               }}
             >
-              {momentumActive ? 'Start with four free chapters.' : 'Start wherever you\u2019d like.'}
+              Start wherever you&apos;d like.
             </p>
           </div>
 
@@ -301,49 +283,76 @@ export default function ReadersAgreeLandingClient() {
               gap: '20px',
             }}
           >
+            {BRIDGE_ENABLED ? (
+              <>
+                <ReviewCard
+                  stars="★★★★★"
+                  title="Amazon Readers"
+                  href={AMAZON_REVIEWS_URL}
+                  cta="Read the Reviews"
+                  variant="retailer"
+                  onRetailerTap={(event) =>
+                    handleRetailerTap(event, AMAZON_REVIEWS_URL, amazonGoHref, () =>
+                      trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK, {}, {
+                        source: 'readers-agree',
+                        searchParams,
+                      })
+                    )
+                  }
+                />
+                <ReviewCard
+                  stars="★★★★★"
+                  title="Barnes & Noble Readers"
+                  href={BARNES_NOBLE_REVIEWS_URL}
+                  cta="Read the Reviews"
+                  variant="retailer"
+                  onRetailerTap={(event) =>
+                    handleRetailerTap(event, BARNES_NOBLE_REVIEWS_URL, bnGoHref, () =>
+                      trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_BN_CLICK, {}, {
+                        source: 'readers-agree',
+                        searchParams,
+                      })
+                    )
+                  }
+                />
+              </>
+            ) : (
+              <>
+                <Link href={amazonGoHref} style={{ ...cardBase, width: '100%' }} onClick={() =>
+                    trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK, {}, {
+                      source: 'readers-agree',
+                      searchParams,
+                    })
+                  }>
+                  <div style={{ fontSize: '18px', letterSpacing: '0.06em' }} aria-hidden>★★★★★</div>
+                  <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, lineHeight: 1.3 }}>Amazon Readers</h2>
+                  <span style={externalCta}>Read the Reviews →</span>
+                </Link>
+                <Link href={bnGoHref} style={{ ...cardBase, width: '100%' }} onClick={() =>
+                    trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_BN_CLICK, {}, {
+                      source: 'readers-agree',
+                      searchParams,
+                    })
+                  }>
+                  <div style={{ fontSize: '18px', letterSpacing: '0.06em' }} aria-hidden>★★★★★</div>
+                  <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, lineHeight: 1.3 }}>Barnes & Noble Readers</h2>
+                  <span style={externalCta}>Read the Reviews →</span>
+                </Link>
+              </>
+            )}
             <ReviewCard
-              stars="★★★★★"
-              title="Amazon Readers"
-              href={amazonGoHref}
-              cta="Read the Reviews"
-              variant="retailer"
+              stars="📖"
+              title="Read 4 FREE Sample Chapters"
+              href={sampleChaptersHref}
+              cta="Start Reading"
+              variant="sample"
               onNavigate={() =>
-                trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK, {}, {
+                trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_SAMPLE_CHAPTERS_CLICK, {}, {
                   source: 'readers-agree',
                   searchParams,
                 })
               }
             />
-            <ReviewCard
-              stars="★★★★★"
-              title="Barnes & Noble Readers"
-              href={bnGoHref}
-              cta="Read the Reviews"
-              variant="retailer"
-              onNavigate={() =>
-                trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_BN_CLICK, {}, {
-                  source: 'readers-agree',
-                  searchParams,
-                })
-              }
-            />
-            <div style={{ order: momentumActive ? -1 : 0, display: 'flex', width: '100%' }}>
-              <ReviewCard
-                stars="📖"
-                title="Read 4 FREE Sample Chapters"
-                href={sampleChaptersHref}
-                cta="Start Reading"
-                variant="sample"
-                highlighted={momentumActive}
-                onNavigate={() => {
-                  clearReadersAgreeMomentum();
-                  trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_SAMPLE_CHAPTERS_CLICK, {}, {
-                    source: 'readers-agree',
-                    searchParams,
-                  });
-                }}
-              />
-            </div>
           </div>
 
           <div

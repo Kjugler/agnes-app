@@ -9,7 +9,15 @@ import {
   READERS_AGREE_PATH,
   SAMPLE_CHAPTERS_PATH,
 } from '@/lib/readerRecommendationLanding';
-import { markReadersAgreeReviewOpened } from '@/lib/readersAgreeMomentum';
+import {
+  clearRetailerPopupBlocked,
+  isReadersAgreeContinuationActive,
+  isRetailerPopupBlocked,
+  markReadersAgreeReviewOpened,
+  READERS_AGREE_MOMENTUM_STORAGE_KEYS,
+  syncReadersAgreeMomentumState,
+} from '@/lib/readersAgreeMomentum';
+import { FUNNEL_EVENT_TYPES, trackFunnelEvent } from '@/lib/funnelTracking';
 
 const REDIRECT_DELAY_MS = 2500;
 const BRIDGE_ENABLED = isReadersAgreeDorothyBridgeEnabled();
@@ -52,6 +60,29 @@ const panelStyle = {
   flexDirection: 'column',
   alignItems: 'center',
   gap: '20px',
+} as const;
+
+const quietLinkStyle = {
+  fontSize: '14px',
+  color: 'rgba(245, 245, 245, 0.55)',
+  textDecoration: 'underline',
+  padding: '4px 0',
+} as const;
+
+const samplePrimaryCtaStyle = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: '14px 20px',
+  borderRadius: '8px',
+  fontSize: '15px',
+  fontWeight: 700,
+  background: '#00ff7f',
+  color: '#0a0a0a',
+  border: 'none',
+  boxShadow: '0 0 24px rgba(0, 255, 127, 0.25)',
+  textDecoration: 'none',
+  width: '100%',
 } as const;
 
 function LegacyReviewRedirectClient({ heading, destinationUrl }: ReviewRedirectClientProps) {
@@ -204,6 +235,9 @@ function LegacyReviewRedirectClient({ heading, destinationUrl }: ReviewRedirectC
 
 function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRedirectClientProps) {
   const searchParams = useSearchParams();
+  const hasLeftTabRef = useRef(false);
+  const [continuationActive, setContinuationActive] = useState(false);
+  const [popupBlocked, setPopupBlocked] = useState(false);
 
   const readersAgreeHref = useMemo(
     () => buildReadersAgreePathWithTracking(READERS_AGREE_PATH, searchParams),
@@ -214,6 +248,137 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
     () => buildReadersAgreePathWithTracking(SAMPLE_CHAPTERS_PATH, searchParams),
     [searchParams]
   );
+
+  const tryActivateContinuation = useCallback(() => {
+    if (syncReadersAgreeMomentumState()) {
+      setContinuationActive(true);
+      clearRetailerPopupBlocked();
+      setPopupBlocked(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    setContinuationActive(isReadersAgreeContinuationActive());
+    setPopupBlocked(isRetailerPopupBlocked());
+  }, []);
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        hasLeftTabRef.current = true;
+        return;
+      }
+      if (document.visibilityState === 'visible' && hasLeftTabRef.current) {
+        tryActivateContinuation();
+      }
+    };
+
+    const onWindowFocus = () => {
+      if (hasLeftTabRef.current) {
+        tryActivateContinuation();
+      }
+    };
+
+    const onStorage = (event: StorageEvent) => {
+      if (
+        event.key === READERS_AGREE_MOMENTUM_STORAGE_KEYS.validated &&
+        event.newValue === '1' &&
+        hasLeftTabRef.current
+      ) {
+        tryActivateContinuation();
+      }
+    };
+
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (!event.persisted) return;
+      setContinuationActive(isReadersAgreeContinuationActive());
+      setPopupBlocked(isRetailerPopupBlocked());
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('focus', onWindowFocus);
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('pageshow', onPageShow);
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('focus', onWindowFocus);
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('pageshow', onPageShow);
+    };
+  }, [tryActivateContinuation]);
+
+  const handleQuietRetailerOpen = () => {
+    const opened = window.open(destinationUrl, '_blank', 'noopener,noreferrer');
+    if (opened) {
+      markReadersAgreeReviewOpened();
+      clearRetailerPopupBlocked();
+      setPopupBlocked(false);
+    }
+  };
+
+  const handleSampleClick = () => {
+    trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_SAMPLE_CHAPTERS_CLICK, {}, {
+      source: 'readers-agree-bridge',
+      searchParams,
+    });
+  };
+
+  const actionColumnStyle = {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '12px',
+    width: '100%',
+    maxWidth: '20rem',
+  };
+
+  if (continuationActive) {
+    return (
+      <main style={shellStyle}>
+        <section style={sectionStyle}>
+          <div style={panelStyle}>
+            <div>
+              <h1
+                style={{
+                  margin: '0 0 8px 0',
+                  fontSize: 'clamp(1.35rem, 4vw, 1.75rem)',
+                  fontWeight: 800,
+                  lineHeight: 1.2,
+                  letterSpacing: '-0.02em',
+                }}
+              >
+                Ready to see for yourself?
+              </h1>
+            </div>
+
+            <div style={actionColumnStyle}>
+              <Link href={sampleChaptersHref} onClick={handleSampleClick} style={samplePrimaryCtaStyle}>
+                Start Reading the 4 FREE Sample Chapters
+              </Link>
+
+              <button
+                type="button"
+                onClick={handleQuietRetailerOpen}
+                style={{
+                  ...quietLinkStyle,
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  font: 'inherit',
+                }}
+              >
+                Want another look at {retailerLabel}?
+              </button>
+
+              <Link href={readersAgreeHref} style={quietLinkStyle}>
+                Back
+              </Link>
+            </div>
+          </div>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main style={shellStyle}>
@@ -239,69 +404,28 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
                 color: 'rgba(245, 245, 245, 0.72)',
               }}
             >
-              Opens in a new tab.
+              {popupBlocked ? 'Your browser may have blocked the review window.' : 'Opened in a new tab.'}
             </p>
           </div>
 
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '12px',
-              width: '100%',
-              maxWidth: '20rem',
-            }}
-          >
-            <a
-              href={destinationUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              onPointerDown={() => markReadersAgreeReviewOpened()}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '14px 20px',
-                borderRadius: '8px',
-                fontSize: '15px',
-                fontWeight: 700,
-                border: '1px solid rgba(220, 38, 38, 0.55)',
-                background: 'rgba(220, 38, 38, 0.18)',
-                color: '#fff',
-                textDecoration: 'none',
-              }}
-            >
-              Open {retailerLabel} reviews
-            </a>
+          <div style={actionColumnStyle}>
+            {popupBlocked && (
+              <button
+                type="button"
+                onClick={handleQuietRetailerOpen}
+                style={{
+                  ...quietLinkStyle,
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  font: 'inherit',
+                }}
+              >
+                Open {retailerLabel} reviews
+              </button>
+            )}
 
-            <Link
-              href={sampleChaptersHref}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '14px 20px',
-                borderRadius: '8px',
-                fontSize: '15px',
-                fontWeight: 700,
-                border: '1px solid rgba(0, 255, 127, 0.35)',
-                background: 'rgba(0, 255, 127, 0.08)',
-                color: '#fff',
-                textDecoration: 'none',
-              }}
-            >
-              Read 4 free sample chapters
-            </Link>
-
-            <Link
-              href={readersAgreeHref}
-              style={{
-                fontSize: '14px',
-                color: 'rgba(245, 245, 245, 0.55)',
-                textDecoration: 'underline',
-                padding: '4px 0',
-              }}
-            >
+            <Link href={readersAgreeHref} style={quietLinkStyle}>
               Back
             </Link>
           </div>
