@@ -30,6 +30,6 @@ export function isScoreCruiseVisualArchived(): boolean {
  * Set NEXT_PUBLIC_READERS_AGREE_DOROTHY_BRIDGE=1 to enable. Default off preserves auto-redirect.
  */
 export function isReadersAgreeDorothyBridgeEnabled(): boolean {
-  const v = process.env.NEXT_PUBLIC_READERS_AGREE_DOROTHY_BRIDGE;
+  const v = process.env.NEXT_PUBLIC_READERS_AGREE_DOROTHY_BRIDGE?.trim();
   return v === '1' || v === 'true';
 }
