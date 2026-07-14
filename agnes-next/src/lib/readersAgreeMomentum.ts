@@ -2,6 +2,7 @@
 
 const REVIEW_VALIDATED_KEY = 'rrf_review_validated';
 const MOMENTUM_ACTIVE_KEY = 'rrf_momentum_active';
+const BRIDGE_DEPARTED_KEY = 'rrf_bridge_went_hidden';
 
 function read(key: string): string | null {
   try {
@@ -40,6 +41,33 @@ export function hasReadersAgreeReviewMomentum(): boolean {
   return read(REVIEW_VALIDATED_KEY) === '1';
 }
 
+export function markBridgeTabDeparted(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(BRIDGE_DEPARTED_KEY, '1');
+  } catch {
+    // ignore
+  }
+}
+
+export function hasBridgeTabDeparted(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return sessionStorage.getItem(BRIDGE_DEPARTED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function clearBridgeTabDeparted(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.removeItem(BRIDGE_DEPARTED_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 export function clearOrphanReadersAgreeValidatedSignal(): void {
   if (typeof window === 'undefined') return;
   if (hasReadersAgreeReviewMomentum()) return;
@@ -64,6 +92,15 @@ export function syncReadersAgreeMomentumState(): boolean {
   }
 }
 
+/** Promote to continuation only after the visitor left the bridge and returned. */
+export function tryPromoteReadersAgreeContinuation(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (isReadersAgreeContinuationActive()) return true;
+  if (!hasReadersAgreeReviewMomentum()) return false;
+  if (!hasBridgeTabDeparted()) return false;
+  return syncReadersAgreeMomentumState();
+}
+
 export function clearReadersAgreeMomentum(): void {
   if (typeof window === 'undefined') return;
   remove(MOMENTUM_ACTIVE_KEY);
@@ -78,6 +115,7 @@ export function clearReadersAgreeMomentum(): void {
 export const READERS_AGREE_MOMENTUM_STORAGE_KEYS = {
   validated: REVIEW_VALIDATED_KEY,
   active: MOMENTUM_ACTIVE_KEY,
+  departed: BRIDGE_DEPARTED_KEY,
 } as const;
 
 const POPUP_BLOCKED_KEY = 'rrf_retailer_popup_blocked';
@@ -107,6 +145,13 @@ export function clearRetailerPopupBlocked(): void {
   } catch {
     // ignore
   }
+}
+
+export function resetBridgeSessionState(): void {
+  if (typeof window === 'undefined') return;
+  clearBridgeTabDeparted();
+  clearReadersAgreeMomentum();
+  clearRetailerPopupBlocked();
 }
 
 export function isReadersAgreeContinuationActive(): boolean {

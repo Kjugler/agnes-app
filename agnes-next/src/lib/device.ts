@@ -65,3 +65,11 @@ export function detectDevice(reqOrHeaders: NextRequest | Headers): DeviceType {
 
   return 'desktop';
 }
+
+/** Client-side iOS detection (Safari, Chrome/CriOS, Firefox/FxiOS on iPhone/iPad). */
+export function isIOSMobileBrowser(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent;
+  if (/iPhone|iPad|iPod/.test(ua)) return true;
+  return navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+}

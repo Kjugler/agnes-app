@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { isIOSMobileBrowser } from '@/lib/device';
 import { isReadersAgreeDorothyBridgeEnabled } from '@/lib/funnelConfig';
 import {
   buildReadersAgreePathWithTracking,
@@ -11,16 +12,22 @@ import {
 } from '@/lib/readerRecommendationLanding';
 import {
   clearRetailerPopupBlocked,
+  hasReadersAgreeReviewMomentum,
   isReadersAgreeContinuationActive,
   isRetailerPopupBlocked,
+  markBridgeTabDeparted,
   markReadersAgreeReviewOpened,
   READERS_AGREE_MOMENTUM_STORAGE_KEYS,
-  syncReadersAgreeMomentumState,
+  tryPromoteReadersAgreeContinuation,
 } from '@/lib/readersAgreeMomentum';
-import { FUNNEL_EVENT_TYPES, trackFunnelEvent } from '@/lib/funnelTracking';
+import { FUNNEL_EVENT_TYPES, trackFunnelEvent, type FunnelEventType } from '@/lib/funnelTracking';
 
 const REDIRECT_DELAY_MS = 2500;
 const BRIDGE_ENABLED = isReadersAgreeDorothyBridgeEnabled();
+
+function subscribeNoop() {
+  return () => {};
+}
 
 function isBackForwardNavigation(): boolean {
   if (typeof window === 'undefined') return false;
@@ -84,6 +91,27 @@ const samplePrimaryCtaStyle = {
   textDecoration: 'none',
   width: '100%',
 } as const;
+
+const retailerBridgeCtaStyle = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: '14px 20px',
+  borderRadius: '8px',
+  fontSize: '15px',
+  fontWeight: 700,
+  border: '1px solid rgba(220, 38, 38, 0.55)',
+  background: 'rgba(220, 38, 38, 0.18)',
+  color: '#fff',
+  textDecoration: 'none',
+  width: '100%',
+} as const;
+
+function retailerClickEventType(label: string): FunnelEventType {
+  return label === 'Barnes & Noble'
+    ? FUNNEL_EVENT_TYPES.READERS_AGREE_BN_CLICK
+    : FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK;
+}
 
 function LegacyReviewRedirectClient({ heading, destinationUrl }: ReviewRedirectClientProps) {
   const searchParams = useSearchParams();
@@ -235,13 +263,10 @@ function LegacyReviewRedirectClient({ heading, destinationUrl }: ReviewRedirectC
 
 function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRedirectClientProps) {
   const searchParams = useSearchParams();
-  // True once the tab has been hidden (e.g. user switched to the retailer tab).
-  // Seed on mount: bridge often loads in the background while the retailer tab is focused.
-  const sawHiddenRef = useRef(
-    typeof document !== 'undefined' && document.visibilityState === 'hidden'
-  );
+  const iosTwoTap = useSyncExternalStore(subscribeNoop, isIOSMobileBrowser, () => false);
   const [continuationActive, setContinuationActive] = useState(false);
   const [popupBlocked, setPopupBlocked] = useState(false);
+  const [reviewValidated, setReviewValidated] = useState(false);
 
   const readersAgreeHref = useMemo(
     () => buildReadersAgreePathWithTracking(READERS_AGREE_PATH, searchParams),
@@ -253,72 +278,87 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
     [searchParams]
   );
 
-  const tryActivateContinuation = useCallback(() => {
-    if (syncReadersAgreeMomentumState()) {
+  const retailerClickType = useMemo(
+    () => retailerClickEventType(retailerLabel),
+    [retailerLabel]
+  );
+
+  const applyContinuationIfReady = useCallback(() => {
+    if (tryPromoteReadersAgreeContinuation()) {
       setContinuationActive(true);
       clearRetailerPopupBlocked();
       setPopupBlocked(false);
+      return true;
     }
+    if (isReadersAgreeContinuationActive()) {
+      setContinuationActive(true);
+      return true;
+    }
+    return false;
   }, []);
 
   useEffect(() => {
     setContinuationActive(isReadersAgreeContinuationActive());
     setPopupBlocked(isRetailerPopupBlocked());
-  }, []);
+    setReviewValidated(hasReadersAgreeReviewMomentum());
+    applyContinuationIfReady();
+  }, [applyContinuationIfReady]);
 
   useEffect(() => {
+    const markDeparted = () => markBridgeTabDeparted();
+
     const onVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
-        sawHiddenRef.current = true;
+        markDeparted();
         return;
       }
-      if (document.visibilityState === 'visible' && sawHiddenRef.current) {
-        tryActivateContinuation();
+      if (document.visibilityState === 'visible') {
+        applyContinuationIfReady();
       }
     };
 
-    const onWindowFocus = () => {
-      if (sawHiddenRef.current) {
-        tryActivateContinuation();
-      }
+    const onPageHide = () => markDeparted();
+
+    const onPageShow = () => {
+      applyContinuationIfReady();
     };
 
     const onStorage = (event: StorageEvent) => {
       if (
         event.key === READERS_AGREE_MOMENTUM_STORAGE_KEYS.validated &&
-        event.newValue === '1' &&
-        sawHiddenRef.current
+        event.newValue === '1'
       ) {
-        tryActivateContinuation();
+        applyContinuationIfReady();
       }
     };
 
-    const onPageShow = (event: PageTransitionEvent) => {
-      if (!event.persisted) return;
-      setContinuationActive(isReadersAgreeContinuationActive());
-      setPopupBlocked(isRetailerPopupBlocked());
-    };
-
     document.addEventListener('visibilitychange', onVisibilityChange);
-    window.addEventListener('focus', onWindowFocus);
-    window.addEventListener('storage', onStorage);
+    window.addEventListener('pagehide', onPageHide);
     window.addEventListener('pageshow', onPageShow);
+    window.addEventListener('storage', onStorage);
 
     return () => {
       document.removeEventListener('visibilitychange', onVisibilityChange);
-      window.removeEventListener('focus', onWindowFocus);
-      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('pagehide', onPageHide);
       window.removeEventListener('pageshow', onPageShow);
+      window.removeEventListener('storage', onStorage);
     };
-  }, [tryActivateContinuation]);
+  }, [applyContinuationIfReady]);
+
+  const handleBridgeRetailerClick = () => {
+    markReadersAgreeReviewOpened();
+    setReviewValidated(true);
+    trackFunnelEvent(retailerClickType, {}, {
+      source: 'readers-agree-bridge',
+      searchParams,
+    });
+  };
 
   const handleQuietRetailerOpen = () => {
-    const opened = window.open(destinationUrl, '_blank', 'noopener,noreferrer');
-    if (opened) {
-      markReadersAgreeReviewOpened();
-      clearRetailerPopupBlocked();
-      setPopupBlocked(false);
-    }
+    markReadersAgreeReviewOpened();
+    window.open(destinationUrl, '_blank', 'noopener,noreferrer');
+    clearRetailerPopupBlocked();
+    setPopupBlocked(false);
   };
 
   const handleSampleClick = () => {
@@ -336,8 +376,9 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
     maxWidth: '20rem',
   };
 
+  const showIosRetailerAction = iosTwoTap && !reviewValidated && !continuationActive;
   const showPopupBlockedFallback =
-    popupBlocked && !continuationActive && !sawHiddenRef.current;
+    popupBlocked && !continuationActive && !iosTwoTap;
 
   if (continuationActive) {
     return (
@@ -363,19 +404,17 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
                 Start Reading the 4 FREE Sample Chapters
               </Link>
 
-              <button
-                type="button"
-                onClick={handleQuietRetailerOpen}
+              <a
+                href={destinationUrl}
+                target="_blank"
+                rel="noopener noreferrer"
                 style={{
                   ...quietLinkStyle,
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  font: 'inherit',
+                  display: 'inline',
                 }}
               >
                 Want another look at {retailerLabel}?
-              </button>
+              </a>
 
               <Link href={readersAgreeHref} style={quietLinkStyle}>
                 Back
@@ -411,13 +450,27 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
                 color: 'rgba(245, 245, 245, 0.72)',
               }}
             >
-              {showPopupBlockedFallback
-                ? 'Your browser may have blocked the review window.'
-                : 'Opened in a new tab.'}
+              {showIosRetailerAction
+                ? 'Opens in a new tab.'
+                : showPopupBlockedFallback
+                  ? 'Your browser may have blocked the review window.'
+                  : 'Opened in a new tab.'}
             </p>
           </div>
 
           <div style={actionColumnStyle}>
+            {showIosRetailerAction && (
+              <a
+                href={destinationUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={handleBridgeRetailerClick}
+                style={retailerBridgeCtaStyle}
+              >
+                Open {retailerLabel} reviews
+              </a>
+            )}
+
             {showPopupBlockedFallback && (
               <button
                 type="button"

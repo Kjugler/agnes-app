@@ -3,9 +3,10 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useRef, type CSSProperties, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useSyncExternalStore, type CSSProperties, type MouseEvent } from 'react';
 import { useSearchParams } from 'next/navigation';
 import SiteFooter from '@/components/SiteFooter';
+import { isIOSMobileBrowser } from '@/lib/device';
 import { isReadersAgreeDorothyBridgeEnabled } from '@/lib/funnelConfig';
 import { trackMeta } from '@/lib/metaPixel';
 import { trackTikTok } from '@/lib/tiktokPixel';
@@ -19,8 +20,10 @@ import {
   SAMPLE_CHAPTERS_PATH,
 } from '@/lib/readerRecommendationLanding';
 import {
+  clearBridgeTabDeparted,
   markReadersAgreeReviewOpened,
   markRetailerPopupBlocked,
+  resetBridgeSessionState,
 } from '@/lib/readersAgreeMomentum';
 import {
   FUNNEL_EVENT_TYPES,
@@ -139,10 +142,15 @@ function ReviewCard({
 
 const BRIDGE_ENABLED = isReadersAgreeDorothyBridgeEnabled();
 
+function subscribeNoop() {
+  return () => {};
+}
+
 export default function ReadersAgreeLandingClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const viewFiredRef = useRef(false);
+  const iosTwoTap = useSyncExternalStore(subscribeNoop, isIOSMobileBrowser, () => false);
 
   useFunnelPageEngagement({
     pageViewType: FUNNEL_EVENT_TYPES.READERS_AGREE_PAGE_VIEW,
@@ -190,14 +198,17 @@ export default function ReadersAgreeLandingClient() {
   ) => {
     event.preventDefault();
     trackClick();
-    // window.open often returns null on Safari/iOS even when the tab opens successfully.
-    // Always record the review attempt so the bridge can enter continuation on return.
+    clearBridgeTabDeparted();
     markReadersAgreeReviewOpened();
     const opened = window.open(destinationUrl, '_blank', 'noopener,noreferrer');
     if (!opened) {
       markRetailerPopupBlocked();
     }
     router.push(bridgeHref);
+  };
+
+  const handleIosBridgeNav = () => {
+    resetBridgeSessionState();
   };
 
   return (
@@ -285,38 +296,69 @@ export default function ReadersAgreeLandingClient() {
             }}
           >
             {BRIDGE_ENABLED ? (
-              <>
-                <ReviewCard
-                  stars="★★★★★"
-                  title="Amazon Readers"
-                  href={AMAZON_REVIEWS_URL}
-                  cta="Read the Reviews"
-                  variant="retailer"
-                  onRetailerTap={(event) =>
-                    handleRetailerTap(event, AMAZON_REVIEWS_URL, amazonGoHref, () =>
-                      trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK, {}, {
-                        source: 'readers-agree',
-                        searchParams,
-                      })
-                    )
-                  }
-                />
-                <ReviewCard
-                  stars="★★★★★"
-                  title="Barnes & Noble Readers"
-                  href={BARNES_NOBLE_REVIEWS_URL}
-                  cta="Read the Reviews"
-                  variant="retailer"
-                  onRetailerTap={(event) =>
-                    handleRetailerTap(event, BARNES_NOBLE_REVIEWS_URL, bnGoHref, () =>
-                      trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_BN_CLICK, {}, {
-                        source: 'readers-agree',
-                        searchParams,
-                      })
-                    )
-                  }
-                />
-              </>
+              iosTwoTap ? (
+                <>
+                  <Link
+                    href={amazonGoHref}
+                    style={{ ...cardBase, width: '100%' }}
+                    onClick={handleIosBridgeNav}
+                  >
+                    <div style={{ fontSize: '18px', letterSpacing: '0.06em' }} aria-hidden>
+                      ★★★★★
+                    </div>
+                    <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, lineHeight: 1.3 }}>
+                      Amazon Readers
+                    </h2>
+                    <span style={externalCta}>Read the Reviews →</span>
+                  </Link>
+                  <Link
+                    href={bnGoHref}
+                    style={{ ...cardBase, width: '100%' }}
+                    onClick={handleIosBridgeNav}
+                  >
+                    <div style={{ fontSize: '18px', letterSpacing: '0.06em' }} aria-hidden>
+                      ★★★★★
+                    </div>
+                    <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, lineHeight: 1.3 }}>
+                      Barnes & Noble Readers
+                    </h2>
+                    <span style={externalCta}>Read the Reviews →</span>
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <ReviewCard
+                    stars="★★★★★"
+                    title="Amazon Readers"
+                    href={AMAZON_REVIEWS_URL}
+                    cta="Read the Reviews"
+                    variant="retailer"
+                    onRetailerTap={(event) =>
+                      handleRetailerTap(event, AMAZON_REVIEWS_URL, amazonGoHref, () =>
+                        trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK, {}, {
+                          source: 'readers-agree',
+                          searchParams,
+                        })
+                      )
+                    }
+                  />
+                  <ReviewCard
+                    stars="★★★★★"
+                    title="Barnes & Noble Readers"
+                    href={BARNES_NOBLE_REVIEWS_URL}
+                    cta="Read the Reviews"
+                    variant="retailer"
+                    onRetailerTap={(event) =>
+                      handleRetailerTap(event, BARNES_NOBLE_REVIEWS_URL, bnGoHref, () =>
+                        trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_BN_CLICK, {}, {
+                          source: 'readers-agree',
+                          searchParams,
+                        })
+                      )
+                    }
+                  />
+                </>
+              )
             ) : (
               <>
                 <Link href={amazonGoHref} style={{ ...cardBase, width: '100%' }} onClick={() =>
