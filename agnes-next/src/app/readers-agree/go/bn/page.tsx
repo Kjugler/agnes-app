@@ -25,6 +25,7 @@ export default function BarnesNobleReviewRedirectPage() {
       <ReviewRedirectClient
         heading="Opening Barnes & Noble Reviews…"
         destinationUrl={BARNES_NOBLE_REVIEWS_URL}
+        retailerLabel="Barnes & Noble"
       />
     </Suspense>
   );

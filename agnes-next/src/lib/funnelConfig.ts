@@ -24,3 +24,12 @@ export function isContestEntryUxArchived(): boolean {
 export function isScoreCruiseVisualArchived(): boolean {
   return process.env.NEXT_PUBLIC_SCORE_CRUISE_VISUAL_ENABLED !== 'true';
 }
+
+/**
+ * Readers Agree review bridge: orientation page + new-tab reviews + sample chapters CTA.
+ * Set NEXT_PUBLIC_READERS_AGREE_DOROTHY_BRIDGE=1 to enable. Default off preserves auto-redirect.
+ */
+export function isReadersAgreeDorothyBridgeEnabled(): boolean {
+  const v = process.env.NEXT_PUBLIC_READERS_AGREE_DOROTHY_BRIDGE;
+  return v === '1' || v === 'true';
+}

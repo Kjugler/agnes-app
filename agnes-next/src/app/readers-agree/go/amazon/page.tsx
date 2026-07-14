@@ -22,7 +22,11 @@ function LoadingFallback() {
 export default function AmazonReviewRedirectPage() {
   return (
     <Suspense fallback={<LoadingFallback />}>
-      <ReviewRedirectClient heading="Opening Amazon Reviews…" destinationUrl={AMAZON_REVIEWS_URL} />
+      <ReviewRedirectClient
+        heading="Opening Amazon Reviews…"
+        destinationUrl={AMAZON_REVIEWS_URL}
+        retailerLabel="Amazon"
+      />
     </Suspense>
   );
 }

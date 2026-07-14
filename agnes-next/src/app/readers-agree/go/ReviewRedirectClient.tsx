@@ -3,12 +3,15 @@
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { isReadersAgreeDorothyBridgeEnabled } from '@/lib/funnelConfig';
 import {
   buildReadersAgreePathWithTracking,
   READERS_AGREE_PATH,
+  SAMPLE_CHAPTERS_PATH,
 } from '@/lib/readerRecommendationLanding';
 
 const REDIRECT_DELAY_MS = 2500;
+const BRIDGE_ENABLED = isReadersAgreeDorothyBridgeEnabled();
 
 function isBackForwardNavigation(): boolean {
   if (typeof window === 'undefined') return false;
@@ -19,9 +22,38 @@ function isBackForwardNavigation(): boolean {
 type ReviewRedirectClientProps = {
   heading: string;
   destinationUrl: string;
+  retailerLabel: string;
 };
 
-export default function ReviewRedirectClient({ heading, destinationUrl }: ReviewRedirectClientProps) {
+const shellStyle = {
+  minHeight: '100vh',
+  background: '#050505',
+  color: '#f5f5f5',
+  display: 'flex',
+  flexDirection: 'column',
+} as const;
+
+const sectionStyle = {
+  flex: 1,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: '32px 20px',
+  background:
+    'radial-gradient(ellipse 120% 80% at 50% -20%, rgba(185, 28, 28, 0.35) 0%, transparent 55%), linear-gradient(180deg, #0c0c0c 0%, #050505 100%)',
+} as const;
+
+const panelStyle = {
+  width: '100%',
+  maxWidth: '28rem',
+  textAlign: 'center',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: '20px',
+} as const;
+
+function LegacyReviewRedirectClient({ heading, destinationUrl }: ReviewRedirectClientProps) {
   const searchParams = useSearchParams();
   const [showSpinner, setShowSpinner] = useState(true);
   const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -75,37 +107,9 @@ export default function ReviewRedirectClient({ heading, destinationUrl }: Review
   }, [cancelRedirect]);
 
   return (
-    <main
-      style={{
-        minHeight: '100vh',
-        background: '#050505',
-        color: '#f5f5f5',
-        display: 'flex',
-        flexDirection: 'column',
-      }}
-    >
-      <section
-        style={{
-          flex: 1,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '32px 20px',
-          background:
-            'radial-gradient(ellipse 120% 80% at 50% -20%, rgba(185, 28, 28, 0.35) 0%, transparent 55%), linear-gradient(180deg, #0c0c0c 0%, #050505 100%)',
-        }}
-      >
-        <div
-          style={{
-            width: '100%',
-            maxWidth: '28rem',
-            textAlign: 'center',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: '20px',
-          }}
-        >
+    <main style={shellStyle}>
+      <section style={sectionStyle}>
+        <div style={panelStyle}>
           {showSpinner && (
             <div
               aria-hidden
@@ -195,4 +199,119 @@ export default function ReviewRedirectClient({ heading, destinationUrl }: Review
       `}</style>
     </main>
   );
+}
+
+function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRedirectClientProps) {
+  const searchParams = useSearchParams();
+
+  const readersAgreeHref = useMemo(
+    () => buildReadersAgreePathWithTracking(READERS_AGREE_PATH, searchParams),
+    [searchParams]
+  );
+
+  const sampleChaptersHref = useMemo(
+    () => buildReadersAgreePathWithTracking(SAMPLE_CHAPTERS_PATH, searchParams),
+    [searchParams]
+  );
+
+  return (
+    <main style={shellStyle}>
+      <section style={sectionStyle}>
+        <div style={panelStyle}>
+          <div>
+            <h1
+              style={{
+                margin: '0 0 8px 0',
+                fontSize: 'clamp(1.35rem, 4vw, 1.75rem)',
+                fontWeight: 800,
+                lineHeight: 1.2,
+                letterSpacing: '-0.02em',
+              }}
+            >
+              {retailerLabel} reviews
+            </h1>
+            <p
+              style={{
+                margin: 0,
+                fontSize: '16px',
+                lineHeight: 1.5,
+                color: 'rgba(245, 245, 245, 0.72)',
+              }}
+            >
+              Opens in a new tab.
+            </p>
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+              width: '100%',
+              maxWidth: '20rem',
+            }}
+          >
+            <a
+              href={destinationUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '14px 20px',
+                borderRadius: '8px',
+                fontSize: '15px',
+                fontWeight: 700,
+                border: '1px solid rgba(220, 38, 38, 0.55)',
+                background: 'rgba(220, 38, 38, 0.18)',
+                color: '#fff',
+                textDecoration: 'none',
+              }}
+            >
+              Open {retailerLabel} reviews
+            </a>
+
+            <Link
+              href={sampleChaptersHref}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '14px 20px',
+                borderRadius: '8px',
+                fontSize: '15px',
+                fontWeight: 700,
+                border: '1px solid rgba(0, 255, 127, 0.35)',
+                background: 'rgba(0, 255, 127, 0.08)',
+                color: '#fff',
+                textDecoration: 'none',
+              }}
+            >
+              Read 4 free sample chapters
+            </Link>
+
+            <Link
+              href={readersAgreeHref}
+              style={{
+                fontSize: '14px',
+                color: 'rgba(245, 245, 245, 0.55)',
+                textDecoration: 'underline',
+                padding: '4px 0',
+              }}
+            >
+              Back
+            </Link>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+export default function ReviewRedirectClient(props: ReviewRedirectClientProps) {
+  if (BRIDGE_ENABLED) {
+    return <BridgeReviewRedirectClient {...props} />;
+  }
+  return <LegacyReviewRedirectClient {...props} />;
 }
