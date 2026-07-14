@@ -235,7 +235,11 @@ function LegacyReviewRedirectClient({ heading, destinationUrl }: ReviewRedirectC
 
 function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRedirectClientProps) {
   const searchParams = useSearchParams();
-  const hasLeftTabRef = useRef(false);
+  // True once the tab has been hidden (e.g. user switched to the retailer tab).
+  // Seed on mount: bridge often loads in the background while the retailer tab is focused.
+  const sawHiddenRef = useRef(
+    typeof document !== 'undefined' && document.visibilityState === 'hidden'
+  );
   const [continuationActive, setContinuationActive] = useState(false);
   const [popupBlocked, setPopupBlocked] = useState(false);
 
@@ -265,16 +269,16 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
   useEffect(() => {
     const onVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
-        hasLeftTabRef.current = true;
+        sawHiddenRef.current = true;
         return;
       }
-      if (document.visibilityState === 'visible' && hasLeftTabRef.current) {
+      if (document.visibilityState === 'visible' && sawHiddenRef.current) {
         tryActivateContinuation();
       }
     };
 
     const onWindowFocus = () => {
-      if (hasLeftTabRef.current) {
+      if (sawHiddenRef.current) {
         tryActivateContinuation();
       }
     };
@@ -283,7 +287,7 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
       if (
         event.key === READERS_AGREE_MOMENTUM_STORAGE_KEYS.validated &&
         event.newValue === '1' &&
-        hasLeftTabRef.current
+        sawHiddenRef.current
       ) {
         tryActivateContinuation();
       }
@@ -331,6 +335,9 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
     width: '100%',
     maxWidth: '20rem',
   };
+
+  const showPopupBlockedFallback =
+    popupBlocked && !continuationActive && !sawHiddenRef.current;
 
   if (continuationActive) {
     return (
@@ -404,12 +411,14 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
                 color: 'rgba(245, 245, 245, 0.72)',
               }}
             >
-              {popupBlocked ? 'Your browser may have blocked the review window.' : 'Opened in a new tab.'}
+              {showPopupBlockedFallback
+                ? 'Your browser may have blocked the review window.'
+                : 'Opened in a new tab.'}
             </p>
           </div>
 
           <div style={actionColumnStyle}>
-            {popupBlocked && (
+            {showPopupBlockedFallback && (
               <button
                 type="button"
                 onClick={handleQuietRetailerOpen}

@@ -190,10 +190,11 @@ export default function ReadersAgreeLandingClient() {
   ) => {
     event.preventDefault();
     trackClick();
+    // window.open often returns null on Safari/iOS even when the tab opens successfully.
+    // Always record the review attempt so the bridge can enter continuation on return.
+    markReadersAgreeReviewOpened();
     const opened = window.open(destinationUrl, '_blank', 'noopener,noreferrer');
-    if (opened) {
-      markReadersAgreeReviewOpened();
-    } else {
+    if (!opened) {
       markRetailerPopupBlocked();
     }
     router.push(bridgeHref);
