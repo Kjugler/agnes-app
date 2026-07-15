@@ -73,3 +73,15 @@ export function isIOSMobileBrowser(): boolean {
   if (/iPhone|iPad|iPod/.test(ua)) return true;
   return navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
 }
+
+/**
+ * Client-side mobile touch browsers that use the Dorothy two-tap bridge-first flow.
+ * Covers iOS Safari/Chrome, Android Chrome, Samsung Internet, and other Android WebViews.
+ */
+export function isMobileTouchBrowser(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent;
+  if (isIOSMobileBrowser()) return true;
+  if (/Android/i.test(ua)) return true;
+  return false;
+}

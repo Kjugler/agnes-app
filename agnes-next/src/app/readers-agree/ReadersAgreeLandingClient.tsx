@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useSyncExternalStore, type CSSProperties, type MouseEvent } from 'react';
 import { useSearchParams } from 'next/navigation';
 import SiteFooter from '@/components/SiteFooter';
-import { isIOSMobileBrowser } from '@/lib/device';
+import { isMobileTouchBrowser } from '@/lib/device';
 import { isReadersAgreeDorothyBridgeEnabled } from '@/lib/funnelConfig';
 import { trackMeta } from '@/lib/metaPixel';
 import { trackTikTok } from '@/lib/tiktokPixel';
@@ -150,7 +150,7 @@ export default function ReadersAgreeLandingClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const viewFiredRef = useRef(false);
-  const iosTwoTap = useSyncExternalStore(subscribeNoop, isIOSMobileBrowser, () => false);
+  const mobileTwoTap = useSyncExternalStore(subscribeNoop, isMobileTouchBrowser, () => false);
 
   useFunnelPageEngagement({
     pageViewType: FUNNEL_EVENT_TYPES.READERS_AGREE_PAGE_VIEW,
@@ -296,7 +296,7 @@ export default function ReadersAgreeLandingClient() {
             }}
           >
             {BRIDGE_ENABLED ? (
-              iosTwoTap ? (
+              mobileTwoTap ? (
                 <>
                   <Link
                     href={amazonGoHref}

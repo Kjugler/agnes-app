@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { isIOSMobileBrowser } from '@/lib/device';
+import { isMobileTouchBrowser } from '@/lib/device';
 import { isReadersAgreeDorothyBridgeEnabled } from '@/lib/funnelConfig';
 import {
   buildReadersAgreePathWithTracking,
@@ -263,7 +263,7 @@ function LegacyReviewRedirectClient({ heading, destinationUrl }: ReviewRedirectC
 
 function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRedirectClientProps) {
   const searchParams = useSearchParams();
-  const iosTwoTap = useSyncExternalStore(subscribeNoop, isIOSMobileBrowser, () => false);
+  const mobileTwoTap = useSyncExternalStore(subscribeNoop, isMobileTouchBrowser, () => false);
   const [continuationActive, setContinuationActive] = useState(false);
   const [popupBlocked, setPopupBlocked] = useState(false);
   const [reviewValidated, setReviewValidated] = useState(false);
@@ -376,9 +376,9 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
     maxWidth: '20rem',
   };
 
-  const showIosRetailerAction = iosTwoTap && !reviewValidated && !continuationActive;
+  const showMobileRetailerAction = mobileTwoTap && !reviewValidated && !continuationActive;
   const showPopupBlockedFallback =
-    popupBlocked && !continuationActive && !iosTwoTap;
+    popupBlocked && !continuationActive && !mobileTwoTap;
 
   if (continuationActive) {
     return (
@@ -450,7 +450,7 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
                 color: 'rgba(245, 245, 245, 0.72)',
               }}
             >
-              {showIosRetailerAction
+              {showMobileRetailerAction
                 ? 'Opens in a new tab.'
                 : showPopupBlockedFallback
                   ? 'Your browser may have blocked the review window.'
@@ -459,7 +459,7 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
           </div>
 
           <div style={actionColumnStyle}>
-            {showIosRetailerAction && (
+            {showMobileRetailerAction && (
               <a
                 href={destinationUrl}
                 target="_blank"
