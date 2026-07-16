@@ -96,6 +96,11 @@ model ReaderProfile {
   smsConsentAt      DateTime?
   smsConsentSource  String?
   smsConsentNotes   String?
+  lastCompletedChapterId String?
+  lastCompletedAt        DateTime?
+  emailUpdatesConsent    Boolean   @default(false)
+  emailUpdatesConsentAt  DateTime?
+  jodyVerifiedAt         DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 

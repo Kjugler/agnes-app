@@ -22,6 +22,9 @@ import {
   hubPrimaryButtonStyle,
   hubSecondaryButtonStyle,
 } from '@/lib/hubTheme';
+import { JodyConcierge } from '@/components/jody/JodyConcierge';
+import { useJodyHubEntry } from '@/hooks/useJodyConcierge';
+import { isJodyConciergeEnabled } from '@/lib/funnelConfig';
 
 declare global {
   interface Window {
@@ -40,6 +43,14 @@ export default function SampleChaptersClient() {
   const leftPlayerRef = useRef<any>(null);
   const rightPlayerRef = useRef<any>(null);
   const viewContentFiredRef = useRef(false);
+  const {
+    showReturnWelcome,
+    showPendingRemember,
+    readerState,
+    readerStatus,
+    dismissReturn,
+    dismissPending,
+  } = useJodyHubEntry();
 
   useFunnelPageEngagement({
     pageViewType: FUNNEL_EVENT_TYPES.SAMPLE_CHAPTERS_PAGE_VIEW,
@@ -544,6 +555,24 @@ export default function SampleChaptersClient() {
       </div>
 
       <HelpButton />
+
+      {isJodyConciergeEnabled() && showPendingRemember && (
+        <JodyConcierge
+          mode="remember-offer"
+          chapterId="1"
+          readerStatus={readerStatus}
+          onClose={dismissPending}
+        />
+      )}
+
+      {isJodyConciergeEnabled() && showReturnWelcome && !showPendingRemember && (
+        <JodyConcierge
+          mode="return-welcome"
+          readerState={readerState}
+          readerStatus={readerStatus}
+          onClose={dismissReturn}
+        />
+      )}
     </div>
   );
 }

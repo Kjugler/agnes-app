@@ -8,6 +8,10 @@ import { buildTextThisSceneSmsBody, openSmsWithPrefilledBody } from '@/lib/textT
 import { trackTikTok } from '@/lib/tiktokPixel';
 import { trackMeta } from '@/lib/metaPixel';
 import { FUNNEL_EVENT_TYPES, useFunnelPageEngagement } from '@/lib/funnelTracking';
+import { JodyConcierge } from '@/components/jody/JodyConcierge';
+import { isJodyConciergeEnabled } from '@/lib/funnelConfig';
+import { useJodyChapterExit } from '@/hooks/useJodyConcierge';
+import { JODY_CONCIERGE_CONFIG } from '@/config/jodyConcierge';
 
 interface ChapterReaderClientProps {
   chapterId: string;
@@ -16,6 +20,8 @@ interface ChapterReaderClientProps {
 export default function ChapterReaderClient({ chapterId }: ChapterReaderClientProps) {
   const chapter = getChapter(chapterId);
   const viewContentFiredRef = useRef(false);
+  const { showJody, tryShowOnExit, dismissJody, readerStatus } = useJodyChapterExit(chapterId);
+  const startRef = useRef(Date.now());
 
   useFunnelPageEngagement({
     pageViewType: FUNNEL_EVENT_TYPES.SAMPLE_CHAPTER_OPEN,
@@ -80,6 +86,22 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
     openSmsWithPrefilledBody(body);
   };
 
+  const handleBackNavigation = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (
+      !isJodyConciergeEnabled() ||
+      chapterId !== JODY_CONCIERGE_CONFIG.firstAppearAfterChapter
+    ) {
+      return;
+    }
+    const minMs = JODY_CONCIERGE_CONFIG.minDwellSecondsBeforeOffer * 1000;
+    if (Date.now() - startRef.current < minMs) return;
+
+    e.preventDefault();
+    tryShowOnExit(() => {
+      window.location.href = '/sample-chapters';
+    });
+  };
+
   return (
     <div
       style={{
@@ -110,6 +132,7 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
         <div className="chapterReaderNavMobile">
           <Link
             href="/sample-chapters"
+            onClick={handleBackNavigation}
             style={{
               color: '#00ffe5',
               fontSize: 14,
@@ -126,6 +149,7 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
         >
           <Link
             href="/sample-chapters"
+            onClick={handleBackNavigation}
             style={{
               color: '#00ffe5',
               fontSize: 14,
@@ -289,6 +313,18 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
           }}
         />
       </div>
+
+      {showJody && (
+        <JodyConcierge
+          mode="remember-offer"
+          chapterId={chapterId}
+          readerStatus={readerStatus}
+          onClose={() => {
+            dismissJody();
+            window.location.href = '/sample-chapters';
+          }}
+        />
+      )}
 
       <style jsx global>{`
         .chapterReaderNavMobile {
