@@ -20,6 +20,10 @@ function siteUrl() {
   ).replace(/\/$/, '');
 }
 
+function isTransactionalEmailEnabled() {
+  return process.env.TRANSACTIONAL_EMAIL_ENABLED === '1';
+}
+
 module.exports = async function jodyRememberRequestHandler(req, res) {
   try {
     ensureDatabaseUrl();
@@ -54,7 +58,8 @@ module.exports = async function jodyRememberRequestHandler(req, res) {
     const fromEmail = process.env.MAILCHIMP_FROM_EMAIL || 'hello@theagnesprotocol.com';
     const fromName = process.env.MAILCHIMP_FROM_NAME || 'The Agnes Protocol';
 
-    if (process.env.TRANSACTIONAL_EMAIL_ENABLED === 'true') {
+    const emailEnabled = isTransactionalEmailEnabled();
+    if (emailEnabled) {
       await sendEmail({
         fromEmail,
         fromName,
@@ -76,7 +81,7 @@ module.exports = async function jodyRememberRequestHandler(req, res) {
     return res.json({
       ok: true,
       email,
-      emailSent: process.env.TRANSACTIONAL_EMAIL_ENABLED === 'true',
+      emailSent: emailEnabled,
     });
   } catch (err) {
     console.error('[jody/remember/request]', err);
