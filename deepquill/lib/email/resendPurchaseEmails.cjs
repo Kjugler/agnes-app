@@ -4,7 +4,7 @@ const mailchimp = require('@mailchimp/mailchimp_transactional');
 const { stripe } = require('../../src/lib/stripe.cjs');
 const envConfig = require('../../src/config/env.cjs');
 const { ensureDatabaseUrl } = require('../../server/prisma.cjs');
-const { normalizeEmail } = require('../../src/lib/normalize.cjs');
+const { normalizeEmail, isMailableEmail } = require('../../src/lib/normalize.cjs');
 const { getPointsRollupForUser } = require('../pointsRollup.cjs');
 const {
   buildPurchaseConfirmationEmail,
@@ -45,6 +45,62 @@ async function resolveProductFromSession(session) {
   return product || 'unknown';
 }
 
+/** @typedef {'user_email' | 'customer_email' | 'stripe_customer_details' | 'stripe_customer_email'} ResendEmailSource */
+
+/**
+ * Resolve admin resend destination (sync — for tests and candidate assembly).
+ * Priority: User.email → Customer.email → Stripe session snapshot.
+ *
+ * @param {{ userEmail?: string | null, customerEmail?: string | null, session?: object | null }} params
+ * @returns {{ email: string | null, emailSource: ResendEmailSource | null }}
+ */
+function resolveResendDestinationEmailFromCandidates({ userEmail, customerEmail, session }) {
+  const fromUser = isMailableEmail(userEmail || '');
+  if (fromUser) {
+    return { email: fromUser, emailSource: 'user_email' };
+  }
+
+  const fromCustomer = isMailableEmail(customerEmail || '');
+  if (fromCustomer) {
+    return { email: fromCustomer, emailSource: 'customer_email' };
+  }
+
+  const fromStripeDetails = isMailableEmail(session?.customer_details?.email || '');
+  if (fromStripeDetails) {
+    return { email: fromStripeDetails, emailSource: 'stripe_customer_details' };
+  }
+
+  const fromStripeSession = isMailableEmail(session?.customer_email || '');
+  if (fromStripeSession) {
+    return { email: fromStripeSession, emailSource: 'stripe_customer_email' };
+  }
+
+  return { email: null, emailSource: null };
+}
+
+/**
+ * @param {import('@prisma/client').PrismaClient} prismaClient
+ * @param {{ userId?: string | null, user?: { email?: string | null } | null }} purchase
+ * @param {object} session
+ */
+async function resolveResendDestinationEmail(prismaClient, purchase, session) {
+  let linkedCustomerEmail = null;
+  const userCandidate = isMailableEmail(purchase.user?.email || '');
+  if (!userCandidate && purchase.userId) {
+    const customer = await prismaClient.customer.findFirst({
+      where: { userId: purchase.userId },
+      select: { email: true },
+    });
+    linkedCustomerEmail = customer?.email || null;
+  }
+
+  return resolveResendDestinationEmailFromCandidates({
+    userEmail: purchase.user?.email,
+    customerEmail: linkedCustomerEmail,
+    session,
+  });
+}
+
 /**
  * @param {import('@prisma/client').PrismaClient} prismaClient
  * @param {string} purchaseId
@@ -65,13 +121,20 @@ async function loadPurchaseForResend(prismaClient, purchaseId) {
     return { ok: false, error: 'stripe_session_unavailable', detail: e?.message };
   }
   const product = await resolveProductFromSession(session);
-  const customerEmail = normalizeEmail(
-    session.customer_details?.email || session.customer_email || purchase.user?.email || ''
+  const { email: customerEmail, emailSource } = await resolveResendDestinationEmail(
+    prismaClient,
+    purchase,
+    session
   );
   if (!customerEmail) {
     return { ok: false, error: 'missing_customer_email' };
   }
-  return { ok: true, purchase, session, product, customerEmail };
+  console.log('[ADMIN_RESEND] resend destination', {
+    purchaseId,
+    emailSource,
+    to: customerEmail,
+  });
+  return { ok: true, purchase, session, product, customerEmail, emailSource };
 }
 
 async function sendWithMailchimp({ to, subject, text, html, action, meta = {} }) {
@@ -326,4 +389,6 @@ module.exports = {
   resendEbookDownloadEmail,
   sendClaimReaderProfileEmail,
   loadPurchaseForResend,
+  resolveResendDestinationEmailFromCandidates,
+  resolveResendDestinationEmail,
 };
