@@ -270,3 +270,4 @@ async function handleContestLogin(req, res) {
 }
 
 module.exports = handleContestLogin;
+module.exports.ensureAssociateMinimal = ensureAssociateMinimal;

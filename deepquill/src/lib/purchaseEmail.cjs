@@ -315,8 +315,61 @@ DeepQuill LLC
   return { subject, text, html };
 }
 
+function buildRememberPlaceEmail({ verifyLink, toEmail }) {
+  const subject = 'Continue reading — The Agnes Protocol';
+  const text = `
+Hi,
+
+Jody here. Tap the link below to confirm it's really you — then I'll remember where you stopped reading.
+
+${verifyLink}
+
+You can pick up on any phone, tablet, or computer.
+
+If you didn't request this, you can ignore this email.
+
+— Jody
+The Agnes Protocol
+  `.trim();
+
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Continue reading</title></head>
+<body style="margin:0;padding:0;background-color:#f5f5f5;font-family:Arial,Helvetica,sans-serif;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f5f5f5;">
+    <tr><td align="center" style="padding:40px 20px;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 4px rgba(0,0,0,0.1);">
+        <tr><td style="padding:40px 30px;">
+          <h1 style="margin:0 0 16px 0;font-size:22px;color:#0a0a0a;">Continue where you left off</h1>
+          <p style="margin:0 0 12px 0;font-size:15px;line-height:1.6;color:#333333;">
+            Hi — Jody here. Confirm it's really you, and I'll remember where you stopped reading.
+          </p>
+          <p style="margin:0 0 20px 0;font-size:14px;line-height:1.6;color:#333333;">
+            Pick up on any phone, tablet, or computer.
+          </p>
+          <div style="text-align:center;margin:24px 0;">
+            <a href="${verifyLink}" style="display:inline-block;padding:14px 28px;background-color:#00e5cc;color:#000000;text-decoration:none;border-radius:6px;font-weight:bold;font-size:16px;">
+              Remember my place
+            </a>
+          </div>
+          <p style="margin:20px 0 0 0;font-size:13px;line-height:1.6;color:#666666;">
+            If you didn't request this, you can ignore this email.
+          </p>
+          <p style="margin:20px 0 0 0;font-size:13px;line-height:1.6;color:#999999;">— Jody<br>The Agnes Protocol</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>
+  `.trim();
+
+  return { subject, text, html };
+}
+
 module.exports = {
   buildPurchaseConfirmationEmail,
   buildClaimReaderProfileEmail,
+  buildRememberPlaceEmail,
 };
 

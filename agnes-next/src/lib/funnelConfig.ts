@@ -33,3 +33,12 @@ export function isReadersAgreeDorothyBridgeEnabled(): boolean {
   const v = process.env.NEXT_PUBLIC_READERS_AGREE_DOROTHY_BRIDGE?.trim();
   return v === '1' || v === 'true';
 }
+
+/**
+ * Jody Concierge on sample chapters (Remember My Place).
+ * Set NEXT_PUBLIC_JODY_CONCIERGE_ENABLED=1 to enable. Default off.
+ */
+export function isJodyConciergeEnabled(): boolean {
+  const v = process.env.NEXT_PUBLIC_JODY_CONCIERGE_ENABLED?.trim();
+  return v === '1' || v === 'true';
+}

@@ -42,6 +42,23 @@ export default function AdminHubPage() {
         Internal Use Only
       </p>
 
+      <h2 style={sectionTitle}>Jody Concierge</h2>
+      <Link
+        href="/admin/jody"
+        style={{
+          ...linkStyle,
+          borderColor: '#14b8a6',
+          background: 'linear-gradient(180deg, #f0fdfa, #ecfdf5)',
+          fontWeight: 600,
+        }}
+      >
+        Jody Dashboard
+      </Link>
+      <p style={descStyle}>
+        Reader trust funnel: Chapter 1 finish → Jody appeared → Remember My Place → email verified
+        → updates opt-in → returned readers. Default range: last 7 days.
+      </p>
+
       <h2 style={sectionTitle}>Sales &amp; diagnostics</h2>
       <Link href="/admin/sales" style={linkStyle}>
         Sales Ledger

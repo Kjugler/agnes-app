@@ -250,6 +250,22 @@ const contestClaimVerifyHandler = require('../api/contest/claimVerify.cjs');
 app.get('/api/contest/claim-verify', contestClaimVerifyHandler);
 console.log('✅ Mounted GET /api/contest/claim-verify');
 
+const jodyRememberRequestHandler = require('../api/jody/rememberRequest.cjs');
+app.post('/api/jody/remember/request', jodyRememberRequestHandler);
+console.log('✅ Mounted POST /api/jody/remember/request');
+
+const jodyRememberVerifyHandler = require('../api/jody/rememberVerify.cjs');
+app.get('/api/jody/remember/verify', jodyRememberVerifyHandler);
+console.log('✅ Mounted GET /api/jody/remember/verify');
+
+const jodyStateHandler = require('../api/jody/state.cjs');
+app.get('/api/jody/state', jodyStateHandler);
+console.log('✅ Mounted GET /api/jody/state');
+
+const jodyUpdatesConsentHandler = require('../api/jody/updatesConsent.cjs');
+app.post('/api/jody/updates-consent', jodyUpdatesConsentHandler);
+console.log('✅ Mounted POST /api/jody/updates-consent');
+
 const contestJoinHandler = require('../api/contest/join.cjs');
 app.post('/api/contest/join', contestJoinHandler);
 console.log('✅ Mounted /api/contest/join');
@@ -311,7 +327,7 @@ console.log('✅ Mounted GET /api/admin/sales-ledger');
 const funnelEventsRouter = require('./routes/funnelEvents.cjs');
 app.use('/api/funnel', funnelEventsRouter);
 app.use('/api/admin', funnelEventsRouter);
-console.log('✅ Mounted POST /api/funnel/event, GET /api/admin/funnel-report, GET /api/admin/content-report');
+console.log('✅ Mounted POST /api/funnel/event, GET /api/admin/funnel-report, GET /api/admin/content-report, GET /api/admin/jody-report');
 
 const adminPurchaseResendRouter = require('./routes/adminPurchaseResend.cjs');
 app.use('/api/admin/purchases', adminPurchaseResendRouter);

@@ -120,6 +120,10 @@ export default function ContentReportPage() {
           ← Admin
         </Link>
         {' · '}
+        <Link href="/admin/jody" style={{ color: '#0d9488', fontSize: 14, fontWeight: 600 }}>
+          Jody Dashboard
+        </Link>
+        {' · '}
         <Link href="/admin/funnel" style={{ color: '#2563eb', fontSize: 14 }}>
           Funnel report
         </Link>

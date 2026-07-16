@@ -5,6 +5,7 @@ const { prisma, ensureDatabaseUrl } = require('../prisma.cjs');
 const { recordFunnelEvent } = require('../../lib/funnel/recordFunnelEvent.cjs');
 const { buildFunnelReport, parseDay } = require('../../lib/funnel/buildFunnelReport.cjs');
 const { buildContentReport } = require('../../lib/funnel/buildContentReport.cjs');
+const { buildJodyReport } = require('../../lib/funnel/buildJodyReport.cjs');
 
 const router = express.Router();
 
@@ -101,6 +102,33 @@ router.get('/content-report', async (req, res) => {
     return res.json(report);
   } catch (err) {
     console.error('[admin/content-report]', err);
+    return res.status(500).json({ ok: false, error: err?.message || 'unknown_error' });
+  }
+});
+
+router.get('/jody-report', async (req, res) => {
+  if (!isAdminAuthorized(req)) {
+    return res.status(403).json({ ok: false, error: 'forbidden' });
+  }
+
+  try {
+    ensureDatabaseUrl();
+    if (!prisma) {
+      return res.status(500).json({ ok: false, error: 'database_unavailable' });
+    }
+
+    const q = req.query || {};
+    const now = new Date();
+    const end = q.end != null && q.end !== '' ? parseDay(String(q.end), 'end') : now;
+    const start =
+      q.start != null && q.start !== ''
+        ? parseDay(String(q.start), 'start')
+        : new Date((end || now).getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    const report = await buildJodyReport(prisma, { start, end: end || now });
+    return res.json(report);
+  } catch (err) {
+    console.error('[admin/jody-report]', err);
     return res.status(500).json({ ok: false, error: err?.message || 'unknown_error' });
   }
 });
