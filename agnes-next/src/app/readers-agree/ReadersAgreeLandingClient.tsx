@@ -22,6 +22,7 @@ import {
 } from '@/lib/readerRecommendationLanding';
 import {
   clearBridgeTabDeparted,
+  markBridgeTabDeparted,
   markReadersAgreeReviewOpened,
   markRetailerPopupBlocked,
   resetBridgeSessionState,
@@ -247,6 +248,12 @@ export default function ReadersAgreeLandingClient() {
     const opened = window.open(destinationUrl, '_blank', 'noopener,noreferrer');
     if (!opened) {
       markRetailerPopupBlocked();
+    } else {
+      window.setTimeout(() => {
+        if (!document.hasFocus()) {
+          markBridgeTabDeparted();
+        }
+      }, 0);
     }
     router.push(bridgeHref);
   };

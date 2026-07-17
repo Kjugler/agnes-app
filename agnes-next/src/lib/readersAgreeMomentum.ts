@@ -43,29 +43,17 @@ export function hasReadersAgreeReviewMomentum(): boolean {
 
 export function markBridgeTabDeparted(): void {
   if (typeof window === 'undefined') return;
-  try {
-    sessionStorage.setItem(BRIDGE_DEPARTED_KEY, '1');
-  } catch {
-    // ignore
-  }
+  write(BRIDGE_DEPARTED_KEY, '1');
 }
 
 export function hasBridgeTabDeparted(): boolean {
   if (typeof window === 'undefined') return false;
-  try {
-    return sessionStorage.getItem(BRIDGE_DEPARTED_KEY) === '1';
-  } catch {
-    return false;
-  }
+  return read(BRIDGE_DEPARTED_KEY) === '1';
 }
 
 export function clearBridgeTabDeparted(): void {
   if (typeof window === 'undefined') return;
-  try {
-    sessionStorage.removeItem(BRIDGE_DEPARTED_KEY);
-  } catch {
-    // ignore
-  }
+  remove(BRIDGE_DEPARTED_KEY);
 }
 
 export function clearOrphanReadersAgreeValidatedSignal(): void {
@@ -84,9 +72,9 @@ export function syncReadersAgreeMomentumState(): boolean {
   try {
     if (hasReadersAgreeReviewMomentum()) {
       remove(REVIEW_VALIDATED_KEY);
-      sessionStorage.setItem(MOMENTUM_ACTIVE_KEY, '1');
+      write(MOMENTUM_ACTIVE_KEY, '1');
     }
-    return sessionStorage.getItem(MOMENTUM_ACTIVE_KEY) === '1';
+    return isReadersAgreeContinuationActive();
   } catch {
     return false;
   }
@@ -105,11 +93,6 @@ export function clearReadersAgreeMomentum(): void {
   if (typeof window === 'undefined') return;
   remove(MOMENTUM_ACTIVE_KEY);
   remove(REVIEW_VALIDATED_KEY);
-  try {
-    sessionStorage.removeItem(MOMENTUM_ACTIVE_KEY);
-  } catch {
-    // ignore
-  }
 }
 
 export const READERS_AGREE_MOMENTUM_STORAGE_KEYS = {
@@ -156,9 +139,26 @@ export function resetBridgeSessionState(): void {
 
 export function isReadersAgreeContinuationActive(): boolean {
   if (typeof window === 'undefined') return false;
-  try {
-    return sessionStorage.getItem(MOMENTUM_ACTIVE_KEY) === '1';
-  } catch {
-    return false;
+  return read(MOMENTUM_ACTIVE_KEY) === '1';
+}
+
+/** Read current momentum flags from storage (session first, then local mirror). */
+export function getReadersAgreeMomentumSnapshot(): {
+  validated: boolean;
+  departed: boolean;
+  active: boolean;
+} {
+  return {
+    validated: hasReadersAgreeReviewMomentum(),
+    departed: hasBridgeTabDeparted(),
+    active: isReadersAgreeContinuationActive(),
+  };
+}
+
+/** If the visitor already left for reviews, record departure when the bridge loads hidden. */
+export function markBridgeDepartedIfCurrentlyHidden(): void {
+  if (typeof document === 'undefined') return;
+  if (document.visibilityState === 'hidden' || !document.hasFocus()) {
+    markBridgeTabDeparted();
   }
 }

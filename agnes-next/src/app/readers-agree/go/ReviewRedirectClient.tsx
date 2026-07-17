@@ -7,14 +7,15 @@ import { isMobileTouchBrowser } from '@/lib/device';
 import { isReadersAgreeDorothyBridgeEnabled } from '@/lib/funnelConfig';
 import {
   buildReadersAgreePathWithTracking,
+  READERS_AGREE_CATALOG_PATH,
   READERS_AGREE_PATH,
   SAMPLE_CHAPTERS_PATH,
 } from '@/lib/readerRecommendationLanding';
 import {
   clearRetailerPopupBlocked,
-  hasReadersAgreeReviewMomentum,
-  isReadersAgreeContinuationActive,
+  getReadersAgreeMomentumSnapshot,
   isRetailerPopupBlocked,
+  markBridgeDepartedIfCurrentlyHidden,
   markBridgeTabDeparted,
   markReadersAgreeReviewOpened,
   READERS_AGREE_MOMENTUM_STORAGE_KEYS,
@@ -76,7 +77,7 @@ const quietLinkStyle = {
   padding: '4px 0',
 } as const;
 
-const samplePrimaryCtaStyle = {
+const bridgeActionCtaStyle = {
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -84,10 +85,9 @@ const samplePrimaryCtaStyle = {
   borderRadius: '8px',
   fontSize: '15px',
   fontWeight: 700,
-  background: '#00ff7f',
-  color: '#0a0a0a',
-  border: 'none',
-  boxShadow: '0 0 24px rgba(0, 255, 127, 0.25)',
+  border: '1px solid rgba(255, 255, 255, 0.25)',
+  background: 'rgba(255, 255, 255, 0.06)',
+  color: '#fff',
   textDecoration: 'none',
   width: '100%',
 } as const;
@@ -267,6 +267,8 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
   const [continuationActive, setContinuationActive] = useState(false);
   const [popupBlocked, setPopupBlocked] = useState(false);
   const [reviewValidated, setReviewValidated] = useState(false);
+  const ignoreFocusUntilRef = useRef(Date.now() + 300);
+  const continuationFallbackRef = useRef<number | null>(null);
 
   const readersAgreeHref = useMemo(
     () => buildReadersAgreePathWithTracking(READERS_AGREE_PATH, searchParams),
@@ -275,6 +277,11 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
 
   const sampleChaptersHref = useMemo(
     () => buildReadersAgreePathWithTracking(SAMPLE_CHAPTERS_PATH, searchParams),
+    [searchParams]
+  );
+
+  const catalogHref = useMemo(
+    () => buildReadersAgreePathWithTracking(READERS_AGREE_CATALOG_PATH, searchParams),
     [searchParams]
   );
 
@@ -288,70 +295,134 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
       setContinuationActive(true);
       clearRetailerPopupBlocked();
       setPopupBlocked(false);
+      setReviewValidated(false);
+      if (continuationFallbackRef.current) {
+        clearTimeout(continuationFallbackRef.current);
+        continuationFallbackRef.current = null;
+      }
       return true;
     }
-    if (isReadersAgreeContinuationActive()) {
+    const snapshot = getReadersAgreeMomentumSnapshot();
+    if (snapshot.active) {
       setContinuationActive(true);
+      setReviewValidated(false);
+      if (continuationFallbackRef.current) {
+        clearTimeout(continuationFallbackRef.current);
+        continuationFallbackRef.current = null;
+      }
       return true;
     }
+    setReviewValidated(snapshot.validated);
     return false;
   }, []);
 
-  useEffect(() => {
-    setContinuationActive(isReadersAgreeContinuationActive());
-    setPopupBlocked(isRetailerPopupBlocked());
-    setReviewValidated(hasReadersAgreeReviewMomentum());
+  const scheduleContinuationFallback = useCallback(() => {
+    if (continuationFallbackRef.current) return;
+    continuationFallbackRef.current = window.setTimeout(() => {
+      continuationFallbackRef.current = null;
+      const snapshot = getReadersAgreeMomentumSnapshot();
+      if (snapshot.active) return;
+      if (!snapshot.validated) return;
+      markBridgeTabDeparted();
+      applyContinuationIfReady();
+    }, REDIRECT_DELAY_MS);
+  }, [applyContinuationIfReady]);
+
+  const rehydrateMomentumState = useCallback(() => {
     applyContinuationIfReady();
   }, [applyContinuationIfReady]);
 
   useEffect(() => {
-    const markDeparted = () => markBridgeTabDeparted();
+    markBridgeDepartedIfCurrentlyHidden();
+    setPopupBlocked(isRetailerPopupBlocked());
+    rehydrateMomentumState();
+    if (getReadersAgreeMomentumSnapshot().validated) {
+      scheduleContinuationFallback();
+    }
+
+    return () => {
+      if (continuationFallbackRef.current) {
+        clearTimeout(continuationFallbackRef.current);
+        continuationFallbackRef.current = null;
+      }
+    };
+  }, [rehydrateMomentumState, scheduleContinuationFallback]);
+
+  useEffect(() => {
+    const markDeparted = () => {
+      if (document.visibilityState === 'hidden' || !document.hasFocus()) {
+        markBridgeTabDeparted();
+      }
+    };
 
     const onVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
         markDeparted();
         return;
       }
-      if (document.visibilityState === 'visible') {
-        applyContinuationIfReady();
-      }
+      rehydrateMomentumState();
     };
 
-    const onPageHide = () => markDeparted();
+    const onPageHide = () => markBridgeTabDeparted();
 
     const onPageShow = () => {
-      applyContinuationIfReady();
+      markBridgeDepartedIfCurrentlyHidden();
+      rehydrateMomentumState();
+    };
+
+    const onWindowBlur = () => markDeparted();
+
+    const onWindowFocus = () => {
+      if (Date.now() < ignoreFocusUntilRef.current) {
+        rehydrateMomentumState();
+        return;
+      }
+      if (getReadersAgreeMomentumSnapshot().validated) {
+        markBridgeTabDeparted();
+      }
+      rehydrateMomentumState();
     };
 
     const onStorage = (event: StorageEvent) => {
       if (
-        event.key === READERS_AGREE_MOMENTUM_STORAGE_KEYS.validated &&
-        event.newValue === '1'
+        event.key === READERS_AGREE_MOMENTUM_STORAGE_KEYS.validated ||
+        event.key === READERS_AGREE_MOMENTUM_STORAGE_KEYS.departed ||
+        event.key === READERS_AGREE_MOMENTUM_STORAGE_KEYS.active
       ) {
-        applyContinuationIfReady();
+        rehydrateMomentumState();
       }
     };
 
     document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('pagehide', onPageHide);
     window.addEventListener('pageshow', onPageShow);
+    window.addEventListener('blur', onWindowBlur);
+    window.addEventListener('focus', onWindowFocus);
     window.addEventListener('storage', onStorage);
 
     return () => {
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('pagehide', onPageHide);
       window.removeEventListener('pageshow', onPageShow);
+      window.removeEventListener('blur', onWindowBlur);
+      window.removeEventListener('focus', onWindowFocus);
       window.removeEventListener('storage', onStorage);
     };
-  }, [applyContinuationIfReady]);
+  }, [rehydrateMomentumState]);
 
   const handleBridgeRetailerClick = () => {
     markReadersAgreeReviewOpened();
     setReviewValidated(true);
+    scheduleContinuationFallback();
     trackFunnelEvent(retailerClickType, {}, {
       source: 'readers-agree-bridge',
       searchParams,
     });
+    window.setTimeout(() => {
+      if (!document.hasFocus()) {
+        markBridgeTabDeparted();
+      }
+    }, 0);
   };
 
   const handleQuietRetailerOpen = () => {
@@ -359,6 +430,18 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
     window.open(destinationUrl, '_blank', 'noopener,noreferrer');
     clearRetailerPopupBlocked();
     setPopupBlocked(false);
+    window.setTimeout(() => {
+      if (!document.hasFocus()) {
+        markBridgeTabDeparted();
+      }
+    }, 0);
+  };
+
+  const handleBuyClick = () => {
+    trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_BUY_CLICK, {}, {
+      source: 'readers-agree-bridge',
+      searchParams,
+    });
   };
 
   const handleSampleClick = () => {
@@ -400,8 +483,12 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
             </div>
 
             <div style={actionColumnStyle}>
-              <Link href={sampleChaptersHref} onClick={handleSampleClick} style={samplePrimaryCtaStyle}>
-                Start Reading the 4 FREE Sample Chapters
+              <Link href={catalogHref} onClick={handleBuyClick} style={bridgeActionCtaStyle}>
+                Buy the Book
+              </Link>
+
+              <Link href={sampleChaptersHref} onClick={handleSampleClick} style={bridgeActionCtaStyle}>
+                Read Sample Chapters
               </Link>
 
               <a
