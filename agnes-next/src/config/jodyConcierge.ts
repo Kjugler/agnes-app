@@ -27,6 +27,8 @@ export const JODY_CONCIERGE_CONFIG = {
     dismissUntil: 'ap_jody_remember_dismiss_until',
     pendingBeat: 'ap_jody_pending_beat',
     chapterCompleted: 'ap_jody_chapter_completed',
+    /** sessionStorage — survives native PDF handoff within the same tab. */
+    readingSession: 'ap_jody_reading_session',
   },
 } as const;
 

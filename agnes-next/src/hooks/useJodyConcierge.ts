@@ -5,9 +5,12 @@ import { READER_STATUS } from '@/config/readerStatus';
 import { JODY_CONCIERGE_CONFIG } from '@/config/jodyConcierge';
 import { isJodyConciergeEnabled } from '@/lib/funnelConfig';
 import {
+  clearReadingSession,
+  consumePendingJodyBeat,
+  isReadingSessionDwellMet,
   isRememberDismissed,
   markChapterCompletedForJody,
-  consumePendingJodyBeat,
+  startOrResumeReadingSession,
 } from '@/lib/readerJourney';
 import { useReaderStatus } from '@/hooks/useReaderStatus';
 
@@ -16,9 +19,18 @@ const REMEMBER_ELIGIBLE = new Set<string>([
   READER_STATUS.READING,
 ]);
 
+function armRememberOfferIfEligible(
+  chapterId: string,
+  canOfferRemember: boolean,
+): boolean {
+  if (!canOfferRemember || isRememberDismissed()) return false;
+  if (!isReadingSessionDwellMet(chapterId)) return false;
+  markChapterCompletedForJody(chapterId);
+  clearReadingSession();
+  return true;
+}
+
 export function useJodyChapterExit(chapterId: string) {
-  const startRef = useRef(Date.now());
-  const dwellMetRef = useRef(false);
   const [showJody, setShowJody] = useState(false);
   const { status, loaded } = useReaderStatus({ markReading: true });
 
@@ -30,23 +42,14 @@ export function useJodyChapterExit(chapterId: string) {
   useEffect(() => {
     if (!isJodyConciergeEnabled() || !isTargetChapter) return;
 
-    const minMs = JODY_CONCIERGE_CONFIG.minDwellSecondsBeforeOffer * 1000;
-
-    const interval = setInterval(() => {
-      if (Date.now() - startRef.current >= minMs) {
-        dwellMetRef.current = true;
-      }
-    }, 5000);
+    startOrResumeReadingSession(chapterId);
 
     function onPageHide() {
-      if (!dwellMetRef.current || isRememberDismissed()) return;
-      if (!canOfferRemember) return;
-      markChapterCompletedForJody(chapterId);
+      armRememberOfferIfEligible(chapterId, canOfferRemember);
     }
 
     window.addEventListener('pagehide', onPageHide);
     return () => {
-      clearInterval(interval);
       window.removeEventListener('pagehide', onPageHide);
     };
   }, [chapterId, isTargetChapter, canOfferRemember]);
@@ -61,17 +64,19 @@ export function useJodyChapterExit(chapterId: string) {
         navigate();
         return;
       }
-      if (!dwellMetRef.current) {
+      if (!isReadingSessionDwellMet(chapterId)) {
         navigate();
         return;
       }
       if (isRememberDismissed()) {
         markChapterCompletedForJody(chapterId);
+        clearReadingSession();
         navigate();
         return;
       }
 
       markChapterCompletedForJody(chapterId);
+      clearReadingSession();
       setShowJody(true);
     },
     [chapterId, isTargetChapter, loaded, canOfferRemember],
@@ -79,6 +84,7 @@ export function useJodyChapterExit(chapterId: string) {
 
   const dismissJody = useCallback(() => {
     setShowJody(false);
+    clearReadingSession();
   }, []);
 
   return {
@@ -109,6 +115,14 @@ export function useJodyHubEntry() {
       return;
     }
 
+    const targetChapter = JODY_CONCIERGE_CONFIG.firstAppearAfterChapter;
+    if (
+      armRememberOfferIfEligible(targetChapter, REMEMBER_ELIGIBLE.has(status))
+    ) {
+      setShowPendingRemember(true);
+      return;
+    }
+
     if (status === READER_STATUS.RETURNING && serverState?.lastCompletedChapterId) {
       setShowReturnWelcome(true);
       if (!trackedReturnRef.current) {
@@ -127,12 +141,17 @@ export function useJodyHubEntry() {
     }
   }, [loaded, status, serverState]);
 
+  const dismissPending = useCallback(() => {
+    setShowPendingRemember(false);
+    clearReadingSession();
+  }, []);
+
   return {
     showReturnWelcome,
     showPendingRemember,
     readerState: serverState,
     readerStatus: status,
     dismissReturn: () => setShowReturnWelcome(false),
-    dismissPending: () => setShowPendingRemember(false),
+    dismissPending,
   };
 }

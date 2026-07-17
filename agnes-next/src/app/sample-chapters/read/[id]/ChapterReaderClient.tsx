@@ -12,6 +12,7 @@ import { JodyConcierge } from '@/components/jody/JodyConcierge';
 import { isJodyConciergeEnabled } from '@/lib/funnelConfig';
 import { useJodyChapterExit } from '@/hooks/useJodyConcierge';
 import { JODY_CONCIERGE_CONFIG } from '@/config/jodyConcierge';
+import { isReadingSessionDwellMet } from '@/lib/readerJourney';
 
 interface ChapterReaderClientProps {
   chapterId: string;
@@ -21,7 +22,6 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
   const chapter = getChapter(chapterId);
   const viewContentFiredRef = useRef(false);
   const { showJody, tryShowOnExit, dismissJody, readerStatus } = useJodyChapterExit(chapterId);
-  const startRef = useRef(Date.now());
 
   useFunnelPageEngagement({
     pageViewType: FUNNEL_EVENT_TYPES.SAMPLE_CHAPTER_OPEN,
@@ -93,8 +93,7 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
     ) {
       return;
     }
-    const minMs = JODY_CONCIERGE_CONFIG.minDwellSecondsBeforeOffer * 1000;
-    if (Date.now() - startRef.current < minMs) return;
+    if (!isReadingSessionDwellMet(chapterId)) return;
 
     e.preventDefault();
     tryShowOnExit(() => {
