@@ -154,6 +154,11 @@ async function buildFunnelReport(prisma, { start, end }) {
       count: get(FUNNEL_EVENT_TYPES.READERS_AGREE_BN_CLICK),
     },
     {
+      key: 'readers_agree_buy',
+      label: 'Readers Agree — Buy the Book clicked',
+      count: get(FUNNEL_EVENT_TYPES.READERS_AGREE_BUY_CLICK),
+    },
+    {
       key: 'readers_agree_sample',
       label: 'Readers Agree — Sample Chapters clicked',
       count: get(FUNNEL_EVENT_TYPES.READERS_AGREE_SAMPLE_CHAPTERS_CLICK),

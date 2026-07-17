@@ -313,22 +313,31 @@ export function JodyConcierge({
 }
 
 /** Called after email verification completes — advances to success + updates beats. */
+const equalActionBtn: React.CSSProperties = {
+  ...primaryBtn,
+  flex: '1 1 140px',
+  textAlign: 'center',
+  textDecoration: 'none',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+};
+
 export function JodyConciergePostVerify({
   greetingName,
   chapterId,
   showUpdates,
-  onDone,
 }: {
   greetingName: string | null;
   chapterId: string;
   showUpdates: boolean;
-  onDone: () => void;
 }) {
   const [beatId, setBeatId] = useState<JodyBeatId>('verified-success');
   const nextChapter = getNextChapterId(chapterId);
   const continueHref = nextChapter
     ? `/sample-chapters/read/${nextChapter}`
     : '/sample-chapters';
+  const catalogHref = '/catalog';
 
   useEffect(() => {
     trackFunnelEvent(
@@ -341,24 +350,28 @@ export function JodyConciergePostVerify({
   const beat = JODY_CONCIERGE_COPY[beatId];
   const vars = { greetingName: greetingName ?? 'friend', nextChapter: nextChapter ?? '2' };
 
-  const handleVerifiedContinue = () => {
+  const goToSavedLocation = () => {
+    window.location.href = continueHref;
+  };
+
+  const handleContinueReading = () => {
     if (showUpdates) {
       setBeatId('updates-offer');
       return;
     }
-    onDone();
+    goToSavedLocation();
   };
 
   const handleUpdatesAccept = async () => {
     trackFunnelEvent(FUNNEL_EVENT_TYPES.JODY_UPDATES_ACCEPT, {}, { source: 'jody-verify' });
     await submitJodyUpdatesConsent(true);
-    onDone();
+    goToSavedLocation();
   };
 
   const handleUpdatesDecline = () => {
     trackFunnelEvent(FUNNEL_EVENT_TYPES.JODY_UPDATES_DECLINE, {}, { source: 'jody-verify' });
     submitJodyUpdatesConsent(false).catch(() => {});
-    onDone();
+    goToSavedLocation();
   };
 
   return (
@@ -396,20 +409,15 @@ export function JodyConciergePostVerify({
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        {beatId === 'verified-success' && beat.primaryAction && (
-          <button type="button" style={primaryBtn} onClick={handleVerifiedContinue}>
-            {beat.primaryAction.label}
-          </button>
-        )}
-        {beatId === 'verified-success' && showUpdates && (
-          <button type="button" style={secondaryBtn} onClick={() => setBeatId('updates-offer')}>
-            Skip
-          </button>
-        )}
-        {beatId === 'verified-success' && !showUpdates && (
-          <Link href={continueHref} style={{ ...primaryBtn, textDecoration: 'none' }}>
-            Continue Reading
-          </Link>
+        {beatId === 'verified-success' && (
+          <>
+            <button type="button" style={equalActionBtn} onClick={handleContinueReading}>
+              Continue Reading
+            </button>
+            <Link href={catalogHref} style={equalActionBtn}>
+              Buy the Book
+            </Link>
+          </>
         )}
         {beatId === 'updates-offer' && (
           <>

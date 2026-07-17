@@ -16,6 +16,7 @@ import {
   buildReadersAgreePathWithTracking,
   READERS_AGREE_GO_AMAZON_PATH,
   READERS_AGREE_GO_BN_PATH,
+  READERS_AGREE_CATALOG_PATH,
   READERS_AGREE_HERO_IMAGE_PATH,
   SAMPLE_CHAPTERS_PATH,
 } from '@/lib/readerRecommendationLanding';
@@ -67,6 +68,38 @@ const sampleCta: CSSProperties = {
   border: 'none',
   boxShadow: '0 0 24px rgba(0, 255, 127, 0.25)',
 };
+
+function BuyTheBookCard({
+  href,
+  onNavigate,
+}: {
+  href: string;
+  onNavigate?: () => void;
+}) {
+  return (
+    <Link
+      href={href}
+      style={{ ...cardBase, width: '100%' }}
+      onClick={onNavigate}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = 'rgba(220, 38, 38, 0.55)';
+        e.currentTarget.style.transform = 'translateY(-2px)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+        e.currentTarget.style.transform = 'translateY(0)';
+      }}
+    >
+      <div style={{ fontSize: '18px', letterSpacing: '0.06em' }} aria-hidden>
+        📚
+      </div>
+      <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, lineHeight: 1.3 }}>
+        Buy the Book
+      </h2>
+      <span style={externalCta}>Buy the Book →</span>
+    </Link>
+  );
+}
 
 function ReviewCard({
   stars,
@@ -165,6 +198,11 @@ export default function ReadersAgreeLandingClient() {
     [searchParams]
   );
 
+  const catalogHref = useMemo(
+    () => buildReadersAgreePathWithTracking(READERS_AGREE_CATALOG_PATH, searchParams),
+    [searchParams]
+  );
+
   const amazonGoHref = useMemo(
     () => buildReadersAgreePathWithTracking(READERS_AGREE_GO_AMAZON_PATH, searchParams),
     [searchParams]
@@ -189,6 +227,12 @@ export default function ReadersAgreeLandingClient() {
       content_type: 'product',
     });
   }, []);
+
+  const handleBuyClick = () =>
+    trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_BUY_CLICK, {}, {
+      source: 'readers-agree',
+      searchParams,
+    });
 
   const handleRetailerTap = (
     event: MouseEvent<HTMLAnchorElement>,
@@ -295,6 +339,7 @@ export default function ReadersAgreeLandingClient() {
               gap: '20px',
             }}
           >
+            <BuyTheBookCard href={catalogHref} onNavigate={handleBuyClick} />
             {BRIDGE_ENABLED ? (
               mobileTwoTap ? (
                 <>

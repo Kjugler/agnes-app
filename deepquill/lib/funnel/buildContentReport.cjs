@@ -85,6 +85,7 @@ async function buildContentReport(prisma, { start, end }) {
     FUNNEL_EVENT_TYPES.PURCHASE_COMPLETED,
     FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK,
     FUNNEL_EVENT_TYPES.READERS_AGREE_BN_CLICK,
+    FUNNEL_EVENT_TYPES.READERS_AGREE_BUY_CLICK,
     FUNNEL_EVENT_TYPES.READERS_AGREE_SAMPLE_CHAPTERS_CLICK,
   ];
 
@@ -137,6 +138,11 @@ async function buildContentReport(prisma, { start, end }) {
       key: 'bn',
       label: 'Barnes & Noble Reviews',
       clickType: FUNNEL_EVENT_TYPES.READERS_AGREE_BN_CLICK,
+    },
+    {
+      key: 'buy',
+      label: 'Buy the Book',
+      clickType: FUNNEL_EVENT_TYPES.READERS_AGREE_BUY_CLICK,
     },
     {
       key: 'sample_chapters',

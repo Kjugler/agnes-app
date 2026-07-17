@@ -121,9 +121,6 @@ export default function JodyVerifyClient() {
           greetingName={state.greetingName}
           chapterId={state.chapterId}
           showUpdates={state.showUpdates}
-          onDone={() => {
-            window.location.href = '/sample-chapters';
-          }}
         />
       )}
     </div>

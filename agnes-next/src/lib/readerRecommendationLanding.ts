@@ -9,6 +9,7 @@ export {
 } from '@/lib/metaAdLanding';
 
 export const READERS_AGREE_PATH = '/readers-agree';
+export const READERS_AGREE_CATALOG_PATH = '/catalog';
 export const READERS_AGREE_GO_AMAZON_PATH = '/readers-agree/go/amazon';
 export const READERS_AGREE_GO_BN_PATH = '/readers-agree/go/bn';
 
