@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { CHAPTERS } from '@/app/sample-chapters/chapters';
 import { CONTINUE_READING_COPY } from '@/config/jodyMobileDeliveryCopy';
+import { jodyEm2PortraitCropStyle } from '@/config/jodyPortraitStyle';
 import { getNextChapterId } from '@/config/jodyConcierge';
 import { resolveChapterContinueToken } from '@/lib/jodyMobileDeliveryApi';
 import { contestLoginWithEmail } from '@/lib/jodyConciergeApi';
@@ -134,6 +135,7 @@ export default function ContinueReadingClient() {
         width={80}
         height={80}
         style={{
+          ...jodyEm2PortraitCropStyle,
           borderRadius: '50%',
           border: '2px solid rgba(0, 255, 229, 0.45)',
           marginBottom: 12,

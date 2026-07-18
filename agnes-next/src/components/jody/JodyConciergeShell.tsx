@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { jodyEm2PortraitCropStyle } from '@/config/jodyPortraitStyle';
 
 const JODY_ICON = '/jody-icons/jody-em2.png';
 
@@ -135,9 +136,9 @@ export function JodyConciergeShell({
           width={56}
           height={56}
           style={{
-            objectFit: 'cover',
-            objectPosition: 'center 16%',
-            display: 'block',
+            ...jodyEm2PortraitCropStyle,
+            width: 56,
+            height: 56,
           }}
         />
       </button>

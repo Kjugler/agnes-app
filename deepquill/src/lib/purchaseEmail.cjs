@@ -414,7 +414,7 @@ The Agnes Protocol
     <tr><td align="center" style="padding:32px 16px;">
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:560px;background-color:#111111;border-radius:12px;overflow:hidden;border:1px solid rgba(0,255,229,0.25);">
         <tr><td style="padding:0;text-align:center;background:linear-gradient(180deg,#0d2a28 0%,#111111 100%);">
-          <img src="${jodyArtUrl}" alt="Jody" width="120" height="120" style="display:block;margin:24px auto 8px;border-radius:50%;border:2px solid rgba(0,255,229,0.4);" />
+          <img src="${jodyArtUrl}" alt="Jody" width="120" height="120" style="object-fit:cover;object-position:50% 32%;display:block;margin:24px auto 8px;border-radius:50%;border:2px solid rgba(0,255,229,0.4);" />
         </td></tr>
         <tr><td style="padding:8px 28px 28px;">
           <p style="margin:0 0 12px 0;font-size:14px;color:#00ffe5;letter-spacing:0.04em;">Message from Jody</p>

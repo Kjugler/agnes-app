@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { getChapterWelcomeCopy } from '@/config/jodyMobileDeliveryCopy';
+import { jodyEm2PortraitCropStyle } from '@/config/jodyPortraitStyle';
 import { requestChapterDelivery } from '@/lib/jodyMobileDeliveryApi';
 import { writeContestEmail } from '@/lib/identity';
 import { markReaderKnown } from '@/lib/readerStatus';
@@ -82,6 +83,7 @@ export function MobileChapterLanding({ chapterId, title, pdfUrl }: MobileChapter
           width={96}
           height={96}
           style={{
+            ...jodyEm2PortraitCropStyle,
             borderRadius: '50%',
             border: '2px solid rgba(0, 255, 229, 0.45)',
             marginBottom: 16,
