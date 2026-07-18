@@ -42,3 +42,12 @@ export function isJodyConciergeEnabled(): boolean {
   const v = process.env.NEXT_PUBLIC_JODY_CONCIERGE_ENABLED?.trim();
   return v === '1' || v === 'true';
 }
+
+/**
+ * Mobile chapter delivery — Jody welcome + email chapter + Continue Reading.
+ * Set NEXT_PUBLIC_JODY_MOBILE_DELIVERY=1 to enable. Desktop unchanged.
+ */
+export function isJodyMobileDeliveryEnabled(): boolean {
+  const v = process.env.NEXT_PUBLIC_JODY_MOBILE_DELIVERY?.trim();
+  return v === '1' || v === 'true';
+}

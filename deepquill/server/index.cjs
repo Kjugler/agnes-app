@@ -266,6 +266,18 @@ const jodyUpdatesConsentHandler = require('../api/jody/updatesConsent.cjs');
 app.post('/api/jody/updates-consent', jodyUpdatesConsentHandler);
 console.log('✅ Mounted POST /api/jody/updates-consent');
 
+const jodyChapterDeliverHandler = require('../api/jody/chapterDeliver.cjs');
+app.post('/api/jody/chapter/deliver', jodyChapterDeliverHandler);
+console.log('✅ Mounted POST /api/jody/chapter/deliver');
+
+const jodyChapterDownloadHandler = require('../api/jody/chapterDownload.cjs');
+app.get('/api/jody/chapter/download', jodyChapterDownloadHandler);
+console.log('✅ Mounted GET /api/jody/chapter/download');
+
+const jodyChapterContinueHandler = require('../api/jody/chapterContinue.cjs');
+app.get('/api/jody/chapter/continue', jodyChapterContinueHandler);
+console.log('✅ Mounted GET /api/jody/chapter/continue');
+
 const contestJoinHandler = require('../api/contest/join.cjs');
 app.post('/api/contest/join', contestJoinHandler);
 console.log('✅ Mounted /api/contest/join');

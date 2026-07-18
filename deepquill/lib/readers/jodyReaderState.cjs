@@ -9,6 +9,19 @@ const {
 
 const SAMPLE_CHAPTER_IDS = new Set(['1', '2', '9', '45']);
 
+const CHAPTER_PDF_FILES = {
+  '1': 'chapter1.pdf',
+  '2': 'chapter2.pdf',
+  '9': 'chapter9.pdf',
+  '45': 'chapter45.pdf',
+};
+
+function getChapterPdfPath(chapterId) {
+  const file = CHAPTER_PDF_FILES[String(chapterId)];
+  if (!file) return null;
+  return `/chapters/${file}`;
+}
+
 function isValidChapterId(chapterId) {
   return SAMPLE_CHAPTER_IDS.has(String(chapterId));
 }
@@ -122,12 +135,33 @@ async function getJodyReaderState(userId, opts = {}) {
   };
 }
 
+/**
+ * @param {{ userId: string, chapterId: string }} params
+ */
+async function saveChapterDelivery({ userId, chapterId }) {
+  if (!isValidChapterId(chapterId)) {
+    throw new Error('invalid_chapter_id');
+  }
+  const profile = await ensureReaderProfileForJody(userId);
+  const now = new Date();
+  return prisma.readerProfile.update({
+    where: { userId },
+    data: {
+      lastDeliveredChapterId: String(chapterId),
+      lastDeliveredAt: now,
+      ...(profile.jodyVerifiedAt ? {} : { jodyVerifiedAt: now }),
+    },
+  });
+}
+
 module.exports = {
   ensureReaderProfileForJody,
   saveJodyReadingProgress,
+  saveChapterDelivery,
   saveJodyUpdatesConsent,
   getJodyReaderState,
   isValidChapterId,
+  getChapterPdfPath,
   SAMPLE_CHAPTER_IDS,
   READER_STATUS,
 };

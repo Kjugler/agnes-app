@@ -367,9 +367,86 @@ The Agnes Protocol
   return { subject, text, html };
 }
 
+const CHAPTER_TITLES = {
+  '1': 'Chapter 1',
+  '2': 'Chapter 2',
+  '9': 'Chapter 9',
+  '45': 'Chapter 45',
+};
+
+/**
+ * @param {{ downloadLink: string, continueLink: string, chapterId: string, toEmail: string }} params
+ */
+function buildChapterDeliveryEmail({ downloadLink, continueLink, chapterId, toEmail }) {
+  const chapterTitle = CHAPTER_TITLES[String(chapterId)] || `Chapter ${chapterId}`;
+  const siteBase = (
+    process.env.SITE_URL ||
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    'https://www.theagnesprotocol.com'
+  ).replace(/\/$/, '');
+  const jodyArtUrl = `${siteBase}/jody-icons/jody-em2.png`;
+
+  const subject = `${chapterTitle} — from Jody`;
+
+  const text = `
+Hi,
+
+It's Jody. As promised, here is ${chapterTitle} of The Agnes Protocol.
+
+Download the chapter to read on your phone whenever you like:
+${downloadLink}
+
+When you're ready to continue your journey:
+${continueLink}
+
+Enjoy the read.
+
+— Jody
+The Agnes Protocol
+  `.trim();
+
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${chapterTitle}</title></head>
+<body style="margin:0;padding:0;background-color:#0a0a0a;font-family:Arial,Helvetica,sans-serif;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#0a0a0a;">
+    <tr><td align="center" style="padding:32px 16px;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:560px;background-color:#111111;border-radius:12px;overflow:hidden;border:1px solid rgba(0,255,229,0.25);">
+        <tr><td style="padding:0;text-align:center;background:linear-gradient(180deg,#0d2a28 0%,#111111 100%);">
+          <img src="${jodyArtUrl}" alt="Jody" width="120" height="120" style="display:block;margin:24px auto 8px;border-radius:50%;border:2px solid rgba(0,255,229,0.4);" />
+        </td></tr>
+        <tr><td style="padding:8px 28px 28px;">
+          <p style="margin:0 0 12px 0;font-size:14px;color:#00ffe5;letter-spacing:0.04em;">Message from Jody</p>
+          <h1 style="margin:0 0 16px 0;font-size:22px;color:#ffffff;font-weight:600;">Your ${chapterTitle} is ready</h1>
+          <p style="margin:0 0 12px 0;font-size:15px;line-height:1.65;color:#d0ece8;">
+            Hi — it's Jody. I sent ${chapterTitle} so you can save it, read at your own pace, and pick up again whenever you're ready.
+          </p>
+          <div style="text-align:center;margin:28px 0 16px;">
+            <a href="${downloadLink}" style="display:inline-block;padding:14px 28px;background-color:#00ffe5;color:#001a18;text-decoration:none;border-radius:999px;font-weight:bold;font-size:16px;">
+              Download Chapter
+            </a>
+          </div>
+          <div style="text-align:center;margin:8px 0 24px;">
+            <a href="${continueLink}" style="display:inline-block;padding:12px 24px;background-color:transparent;color:#00ffe5;text-decoration:none;border-radius:999px;font-weight:600;font-size:15px;border:1px solid rgba(0,255,229,0.5);">
+              Continue Reading
+            </a>
+          </div>
+          <p style="margin:0;font-size:13px;line-height:1.6;color:#888888;">— Jody<br>The Agnes Protocol</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>
+  `.trim();
+
+  return { subject, text, html };
+}
+
 module.exports = {
   buildPurchaseConfirmationEmail,
   buildClaimReaderProfileEmail,
   buildRememberPlaceEmail,
+  buildChapterDeliveryEmail,
 };
 

@@ -9,7 +9,8 @@ import { trackTikTok } from '@/lib/tiktokPixel';
 import { trackMeta } from '@/lib/metaPixel';
 import { FUNNEL_EVENT_TYPES, useFunnelPageEngagement } from '@/lib/funnelTracking';
 import { JodyConcierge } from '@/components/jody/JodyConcierge';
-import { isJodyConciergeEnabled } from '@/lib/funnelConfig';
+import { MobileChapterLanding } from '@/components/jody/MobileChapterLanding';
+import { isJodyConciergeEnabled, isJodyMobileDeliveryEnabled } from '@/lib/funnelConfig';
 import { useJodyChapterExit } from '@/hooks/useJodyConcierge';
 import { JODY_CONCIERGE_CONFIG } from '@/config/jodyConcierge';
 import { isReadingSessionDwellMet } from '@/lib/readerJourney';
@@ -79,6 +80,7 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
   }
 
   const { title, pdfUrl } = chapter;
+  const mobileDeliveryEnabled = isJodyMobileDeliveryEnabled();
 
   const handleTextThisScene = () => {
     const ref = readAssociate()?.code ?? null;
@@ -102,6 +104,14 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
   };
 
   return (
+    <>
+      {mobileDeliveryEnabled && (
+        <div className="chapter-mobile-jody-delivery">
+          <MobileChapterLanding chapterId={chapterId} title={title} pdfUrl={pdfUrl} />
+        </div>
+      )}
+
+      <div className={mobileDeliveryEnabled ? 'chapter-desktop-reader' : undefined}>
     <div
       style={{
         minHeight: '100svh',
@@ -343,7 +353,25 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
             display: none !important;
           }
         }
+        @media (max-width: 1023px) {
+          .chapter-mobile-jody-delivery {
+            display: block !important;
+          }
+          .chapter-desktop-reader {
+            display: none !important;
+          }
+        }
+        @media (min-width: 1024px) {
+          .chapter-mobile-jody-delivery {
+            display: none !important;
+          }
+          .chapter-desktop-reader {
+            display: block !important;
+          }
+        }
       `}</style>
     </div>
+      </div>
+    </>
   );
 }
