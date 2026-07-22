@@ -1,6 +1,8 @@
 /** Google Ads (gtag) — global site tag + purchase conversion. Not GTM. */
 
 export const DEFAULT_GOOGLE_ADS_ID = 'AW-18340602294';
+/** Website Purchase (manual/code) — from Google Ads conversion action tag setup. */
+export const DEFAULT_GOOGLE_ADS_PURCHASE_CONVERSION_LABEL = '3uBuCLqiqtQcELbDva1E';
 
 declare global {
   interface Window {
@@ -20,7 +22,9 @@ export function getGoogleAdsPurchaseSendTo(): string | null {
   if (explicit) return explicit;
 
   const id = getGoogleAdsId();
-  const label = process.env.NEXT_PUBLIC_GOOGLE_ADS_PURCHASE_CONVERSION_LABEL?.trim();
+  const label =
+    process.env.NEXT_PUBLIC_GOOGLE_ADS_PURCHASE_CONVERSION_LABEL?.trim() ||
+    DEFAULT_GOOGLE_ADS_PURCHASE_CONVERSION_LABEL;
   if (id && label) return `${id}/${label}`;
 
   return null;
