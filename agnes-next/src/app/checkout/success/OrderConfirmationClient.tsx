@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, useCallback, type CSSProperties } from 're
 import { useRouter } from 'next/navigation';
 import { trackTikTok } from '@/lib/tiktokPixel';
 import { trackMeta } from '@/lib/metaPixel';
+import { trackGoogleAdsPurchase } from '@/lib/googleAds';
 import { FUNNEL_EVENT_TYPES, trackFunnelEvent } from '@/lib/funnelTracking';
 import { HUB_THEME } from '@/lib/hubTheme';
 
@@ -186,6 +187,11 @@ export default function OrderConfirmationClient({ sessionId }: OrderConfirmation
               },
               { eventID: currentSessionId },
             );
+            trackGoogleAdsPurchase({
+              transactionId: currentSessionId,
+              value: (data.amountTotal || 0) / 100,
+              currency: (data.currency || 'usd').toUpperCase(),
+            });
           }
 
           pollForWebhookProcessing(currentSessionId);

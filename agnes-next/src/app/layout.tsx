@@ -12,6 +12,8 @@ import MetaPageView from "@/components/analytics/MetaPageView";
 import MetaPixelDebugPanel from "@/components/analytics/MetaPixelDebugPanel";
 import MicrosoftUET from "@/components/analytics/MicrosoftUET";
 import MicrosoftUETPageView from "@/components/analytics/MicrosoftUETPageView";
+import GoogleAds from "@/components/analytics/GoogleAds";
+import GoogleAdsPageView from "@/components/analytics/GoogleAdsPageView";
 
 const SITE_URL = "https://www.theagnesprotocol.com";
 /** Absolute URL for crawlers (og:image, Twitter cards). */
@@ -58,6 +60,7 @@ export default function RootLayout({
         <TikTokPixel />
         <MetaPixel />
         <MicrosoftUET />
+        <GoogleAds />
         <StressTestChrome>{children}</StressTestChrome>
         {/* Global, invisible, zero animation/layout impact */}
         <Suspense fallback={null}>
@@ -65,6 +68,7 @@ export default function RootLayout({
           <TikTokPageView />
           <MetaPageView />
           <MicrosoftUETPageView />
+          <GoogleAdsPageView />
           <MetaPixelDebugPanel />
         </Suspense>
       </body>
