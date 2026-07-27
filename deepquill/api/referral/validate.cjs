@@ -4,6 +4,18 @@
 const { prisma } = require('../../server/prisma.cjs');
 const { normalizeReferralCode } = require('../../src/lib/normalize.cjs');
 const { ensureDatabaseUrl } = require('../../server/prisma.cjs');
+const envConfig = require('../../src/config/env.cjs');
+
+const FORMAT_REGEX = /^[A-Z0-9]{3,12}$/;
+
+function validateAllowlist(normalizedCode) {
+  const allowlistMode = envConfig.ASSOCIATE_REF_ALLOWLIST_MODE || 'allowlist';
+  const allowlist = envConfig.ASSOCIATE_REF_ALLOWLIST || [];
+  if (allowlistMode === 'any') {
+    return FORMAT_REGEX.test(normalizedCode);
+  }
+  return allowlist.includes(normalizedCode);
+}
 
 async function handleValidateReferralCode(req, res) {
   try {
@@ -47,6 +59,18 @@ async function handleValidateReferralCode(req, res) {
     });
 
     if (!user) {
+      // Match checkout: allowlist / format fallback when code is not in User table
+      const allowlistValid = validateAllowlist(normalizedCode);
+      if (allowlistValid) {
+        console.log('[referral/validate] Code validated via allowlist', { code: normalizedCode });
+        return res.json({
+          ok: true,
+          valid: true,
+          code: normalizedCode,
+          method: 'allowlist',
+        });
+      }
+
       console.log('[referral/validate] Code not found', { code: normalizedCode });
       return res.json({
         ok: false,
