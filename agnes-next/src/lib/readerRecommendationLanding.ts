@@ -10,6 +10,8 @@ export {
 
 export const READERS_AGREE_PATH = '/readers-agree';
 export const READERS_AGREE_CATALOG_PATH = '/catalog';
+/** Start Reading bypasses sample hub — Chapter 1 direct (B&N funnel). */
+export const READERS_AGREE_CHAPTER_1_PATH = '/sample-chapters/read/1';
 export const READERS_AGREE_GO_AMAZON_PATH = '/readers-agree/go/amazon';
 export const READERS_AGREE_GO_BN_PATH = '/readers-agree/go/bn';
 
@@ -41,7 +43,7 @@ export const READERS_AGREE_HERO_IMAGE_PATH = '/images/rrf/readers-agree-hero-v1.
 
 export const READERS_AGREE_OG_TITLE = "Readers Agree — See Why They Can't Put It Down";
 export const READERS_AGREE_OG_DESCRIPTION =
-  'A reader you know thought you would connect with this. Read Amazon and Barnes & Noble reviews, then start 4 free sample chapters.';
+  'A reader you know thought you would connect with this. A political thriller about AI, corruption, and friendship—read sample chapters or reviews.';
 
 export const READERS_AGREE_TRACKING_PARAM_KEYS = [
   'ref',

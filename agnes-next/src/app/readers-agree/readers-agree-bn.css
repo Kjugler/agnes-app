@@ -1,0 +1,323 @@
+/* Barnes & Noble funnel — Readers Agree (mobile-first, signing-table tone) */
+
+.ra-bn-hero {
+  position: relative;
+  overflow: hidden;
+  padding: max(12px, env(safe-area-inset-top)) 16px 48px;
+  background:
+    radial-gradient(ellipse 120% 80% at 50% -20%, rgba(185, 28, 28, 0.45) 0%, transparent 55%),
+    linear-gradient(180deg, #0c0c0c 0%, #050505 100%);
+}
+
+.ra-bn-hero-scanlines {
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(255, 255, 255, 0.02) 2px,
+    rgba(255, 255, 255, 0.02) 4px
+  );
+  pointer-events: none;
+  opacity: 0.4;
+}
+
+.ra-bn-shell {
+  position: relative;
+  max-width: 960px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.ra-bn-cover-wrap {
+  width: 100%;
+  max-width: 200px;
+  max-height: min(240px, 32svh);
+  border-radius: 12px;
+  overflow: hidden;
+  flex-shrink: 0;
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.65),
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 0 32px rgba(185, 28, 28, 0.2);
+}
+
+.ra-bn-cover-wrap img {
+  width: 100%;
+  height: auto;
+  max-height: min(240px, 32svh);
+  object-fit: cover;
+  display: block;
+}
+
+.ra-bn-copy {
+  width: 100%;
+  max-width: 36rem;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ra-bn-headline {
+  margin: 0;
+  font-size: clamp(1.35rem, 4.5vw, 2.5rem);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.ra-bn-headline-white {
+  color: #ffffff;
+}
+
+.ra-bn-headline-red {
+  color: #ef4444;
+  text-shadow: 0 0 40px rgba(239, 68, 68, 0.35);
+}
+
+.ra-bn-friend-intro {
+  margin: 0;
+  font-size: clamp(0.9375rem, 2.5vw, 1.15rem);
+  line-height: 1.45;
+  color: rgba(245, 245, 245, 0.92);
+  font-weight: 600;
+}
+
+.ra-bn-synopsis {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ra-bn-synopsis-hook {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.5;
+  font-weight: 600;
+  color: rgba(245, 245, 245, 0.95);
+}
+
+.ra-bn-synopsis p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: rgba(245, 245, 245, 0.78);
+}
+
+.ra-bn-appeals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.ra-bn-appeal-pill {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: rgba(245, 245, 245, 0.72);
+  user-select: none;
+  pointer-events: none;
+}
+
+.ra-bn-ctas {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.ra-bn-cta-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 14px 20px;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  text-decoration: none;
+  background: #00ff7f;
+  color: #0a0a0a;
+  border: none;
+  box-shadow: 0 0 24px rgba(0, 255, 127, 0.25);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.ra-bn-cta-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 32px rgba(0, 255, 127, 0.35);
+}
+
+.ra-bn-reviews {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ra-bn-reviews-label {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(245, 245, 245, 0.55);
+  text-align: center;
+}
+
+.ra-bn-review-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ra-bn-cta-secondary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 12px 18px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  transition: border-color 0.2s ease, transform 0.2s ease;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.ra-bn-cta-secondary:hover {
+  border-color: rgba(220, 38, 38, 0.55);
+  transform: translateY(-1px);
+}
+
+.ra-bn-cta-tertiary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 12px 18px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+  background: transparent;
+  color: rgba(245, 245, 245, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: border-color 0.2s ease;
+}
+
+.ra-bn-cta-tertiary:hover {
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+/* More Below scroll cue — not a loader */
+.ra-bn-more-below {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 12px 0 4px;
+  pointer-events: none;
+  user-select: none;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+}
+
+.ra-bn-more-below--fade {
+  opacity: 0;
+}
+
+.ra-bn-more-below-chevron {
+  font-size: 22px;
+  line-height: 1;
+  color: rgba(245, 245, 245, 0.55);
+}
+
+.ra-bn-more-below-label {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(245, 245, 245, 0.5);
+}
+
+@keyframes ra-bn-chevron-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.55;
+  }
+  50% {
+    transform: translateY(4px);
+    opacity: 0.85;
+  }
+}
+
+.ra-bn-more-below--animate .ra-bn-more-below-chevron {
+  animation: ra-bn-chevron-bounce 2s ease-in-out infinite;
+}
+
+@media (min-width: 768px) {
+  .ra-bn-shell {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 32px;
+  }
+
+  .ra-bn-cover-wrap {
+    width: min(280px, 36%);
+    max-width: none;
+    max-height: none;
+  }
+
+  .ra-bn-cover-wrap img {
+    max-height: none;
+  }
+
+  .ra-bn-copy {
+    flex: 1;
+    max-width: none;
+  }
+
+  .ra-bn-review-row {
+    flex-direction: row;
+  }
+
+  .ra-bn-cta-secondary {
+    flex: 1;
+  }
+}
+
+@media (min-width: 960px) {
+  .ra-bn-hero {
+    padding: 32px 24px 56px;
+  }
+
+  .ra-bn-shell {
+    gap: 40px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ra-bn-more-below--animate .ra-bn-more-below-chevron {
+    animation: none;
+  }
+
+  .ra-bn-cta-primary:hover,
+  .ra-bn-cta-secondary:hover {
+    transform: none;
+  }
+}

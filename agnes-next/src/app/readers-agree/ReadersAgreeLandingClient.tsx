@@ -3,9 +3,15 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useRef, useSyncExternalStore, type CSSProperties, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useSyncExternalStore, type MouseEvent } from 'react';
 import { useSearchParams } from 'next/navigation';
 import SiteFooter from '@/components/SiteFooter';
+import ReadersAgreeScrollCue from '@/components/readers-agree/ReadersAgreeScrollCue';
+import {
+  READERS_AGREE_APPEAL_LABELS,
+  READERS_AGREE_SYNOPSIS_HOOK,
+  READERS_AGREE_SYNOPSIS_PARAGRAPHS,
+} from '@/config/readersAgreeBnFunnel';
 import { isMobileTouchBrowser } from '@/lib/device';
 import { isReadersAgreeDorothyBridgeEnabled } from '@/lib/funnelConfig';
 import { trackMeta } from '@/lib/metaPixel';
@@ -14,11 +20,11 @@ import {
   AMAZON_REVIEWS_URL,
   BARNES_NOBLE_REVIEWS_URL,
   buildReadersAgreePathWithTracking,
+  READERS_AGREE_CATALOG_PATH,
+  READERS_AGREE_CHAPTER_1_PATH,
   READERS_AGREE_GO_AMAZON_PATH,
   READERS_AGREE_GO_BN_PATH,
-  READERS_AGREE_CATALOG_PATH,
   READERS_AGREE_HERO_IMAGE_PATH,
-  SAMPLE_CHAPTERS_PATH,
 } from '@/lib/readerRecommendationLanding';
 import {
   clearBridgeTabDeparted,
@@ -32,147 +38,7 @@ import {
   trackFunnelEvent,
   useFunnelPageEngagement,
 } from '@/lib/funnelTracking';
-
-const cardBase: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '12px',
-  padding: '24px 22px',
-  borderRadius: '12px',
-  border: '1px solid rgba(255, 255, 255, 0.12)',
-  background: 'linear-gradient(145deg, rgba(20, 20, 20, 0.95) 0%, rgba(12, 12, 12, 0.98) 100%)',
-  boxShadow: '0 12px 40px rgba(0, 0, 0, 0.45)',
-  textDecoration: 'none',
-  color: '#f5f5f5',
-  transition: 'border-color 0.2s ease, transform 0.2s ease',
-  cursor: 'pointer',
-};
-
-const externalCta: CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: '12px 20px',
-  borderRadius: '8px',
-  fontSize: '15px',
-  fontWeight: 700,
-  border: '1px solid rgba(255, 255, 255, 0.25)',
-  background: 'rgba(255, 255, 255, 0.06)',
-  color: '#fff',
-  textDecoration: 'none',
-};
-
-const sampleCta: CSSProperties = {
-  ...externalCta,
-  background: '#00ff7f',
-  color: '#0a0a0a',
-  border: 'none',
-  boxShadow: '0 0 24px rgba(0, 255, 127, 0.25)',
-};
-
-function BuyTheBookCard({
-  href,
-  onNavigate,
-}: {
-  href: string;
-  onNavigate?: () => void;
-}) {
-  return (
-    <Link
-      href={href}
-      style={{ ...cardBase, width: '100%' }}
-      onClick={onNavigate}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = 'rgba(220, 38, 38, 0.55)';
-        e.currentTarget.style.transform = 'translateY(-2px)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)';
-        e.currentTarget.style.transform = 'translateY(0)';
-      }}
-    >
-      <div style={{ fontSize: '18px', letterSpacing: '0.06em' }} aria-hidden>
-        📚
-      </div>
-      <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, lineHeight: 1.3 }}>
-        Buy the Book
-      </h2>
-      <span style={externalCta}>Buy the Book →</span>
-    </Link>
-  );
-}
-
-function ReviewCard({
-  stars,
-  title,
-  href,
-  cta,
-  variant,
-  onNavigate,
-  onRetailerTap,
-}: {
-  stars: string;
-  title: string;
-  href: string;
-  cta: string;
-  variant: 'retailer' | 'sample';
-  onNavigate?: () => void;
-  onRetailerTap?: (event: MouseEvent<HTMLAnchorElement>) => void;
-}) {
-  const isSample = variant === 'sample';
-  const ctaStyle = isSample ? sampleCta : externalCta;
-  const isDorothyRetailer = !isSample && onRetailerTap;
-
-  const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
-    if (isDorothyRetailer) {
-      onRetailerTap!(event);
-      return;
-    }
-    onNavigate?.();
-  };
-
-  const cardProps = {
-    href,
-    onClick: handleClick,
-    style: {
-      ...cardBase,
-      width: '100%' as const,
-      borderColor: isSample ? 'rgba(0, 255, 127, 0.35)' : undefined,
-    },
-    onMouseEnter: (e: MouseEvent<HTMLAnchorElement>) => {
-      e.currentTarget.style.borderColor = isSample
-        ? 'rgba(0, 255, 127, 0.65)'
-        : 'rgba(220, 38, 38, 0.55)';
-      e.currentTarget.style.transform = 'translateY(-2px)';
-    },
-    onMouseLeave: (e: MouseEvent<HTMLAnchorElement>) => {
-      e.currentTarget.style.borderColor = isSample
-        ? 'rgba(0, 255, 127, 0.35)'
-        : 'rgba(255, 255, 255, 0.12)';
-      e.currentTarget.style.transform = 'translateY(0)';
-    },
-  };
-
-  const inner = (
-    <>
-      <div style={{ fontSize: '18px', letterSpacing: '0.06em' }} aria-hidden>
-        {stars}
-      </div>
-      <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, lineHeight: 1.3 }}>{title}</h2>
-      <span style={ctaStyle}>{cta} →</span>
-    </>
-  );
-
-  if (isSample) {
-    return <Link {...cardProps}>{inner}</Link>;
-  }
-
-  return (
-    <a {...cardProps} {...(isDorothyRetailer ? { rel: 'noopener noreferrer' } : {})}>
-      {inner}
-    </a>
-  );
-}
+import './readers-agree-bn.css';
 
 const BRIDGE_ENABLED = isReadersAgreeDorothyBridgeEnabled();
 
@@ -184,6 +50,7 @@ export default function ReadersAgreeLandingClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const viewFiredRef = useRef(false);
+  const startReadingRef = useRef<HTMLAnchorElement>(null);
   const mobileTwoTap = useSyncExternalStore(subscribeNoop, isMobileTouchBrowser, () => false);
 
   useFunnelPageEngagement({
@@ -194,24 +61,24 @@ export default function ReadersAgreeLandingClient() {
     searchParams,
   });
 
-  const sampleChaptersHref = useMemo(
-    () => buildReadersAgreePathWithTracking(SAMPLE_CHAPTERS_PATH, searchParams),
-    [searchParams]
+  const startReadingHref = useMemo(
+    () => buildReadersAgreePathWithTracking(READERS_AGREE_CHAPTER_1_PATH, searchParams),
+    [searchParams],
   );
 
   const catalogHref = useMemo(
     () => buildReadersAgreePathWithTracking(READERS_AGREE_CATALOG_PATH, searchParams),
-    [searchParams]
+    [searchParams],
   );
 
   const amazonGoHref = useMemo(
     () => buildReadersAgreePathWithTracking(READERS_AGREE_GO_AMAZON_PATH, searchParams),
-    [searchParams]
+    [searchParams],
   );
 
   const bnGoHref = useMemo(
     () => buildReadersAgreePathWithTracking(READERS_AGREE_GO_BN_PATH, searchParams),
-    [searchParams]
+    [searchParams],
   );
 
   useEffect(() => {
@@ -229,17 +96,31 @@ export default function ReadersAgreeLandingClient() {
     });
   }, []);
 
+  const trackOpts = { source: 'readers-agree' as const, searchParams };
+
+  const handleStartReadingClick = () => {
+    trackFunnelEvent(
+      FUNNEL_EVENT_TYPES.READERS_AGREE_SAMPLE_CHAPTERS_CLICK,
+      { destination: 'chapter-1-direct' },
+      trackOpts,
+    );
+    trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_START_READING_CLICK, {}, trackOpts);
+  };
+
   const handleBuyClick = () =>
-    trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_BUY_CLICK, {}, {
-      source: 'readers-agree',
-      searchParams,
-    });
+    trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_BUY_CLICK, {}, trackOpts);
+
+  const handleAmazonClick = () =>
+    trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK, {}, trackOpts);
+
+  const handleBnClick = () =>
+    trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_BN_CLICK, {}, trackOpts);
 
   const handleRetailerTap = (
     event: MouseEvent<HTMLAnchorElement>,
     destinationUrl: string,
     bridgeHref: string,
-    trackClick: () => void
+    trackClick: () => void,
   ) => {
     event.preventDefault();
     trackClick();
@@ -262,6 +143,56 @@ export default function ReadersAgreeLandingClient() {
     resetBridgeSessionState();
   };
 
+  const amazonReviewControl =
+    BRIDGE_ENABLED && !mobileTwoTap ? (
+      <a
+        href={AMAZON_REVIEWS_URL}
+        className="ra-bn-cta-secondary"
+        onClick={(event) =>
+          handleRetailerTap(event, AMAZON_REVIEWS_URL, amazonGoHref, handleAmazonClick)
+        }
+        rel="noopener noreferrer"
+      >
+        Amazon Reviews →
+      </a>
+    ) : (
+      <Link
+        href={amazonGoHref}
+        className="ra-bn-cta-secondary"
+        onClick={() => {
+          if (BRIDGE_ENABLED && mobileTwoTap) handleIosBridgeNav();
+          handleAmazonClick();
+        }}
+      >
+        Amazon Reviews →
+      </Link>
+    );
+
+  const bnReviewControl =
+    BRIDGE_ENABLED && !mobileTwoTap ? (
+      <a
+        href={BARNES_NOBLE_REVIEWS_URL}
+        className="ra-bn-cta-secondary"
+        onClick={(event) =>
+          handleRetailerTap(event, BARNES_NOBLE_REVIEWS_URL, bnGoHref, handleBnClick)
+        }
+        rel="noopener noreferrer"
+      >
+        Barnes &amp; Noble Reviews →
+      </a>
+    ) : (
+      <Link
+        href={bnGoHref}
+        className="ra-bn-cta-secondary"
+        onClick={() => {
+          if (BRIDGE_ENABLED && mobileTwoTap) handleIosBridgeNav();
+          handleBnClick();
+        }}
+      >
+        Barnes &amp; Noble Reviews →
+      </Link>
+    );
+
   return (
     <main
       style={{
@@ -270,205 +201,70 @@ export default function ReadersAgreeLandingClient() {
         color: '#f5f5f5',
       }}
     >
-      <section
-        style={{
-          position: 'relative',
-          overflow: 'hidden',
-          padding: '24px 16px 48px',
-          background:
-            'radial-gradient(ellipse 120% 80% at 50% -20%, rgba(185, 28, 28, 0.45) 0%, transparent 55%), linear-gradient(180deg, #0c0c0c 0%, #050505 100%)',
-        }}
-      >
-        <div
-          aria-hidden
-          style={{
-            position: 'absolute',
-            inset: 0,
-            backgroundImage:
-              'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.02) 2px, rgba(255,255,255,0.02) 4px)',
-            pointerEvents: 'none',
-            opacity: 0.4,
-          }}
-        />
+      <section className="ra-bn-hero">
+        <div className="ra-bn-hero-scanlines" aria-hidden />
 
-        <div
-          style={{
-            position: 'relative',
-            maxWidth: '960px',
-            margin: '0 auto',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '24px',
-          }}
-        >
-          <div style={{ maxWidth: '36rem' }}>
-            <h1
-              style={{
-                margin: '0 0 12px 0',
-                fontSize: 'clamp(1.75rem, 5vw, 2.5rem)',
-                fontWeight: 800,
-                lineHeight: 1.15,
-                letterSpacing: '-0.02em',
-              }}
-            >
-              <span style={{ color: '#ffffff' }}>Readers Agree — </span>
-              <span style={{ color: '#ef4444', textShadow: '0 0 40px rgba(239, 68, 68, 0.35)' }}>
-                See Why They Can&apos;t Put It Down
-              </span>
-            </h1>
-            <p
-              style={{
-                margin: '0 0 10px 0',
-                fontSize: 'clamp(1rem, 2.5vw, 1.15rem)',
-                lineHeight: 1.5,
-                color: 'rgba(245, 245, 245, 0.92)',
-                fontWeight: 600,
-              }}
-            >
-              A reader you know thought you&apos;d connect with this.
-            </p>
-            <p
-              style={{
-                margin: 0,
-                fontSize: '16px',
-                lineHeight: 1.5,
-                color: 'rgba(245, 245, 245, 0.72)',
-              }}
-            >
-              Start wherever you&apos;d like.
-            </p>
-          </div>
-
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-              gap: '20px',
-            }}
-          >
-            <BuyTheBookCard href={catalogHref} onNavigate={handleBuyClick} />
-            {BRIDGE_ENABLED ? (
-              mobileTwoTap ? (
-                <>
-                  <Link
-                    href={amazonGoHref}
-                    style={{ ...cardBase, width: '100%' }}
-                    onClick={handleIosBridgeNav}
-                  >
-                    <div style={{ fontSize: '18px', letterSpacing: '0.06em' }} aria-hidden>
-                      ★★★★★
-                    </div>
-                    <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, lineHeight: 1.3 }}>
-                      Amazon Readers
-                    </h2>
-                    <span style={externalCta}>Read the Reviews →</span>
-                  </Link>
-                  <Link
-                    href={bnGoHref}
-                    style={{ ...cardBase, width: '100%' }}
-                    onClick={handleIosBridgeNav}
-                  >
-                    <div style={{ fontSize: '18px', letterSpacing: '0.06em' }} aria-hidden>
-                      ★★★★★
-                    </div>
-                    <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, lineHeight: 1.3 }}>
-                      Barnes & Noble Readers
-                    </h2>
-                    <span style={externalCta}>Read the Reviews →</span>
-                  </Link>
-                </>
-              ) : (
-                <>
-                  <ReviewCard
-                    stars="★★★★★"
-                    title="Amazon Readers"
-                    href={AMAZON_REVIEWS_URL}
-                    cta="Read the Reviews"
-                    variant="retailer"
-                    onRetailerTap={(event) =>
-                      handleRetailerTap(event, AMAZON_REVIEWS_URL, amazonGoHref, () =>
-                        trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK, {}, {
-                          source: 'readers-agree',
-                          searchParams,
-                        })
-                      )
-                    }
-                  />
-                  <ReviewCard
-                    stars="★★★★★"
-                    title="Barnes & Noble Readers"
-                    href={BARNES_NOBLE_REVIEWS_URL}
-                    cta="Read the Reviews"
-                    variant="retailer"
-                    onRetailerTap={(event) =>
-                      handleRetailerTap(event, BARNES_NOBLE_REVIEWS_URL, bnGoHref, () =>
-                        trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_BN_CLICK, {}, {
-                          source: 'readers-agree',
-                          searchParams,
-                        })
-                      )
-                    }
-                  />
-                </>
-              )
-            ) : (
-              <>
-                <Link href={amazonGoHref} style={{ ...cardBase, width: '100%' }} onClick={() =>
-                    trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK, {}, {
-                      source: 'readers-agree',
-                      searchParams,
-                    })
-                  }>
-                  <div style={{ fontSize: '18px', letterSpacing: '0.06em' }} aria-hidden>★★★★★</div>
-                  <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, lineHeight: 1.3 }}>Amazon Readers</h2>
-                  <span style={externalCta}>Read the Reviews →</span>
-                </Link>
-                <Link href={bnGoHref} style={{ ...cardBase, width: '100%' }} onClick={() =>
-                    trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_BN_CLICK, {}, {
-                      source: 'readers-agree',
-                      searchParams,
-                    })
-                  }>
-                  <div style={{ fontSize: '18px', letterSpacing: '0.06em' }} aria-hidden>★★★★★</div>
-                  <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, lineHeight: 1.3 }}>Barnes & Noble Readers</h2>
-                  <span style={externalCta}>Read the Reviews →</span>
-                </Link>
-              </>
-            )}
-            <ReviewCard
-              stars="📖"
-              title="Read 4 FREE Sample Chapters"
-              href={sampleChaptersHref}
-              cta="Start Reading"
-              variant="sample"
-              onNavigate={() =>
-                trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_SAMPLE_CHAPTERS_CLICK, {}, {
-                  source: 'readers-agree',
-                  searchParams,
-                })
-              }
-            />
-          </div>
-
-          <div
-            style={{
-              position: 'relative',
-              width: '100%',
-              marginTop: '8px',
-              borderRadius: '12px',
-              overflow: 'hidden',
-              boxShadow:
-                '0 24px 60px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255,255,255,0.08), 0 0 48px rgba(185, 28, 28, 0.2)',
-            }}
-          >
+        <div className="ra-bn-shell">
+          <div className="ra-bn-cover-wrap">
             <Image
               src={READERS_AGREE_HERO_IMAGE_PATH}
-              alt="Readers Agree — The Agnes Protocol"
-              width={1200}
-              height={896}
-              sizes="(max-width: 960px) 100vw, 960px"
-              style={{ width: '100%', height: 'auto', display: 'block' }}
+              alt="The Agnes Protocol — book cover"
+              width={400}
+              height={298}
+              sizes="(max-width: 767px) 200px, 280px"
+              priority
             />
+          </div>
+
+          <div className="ra-bn-copy">
+            <h1 className="ra-bn-headline">
+              <span className="ra-bn-headline-white">Readers Agree — </span>
+              <span className="ra-bn-headline-red">See Why They Can&apos;t Put It Down</span>
+            </h1>
+
+            <p className="ra-bn-friend-intro">
+              A reader you know thought you&apos;d connect with this.
+            </p>
+
+            <div className="ra-bn-synopsis">
+              <p className="ra-bn-synopsis-hook">{READERS_AGREE_SYNOPSIS_HOOK}</p>
+              {READERS_AGREE_SYNOPSIS_PARAGRAPHS.map((paragraph) => (
+                <p key={paragraph.slice(0, 48)}>{paragraph}</p>
+              ))}
+            </div>
+
+            <div className="ra-bn-appeals" aria-hidden>
+              {READERS_AGREE_APPEAL_LABELS.map((label) => (
+                <span key={label} className="ra-bn-appeal-pill">
+                  {label}
+                </span>
+              ))}
+            </div>
+
+            <ReadersAgreeScrollCue startReadingRef={startReadingRef} />
+
+            <div className="ra-bn-ctas">
+              <Link
+                ref={startReadingRef}
+                href={startReadingHref}
+                className="ra-bn-cta-primary"
+                onClick={handleStartReadingClick}
+              >
+                Start Reading →
+              </Link>
+
+              <div className="ra-bn-reviews">
+                <p className="ra-bn-reviews-label">Read Reviews</p>
+                <div className="ra-bn-review-row">
+                  {amazonReviewControl}
+                  {bnReviewControl}
+                </div>
+              </div>
+
+              <Link href={catalogHref} className="ra-bn-cta-tertiary" onClick={handleBuyClick}>
+                Buy the Book →
+              </Link>
+            </div>
           </div>
         </div>
       </section>
