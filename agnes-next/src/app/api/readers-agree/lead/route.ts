@@ -5,7 +5,10 @@ import { rateLimitByIP } from '@/lib/rateLimit';
 export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
-  const rateLimit = rateLimitByIP(req, { maxRequests: 5, windowMs: 60_000 });
+  const host = req.headers.get('host') || '';
+  const isLocalHost = host.includes('localhost') || host.startsWith('127.0.0.1');
+  const maxRequests = isLocalHost ? 60 : 5;
+  const rateLimit = rateLimitByIP(req, { maxRequests, windowMs: 60_000 });
   if (!rateLimit.allowed) {
     return NextResponse.json({ ok: false, error: 'rate_limited' }, { status: 429 });
   }

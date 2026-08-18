@@ -2,7 +2,7 @@
 
 **Status:** **Locked for approval** — documentation only  
 **Last revised:** 2026-08-18 (Phase D bridge revision synced)  
-**Canonical index:** This document + [`bn-funnel-readers-agree-v2-study.md`](bn-funnel-readers-agree-v2-study.md) + [`bn-funnel-readers-agree-v2-prospect-nurture-study.md`](bn-funnel-readers-agree-v2-prospect-nurture-study.md) + **[`bn-funnel-phase-d-plan.md`](bn-funnel-phase-d-plan.md)** ← authoritative Phase D plan
+**Canonical index:** This document + [`bn-funnel-readers-agree-v2-study.md`](bn-funnel-readers-agree-v2-study.md) + [`bn-funnel-readers-agree-v2-prospect-nurture-study.md`](bn-funnel-readers-agree-v2-prospect-nurture-study.md) + **[`bn-funnel-phase-d-plan.md`](bn-funnel-phase-d-plan.md)** + **[`bn-funnel-catalog-redesign-plan.md`](bn-funnel-catalog-redesign-plan.md)** ← next implementation target
 
 > **Supersedes:** The prior **large “Buy Direct — Best Value” promotional card** on `/readers-agree` — **NOT approved.** Buy Direct on `/readers-agree` is a **clean third button only**. Best-deal selling lives on **`/catalog`**.
 
@@ -123,11 +123,13 @@ On submit:
 
 ---
 
-## `/catalog` — sell the direct offer (unchanged intent)
+## `/catalog` — sell the direct offer
 
 `/readers-agree` does **not** explain why Buy Direct is the best deal. **`/catalog` does.**
 
-### Locked catalog positioning
+**Canonical implementation plan:** **[`bn-funnel-catalog-redesign-plan.md`](bn-funnel-catalog-redesign-plan.md)** — visual environment (bridge family), responsive three-product hierarchy, BEST VALUE paperback hero, eBook/audiobook emphasis, protected preorder/checkout contracts.
+
+### Locked catalog positioning (summary)
 
 **Eyebrow / hero treatment:** **YOU'VE FOUND THE BEST DEAL** (or equivalent consistent with approved catalog design)
 

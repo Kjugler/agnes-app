@@ -2,6 +2,7 @@ import { getProduct, type ProductId } from './products';
 import { PAPERBACK_SHIPPING_CENTS, trackTikTok } from './tiktokPixel';
 import { trackMeta } from './metaPixel';
 import { FUNNEL_EVENT_TYPES, trackFunnelEvent } from './funnelTracking';
+import { resolveValidatedReferralFromBrowser } from './resolveCatalogReferral';
 
 // Non-blocking tracker: prefer sendBeacon; fallback to keepalive fetch
 function trackCheckoutStarted(source: string, path: string) {
@@ -54,41 +55,13 @@ export async function startCheckout(opts: StartCheckoutOpts = {}) {
 
   // Anonymous checkout: Stripe collects buyer email. Do not send contest cookies/localStorage identity.
 
-  // Root Cause A Fix: Capture referral code with correct precedence: query param > cookie > localStorage
-  // Query param ref must always override cookie (prevents stale referral context)
+  // Validate referral candidates in browser order; skip invalid `code` when `ref` is valid.
   let referralCode: string | undefined;
   if (typeof window !== 'undefined') {
-    // Priority 1: Query params (highest priority - always wins)
     const urlParams = new URLSearchParams(window.location.search);
-    const codeFromQuery = urlParams.get('code'); // from /refer?code=...
-    const refFromQuery = urlParams.get('ref'); // from /contest?ref=... or /catalog?ref=...
-    
-    if (codeFromQuery && codeFromQuery.trim()) {
-      referralCode = codeFromQuery.trim();
-    } else if (refFromQuery && refFromQuery.trim()) {
-      referralCode = refFromQuery.trim();
-    } else {
-      // Priority 2: Cookie (ap_ref or ref)
-      try {
-        const cookies = document.cookie.split(';');
-        const apRefCookie = cookies.find(c => c.trim().startsWith('ap_ref='));
-        const refCookie = cookies.find(c => c.trim().startsWith('ref='));
-        const cookieValue = apRefCookie?.split('=')[1] || refCookie?.split('=')[1];
-        if (cookieValue) {
-          referralCode = decodeURIComponent(cookieValue.trim());
-        }
-      } catch {
-        // Cookie parsing failed
-      }
-      
-      // Priority 3: localStorage (lowest priority - only if no query/cookie)
-      if (!referralCode) {
-        try {
-          referralCode = window.localStorage.getItem('referral_code') || undefined;
-        } catch {
-          // localStorage not available
-        }
-      }
+    const validated = await resolveValidatedReferralFromBrowser(urlParams);
+    if (validated?.valid) {
+      referralCode = validated.code;
     }
   }
 

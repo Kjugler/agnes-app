@@ -51,7 +51,9 @@ export default function ReadersAgreeEmailCapture({
       setError(
         result.error === 'invalid_email'
           ? 'Please enter a valid email address.'
-          : 'Something went wrong. Please try again.',
+          : result.error === 'rate_limited'
+            ? 'Too many attempts. Please wait a minute and try again.'
+            : 'Something went wrong. Please try again.',
       );
       setSubmitting(false);
       return;

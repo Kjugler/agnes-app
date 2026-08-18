@@ -17,36 +17,43 @@ export function hasTextAFriendDiscountCookie(): boolean {
   return readCookie('textafriend_discount') === '15';
 }
 
-export function resolveReferralCodeFromBrowser(searchParams: URLSearchParams): string | undefined {
-  // Live URL first — useSearchParams can lag behind window.location on first paint
+function addReferralCandidate(candidates: string[], seen: Set<string>, raw?: string | null) {
+  const trimmed = raw?.trim();
+  if (!trimmed) return;
+  const key = trimmed.toUpperCase();
+  if (seen.has(key)) return;
+  seen.add(key);
+  candidates.push(trimmed);
+}
+
+/** Ordered referral candidates — same sources as checkout, de-duplicated. */
+export function collectReferralCandidatesFromBrowser(searchParams: URLSearchParams): string[] {
+  const candidates: string[] = [];
+  const seen = new Set<string>();
+
   if (typeof window !== 'undefined') {
     const live = new URLSearchParams(window.location.search);
-    const codeFromLive = live.get('code')?.trim();
-    if (codeFromLive) return codeFromLive;
-    const refFromLive = live.get('ref')?.trim();
-    if (refFromLive) return refFromLive;
+    addReferralCandidate(candidates, seen, live.get('code'));
+    addReferralCandidate(candidates, seen, live.get('ref'));
   }
 
-  const codeFromQuery = searchParams.get('code')?.trim();
-  if (codeFromQuery) return codeFromQuery;
-
-  const refFromQuery = searchParams.get('ref')?.trim();
-  if (refFromQuery) return refFromQuery;
-
-  const apRef = readCookie('ap_ref');
-  if (apRef) return apRef;
-
-  const refCookie = readCookie('ref');
-  if (refCookie) return refCookie;
+  addReferralCandidate(candidates, seen, searchParams.get('code'));
+  addReferralCandidate(candidates, seen, searchParams.get('ref'));
+  addReferralCandidate(candidates, seen, readCookie('ap_ref'));
+  addReferralCandidate(candidates, seen, readCookie('ref'));
 
   try {
-    const fromStorage = window.localStorage.getItem('referral_code')?.trim();
-    if (fromStorage) return fromStorage;
+    addReferralCandidate(candidates, seen, window.localStorage.getItem('referral_code'));
   } catch {
     /* ignore */
   }
 
-  return undefined;
+  return candidates;
+}
+
+/** First matching candidate (legacy). Prefer {@link resolveValidatedReferralFromBrowser}. */
+export function resolveReferralCodeFromBrowser(searchParams: URLSearchParams): string | undefined {
+  return collectReferralCandidatesFromBrowser(searchParams)[0];
 }
 
 export type ReferralValidationResult = {
@@ -75,4 +82,17 @@ export async function validateReferralCode(code: string): Promise<ReferralValida
     valid: Boolean(data.valid),
     code: typeof data.code === 'string' ? data.code : normalized,
   };
+}
+
+/** Validate candidates in precedence order; skips invalid `code` when `ref` is valid. */
+export async function resolveValidatedReferralFromBrowser(
+  searchParams: URLSearchParams,
+): Promise<ReferralValidationResult | null> {
+  const candidates = collectReferralCandidatesFromBrowser(searchParams);
+  for (const candidate of candidates) {
+    const result = await validateReferralCode(candidate);
+    if (result.valid) return result;
+    if (result.serviceUnavailable) return result;
+  }
+  return null;
 }
