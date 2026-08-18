@@ -1,6 +1,5 @@
 import { Suspense } from 'react';
-import ReviewRedirectClient from '../ReviewRedirectClient';
-import { AMAZON_REVIEWS_URL } from '@/lib/readerRecommendationLanding';
+import AmazonGoClient from './AmazonGoClient';
 
 function LoadingFallback() {
   return (
@@ -22,11 +21,7 @@ function LoadingFallback() {
 export default function AmazonReviewRedirectPage() {
   return (
     <Suspense fallback={<LoadingFallback />}>
-      <ReviewRedirectClient
-        heading="Opening Amazon Reviews…"
-        destinationUrl={AMAZON_REVIEWS_URL}
-        retailerLabel="Amazon"
-      />
+      <AmazonGoClient />
     </Suspense>
   );
 }

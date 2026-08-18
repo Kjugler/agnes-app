@@ -1,0 +1,124 @@
+/* Shared Readers Agree email capture (landing + bridge) */
+
+.ra-email-capture {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ra-email-capture-lead {
+  margin: 0;
+  font-size: 1.0625rem;
+  line-height: 1.5;
+}
+
+.ra-bn-hero .ra-email-capture-lead {
+  color: rgba(245, 245, 245, 0.88);
+}
+
+.ra-bridge-email .ra-email-capture-lead,
+.ra-bridge-email .ra-email-capture-bridge-kicker {
+  color: rgba(26, 31, 28, 0.78);
+}
+
+.ra-email-capture-bridge-kicker {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: rgba(0, 120, 60, 0.85);
+}
+
+.ra-email-capture-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ra-email-capture-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.ra-email-capture-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ra-email-capture-input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-size: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f5f5f5;
+  box-sizing: border-box;
+}
+
+.ra-bridge-email .ra-email-capture-input {
+  border-color: rgba(0, 0, 0, 0.12);
+  background: #ffffff;
+  color: #142018;
+}
+
+.ra-email-capture-input::placeholder {
+  color: rgba(245, 245, 245, 0.45);
+}
+
+.ra-bridge-email .ra-email-capture-input::placeholder {
+  color: rgba(26, 31, 28, 0.4);
+}
+
+.ra-email-capture-submit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 18px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  background: #00b35a;
+  color: #ffffff;
+  transition: background 0.2s ease, opacity 0.2s ease;
+}
+
+.ra-bn-hero .ra-email-capture-submit {
+  background: #00ff7f;
+  color: #0a0a0a;
+}
+
+.ra-email-capture-submit:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.ra-email-capture-error {
+  margin: 0;
+  font-size: 14px;
+  color: #ef4444;
+}
+
+@media (min-width: 480px) {
+  .ra-email-capture-row {
+    flex-direction: row;
+    align-items: stretch;
+  }
+
+  .ra-email-capture-input {
+    flex: 1;
+  }
+
+  .ra-email-capture-submit {
+    white-space: nowrap;
+  }
+}

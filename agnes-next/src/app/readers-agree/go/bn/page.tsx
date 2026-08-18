@@ -26,6 +26,7 @@ export default function BarnesNobleReviewRedirectPage() {
         heading="Opening Barnes & Noble Reviews…"
         destinationUrl={BARNES_NOBLE_REVIEWS_URL}
         retailerLabel="Barnes & Noble"
+        retailerOrigin="bn"
       />
     </Suspense>
   );

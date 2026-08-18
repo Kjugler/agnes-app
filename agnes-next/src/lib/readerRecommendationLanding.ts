@@ -3,10 +3,13 @@
 import { TEXT_A_FRIEND_SITE_URL } from '@/lib/textAFriendOg';
 
 export {
+  AMAZON_PRODUCT_URL,
   AMAZON_REVIEWS_URL,
   BARNES_NOBLE_REVIEWS_URL,
   SAMPLE_CHAPTERS_PATH,
 } from '@/lib/metaAdLanding';
+
+export { buildAmazonProductUrl } from '@/lib/amazonAttribution';
 
 export const READERS_AGREE_PATH = '/readers-agree';
 export const READERS_AGREE_CATALOG_PATH = '/catalog';

@@ -10,7 +10,12 @@ const { buildEngagedReminderEmail } = require('../../lib/email/builders/engagedR
 const { buildNoPurchaseReminderEmail } = require('../../lib/email/builders/noPurchaseReminder.cjs');
 const { buildNonParticipantReminderEmail } = require('../../lib/email/builders/nonParticipantReminder.cjs');
 const { buildMissionaryEmail } = require('../../lib/email/builders/missionaryEmail.cjs');
+const { buildProspectNurtureEmail } = require('../../lib/email/builders/prospectNurture.cjs');
 const { guardMailableEmail } = require('../../lib/email/guardMailableEmail.cjs');
+const { userHasPurchase } = require('../../lib/readers/readerStatus.cjs');
+const { READERS_AGREE_V2_SOURCE, buildSampleChaptersUrlFromAttribution } = require('../../lib/readers/readersAgreeLead.cjs');
+const { recordServerFunnelEvent } = require('../../lib/funnel/recordServerFunnelEvent.cjs');
+const { FUNNEL_EVENT_TYPES } = require('../../lib/funnel/funnelEventTypes.cjs');
 
 const router = express.Router();
 
@@ -200,6 +205,16 @@ router.get('/send-no-purchase-reminders', async (req, res) => {
         noPurchaseEmailSentAt: null,
         createdAt: { lte: twentyFourHoursAgo },
         purchases: { none: {} },
+        NOT: {
+          readerProfile: {
+            is: {
+              OR: [
+                { source: READERS_AGREE_V2_SOURCE },
+                { prospectNurtureEnrolledAt: { not: null } },
+              ],
+            },
+          },
+        },
       },
       select: { id: true, email: true, firstName: true, referralCode: true },
       take: MAX_EMAILS_PER_RUN,
@@ -502,5 +517,126 @@ async function runReaderRecommendationOutreachJob(req, res) {
 
 router.get('/send-reader-recommendation-outreach', runReaderRecommendationOutreachJob);
 router.post('/send-reader-recommendation-outreach', express.json(), runReaderRecommendationOutreachJob);
+
+// Elapsed-time thresholds from prospectNurtureEnrolledAt (not calendar days).
+const PROSPECT_NURTURE_STEP_1_MIN_HOURS = 48;
+const PROSPECT_NURTURE_DAY_THRESHOLDS = Object.freeze({ 2: 5, 3: 10, 4: 14 });
+
+function prospectNurtureStepEligible(enrolledAt, nextStep) {
+  const elapsedMs = Date.now() - enrolledAt.getTime();
+  if (nextStep === 1) {
+    return elapsedMs >= PROSPECT_NURTURE_STEP_1_MIN_HOURS * 60 * 60 * 1000;
+  }
+  const dayThreshold = PROSPECT_NURTURE_DAY_THRESHOLDS[nextStep];
+  if (dayThreshold == null) return false;
+  const elapsedDays = elapsedMs / (24 * 60 * 60 * 1000);
+  return elapsedDays >= dayThreshold;
+}
+
+// GET /api/admin/jobs/send-prospect-nurture — steps 1–4 (step 0 at lead capture)
+router.get('/send-prospect-nurture', async (req, res) => {
+  try {
+    if (!shouldSendTransactionalEmails()) {
+      return res.json({ ok: true, skipped: true, reason: 'TRANSACTIONAL_EMAIL_ENABLED not set', sent: 0 });
+    }
+    const client = getMailchimpClient();
+    if (!client) return res.status(500).json({ ok: false, error: 'Email service not configured' });
+    const fromEmail = process.env.MAILCHIMP_FROM_EMAIL;
+    if (!fromEmail) return res.status(500).json({ ok: false, error: 'MAILCHIMP_FROM_EMAIL not configured' });
+
+    const profiles = await prisma.readerProfile.findMany({
+      where: {
+        source: READERS_AGREE_V2_SOURCE,
+        prospectNurtureEnrolledAt: { not: null },
+        prospectNurtureSuppressedAt: null,
+        OR: [
+          { prospectNurtureLastSentAt: { not: null } },
+          { prospectNurtureLastSentAt: null, prospectNurtureStep: null },
+          { prospectNurtureLastSentAt: null, prospectNurtureStep: 0 },
+        ],
+      },
+      include: { user: { select: { id: true, email: true } } },
+      take: MAX_EMAILS_PER_RUN,
+    });
+
+    let sent = 0;
+    const errors = [];
+
+    for (const profile of profiles) {
+      try {
+        const userId = profile.userId;
+        const email = profile.user?.email;
+        if (!email) continue;
+
+        if (await userHasPurchase(prisma, userId)) {
+          await prisma.readerProfile.update({
+            where: { id: profile.id },
+            data: {
+              prospectNurtureSuppressedAt: new Date(),
+              prospectNurtureSuppressedReason: 'purchased',
+            },
+          });
+          continue;
+        }
+
+        const enrolledAt = profile.prospectNurtureEnrolledAt;
+        if (!enrolledAt) continue;
+
+        // Retry Email 0 when welcome send failed at lead capture (lastSentAt still null).
+        const nextStep =
+          profile.prospectNurtureLastSentAt == null ? 0 : (profile.prospectNurtureStep ?? 0) + 1;
+        if (nextStep > 4) continue;
+        if (nextStep > 0 && !prospectNurtureStepEligible(enrolledAt, nextStep)) continue;
+
+        const mailable = guardMailableEmail(email, 'prospect_nurture');
+        if (!mailable) continue;
+
+        const attribution =
+          profile.leadAttribution && typeof profile.leadAttribution === 'object'
+            ? profile.leadAttribution
+            : {};
+        const sampleChaptersUrl = buildSampleChaptersUrlFromAttribution(attribution);
+        const { subject, html } = buildProspectNurtureEmail({ step: nextStep, sampleChaptersUrl });
+        const { html: htmlWithBanner, subject: finalSubject } = applyGlobalEmailBanner({
+          html,
+          subject,
+        });
+
+        await client.messages.send({
+          message: {
+            from_email: fromEmail,
+            subject: finalSubject ?? subject,
+            to: [{ email: mailable, type: 'to' }],
+            html: htmlWithBanner,
+            headers: { 'Reply-To': fromEmail },
+          },
+        });
+
+        await prisma.readerProfile.update({
+          where: { id: profile.id },
+          data: {
+            prospectNurtureStep: nextStep,
+            prospectNurtureLastSentAt: new Date(),
+          },
+        });
+
+        await recordServerFunnelEvent(prisma, {
+          type: FUNNEL_EVENT_TYPES.PROSPECT_NURTURE_SENT,
+          userId,
+          meta: { step: nextStep, channel: attribution.channel || null },
+        });
+
+        sent++;
+      } catch (err) {
+        errors.push(`profile ${profile.id}: ${err?.message || 'Unknown error'}`);
+      }
+    }
+
+    res.json({ ok: true, sent, total: profiles.length, errors: errors.length ? errors : undefined });
+  } catch (err) {
+    console.error('[prospect-nurture] Error', err);
+    res.status(500).json({ ok: false, error: err?.message || 'Unknown error' });
+  }
+});
 
 module.exports = router;

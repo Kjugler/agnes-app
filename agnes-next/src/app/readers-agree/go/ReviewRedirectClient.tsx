@@ -7,9 +7,7 @@ import { isMobileTouchBrowser } from '@/lib/device';
 import { isReadersAgreeDorothyBridgeEnabled } from '@/lib/funnelConfig';
 import {
   buildReadersAgreePathWithTracking,
-  READERS_AGREE_CATALOG_PATH,
   READERS_AGREE_PATH,
-  SAMPLE_CHAPTERS_PATH,
 } from '@/lib/readerRecommendationLanding';
 import {
   clearRetailerPopupBlocked,
@@ -22,6 +20,8 @@ import {
   tryPromoteReadersAgreeContinuation,
 } from '@/lib/readersAgreeMomentum';
 import { FUNNEL_EVENT_TYPES, trackFunnelEvent, type FunnelEventType } from '@/lib/funnelTracking';
+import BridgeDecideNext, { type BridgeRetailerOrigin } from './BridgeDecideNext';
+import './readers-agree-bridge.css';
 
 const REDIRECT_DELAY_MS = 2500;
 const BRIDGE_ENABLED = isReadersAgreeDorothyBridgeEnabled();
@@ -40,6 +40,7 @@ type ReviewRedirectClientProps = {
   heading: string;
   destinationUrl: string;
   retailerLabel: string;
+  retailerOrigin: BridgeRetailerOrigin;
 };
 
 const shellStyle = {
@@ -77,21 +78,6 @@ const quietLinkStyle = {
   padding: '4px 0',
 } as const;
 
-const bridgeActionCtaStyle = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: '14px 20px',
-  borderRadius: '8px',
-  fontSize: '15px',
-  fontWeight: 700,
-  border: '1px solid rgba(255, 255, 255, 0.25)',
-  background: 'rgba(255, 255, 255, 0.06)',
-  color: '#fff',
-  textDecoration: 'none',
-  width: '100%',
-} as const;
-
 const retailerBridgeCtaStyle = {
   display: 'inline-flex',
   alignItems: 'center',
@@ -121,7 +107,7 @@ function LegacyReviewRedirectClient({ heading, destinationUrl }: ReviewRedirectC
 
   const readersAgreeHref = useMemo(
     () => buildReadersAgreePathWithTracking(READERS_AGREE_PATH, searchParams),
-    [searchParams]
+    [searchParams],
   );
 
   const cancelRedirect = useCallback(() => {
@@ -261,7 +247,11 @@ function LegacyReviewRedirectClient({ heading, destinationUrl }: ReviewRedirectC
   );
 }
 
-function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRedirectClientProps) {
+function BridgeReviewRedirectClient({
+  destinationUrl,
+  retailerLabel,
+  retailerOrigin,
+}: ReviewRedirectClientProps) {
   const searchParams = useSearchParams();
   const mobileTwoTap = useSyncExternalStore(subscribeNoop, isMobileTouchBrowser, () => false);
   const [continuationActive, setContinuationActive] = useState(false);
@@ -272,22 +262,12 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
 
   const readersAgreeHref = useMemo(
     () => buildReadersAgreePathWithTracking(READERS_AGREE_PATH, searchParams),
-    [searchParams]
-  );
-
-  const sampleChaptersHref = useMemo(
-    () => buildReadersAgreePathWithTracking(SAMPLE_CHAPTERS_PATH, searchParams),
-    [searchParams]
-  );
-
-  const catalogHref = useMemo(
-    () => buildReadersAgreePathWithTracking(READERS_AGREE_CATALOG_PATH, searchParams),
-    [searchParams]
+    [searchParams],
   );
 
   const retailerClickType = useMemo(
     () => retailerClickEventType(retailerLabel),
-    [retailerLabel]
+    [retailerLabel],
   );
 
   const applyContinuationIfReady = useCallback(() => {
@@ -437,20 +417,6 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
     }, 0);
   };
 
-  const handleBuyClick = () => {
-    trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_BUY_CLICK, {}, {
-      source: 'readers-agree-bridge',
-      searchParams,
-    });
-  };
-
-  const handleSampleClick = () => {
-    trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_SAMPLE_CHAPTERS_CLICK, {}, {
-      source: 'readers-agree-bridge',
-      searchParams,
-    });
-  };
-
   const actionColumnStyle = {
     display: 'flex',
     flexDirection: 'column' as const,
@@ -465,51 +431,11 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
 
   if (continuationActive) {
     return (
-      <main style={shellStyle}>
-        <section style={sectionStyle}>
-          <div style={panelStyle}>
-            <div>
-              <h1
-                style={{
-                  margin: '0 0 8px 0',
-                  fontSize: 'clamp(1.35rem, 4vw, 1.75rem)',
-                  fontWeight: 800,
-                  lineHeight: 1.2,
-                  letterSpacing: '-0.02em',
-                }}
-              >
-                Ready to see for yourself?
-              </h1>
-            </div>
-
-            <div style={actionColumnStyle}>
-              <Link href={catalogHref} onClick={handleBuyClick} style={bridgeActionCtaStyle}>
-                Buy the Book
-              </Link>
-
-              <Link href={sampleChaptersHref} onClick={handleSampleClick} style={bridgeActionCtaStyle}>
-                Read Sample Chapters
-              </Link>
-
-              <a
-                href={destinationUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  ...quietLinkStyle,
-                  display: 'inline',
-                }}
-              >
-                Want another look at {retailerLabel}?
-              </a>
-
-              <Link href={readersAgreeHref} style={quietLinkStyle}>
-                Back
-              </Link>
-            </div>
-          </div>
-        </section>
-      </main>
+      <BridgeDecideNext
+        retailerOrigin={retailerOrigin}
+        destinationUrl={destinationUrl}
+        searchParams={searchParams}
+      />
     );
   }
 

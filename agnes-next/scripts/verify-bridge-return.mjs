@@ -57,18 +57,26 @@ async function openRetailerFromBridge(page, label) {
   return popup;
 }
 
-async function desktopFlow(page, retailerTitle, bridgePattern) {
-  await page.goto(landingUrl(), { waitUntil: 'domcontentloaded', timeout: 120000 });
+async function clickRetailerFromLanding(page, retailerLinkName) {
   const [popup] = await Promise.all([
     page.waitForEvent('popup'),
-    page.getByRole('heading', { name: retailerTitle }).click(),
+    page.getByRole('link', { name: retailerLinkName, exact: true }).click(),
   ]);
+  return popup;
+}
+
+async function desktopFlow(page, retailerLinkName, bridgePattern) {
+  await page.goto(landingUrl(), { waitUntil: 'domcontentloaded', timeout: 120000 });
+  const popup = await clickRetailerFromLanding(page, retailerLinkName);
   await page.waitForURL(bridgePattern);
   await popup.waitForLoadState('domcontentloaded');
   await popup.close();
 
   await page.bringToFront();
-  await page.waitForTimeout(2600);
+  await page.waitForFunction(
+    () => document.querySelector('main h1')?.textContent?.trim() === 'Still deciding?',
+    { timeout: 10000 },
+  ).catch(() => {});
 
   return getBridgeContinuationSignals(page);
 }
@@ -86,13 +94,10 @@ async function mobileFlow(page) {
 
 function passContinuation(signals) {
   return (
-    signals.heading === 'Ready to see for yourself?' &&
-    signals.buyText.includes('Buy the Book') &&
-    signals.sampleText.includes('Read Sample Chapters') &&
+    signals.heading === 'Still deciding?' &&
+    signals.buyText.includes('Buy Direct') &&
     signals.buyHref.includes('/catalog') &&
-    signals.sampleHref.includes('/sample-chapters') &&
     signals.buyHref.includes('ref=TESTREF') &&
-    signals.sampleHref.includes('fbclid=fbclid123') &&
     signals.flags.active === '1'
   );
 }
@@ -104,7 +109,7 @@ async function run() {
   {
     const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     const page = await context.newPage();
-    const signals = await desktopFlow(page, 'Amazon Readers', /\/readers-agree\/go\/amazon/);
+    const signals = await desktopFlow(page, 'Amazon', /\/readers-agree\/go\/amazon/);
     results.desktopAmazonReturn = { pass: passContinuation(signals), signals };
     await context.close();
   }
@@ -112,7 +117,7 @@ async function run() {
   {
     const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     const page = await context.newPage();
-    const signals = await desktopFlow(page, 'Barnes & Noble Readers', /\/readers-agree\/go\/bn/);
+    const signals = await desktopFlow(page, 'Barnes & Noble', /\/readers-agree\/go\/bn/);
     results.desktopBnReturn = { pass: passContinuation(signals), signals };
     await context.close();
   }
@@ -136,7 +141,7 @@ async function run() {
     await page.goto(landingUrl(), { waitUntil: 'domcontentloaded', timeout: 120000 });
     const cold = await getBridgeContinuationSignals(page);
     results.coldLanding = {
-      pass: cold.heading !== 'Ready to see for yourself?' && cold.flags.active === null,
+      pass: cold.heading !== 'Still deciding?' && cold.flags.active === null,
       signals: cold,
     };
     await context.close();

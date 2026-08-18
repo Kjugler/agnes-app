@@ -1,0 +1,130 @@
+/* Readers Agree — Phase D retailer-return bridge (light decide-next) */
+
+.ra-bridge-shell {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #f4f5f2;
+  color: #1a1f1c;
+}
+
+.ra-bridge-honeycomb {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.45;
+  background-image:
+    linear-gradient(30deg, rgba(0, 179, 90, 0.04) 12%, transparent 12.5%, transparent 87%, rgba(0, 179, 90, 0.04) 87.5%, rgba(0, 179, 90, 0.04)),
+    linear-gradient(150deg, rgba(0, 179, 90, 0.04) 12%, transparent 12.5%, transparent 87%, rgba(0, 179, 90, 0.04) 87.5%, rgba(0, 179, 90, 0.04)),
+    linear-gradient(30deg, rgba(0, 179, 90, 0.04) 12%, transparent 12.5%, transparent 87%, rgba(0, 179, 90, 0.04) 87.5%, rgba(0, 179, 90, 0.04)),
+    linear-gradient(150deg, rgba(0, 179, 90, 0.04) 12%, transparent 12.5%, transparent 87%, rgba(0, 179, 90, 0.04) 87.5%, rgba(0, 179, 90, 0.04));
+  background-size: 56px 98px;
+  background-position:
+    0 0,
+    0 0,
+    28px 49px,
+    28px 49px;
+}
+
+.ra-bridge-panel {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: max(32px, env(safe-area-inset-top)) 20px 48px;
+  max-width: 28rem;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.ra-bridge-copy {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ra-bridge-headline {
+  margin: 0;
+  font-size: clamp(1.5rem, 4vw, 1.875rem);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: #142018;
+}
+
+.ra-bridge-subline {
+  margin: 0;
+  font-size: 1.0625rem;
+  line-height: 1.55;
+  color: rgba(26, 31, 28, 0.72);
+}
+
+.ra-bridge-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.ra-bridge-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 13px 18px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+  background: #ffffff;
+  color: #142018;
+  border: 1px solid rgba(0, 179, 90, 0.35);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.ra-bridge-btn:hover {
+  border-color: rgba(0, 179, 90, 0.65);
+  box-shadow: 0 2px 8px rgba(0, 179, 90, 0.12);
+}
+
+.ra-bridge-back-link {
+  font-size: 14px;
+  color: rgba(26, 31, 28, 0.55);
+  text-decoration: underline;
+  padding: 4px 0;
+}
+
+.ra-bridge-back-link:hover {
+  color: rgba(0, 120, 60, 0.85);
+}
+
+.ra-bridge-email {
+  width: 100%;
+  margin-top: 8px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(0, 179, 90, 0.15);
+}
+
+@media (min-width: 480px) {
+  .ra-bridge-actions {
+    flex-direction: row;
+  }
+
+  .ra-bridge-btn {
+    flex: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ra-bridge-btn:hover {
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  }
+}

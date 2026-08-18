@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { getChapter, isValidChapterId } from '../../chapters';
 import { readAssociate } from '@/lib/identity';
@@ -11,6 +11,7 @@ import { FUNNEL_EVENT_TYPES, useFunnelPageEngagement } from '@/lib/funnelTrackin
 import { JodyConcierge } from '@/components/jody/JodyConcierge';
 import { MobileChapterLanding } from '@/components/jody/MobileChapterLanding';
 import { isJodyConciergeEnabled, isJodyMobileDeliveryEnabled } from '@/lib/funnelConfig';
+import { isReadersAgreeLeadSessionActive, clearReadersAgreeLeadSession } from '@/lib/readersAgreeLeadSession';
 import { useJodyChapterExit } from '@/hooks/useJodyConcierge';
 import { JODY_CONCIERGE_CONFIG } from '@/config/jodyConcierge';
 import { isReadingSessionDwellMet } from '@/lib/readerJourney';
@@ -81,6 +82,14 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
 
   const { title, pdfUrl } = chapter;
   const mobileDeliveryEnabled = isJodyMobileDeliveryEnabled();
+  const [skipJodyMobileGate] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const active = isReadersAgreeLeadSessionActive();
+    if (active) clearReadersAgreeLeadSession();
+    return active;
+  });
+
+  const showMobileJodyGate = mobileDeliveryEnabled && !skipJodyMobileGate;
 
   const handleTextThisScene = () => {
     const ref = readAssociate()?.code ?? null;
@@ -105,13 +114,13 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
 
   return (
     <>
-      {mobileDeliveryEnabled && (
+      {showMobileJodyGate && (
         <div className="chapter-mobile-jody-delivery">
           <MobileChapterLanding chapterId={chapterId} title={title} pdfUrl={pdfUrl} />
         </div>
       )}
 
-      <div className={mobileDeliveryEnabled ? 'chapter-desktop-reader' : undefined}>
+      <div className={showMobileJodyGate ? 'chapter-desktop-reader' : undefined}>
     <div
       style={{
         minHeight: '100svh',

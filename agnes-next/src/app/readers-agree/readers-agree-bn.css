@@ -1,4 +1,4 @@
-/* Barnes & Noble funnel — Readers Agree (mobile-first, signing-table tone) */
+/* Readers Agree — Phase B v2 (Capitol hero, pillars, readable prose) */
 
 .ra-bn-hero {
   position: relative;
@@ -23,6 +23,25 @@
   opacity: 0.4;
 }
 
+.ra-bn-hero-visual {
+  position: relative;
+  max-width: 960px;
+  margin: 0 auto 20px;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.65),
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 0 32px rgba(185, 28, 28, 0.2);
+}
+
+.ra-bn-hero-image {
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: cover;
+}
+
 .ra-bn-shell {
   position: relative;
   max-width: 960px;
@@ -30,44 +49,30 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
-}
-
-.ra-bn-cover-wrap {
-  width: 100%;
-  max-width: 200px;
-  max-height: min(240px, 32svh);
-  border-radius: 12px;
-  overflow: hidden;
-  flex-shrink: 0;
-  box-shadow:
-    0 16px 40px rgba(0, 0, 0, 0.65),
-    0 0 0 1px rgba(255, 255, 255, 0.08),
-    0 0 32px rgba(185, 28, 28, 0.2);
-}
-
-.ra-bn-cover-wrap img {
-  width: 100%;
-  height: auto;
-  max-height: min(240px, 32svh);
-  object-fit: cover;
-  display: block;
 }
 
 .ra-bn-copy {
   width: 100%;
-  max-width: 36rem;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
+}
+
+.ra-bn-prose {
+  max-width: 30rem;
+  margin: 0 auto;
 }
 
 .ra-bn-headline {
   margin: 0;
-  font-size: clamp(1.35rem, 4.5vw, 2.5rem);
+  font-size: clamp(1.35rem, 4.5vw, 2.25rem);
   font-weight: 800;
   line-height: 1.15;
   letter-spacing: -0.02em;
+}
+
+.ra-bn-headline-ad {
+  font-size: clamp(1.5rem, 5vw, 2.5rem);
 }
 
 .ra-bn-headline-white {
@@ -81,59 +86,80 @@
 
 .ra-bn-friend-intro {
   margin: 0;
-  font-size: clamp(0.9375rem, 2.5vw, 1.15rem);
-  line-height: 1.45;
+  font-size: 1.0625rem;
+  line-height: 1.5;
   color: rgba(245, 245, 245, 0.92);
   font-weight: 600;
 }
 
-.ra-bn-synopsis {
+.ra-bn-ad-subline {
+  margin: 0;
+  font-size: 1.0625rem;
+  line-height: 1.45;
+  color: rgba(245, 245, 245, 0.78);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.ra-bn-pillars {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.ra-bn-pillar {
+  margin: 0;
+  font-size: 1.0625rem;
+  line-height: 1.45;
+  font-weight: 600;
+  color: rgba(245, 245, 245, 0.95);
+  letter-spacing: 0.01em;
+}
+
+.ra-bn-locked-paragraph {
+  margin: 0;
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  color: rgba(245, 245, 245, 0.88);
+}
+
+.ra-bn-purchase-row {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  margin-top: 8px;
 }
 
-.ra-bn-synopsis-hook {
-  margin: 0;
-  font-size: 16px;
-  line-height: 1.5;
-  font-weight: 600;
-  color: rgba(245, 245, 245, 0.95);
-}
-
-.ra-bn-synopsis p {
-  margin: 0;
-  font-size: 15px;
-  line-height: 1.5;
-  color: rgba(245, 245, 245, 0.78);
-}
-
-.ra-bn-appeals {
+.ra-bn-purchase-btn {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 4px;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 12px 18px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  transition: border-color 0.2s ease, transform 0.2s ease;
+  cursor: pointer;
+  box-sizing: border-box;
+  text-align: center;
 }
 
-.ra-bn-appeal-pill {
-  display: inline-block;
-  padding: 6px 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.04);
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  color: rgba(245, 245, 245, 0.72);
-  user-select: none;
-  pointer-events: none;
+.ra-bn-purchase-btn:hover {
+  border-color: rgba(220, 38, 38, 0.55);
+  transform: translateY(-1px);
 }
 
 .ra-bn-ctas {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  margin-top: 8px;
+  margin-top: 16px;
 }
 
 .ra-bn-cta-primary {
@@ -156,71 +182,6 @@
 .ra-bn-cta-primary:hover {
   transform: translateY(-1px);
   box-shadow: 0 0 32px rgba(0, 255, 127, 0.35);
-}
-
-.ra-bn-reviews {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.ra-bn-reviews-label {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: rgba(245, 245, 245, 0.55);
-  text-align: center;
-}
-
-.ra-bn-review-row {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.ra-bn-cta-secondary {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  padding: 12px 18px;
-  border-radius: 8px;
-  font-size: 15px;
-  font-weight: 700;
-  text-decoration: none;
-  background: rgba(255, 255, 255, 0.06);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  transition: border-color 0.2s ease, transform 0.2s ease;
-  cursor: pointer;
-  box-sizing: border-box;
-}
-
-.ra-bn-cta-secondary:hover {
-  border-color: rgba(220, 38, 38, 0.55);
-  transform: translateY(-1px);
-}
-
-.ra-bn-cta-tertiary {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  padding: 12px 18px;
-  border-radius: 8px;
-  font-size: 15px;
-  font-weight: 600;
-  text-decoration: none;
-  background: transparent;
-  color: rgba(245, 245, 245, 0.88);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  transition: border-color 0.2s ease;
-}
-
-.ra-bn-cta-tertiary:hover {
-  border-color: rgba(255, 255, 255, 0.4);
 }
 
 /* More Below scroll cue — not a loader */
@@ -271,32 +232,22 @@
 }
 
 @media (min-width: 768px) {
-  .ra-bn-shell {
-    flex-direction: row;
-    align-items: flex-start;
-    gap: 32px;
+  .ra-bn-hero-visual {
+    margin-bottom: 28px;
   }
 
-  .ra-bn-cover-wrap {
-    width: min(280px, 36%);
-    max-width: none;
-    max-height: none;
+  .ra-bn-pillar,
+  .ra-bn-locked-paragraph,
+  .ra-bn-friend-intro,
+  .ra-bn-ad-subline {
+    font-size: 1.125rem;
   }
 
-  .ra-bn-cover-wrap img {
-    max-height: none;
-  }
-
-  .ra-bn-copy {
-    flex: 1;
-    max-width: none;
-  }
-
-  .ra-bn-review-row {
+  .ra-bn-purchase-row {
     flex-direction: row;
   }
 
-  .ra-bn-cta-secondary {
+  .ra-bn-purchase-btn {
     flex: 1;
   }
 }
@@ -304,10 +255,6 @@
 @media (min-width: 960px) {
   .ra-bn-hero {
     padding: 32px 24px 56px;
-  }
-
-  .ra-bn-shell {
-    gap: 40px;
   }
 }
 
@@ -317,7 +264,7 @@
   }
 
   .ra-bn-cta-primary:hover,
-  .ra-bn-cta-secondary:hover {
+  .ra-bn-purchase-btn:hover {
     transform: none;
   }
 }
