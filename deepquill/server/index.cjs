@@ -237,6 +237,11 @@ console.log('✅ Mounted /api/admin/users (reps, promote-rep, replace, disable-o
 const adminReadersRouter = require('./routes/adminReaders.cjs');
 app.use('/api/admin/readers', adminReadersRouter);
 console.log('✅ Mounted /api/admin/readers (Reader Manager Phase I)');
+
+const createAdminReaderLifecycleRouter = require('./routes/adminReaderLifecycle.cjs');
+const { prisma: readerLifecyclePrisma } = require('./prisma.cjs');
+app.use('/api/admin/reader-lifecycle', createAdminReaderLifecycleRouter(readerLifecyclePrisma));
+console.log('✅ Mounted /api/admin/reader-lifecycle (GET-only lifecycle read)');
 const repAnalyticsRouter = require('./routes/repAnalytics.cjs');
 app.use('/api', repAnalyticsRouter);
 console.log('✅ Mounted /api/reps/sales-ledger and /api/admin/reps/monthly-report');
