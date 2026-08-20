@@ -79,6 +79,12 @@ model User {
   dailyContestSummariesLiveLeader DailyContestSummary[] @relation("DailyLiveLeader")
   dailyContestSummariesCashWinner DailyContestSummary[] @relation("DailyCashWinner")
   readerProfile                ReaderProfile?
+  readerEvidence               ReaderEvidence[]
+  readerCommunications         ReaderCommunication[]
+  readerIdentityReviewsPrimary ReaderIdentityReview[] @relation("IdentityReviewPrimary")
+  readerIdentityReviewsOther   ReaderIdentityReview[] @relation("IdentityReviewOther")
+  readerAdminAudits            ReaderAdminAudit[]
+  readerContactDecisions       ReaderContactDecision[]
 
   @@index([referralCode])
 }
@@ -116,6 +122,151 @@ model ReaderProfile {
   @@index([source])
   @@index([status])
   @@index([createdAt])
+}
+
+/// Append-only Reader Manager purchase/ownership evidence (Phase 1).
+/// Stripe sessionId is informational linkage only — Purchase remains accounting truth.
+/// Allowed kind: website_stripe | manual_amazon | manual_bn | manual_other |
+/// gift_book_owner | kris_personal_knowledge | aggregate_marketing_not_individual
+/// Allowed status: provisional | confirmed | disputed | superseded
+/// origin + originRef are required so SQLite UNIQUE can enforce idempotent backfills
+/// (SQLite UNIQUE treats NULLs as distinct, so a nullable originRef would not be unique).
+model ReaderEvidence {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  kind        String
+  status      String
+  sourceLabel String?
+  purchaseDate DateTime?
+  /// Informational only. Not a foreign key. Must never update or delete Purchase.
+  stripeSessionId String?
+  details     String?
+  reason      String
+  actorType   String
+  actorLabel  String
+  actorId     String?
+
+  origin    String
+  originRef String
+
+  supersededById String?
+  supersededBy   ReaderEvidence?  @relation("EvidenceSupersede", fields: [supersededById], references: [id], onDelete: Restrict)
+  supersedes     ReaderEvidence[] @relation("EvidenceSupersede")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([origin, originRef])
+  @@index([userId, createdAt])
+  @@index([status])
+  @@index([kind])
+  @@index([stripeSessionId])
+}
+
+/// Append-only reconstructed and future communication history.
+/// Existence of this table never sends email.
+/// Allowed category examples: reader_recommendation_taf | purchase_confirmation | other
+/// Allowed trigger: automatic_job | webhook | manual | unknown
+/// Allowed outcome: accepted | rejected | failed | recorded_sent_delivery_unknown | unknown
+/// batchId is reserved for a future Phase 2 batch table and has no FK yet.
+model ReaderCommunication {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  recipientEmailSnapshot String?
+  category               String
+  templateOrAskId        String?
+  batchLabel             String?
+  batchId                String?
+  trigger                String
+  jobName                String?
+  occurredAt             DateTime
+  outcome                String
+  providerMessageId      String?
+  source                 String
+  sourceRef              String
+  caption                String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([source, sourceRef])
+  @@index([userId, occurredAt])
+  @@index([category])
+  @@index([outcome])
+}
+
+/// Identity ambiguity cases. No automatic User merge.
+/// Allowed status: open | dismissed | resolved_keep_separate
+model ReaderIdentityReview {
+  id            String @id @default(cuid())
+  primaryUserId String
+  primaryUser   User   @relation("IdentityReviewPrimary", fields: [primaryUserId], references: [id], onDelete: Restrict)
+  otherUserId   String?
+  otherUser     User?  @relation("IdentityReviewOther", fields: [otherUserId], references: [id], onDelete: Restrict)
+
+  reasonCode String
+  details    String?
+  status     String
+
+  resolutionReason  String?
+  resolvedAt        DateTime?
+  actorType         String
+  actorLabel        String
+  actorId           String?
+
+  createdAt DateTime @default(now())
+
+  @@index([status, createdAt])
+  @@index([primaryUserId])
+  @@index([otherUserId])
+}
+
+/// Append-only administrative audit. No update/delete APIs in Phase 1.
+model ReaderAdminAudit {
+  id            String  @id @default(cuid())
+  relatedUserId String?
+  relatedUser   User?   @relation(fields: [relatedUserId], references: [id], onDelete: Restrict)
+
+  actorType  String
+  actorLabel String
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String?
+  beforeJson Json?
+  afterJson  Json?
+  reason     String?
+
+  createdAt DateTime @default(now())
+
+  @@index([relatedUserId, createdAt])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+/// Append-only manual contact-control decisions (Do Not Contact / allow).
+/// Latest row later determines manual DNC; not connected to email jobs in this checkpoint.
+/// Allowed decision: suppress | allow
+model ReaderContactDecision {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  decision   String
+  reason     String
+  actorType  String
+  actorLabel String
+  actorId    String?
+  origin     String
+  originRef  String
+
+  createdAt DateTime @default(now())
+
+  @@unique([origin, originRef])
+  @@index([userId, createdAt])
 }
 
 /// Canonical daily contest rollup for ribbons, Signal bulletin, and admin (America/Denver calendar date).
