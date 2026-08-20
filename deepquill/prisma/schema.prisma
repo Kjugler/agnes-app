@@ -102,7 +102,14 @@ model ReaderProfile {
   lastDeliveredAt        DateTime?
   emailUpdatesConsent    Boolean   @default(false)
   emailUpdatesConsentAt  DateTime?
+  emailMarketingConsentAt DateTime?
   jodyVerifiedAt         DateTime?
+  leadAttribution        Json?
+  prospectNurtureEnrolledAt DateTime?
+  prospectNurtureStep       Int?
+  prospectNurtureLastSentAt DateTime?
+  prospectNurtureSuppressedAt DateTime?
+  prospectNurtureSuppressedReason String?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
