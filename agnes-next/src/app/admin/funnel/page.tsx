@@ -8,13 +8,17 @@ type FunnelStage = {
   key: string;
   label: string;
   count: number;
+  uniqueVisitors?: number | null;
+  unit?: string;
   note?: string;
+  authoritative?: boolean;
 };
 
 type FunnelReport = {
   ok: boolean;
-  range?: { start: string; end: string };
+  range?: { start: string; end: string; timeZone?: string };
   stages?: FunnelStage[];
+  historicalStages?: FunnelStage[];
   engagement?: {
     readersAgreeScrollDepth: Record<string, number>;
     readersAgreeMedianSecondsOnPage: number | null;
@@ -31,15 +35,30 @@ type FunnelReport = {
   error?: string;
 };
 
-function ymd(d: Date) {
-  return d.toISOString().slice(0, 10);
+function ymdDenver(d: Date) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Denver',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value || '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
 function defaultRange() {
   const end = new Date();
   const start = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
-  return { start: ymd(start), end: ymd(end) };
+  return { start: ymdDenver(start), end: ymdDenver(end) };
 }
+
+const UNIT_LABELS: Record<string, string> = {
+  events: 'events',
+  purchases: 'purchases',
+  users: 'users',
+  ledger_rows: 'ledger rows',
+  referral_conversions: 'conversions',
+};
 
 const th: CSSProperties = {
   textAlign: 'left',
@@ -56,6 +75,72 @@ const td: CSSProperties = {
   fontSize: 14,
   verticalAlign: 'top',
 };
+
+function countCell(stage: FunnelStage) {
+  if (stage.unit && stage.unit !== 'events') {
+    const label = UNIT_LABELS[stage.unit] || stage.unit;
+    return `${stage.count} ${label}`;
+  }
+  return String(stage.count);
+}
+
+function uniqueCell(stage: FunnelStage) {
+  if (stage.unit && stage.unit !== 'events') {
+    return '—';
+  }
+  if (typeof stage.uniqueVisitors === 'number') return String(stage.uniqueVisitors);
+  return '—';
+}
+
+function StageTable({ stages }: { stages: FunnelStage[] }) {
+  return (
+    <div style={{ overflowX: 'auto', marginBottom: 32 }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
+        <thead>
+          <tr>
+            <th style={th}>Stage</th>
+            <th style={{ ...th, textAlign: 'right' }}>Count</th>
+            <th style={{ ...th, textAlign: 'right' }}>Unique visitors</th>
+            <th style={th}>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {stages.map((stage) => (
+            <tr
+              key={stage.key}
+              style={
+                stage.authoritative
+                  ? { background: '#f0fdf4' }
+                  : undefined
+              }
+            >
+              <td style={{ ...td, fontWeight: stage.authoritative ? 700 : 400 }}>
+                {stage.label}
+                {stage.authoritative ? (
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#15803d', marginTop: 2 }}>
+                    Authoritative sales metric
+                  </div>
+                ) : null}
+              </td>
+              <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{countCell(stage)}</td>
+              <td
+                style={{
+                  ...td,
+                  textAlign: 'right',
+                  color: stage.unit && stage.unit !== 'events' ? '#64748b' : undefined,
+                  fontSize: stage.unit && stage.unit !== 'events' ? 13 : 14,
+                }}
+              >
+                {uniqueCell(stage)}
+              </td>
+              <td style={{ ...td, color: '#64748b', fontSize: 13 }}>{stage.note || '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 export default function FunnelReportPage() {
   const initial = defaultRange();
@@ -96,7 +181,7 @@ export default function FunnelReportPage() {
   return (
     <div
       style={{
-        maxWidth: 960,
+        maxWidth: 1080,
         margin: '0 auto',
         padding: '32px 20px 48px',
         fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif',
@@ -113,9 +198,16 @@ export default function FunnelReportPage() {
         </Link>
       </p>
       <h1 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 8px 0' }}>Reader Funnel Report</h1>
-      <p style={{ margin: '0 0 24px 0', fontSize: 14, color: '#64748b', lineHeight: 1.5 }}>
-        First-party funnel events from the deepquill Event table, connected to Purchase,
-        ReferralConversion, recommendation outreach, and Text-a-Friend ledger rows.
+      <p style={{ margin: '0 0 8px 0', fontSize: 14, color: '#64748b', lineHeight: 1.5 }}>
+        Current production path. Event stages show raw events and unique visitors (
+        <code>ap_funnel_vid</code>
+        ). Purchase recorded (server) is the sales source of truth.
+      </p>
+      <p style={{ margin: '0 0 24px 0', fontSize: 13, color: '#64748b' }}>
+        Date range is America/Denver. The end date includes the entire selected Mountain Time day.
+        {data?.range?.start && data?.range?.end
+          ? ` Resolved: ${data.range.start} → ${data.range.end}${data.range.timeZone ? ` (${data.range.timeZone})` : ''}.`
+          : null}
       </p>
 
       <div
@@ -168,26 +260,18 @@ export default function FunnelReportPage() {
       {data?.stages && (
         <>
           <h2 style={{ fontSize: 16, fontWeight: 600, margin: '0 0 12px 0' }}>Conversion path</h2>
-          <div style={{ overflowX: 'auto', marginBottom: 32 }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
-              <thead>
-                <tr>
-                  <th style={th}>Stage</th>
-                  <th style={{ ...th, textAlign: 'right' }}>Count</th>
-                  <th style={th}>Notes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.stages.map((stage) => (
-                  <tr key={stage.key}>
-                    <td style={td}>{stage.label}</td>
-                    <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{stage.count}</td>
-                    <td style={{ ...td, color: '#64748b', fontSize: 13 }}>{stage.note || '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <StageTable stages={data.stages} />
+        </>
+      )}
+
+      {data?.historicalStages && data.historicalStages.length > 0 && (
+        <>
+          <h2 style={{ fontSize: 16, fontWeight: 600, margin: '0 0 8px 0' }}>Historical (legacy CTAs)</h2>
+          <p style={{ margin: '0 0 12px 0', fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>
+            These event types are no longer fired by the current Readers Agree v2 landing. They are
+            not current conversion metrics.
+          </p>
+          <StageTable stages={data.historicalStages} />
         </>
       )}
 
@@ -217,6 +301,9 @@ export default function FunnelReportPage() {
       {data?.eventBreakdown && Object.keys(data.eventBreakdown).length > 0 && (
         <>
           <h2 style={{ fontSize: 16, fontWeight: 600, margin: '0 0 12px 0' }}>Event breakdown</h2>
+          <p style={{ margin: '0 0 12px 0', fontSize: 13, color: '#64748b' }}>
+            Raw Event counts for all funnel types in range, including legacy and undisplayed types.
+          </p>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 480 }}>
               <thead>

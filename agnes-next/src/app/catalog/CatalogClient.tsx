@@ -27,6 +27,10 @@ import {
   hubPrimaryButtonStyle,
   hubSecondaryButtonStyle,
 } from '@/lib/hubTheme';
+import { FUNNEL_EVENT_TYPES, trackFunnelEvent } from '@/lib/funnelTracking';
+
+/** Collapse React Strict Mode remount double-fire; still counts a later return visit. */
+let lastCatalogPageViewAt = 0;
 
 const BOOK_COVER_SRC = '/og/book-cover-og.jpg';
 const EBOOK_VALUE_LABEL = '$12';
@@ -212,6 +216,13 @@ export default function CatalogClient() {
     });
   }, []);
 
+  useEffect(() => {
+    const now = Date.now();
+    if (now - lastCatalogPageViewAt < 2000) return;
+    lastCatalogPageViewAt = now;
+    trackFunnelEvent(FUNNEL_EVENT_TYPES.CATALOG_PAGE_VIEW, {}, { source: 'catalog', searchParams });
+  }, [searchParams]);
+
   const trackingParams = useMemo(() => {
     const params = new URLSearchParams();
     const keysToPreserve = ['ref', 'src', 'v', 'origin', 'code', 'utm_source', 'utm_medium', 'utm_campaign'];
@@ -223,6 +234,11 @@ export default function CatalogClient() {
   }, [searchParams]);
 
   const handleBuyClick = (product: ProductId) => {
+    trackFunnelEvent(
+      FUNNEL_EVENT_TYPES.CATALOG_BUY_CLICK,
+      { product },
+      { source: 'catalog', searchParams },
+    );
     const params = new URLSearchParams(trackingParams);
     params.set('product', product);
     router.push(`/checkout?${params.toString()}`);
