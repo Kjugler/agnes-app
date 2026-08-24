@@ -5,6 +5,7 @@ import { useCallback, useEffect, useId, useState } from 'react';
 import {
   CONTACTABILITY_VALUES,
   CONFIDENCE_VALUES,
+  CONTACTABLE_ASTERISK_NOTE,
   CRM_STATUS_VALUES,
   EMPTY_FILTERS,
   FULFILLMENT_AUTH_HREF,
@@ -15,16 +16,17 @@ import {
   accentTone,
   buildListQuery,
   classifyHttpError,
-  communicationOutcomeCaption,
-  communicationTypeLabel,
+  communicationListSummary,
   confidenceLabel,
   contactabilityLabel,
   crmStatusLabel,
   emailDisplay,
-  formatOccurredAt,
   goNextPage,
   goPreviousPage,
   initialCursorHistory,
+  listContactLabel,
+  listOwnershipLabel,
+  listReviewSummary,
   ownershipLabel,
   parseListResponse,
   resetCursorHistory,
@@ -274,6 +276,10 @@ export default function ReaderLifecyclePreviewClient() {
         ) : null}
       </div>
 
+      {!loading && !errorKind && items.length > 0 ? (
+        <p className={styles.legend}>{CONTACTABLE_ASTERISK_NOTE}</p>
+      ) : null}
+
       {errorKind ? (
         <div className={styles.message} role="alert">
           <p className={styles.errorTitle}>{ERROR_COPY[errorKind].title}</p>
@@ -393,6 +399,7 @@ function FilterSelect({
 
 function ReaderRow({ item }: { item: ReaderLifecycleListItem }) {
   const tone = accentTone(item);
+  const review = listReviewSummary(item);
   return (
     <tr className={TONE_CLASS[tone]}>
       <td>
@@ -401,56 +408,43 @@ function ReaderRow({ item }: { item: ReaderLifecycleListItem }) {
         <div className={styles.muted}>{legacyLine(item)}</div>
       </td>
       <td>
-        <span className={`${styles.pill} ${PILL_CLASS[tone]}`}>{ownershipLabel(item.ownership)}</span>
+        <span className={`${styles.pill} ${PILL_CLASS[tone]}`}>{listOwnershipLabel(item)}</span>
         <div style={{ marginTop: 6 }}>{sourcesLabel(item.sources)}</div>
       </td>
       <td>
-        <div>{confidenceLabel(item.confidence)}</div>
-        <div style={{ marginTop: 6 }}>{reviewLabel(item.review)}</div>
+        <div>{review.primary}</div>
+        {review.secondary ? <div style={{ marginTop: 6 }}>{review.secondary}</div> : null}
       </td>
       <td>
-        <div>{contactabilityLabel(item.contactability)}</div>
-        {item.contactability === 'contactable' ? (
-          <div className={styles.muted}>Provider status not integrated; not approved to email.</div>
-        ) : null}
+        <div>{listContactLabel(item)}</div>
       </td>
-      <td>
-        <div>{communicationTypeLabel(item.latestCommunication)}</div>
-        <div className={styles.muted}>{formatOccurredAt(item.latestCommunication?.occurredAt)}</div>
-        <div className={styles.muted}>{communicationOutcomeCaption(item.latestCommunication)}</div>
-      </td>
+      <td>{communicationListSummary(item.latestCommunication)}</td>
     </tr>
   );
 }
 
 function ReaderCard({ item }: { item: ReaderLifecycleListItem }) {
   const tone = accentTone(item);
+  const review = listReviewSummary(item);
   return (
     <article className={`${styles.card} ${TONE_CLASS[tone]}`}>
       <span className={styles.name}>{item.name}</span>
       <div>{emailDisplay(item)}</div>
       <span className={`${styles.pill} ${PILL_CLASS[tone]}`} style={{ marginTop: 8 }}>
-        {ownershipLabel(item.ownership)}
+        {listOwnershipLabel(item)}
       </span>
       <dl className={styles.cardRow}>
         <dt>Sources</dt>
         <dd style={{ margin: 0 }}>{sourcesLabel(item.sources)}</dd>
-        <dt>Confidence</dt>
-        <dd style={{ margin: 0 }}>{confidenceLabel(item.confidence)}</dd>
-        <dt>Review</dt>
-        <dd style={{ margin: 0 }}>{reviewLabel(item.review)}</dd>
+        <dt>Confidence / review</dt>
+        <dd style={{ margin: 0 }}>
+          {review.primary}
+          {review.secondary ? ` · ${review.secondary}` : ''}
+        </dd>
         <dt>Contact</dt>
-        <dd style={{ margin: 0 }}>
-          {contactabilityLabel(item.contactability)}
-          {item.contactability === 'contactable'
-            ? ' — provider status not integrated; not approved to email.'
-            : ''}
-        </dd>
+        <dd style={{ margin: 0 }}>{listContactLabel(item)}</dd>
         <dt>Last communication</dt>
-        <dd style={{ margin: 0 }}>
-          {communicationTypeLabel(item.latestCommunication)}; {formatOccurredAt(item.latestCommunication?.occurredAt)}.
-          {` ${communicationOutcomeCaption(item.latestCommunication)}`}
-        </dd>
+        <dd style={{ margin: 0 }}>{communicationListSummary(item.latestCommunication)}</dd>
         <dt>Legacy CRM</dt>
         <dd style={{ margin: 0 }}>{legacyLine(item)}</dd>
       </dl>

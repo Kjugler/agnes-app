@@ -145,6 +145,13 @@
   font-weight: 600;
 }
 
+.legend {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.4;
+}
+
 .tableWrap {
   overflow-x: auto;
   border: 1px solid #e2e8f0;

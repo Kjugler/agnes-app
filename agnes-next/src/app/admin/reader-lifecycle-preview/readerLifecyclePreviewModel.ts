@@ -206,6 +206,31 @@ export function contactabilityLabel(value: unknown): string {
   return humanizeCode(value, CONTACT_LABELS);
 }
 
+export function isConflictingReview(item: Pick<ReaderLifecycleListItem, 'review'>): boolean {
+  return item.review === 'conflicting';
+}
+
+export function listOwnershipLabel(item: Pick<ReaderLifecycleListItem, 'ownership' | 'review'>): string {
+  if (isConflictingReview(item)) return 'Ownership unresolved';
+  return ownershipLabel(item.ownership);
+}
+
+export function listReviewSummary(item: Pick<ReaderLifecycleListItem, 'confidence' | 'review'>): {
+  primary: string;
+  secondary: string | null;
+} {
+  if (isConflictingReview(item)) {
+    return { primary: 'Conflicting evidence', secondary: null };
+  }
+  return { primary: confidenceLabel(item.confidence), secondary: reviewLabel(item.review) };
+}
+
+export function listContactLabel(item: Pick<ReaderLifecycleListItem, 'contactability' | 'review'>): string {
+  if (isConflictingReview(item)) return 'Nurture paused until resolved';
+  if (item.contactability === 'contactable') return 'Locally contactable*';
+  return contactabilityLabel(item.contactability);
+}
+
 export function categoryLabel(value: unknown): string {
   return humanizeCode(value, CATEGORY_LABELS);
 }
@@ -236,6 +261,15 @@ export function communicationOutcomeCaption(comm: LatestCommunication | null): s
     parts.push(comm.deliveryNote || 'Delivery is unknown.');
   }
   return parts.join(' — ');
+}
+
+export function communicationListSummary(comm: LatestCommunication | null): string {
+  if (!comm) return 'None recorded';
+  const parts = [categoryLabel(comm.category)];
+  const date = formatOccurredAt(comm.occurredAt);
+  if (date !== '—') parts.push(date);
+  parts.push(comm.deliveryKnown === true ? 'Delivery recorded' : 'Delivery unknown');
+  return parts.join(' · ');
 }
 
 export function formatOccurredAt(iso: string | null | undefined): string {
@@ -408,6 +442,9 @@ export const READ_ONLY_BANNER =
 
 export const PROVIDER_WARNING =
   'Email-provider suppression status is not yet integrated. “Contactable” does not mean approved or safe to email.';
+
+export const CONTACTABLE_ASTERISK_NOTE =
+  '* “Locally contactable” is a local record only. Provider suppression status is not yet integrated.';
 
 export const LIST_PROXY_PATH = '/api/admin/reader-lifecycle/readers';
 export const FULFILLMENT_AUTH_HREF =

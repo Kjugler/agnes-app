@@ -107,15 +107,19 @@ async function main() {
 
     await check('read-only banner and provider warning are present', () => {
       const page = fs.readFileSync(FILES.page, 'utf8');
+      const client = fs.readFileSync(FILES.client, 'utf8');
       const model = fs.readFileSync(FILES.model, 'utf8');
       assert.match(page, /READ_ONLY_BANNER/);
       assert.match(page, /PROVIDER_WARNING/);
+      assert.match(client, /CONTACTABLE_ASTERISK_NOTE/);
       assert.equal(
         mod.READ_ONLY_BANNER,
         'READ-ONLY PREVIEW — No reader records or emails can be changed from this screen.',
       );
       assert.match(model, /Email-provider suppression status is not yet integrated/);
       assert.equal(mod.PROVIDER_WARNING.includes('does not mean approved or safe to email'), true);
+      assert.equal(mod.listContactLabel(item({})), 'Locally contactable*');
+      assert.doesNotMatch(client, /Provider status not integrated; not approved to email/);
     });
 
     await check('no mutation methods, email, or backfill imports', () => {
@@ -195,6 +199,21 @@ async function main() {
       assert.equal(mod.reviewLabel('identity_review_required'), 'Identity Review Required');
       assert.equal(mod.accentTone(item({ review: 'conflicting' })), 'review');
       assert.equal(mod.accentTone(item({ review: 'identity_review_required' })), 'review');
+      const conflict = mod.parseListItem(
+        item({
+          name: 'Conflict Case',
+          ownership: 'non_purchaser',
+          confidence: 'confirmed',
+          review: 'conflicting',
+          sources: [],
+        }),
+      );
+      assert.equal(mod.listOwnershipLabel(conflict), 'Ownership unresolved');
+      assert.equal(mod.listReviewSummary(conflict).primary, 'Conflicting evidence');
+      assert.equal(mod.listReviewSummary(conflict).secondary, null);
+      assert.equal(mod.listContactLabel(conflict), 'Nurture paused until resolved');
+      assert.equal(mod.listOwnershipLabel(conflict).includes('Non-purchaser'), false);
+      assert.equal(mod.listReviewSummary(conflict).primary.includes('Confirmed'), false);
     });
 
     await check('manual DNC and no mailable email labels', () => {
@@ -207,10 +226,12 @@ async function main() {
 
     await check('honest unknown email-delivery status', () => {
       const row = mod.parseListItem(item({}));
-      const caption = mod.communicationOutcomeCaption(row.latestCommunication);
-      assert.match(caption, /delivery unknown/i);
+      const summary = mod.communicationListSummary(row.latestCommunication);
+      assert.match(summary, /Purchase confirmation · .+ · Delivery unknown/);
       assert.equal(row.latestCommunication.deliveryKnown, false);
-      assert.equal(caption.toLowerCase().includes('delivered'), false);
+      assert.equal(summary.toLowerCase().includes('delivered'), false);
+      assert.equal(summary.includes('Confirmation recorded'), false);
+      assert.equal(summary.includes('Historical or reconstructed'), false);
     });
 
     await check('unknown reason codes do not crash', () => {
