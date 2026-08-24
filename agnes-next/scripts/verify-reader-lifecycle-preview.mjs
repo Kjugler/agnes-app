@@ -134,6 +134,7 @@ async function main() {
       }
       const client = fs.readFileSync(FILES.client, 'utf8');
       assert.match(client, /method: 'GET'/);
+      assert.match(client, /View details/);
       assert.doesNotMatch(client, /Save|Approve batch|Send email|Add reader/i);
     });
 
@@ -293,6 +294,7 @@ async function main() {
       assert.equal(mod.classifyHttpError(500, 'admin_not_configured'), 'not_configured');
       assert.equal(mod.classifyHttpError(502, 'proxy_unavailable'), 'unavailable');
       assert.equal(mod.classifyHttpError(418, 'nope'), 'generic');
+      assert.equal(mod.classifyHttpError(404, 'Not found'), 'not_found');
     });
 
     await check('empty list parse and partial flag', () => {

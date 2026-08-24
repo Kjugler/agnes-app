@@ -103,7 +103,12 @@ export const EMPTY_FILTERS: LifecycleListFilters = {
   includeArchived: false,
 };
 
-export type PreviewErrorKind = 'unauthorized' | 'not_configured' | 'unavailable' | 'generic';
+export type PreviewErrorKind =
+  | 'unauthorized'
+  | 'not_configured'
+  | 'unavailable'
+  | 'not_found'
+  | 'generic';
 
 export type AccentTone =
   | 'purchaser'
@@ -353,6 +358,7 @@ export function resetCursorHistory(): CursorHistory {
 
 export function classifyHttpError(status: number, errorCode?: string): PreviewErrorKind {
   if (status === 401 || errorCode === 'unauthorized') return 'unauthorized';
+  if (status === 404 || errorCode === 'Not found' || errorCode === 'not_found') return 'not_found';
   if (status === 500 || errorCode === 'admin_not_configured') return 'not_configured';
   if (status === 502 || errorCode === 'proxy_unavailable') return 'unavailable';
   return 'generic';
@@ -447,5 +453,15 @@ export const CONTACTABLE_ASTERISK_NOTE =
   '* “Locally contactable” is a local record only. Provider suppression status is not yet integrated.';
 
 export const LIST_PROXY_PATH = '/api/admin/reader-lifecycle/readers';
+export const LIST_PREVIEW_PATH = '/admin/reader-lifecycle-preview';
+
+export function detailPreviewPath(readerProfileId: string): string {
+  return `${LIST_PREVIEW_PATH}/${encodeURIComponent(readerProfileId)}`;
+}
+
+export function detailProxyPath(readerProfileId: string): string {
+  return `${LIST_PROXY_PATH}/${encodeURIComponent(readerProfileId)}`;
+}
+
 export const FULFILLMENT_AUTH_HREF =
   '/admin/fulfillment/auth?redirect=/admin/reader-lifecycle-preview';

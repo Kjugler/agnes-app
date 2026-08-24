@@ -18,6 +18,7 @@ import {
   classifyHttpError,
   communicationListSummary,
   confidenceLabel,
+  detailPreviewPath,
   contactabilityLabel,
   crmStatusLabel,
   emailDisplay,
@@ -61,6 +62,63 @@ const PILL_CLASS: Record<AccentTone, string> = {
   unknown: styles.pillUnknown,
 };
 
+const PREVIEW_SESSION_KEY = 'agnes.reader-lifecycle-preview.v1';
+
+function isFilters(value: unknown): value is LifecycleListFilters {
+  if (!value || typeof value !== 'object') return false;
+  const row = value as Record<string, unknown>;
+  return (
+    typeof row.q === 'string' &&
+    typeof row.ownership === 'string' &&
+    typeof row.purchaseSource === 'string' &&
+    typeof row.confidence === 'string' &&
+    typeof row.review === 'string' &&
+    typeof row.contactability === 'string' &&
+    typeof row.status === 'string' &&
+    typeof row.includeArchived === 'boolean'
+  );
+}
+
+function isHistory(value: unknown): value is CursorHistory {
+  if (!value || typeof value !== 'object') return false;
+  const row = value as Record<string, unknown>;
+  return (
+    Array.isArray(row.stack) &&
+    row.stack.every((item) => item === null || typeof item === 'string') &&
+    (row.current === null || typeof row.current === 'string')
+  );
+}
+
+function readPreviewSession(): {
+  draft: LifecycleListFilters;
+  applied: LifecycleListFilters;
+  history: CursorHistory;
+} | null {
+  try {
+    const raw = sessionStorage.getItem(PREVIEW_SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object') return null;
+    const row = parsed as Record<string, unknown>;
+    if (!isFilters(row.draft) || !isFilters(row.applied) || !isHistory(row.history)) return null;
+    return { draft: row.draft, applied: row.applied, history: row.history };
+  } catch {
+    return null;
+  }
+}
+
+function writePreviewSession(value: {
+  draft: LifecycleListFilters;
+  applied: LifecycleListFilters;
+  history: CursorHistory;
+}) {
+  try {
+    sessionStorage.setItem(PREVIEW_SESSION_KEY, JSON.stringify(value));
+  } catch {
+    // Ignore quota or private-mode failures; the list still works without persistence.
+  }
+}
+
 const ERROR_COPY: Record<PreviewErrorKind, { title: string; body: string }> = {
   unauthorized: {
     title: 'Sign in required',
@@ -78,6 +136,10 @@ const ERROR_COPY: Record<PreviewErrorKind, { title: string; body: string }> = {
     title: 'Unable to load readers',
     body: 'A read error occurred. Nothing was changed.',
   },
+  not_found: {
+    title: 'Reader not found',
+    body: 'No lifecycle reader exists for this identifier.',
+  },
 };
 
 export default function ReaderLifecyclePreviewClient() {
@@ -92,6 +154,7 @@ export default function ReaderLifecyclePreviewClient() {
   const [loading, setLoading] = useState(true);
   const [errorKind, setErrorKind] = useState<PreviewErrorKind | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
+  const [sessionReady, setSessionReady] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -138,8 +201,24 @@ export default function ReaderLifecyclePreviewClient() {
   }, [applied, history.current, reloadToken]);
 
   useEffect(() => {
+    const restored = readPreviewSession();
+    if (restored) {
+      setDraft(restored.draft);
+      setApplied(restored.applied);
+      setHistory(restored.history);
+    }
+    setSessionReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!sessionReady) return;
+    writePreviewSession({ draft, applied, history });
+  }, [sessionReady, draft, applied, history]);
+
+  useEffect(() => {
+    if (!sessionReady) return;
     void load();
-  }, [load]);
+  }, [load, sessionReady]);
 
   function updateDraft<K extends keyof LifecycleListFilters>(key: K, value: LifecycleListFilters[K]) {
     setDraft((prev) => ({ ...prev, [key]: value }));
@@ -406,6 +485,9 @@ function ReaderRow({ item }: { item: ReaderLifecycleListItem }) {
         <span className={styles.name}>{item.name}</span>
         <span>{emailDisplay(item)}</span>
         <div className={styles.muted}>{legacyLine(item)}</div>
+        <Link className={styles.detailsLink} href={detailPreviewPath(item.readerProfileId)}>
+          View details
+        </Link>
       </td>
       <td>
         <span className={`${styles.pill} ${PILL_CLASS[tone]}`}>{listOwnershipLabel(item)}</span>
@@ -448,6 +530,9 @@ function ReaderCard({ item }: { item: ReaderLifecycleListItem }) {
         <dt>Legacy CRM</dt>
         <dd style={{ margin: 0 }}>{legacyLine(item)}</dd>
       </dl>
+      <Link className={styles.detailsLink} href={detailPreviewPath(item.readerProfileId)}>
+        View details
+      </Link>
     </article>
   );
 }
