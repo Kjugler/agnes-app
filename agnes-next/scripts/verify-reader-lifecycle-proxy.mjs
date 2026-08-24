@@ -30,6 +30,17 @@ const ROUTE_FILES = [
   ['purchases-without-profile/route.ts', { exportTarget: "{ route: 'purchasesWithoutProfile' }" }],
 ];
 
+const MUTATION_ROUTE_FILES = [
+  ['readers/[readerProfileId]/evidence/route.ts', 'addEvidence'],
+  ['evidence/[evidenceId]/confirm/route.ts', 'confirmEvidence'],
+  ['evidence/[evidenceId]/correct/route.ts', 'correctEvidence'],
+  ['evidence/[evidenceId]/dispute/route.ts', 'disputeEvidence'],
+  ['evidence/[evidenceId]/replace/route.ts', 'replaceEvidence'],
+  ['readers/[readerProfileId]/contact-decisions/route.ts', 'addContactDecision'],
+  ['readers/[readerProfileId]/identity-reviews/route.ts', 'openIdentityReview'],
+  ['identity-reviews/[reviewId]/resolve/route.ts', 'resolveIdentityReview'],
+];
+
 const READERS_PROXY_FILES = [
   path.join(AGNES_NEXT_ROOT, 'src', 'app', 'api', 'admin', 'readers', 'route.ts'),
   path.join(AGNES_NEXT_ROOT, 'src', 'app', 'api', 'admin', 'readers', '[id]', 'route.ts'),
@@ -74,6 +85,25 @@ function walkFiles(dir, acc = []) {
     }
   }
   return acc;
+}
+
+function extractExportedFunction(src, name) {
+  const needle = `export async function ${name}`;
+  const start = src.indexOf(needle);
+  if (start === -1) throw new Error(`missing ${name}`);
+  const paramsEnd = src.indexOf(')', start);
+  if (paramsEnd === -1) throw new Error(`missing params for ${name}`);
+  const brace = src.indexOf('{', paramsEnd);
+  if (brace === -1) throw new Error(`missing body for ${name}`);
+  let depth = 0;
+  for (let i = brace; i < src.length; i += 1) {
+    if (src[i] === '{') depth += 1;
+    else if (src[i] === '}') {
+      depth -= 1;
+      if (depth === 0) return src.slice(start, i + 1);
+    }
+  }
+  throw new Error(`unclosed ${name}`);
 }
 
 function transpileHelper() {
@@ -208,6 +238,8 @@ async function main() {
         assert.match(src, /export async function GET/);
         assert.doesNotMatch(src, /export async function (POST|PATCH|PUT|DELETE)/);
         assert.match(src, /proxyReaderLifecycleGet/);
+        assert.doesNotMatch(src, /proxyReaderLifecyclePost/);
+        assert.doesNotMatch(src, /method:\s*'POST'/);
         if (spec.exportTarget.startsWith('{')) {
           assert.equal(src.includes(spec.exportTarget), true, `${rel} missing ${spec.exportTarget}`);
         } else {
@@ -217,6 +249,37 @@ async function main() {
       }
       const catchAll = walkFiles(dir).filter((f) => f.includes('[...'));
       assert.equal(catchAll.length, 0, 'catch-all proxy route is not allowed');
+    });
+
+    await check('GET helper always issues GET and POST helper always issues POST', () => {
+      const helper = fs.readFileSync(HELPER_TS, 'utf8');
+      const getFn = extractExportedFunction(helper, 'proxyReaderLifecycleGet');
+      const postFn = extractExportedFunction(helper, 'proxyReaderLifecyclePost');
+      assert.match(getFn, /method:\s*'GET'/);
+      assert.doesNotMatch(getFn, /method:\s*'POST'/);
+      assert.doesNotMatch(getFn, /method:\s*[^'"`\s]/);
+      assert.match(postFn, /method:\s*'POST'/);
+      assert.doesNotMatch(postFn, /method:\s*'GET'/);
+      assert.doesNotMatch(postFn, /method:\s*[^'"`\s]/);
+      assert.doesNotMatch(helper, /LIFECYCLE_MUTATION_HTTP_METHOD/);
+      assert.doesNotMatch(helper, /req\.method/);
+      assert.doesNotMatch(helper, /method:\s*[a-zA-Z_$]/);
+    });
+
+    await check('mutation route files import and call only the POST helper', () => {
+      const dir = path.join(AGNES_NEXT_ROOT, 'src', 'app', 'api', 'admin', 'reader-lifecycle');
+      for (const [rel, routeName] of MUTATION_ROUTE_FILES) {
+        const file = path.join(dir, rel);
+        assert.equal(fs.existsSync(file), true, `missing ${rel}`);
+        const src = fs.readFileSync(file, 'utf8');
+        assert.match(src, /export async function POST/);
+        assert.doesNotMatch(src, /export async function (GET|PATCH|PUT|DELETE)/);
+        assert.match(src, /proxyReaderLifecyclePost/);
+        assert.doesNotMatch(src, /proxyReaderLifecycleGet/);
+        assert.match(src, new RegExp(`route: '${routeName}'`));
+        assert.doesNotMatch(src, /req\.method/);
+        assert.doesNotMatch(src, /method:\s*req/);
+      }
     });
 
     await check('unauthenticated request is rejected before backend call', async () => {
@@ -738,7 +801,7 @@ async function main() {
       }
     });
 
-    await check('source audit: no public admin key, no catch-all, no mutation, no caller-controlled host', () => {
+    await check('source audit: no public admin key, no catch-all, no caller-controlled host or method', () => {
       const implFiles = [
         HELPER_TS,
         ...ROUTE_FILES.map(([rel]) => path.join(AGNES_NEXT_ROOT, 'src', 'app', 'api', 'admin', 'reader-lifecycle', rel)),
@@ -753,26 +816,32 @@ async function main() {
         }
       }
       const helper = fs.readFileSync(HELPER_TS, 'utf8');
-      assert.match(helper, /method:\s*'GET'/);
-      assert.doesNotMatch(helper, /method:\s*'POST'/);
+      const getFn = extractExportedFunction(helper, 'proxyReaderLifecycleGet');
+      const postFn = extractExportedFunction(helper, 'proxyReaderLifecyclePost');
+      assert.match(getFn, /method:\s*'GET'/);
+      assert.match(postFn, /method:\s*'POST'/);
       assert.doesNotMatch(helper, /\[\.\.\./);
       assert.match(helper, /x-admin-key': adminKey/);
       assert.match(helper, /FULFILLMENT_ACCESS_TOKEN/);
       assert.match(helper, /timingSafeEqual/);
       assert.doesNotMatch(helper, /headers\.get\(['"]x-admin-key['"]\)/);
+      assert.doesNotMatch(helper, /LIFECYCLE_MUTATION_HTTP_METHOD/);
     });
 
     await check('admin key is absent from client-facing source', () => {
       const clientRoots = [
-        path.join(AGNES_NEXT_ROOT, 'src', 'app', 'admin'),
+        path.join(AGNES_NEXT_ROOT, 'src', 'app'),
         path.join(AGNES_NEXT_ROOT, 'src', 'components'),
       ];
       for (const root of clientRoots) {
         if (!fs.existsSync(root)) continue;
         for (const file of walkFiles(root)) {
           if (!/\.(ts|tsx|js|jsx)$/.test(file)) continue;
+          if (file.includes(`${path.sep}api${path.sep}`)) continue;
           const src = fs.readFileSync(file, 'utf8');
           assert.equal(src.includes('readerLifecycleAdminProxy'), false, file);
+          assert.equal(src.includes('proxyReaderLifecycleGet'), false, file);
+          assert.equal(src.includes('proxyReaderLifecyclePost'), false, file);
           assert.equal(src.includes('NEXT_PUBLIC_ADMIN_KEY'), false, file);
         }
       }

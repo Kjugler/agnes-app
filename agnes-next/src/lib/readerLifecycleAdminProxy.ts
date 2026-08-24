@@ -1,5 +1,5 @@
 /**
- * Server-only GET proxy for Reader Manager lifecycle reads.
+ * Server-only proxy for Reader Manager lifecycle reads (GET) and mutations (POST).
  * Browser auth: fulfillment-token cookie must equal FULFILLMENT_ACCESS_TOKEN.
  * The cookie is the trimmed plaintext token set by POST /api/fulfillment/auth
  * (not signed, hashed, or wrapped). Deepquill auth uses server-side ADMIN_KEY
@@ -15,6 +15,28 @@ export const BACKEND_NAMESPACE = '/api/admin/reader-lifecycle';
 export const MAX_QUERY_STRING_LENGTH = 2048;
 export const MAX_ID_LENGTH = 128;
 export const PROXY_FETCH_TIMEOUT_MS = 20_000;
+export const MAX_MUTATION_BODY_BYTES = 16 * 1024;
+export const MIN_IDEMPOTENCY_KEY_LENGTH = 8;
+export const MAX_IDEMPOTENCY_KEY_LENGTH = 128;
+export const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]+$/;
+export const MAX_MUTATION_BODY_INSPECT_DEPTH = 3;
+export const MAX_MUTATION_BODY_INSPECT_KEYS = 48;
+export const FORBIDDEN_MUTATION_BODY_KEYS = Object.freeze([
+  'admin_key',
+  'next_public_admin_key',
+  'fulfillment_access_token',
+  'fulfillment-token',
+  'x-admin-key',
+  'authorization',
+  'deepquill_url',
+  'next_public_api_base_url',
+  'backend',
+  'backendurl',
+  'url',
+  '__proto__',
+  'prototype',
+  'constructor',
+]);
 
 export const JSON_ERROR = Object.freeze({
   unauthorized: { ok: false, error: 'unauthorized' },
@@ -38,6 +60,16 @@ export type ReaderLifecycleProxyTarget =
   | { route: 'reviewQueue' }
   | { route: 'communications' }
   | { route: 'purchasesWithoutProfile' };
+
+export type ReaderLifecycleMutationTarget =
+  | { route: 'addEvidence'; readerProfileId: string }
+  | { route: 'confirmEvidence'; evidenceId: string }
+  | { route: 'correctEvidence'; evidenceId: string }
+  | { route: 'disputeEvidence'; evidenceId: string }
+  | { route: 'replaceEvidence'; evidenceId: string }
+  | { route: 'addContactDecision'; readerProfileId: string }
+  | { route: 'openIdentityReview'; readerProfileId: string }
+  | { route: 'resolveIdentityReview'; reviewId: string };
 
 export type ReaderLifecycleProxyDeps = {
   fetchImpl?: typeof fetch;
@@ -179,6 +211,125 @@ export function backendPathFor(target: ReaderLifecycleProxyTarget): string | nul
   }
 }
 
+export function backendMutationPathFor(target: ReaderLifecycleMutationTarget): string | null {
+  switch (target.route) {
+    case 'addEvidence': {
+      const id = encodePathId(target.readerProfileId);
+      if (!id) return null;
+      return `${BACKEND_NAMESPACE}/readers/${id}/evidence`;
+    }
+    case 'confirmEvidence': {
+      const id = encodePathId(target.evidenceId);
+      if (!id) return null;
+      return `${BACKEND_NAMESPACE}/evidence/${id}/confirm`;
+    }
+    case 'correctEvidence': {
+      const id = encodePathId(target.evidenceId);
+      if (!id) return null;
+      return `${BACKEND_NAMESPACE}/evidence/${id}/correct`;
+    }
+    case 'disputeEvidence': {
+      const id = encodePathId(target.evidenceId);
+      if (!id) return null;
+      return `${BACKEND_NAMESPACE}/evidence/${id}/dispute`;
+    }
+    case 'replaceEvidence': {
+      const id = encodePathId(target.evidenceId);
+      if (!id) return null;
+      return `${BACKEND_NAMESPACE}/evidence/${id}/replace`;
+    }
+    case 'addContactDecision': {
+      const id = encodePathId(target.readerProfileId);
+      if (!id) return null;
+      return `${BACKEND_NAMESPACE}/readers/${id}/contact-decisions`;
+    }
+    case 'openIdentityReview': {
+      const id = encodePathId(target.readerProfileId);
+      if (!id) return null;
+      return `${BACKEND_NAMESPACE}/readers/${id}/identity-reviews`;
+    }
+    case 'resolveIdentityReview': {
+      const id = encodePathId(target.reviewId);
+      if (!id) return null;
+      return `${BACKEND_NAMESPACE}/identity-reviews/${id}/resolve`;
+    }
+    default:
+      return null;
+  }
+}
+
+export function readIdempotencyKey(req: Request): string | null {
+  const raw = req.headers.get('idempotency-key');
+  if (raw == null) return null;
+  if (raw.includes(',')) return null;
+  const key = raw.trim();
+  if (key.length < MIN_IDEMPOTENCY_KEY_LENGTH || key.length > MAX_IDEMPOTENCY_KEY_LENGTH) {
+    return null;
+  }
+  if (!IDEMPOTENCY_KEY_PATTERN.test(key)) return null;
+  return key;
+}
+
+function isStrictApplicationJson(contentType: string | null): boolean {
+  if (!contentType) return false;
+  const media = contentType.split(';')[0].trim().toLowerCase();
+  return media === 'application/json';
+}
+
+function isTimeoutError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const name = (err as { name?: string }).name;
+  return name === 'TimeoutError' || name === 'AbortError';
+}
+
+function isPlainJsonObject(value: unknown): boolean {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isForbiddenMutationBodyKey(name: string): boolean {
+  return (FORBIDDEN_MUTATION_BODY_KEYS as readonly string[]).includes(name.trim().toLowerCase());
+}
+
+export function mutationBodyHasForbiddenFields(value: unknown): boolean {
+  const stack: Array<{ node: unknown; depth: number }> = [{ node: value, depth: 0 }];
+  let keysSeen = 0;
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) break;
+    const { node, depth } = current;
+    if (node === null || typeof node !== 'object') continue;
+    if (depth > MAX_MUTATION_BODY_INSPECT_DEPTH) return true;
+
+    if (Array.isArray(node)) {
+      if (node.length > MAX_MUTATION_BODY_INSPECT_KEYS) return true;
+      for (let i = 0; i < node.length; i += 1) {
+        keysSeen += 1;
+        if (keysSeen > MAX_MUTATION_BODY_INSPECT_KEYS) return true;
+        const child = node[i];
+        if (child !== null && typeof child === 'object') {
+          if (depth + 1 > MAX_MUTATION_BODY_INSPECT_DEPTH) return true;
+          stack.push({ node: child, depth: depth + 1 });
+        }
+      }
+      continue;
+    }
+
+    const names = Object.getOwnPropertyNames(node);
+    for (const name of names) {
+      keysSeen += 1;
+      if (keysSeen > MAX_MUTATION_BODY_INSPECT_KEYS) return true;
+      if (isForbiddenMutationBodyKey(name)) return true;
+      const descriptor = Object.getOwnPropertyDescriptor(node, name);
+      const child = descriptor ? descriptor.value : undefined;
+      if (child !== null && typeof child === 'object') {
+        if (depth + 1 > MAX_MUTATION_BODY_INSPECT_DEPTH) return true;
+        stack.push({ node: child, depth: depth + 1 });
+      }
+    }
+  }
+  return false;
+}
+
 function requestSearch(req: Request): string {
   try {
     return new URL(req.url).search || '';
@@ -248,6 +399,129 @@ export async function proxyReaderLifecycleGet(
     });
   } catch {
     emit(deps, 'backend_unavailable');
+    return noStoreJson(JSON_ERROR.proxyUnavailable, 502);
+  }
+
+  const contentType = response.headers.get('content-type');
+  let text: string;
+  try {
+    text = await response.text();
+  } catch {
+    emit(deps, 'backend_unavailable');
+    return noStoreJson(JSON_ERROR.proxyUnavailable, 502);
+  }
+
+  if (!isJsonContentType(contentType)) {
+    emit(deps, 'backend_non_json');
+    return noStoreJson(JSON_ERROR.proxyUnavailable, 502);
+  }
+
+  try {
+    JSON.parse(text);
+  } catch {
+    emit(deps, 'backend_non_json');
+    return noStoreJson(JSON_ERROR.proxyUnavailable, 502);
+  }
+
+  return noStoreJsonText(text, response.status);
+}
+
+export async function proxyReaderLifecyclePost(
+  req: Request,
+  target: ReaderLifecycleMutationTarget,
+  deps: ReaderLifecycleProxyDeps = {},
+): Promise<Response> {
+  const env = deps.env || process.env;
+  const fetchImpl = deps.fetchImpl || fetch;
+
+  const cookieToken = readFulfillmentToken(req);
+  if (!cookieToken) {
+    return noStoreJson(JSON_ERROR.unauthorized, 401);
+  }
+
+  const expectedFulfillmentToken = resolveFulfillmentAccessToken(env);
+  const adminKey = resolveAdminKey(env);
+  const baseUrl = resolveBackendBaseUrl(env);
+  if (!expectedFulfillmentToken || !adminKey || !baseUrl) {
+    emit(deps, 'admin_not_configured');
+    return noStoreJson(JSON_ERROR.adminNotConfigured, 500);
+  }
+
+  if (!timingSafeEqualString(cookieToken, expectedFulfillmentToken)) {
+    return noStoreJson(JSON_ERROR.unauthorized, 401);
+  }
+
+  const search = requestSearch(req);
+  if (search) {
+    return noStoreJson(JSON_ERROR.invalidRequest, 400);
+  }
+
+  const backendPath = backendMutationPathFor(target);
+  if (!backendPath) {
+    return noStoreJson(JSON_ERROR.invalidRequest, 400);
+  }
+
+  const idempotencyKey = readIdempotencyKey(req);
+  if (!idempotencyKey) {
+    return noStoreJson(JSON_ERROR.invalidRequest, 400);
+  }
+
+  if (!isStrictApplicationJson(req.headers.get('content-type'))) {
+    return noStoreJson(JSON_ERROR.invalidRequest, 400);
+  }
+
+  const contentLengthHeader = req.headers.get('content-length');
+  if (contentLengthHeader != null) {
+    const declared = Number(contentLengthHeader);
+    if (!Number.isFinite(declared) || declared <= 0 || declared > MAX_MUTATION_BODY_BYTES) {
+      return noStoreJson(JSON_ERROR.invalidRequest, 400);
+    }
+  }
+
+  let rawBody: Buffer;
+  try {
+    rawBody = Buffer.from(await req.arrayBuffer());
+  } catch {
+    return noStoreJson(JSON_ERROR.invalidRequest, 400);
+  }
+
+  if (rawBody.byteLength === 0 || rawBody.byteLength > MAX_MUTATION_BODY_BYTES) {
+    return noStoreJson(JSON_ERROR.invalidRequest, 400);
+  }
+
+  const bodyText = rawBody.toString('utf8');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(bodyText);
+  } catch {
+    return noStoreJson(JSON_ERROR.invalidRequest, 400);
+  }
+  if (!isPlainJsonObject(parsed)) {
+    return noStoreJson(JSON_ERROR.invalidRequest, 400);
+  }
+  if (mutationBodyHasForbiddenFields(parsed)) {
+    return noStoreJson(JSON_ERROR.invalidRequest, 400);
+  }
+
+  const backendUrl = `${baseUrl}${backendPath}`;
+
+  let response: Response;
+  try {
+    response = await fetchImpl(backendUrl, {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/json',
+        'x-admin-key': adminKey,
+        'Idempotency-Key': idempotencyKey,
+      },
+      body: bodyText,
+      redirect: 'error',
+      cache: 'no-store',
+      signal: AbortSignal.timeout(PROXY_FETCH_TIMEOUT_MS),
+    });
+  } catch (err) {
+    emit(deps, isTimeoutError(err) ? 'backend_timeout' : 'backend_unavailable');
     return noStoreJson(JSON_ERROR.proxyUnavailable, 502);
   }
 
