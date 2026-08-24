@@ -269,6 +269,30 @@ model ReaderContactDecision {
   @@index([userId, createdAt])
 }
 
+/// Idempotency ledger for Reader Manager Phase 1 mutations (Checkpoint 5B).
+/// All administrator mutations share origin `admin_lifecycle_mutation`.
+/// originRef is the client Idempotency-Key. requestHash includes the action
+/// plus the normalized request, so the same key cannot apply two actions.
+/// resultJson is a minimal mutation receipt (IDs, action, warnings, timestamp).
+/// It must not store the reader GET payload or PII. Pending reservations
+/// never commit outside a transaction.
+/// Additive only — does not alter Purchase, Order, or existing lifecycle tables.
+model ReaderMutationIdempotency {
+  id            String   @id @default(cuid())
+  origin        String
+  originRef     String
+  requestHash   String
+  action        String
+  relatedUserId String?
+  entityType    String?
+  entityId      String?
+  resultJson    Json?
+  createdAt     DateTime @default(now())
+
+  @@unique([origin, originRef])
+  @@index([createdAt])
+}
+
 /// Canonical daily contest rollup for ribbons, Signal bulletin, and admin (America/Denver calendar date).
 model DailyContestSummary {
   id           String @id @default(cuid())
