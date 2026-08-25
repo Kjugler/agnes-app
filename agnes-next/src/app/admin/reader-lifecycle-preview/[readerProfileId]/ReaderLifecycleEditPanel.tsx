@@ -1,13 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { FULFILLMENT_AUTH_HREF } from '../readerLifecyclePreviewModel';
 import {
+  classifyLifecycleReadError,
   evidenceKindLabel,
-  formatOccurredAt,
+  formatCalendarDate,
   parseDetailResponse,
   type LifecycleEvidence,
+  type LifecycleReadErrorKind,
   type ReaderLifecycleDetail,
 } from './readerLifecycleDetailModel';
 import styles from './detail.module.css';
@@ -15,6 +17,10 @@ import listStyles from '../preview.module.css';
 import {
   ADD_KIND_OPTIONS,
   ALLOW_CONTACT_WARNING,
+  ACTORS_EMPTY,
+  ACTORS_LOADING,
+  ACTORS_PROXY_PATH,
+  actorLoadErrorCopy,
   CONFIRM_REPLACES_NOTE,
   DISPUTE_CONSEQUENCE,
   IDENTITY_OPEN_REASON_OPTIONS,
@@ -31,6 +37,7 @@ import {
   addEvidencePayload,
   beginIdempotencySession,
   canCorrectEvidence,
+  canSubmitWithActors,
   classifyMutationError,
   confirmButtonLabel,
   confirmEvidencePayload,
@@ -41,9 +48,11 @@ import {
   fieldErrorFromCode,
   historyPreservationNote,
   idempotencyKeyForAttempt,
+  isSelectableActorId,
   mutationErrorCopy,
   mutationPath,
   openIdentityReviewPayload,
+  parseActorsResponse,
   parseMutationResponse,
   permittedActions,
   replaceEvidencePayload,
@@ -60,6 +69,7 @@ import {
   type IdempotencySession,
   type IdentityOpenReason,
   type IdentityResolveStatus,
+  type LifecycleActor,
   type MutationErrorKind,
   type OpenReviewDraft,
 } from './readerLifecycleEditModel';
@@ -71,8 +81,6 @@ type CommonDraft = {
   actorId: string;
   acknowledged: boolean;
 };
-
-const ACTORS = selectableActors();
 
 function emptyAddDraft(): AddEvidenceDraft {
   return { kind: 'manual_amazon', purchaseDate: '', details: '', reason: '', actorId: '' };
@@ -122,6 +130,9 @@ export default function ReaderLifecycleEditPanel({
   const [openDraft, setOpenDraft] = useState<OpenReviewDraft>(emptyOpenDraft());
   const [common, setCommon] = useState<CommonDraft>(emptyCommon());
   const [resolveStatus, setResolveStatus] = useState<IdentityResolveStatus>('resolved_keep_separate');
+  const [actors, setActors] = useState<LifecycleActor[]>([]);
+  const [actorsStatus, setActorsStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [actorsErrorKind, setActorsErrorKind] = useState<LifecycleReadErrorKind | null>(null);
   const manageRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -132,13 +143,62 @@ export default function ReaderLifecycleEditPanel({
   const actions = permittedActions(reader);
   const evidence = findEvidence(reader, action);
   const error = errorKind ? mutationErrorCopy(errorKind) : null;
+  const selectable = selectableActors(actors);
+  const actorsReady = actorsStatus === 'ready' && canSubmitWithActors(selectable);
+  const actorError = actorsStatus === 'error' ? actorLoadErrorCopy(actorsErrorKind || 'generic') : null;
+  const fieldsDisabled = inFlight || !actorsReady;
+
+  const loadActors = useCallback(async () => {
+    setActorsStatus('loading');
+    setActorsErrorKind(null);
+    setActors([]);
+    try {
+      const res = await fetch(ACTORS_PROXY_PATH, {
+        method: 'GET',
+        credentials: 'include',
+        cache: 'no-store',
+      });
+      let body: unknown = null;
+      try {
+        body = await res.json();
+      } catch {
+        body = null;
+      }
+      if (!res.ok) {
+        const code =
+          body && typeof body === 'object' && 'error' in body
+            ? String((body as { error?: unknown }).error || '')
+            : '';
+        setActorsStatus('error');
+        setActorsErrorKind(classifyLifecycleReadError(res.status, code));
+        return;
+      }
+      const parsed = parseActorsResponse(body);
+      if (!parsed) {
+        setActorsStatus('error');
+        setActorsErrorKind('generic');
+        return;
+      }
+      const next = selectableActors(parsed.actors);
+      setActors(next);
+      setActorsStatus('ready');
+    } catch {
+      setActorsStatus('error');
+      setActorsErrorKind('unavailable');
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadActors();
+  }, [loadActors]);
 
   useEffect(() => {
     if (!requestedAction) return;
+    if (!actorsReady) return;
     setPanelOpen(true);
     startAction(requestedAction);
     onRequestedActionConsumed?.();
-  }, [requestedAction]);
+  }, [requestedAction, actorsReady]);
 
   useEffect(() => {
     if (!panelOpen) return;
@@ -241,11 +301,11 @@ export default function ReaderLifecycleEditPanel({
       if (reasonErr) errors.reason = reasonErr;
       const detailsErr = validateDetails(addDraft.details);
       if (detailsErr) errors.details = detailsErr;
-      if (!addDraft.actorId) errors.actorId = 'Select who is taking this action.';
+      if (!isSelectableActorId(addDraft.actorId, selectable)) errors.actorId = 'Select who is taking this action.';
     } else {
       const reasonErr = validateReason(reason);
       if (reasonErr) errors.reason = reasonErr;
-      if (!actorId) errors.actorId = 'Select who is taking this action.';
+      if (!isSelectableActorId(actorId, selectable)) errors.actorId = 'Select who is taking this action.';
     }
     if (action?.type === 'openIdentityReview' && openDraft.reasonCode === 'other') {
       const detailsErr = validateDetails(openDraft.details, true);
@@ -263,6 +323,7 @@ export default function ReaderLifecycleEditPanel({
 
   function goToConfirm(event: FormEvent) {
     event.preventDefault();
+    if (!actorsReady) return;
     const errors = validateForm();
     setFieldErrors(errors);
     if (Object.keys(errors).length) {
@@ -277,7 +338,7 @@ export default function ReaderLifecycleEditPanel({
   }
 
   async function submit(mode: 'save' | 'retry') {
-    if (!action || inFlightRef.current) return;
+    if (!action || inFlightRef.current || !actorsReady) return;
     const payload = currentPayload();
     if (!payload) return;
     const nextSession =
@@ -346,6 +407,7 @@ export default function ReaderLifecycleEditPanel({
           ref={manageRef}
           className={styles.primary}
           type="button"
+          disabled={!actorsReady}
           onClick={() => {
             setPanelOpen(true);
             setSuccess(null);
@@ -353,6 +415,24 @@ export default function ReaderLifecycleEditPanel({
         >
           Manage lifecycle record
         </button>
+        {actorsStatus === 'loading' ? <p className={styles.formNote}>{ACTORS_LOADING}</p> : null}
+        {actorsStatus === 'ready' && !actorsReady ? <p className={styles.formNote}>{ACTORS_EMPTY}</p> : null}
+        {actorsStatus === 'error' && actorError ? (
+          <div className={listStyles.message} role="alert">
+            <p className={listStyles.errorTitle}>{actorError.title}</p>
+            <p style={{ margin: '0 0 12px' }}>{actorError.body}</p>
+            {actorsErrorKind === 'unauthorized' ? (
+              <p style={{ margin: '0 0 12px' }}>
+                <Link href={FULFILLMENT_AUTH_HREF} style={{ color: '#2563eb' }}>
+                  Sign in at fulfillment auth
+                </Link>
+              </p>
+            ) : null}
+            <button className={styles.primary} type="button" onClick={() => void loadActors()}>
+              Retry
+            </button>
+          </div>
+        ) : null}
       </div>
       {success ? (
         <p className={styles.success} role="status">
@@ -412,7 +492,13 @@ export default function ReaderLifecycleEditPanel({
               ) : null}
 
               {action.type === 'addEvidence' ? (
-                <AddEvidenceFields draft={addDraft} setDraft={setAddDraft} errors={fieldErrors} disabled={inFlight} />
+                <AddEvidenceFields
+                  draft={addDraft}
+                  setDraft={setAddDraft}
+                  errors={fieldErrors}
+                  disabled={fieldsDisabled}
+                  actors={selectable}
+                />
               ) : null}
               {action.type === 'confirmEvidence' && evidence ? (
                 <>
@@ -420,7 +506,7 @@ export default function ReaderLifecycleEditPanel({
                   <p className={styles.formNote}>{CONFIRM_REPLACES_NOTE}</p>
                   <AckField
                     checked={common.acknowledged}
-                    disabled={inFlight}
+                    disabled={fieldsDisabled}
                     error={fieldErrors.acknowledged}
                     onChange={(acknowledged) => setCommon((prev) => ({ ...prev, acknowledged }))}
                   />
@@ -428,7 +514,8 @@ export default function ReaderLifecycleEditPanel({
                     reason={common.reason}
                     actorId={common.actorId}
                     errors={fieldErrors}
-                    disabled={inFlight}
+                    disabled={fieldsDisabled}
+                    actors={selectable}
                     onChange={(patch) => setCommon((prev) => ({ ...prev, ...patch }))}
                   />
                 </>
@@ -441,7 +528,7 @@ export default function ReaderLifecycleEditPanel({
                     draft={correctDraft}
                     original={evidence}
                     errors={fieldErrors}
-                    disabled={inFlight}
+                    disabled={fieldsDisabled}
                     allowStatus={canCorrectEvidence(evidence) || action.type === 'replaceEvidence'}
                     onChange={setCorrectDraft}
                   />
@@ -449,7 +536,8 @@ export default function ReaderLifecycleEditPanel({
                     reason={common.reason}
                     actorId={common.actorId}
                     errors={fieldErrors}
-                    disabled={inFlight}
+                    disabled={fieldsDisabled}
+                    actors={selectable}
                     onChange={(patch) => setCommon((prev) => ({ ...prev, ...patch }))}
                   />
                 </>
@@ -462,7 +550,8 @@ export default function ReaderLifecycleEditPanel({
                     reason={common.reason}
                     actorId={common.actorId}
                     errors={fieldErrors}
-                    disabled={inFlight}
+                    disabled={fieldsDisabled}
+                    actors={selectable}
                     onChange={(patch) => setCommon((prev) => ({ ...prev, ...patch }))}
                   />
                 </>
@@ -474,7 +563,8 @@ export default function ReaderLifecycleEditPanel({
                     reason={common.reason}
                     actorId={common.actorId}
                     errors={fieldErrors}
-                    disabled={inFlight}
+                    disabled={fieldsDisabled}
+                    actors={selectable}
                     onChange={(patch) => setCommon((prev) => ({ ...prev, ...patch }))}
                   />
                 </>
@@ -482,12 +572,13 @@ export default function ReaderLifecycleEditPanel({
               {action.type === 'openIdentityReview' ? (
                 <>
                   <p className={styles.formNote}>{WEBSITE_WRONG_OWNER_NOTE}</p>
-                  <OpenReviewFields draft={openDraft} setDraft={setOpenDraft} errors={fieldErrors} disabled={inFlight} />
+                  <OpenReviewFields draft={openDraft} setDraft={setOpenDraft} errors={fieldErrors} disabled={fieldsDisabled} />
                   <ReasonActorFields
                     reason={common.reason}
                     actorId={common.actorId}
                     errors={fieldErrors}
-                    disabled={inFlight}
+                    disabled={fieldsDisabled}
+                    actors={selectable}
                     onChange={(patch) => setCommon((prev) => ({ ...prev, ...patch }))}
                   />
                 </>
@@ -499,7 +590,7 @@ export default function ReaderLifecycleEditPanel({
                     <select
                       id="field-status"
                       value={resolveStatus}
-                      disabled={inFlight}
+                      disabled={fieldsDisabled}
                       onChange={(event) => setResolveStatus(event.target.value as IdentityResolveStatus)}
                     >
                       {IDENTITY_RESOLVE_OPTIONS.map((option) => (
@@ -513,7 +604,8 @@ export default function ReaderLifecycleEditPanel({
                     reason={common.reason}
                     actorId={common.actorId}
                     errors={fieldErrors}
-                    disabled={inFlight}
+                    disabled={fieldsDisabled}
+                    actors={selectable}
                     reasonLabel="Resolution reason"
                     onChange={(patch) => setCommon((prev) => ({ ...prev, ...patch }))}
                   />
@@ -524,7 +616,7 @@ export default function ReaderLifecycleEditPanel({
                 <button className={styles.secondary} type="button" disabled={inFlight} onClick={() => setAction(null)}>
                   Cancel—make no changes
                 </button>
-                <button className={styles.primary} type="submit" disabled={inFlight}>
+                <button className={styles.primary} type="submit" disabled={fieldsDisabled}>
                   Review changes
                 </button>
               </div>
@@ -572,7 +664,7 @@ export default function ReaderLifecycleEditPanel({
               </li>
               <li>
                 <strong>Action taken by</strong>
-                {actorName(action.type === 'addEvidence' ? addDraft.actorId : common.actorId)}
+                {actorName(action.type === 'addEvidence' ? addDraft.actorId : common.actorId, selectable)}
               </li>
               <li>
                 <strong>Administrative reason</strong>
@@ -594,7 +686,7 @@ export default function ReaderLifecycleEditPanel({
               <button
                 className={action.type === 'disputeEvidence' || action.type === 'addDnc' ? styles.danger : styles.primary}
                 type="button"
-                disabled={inFlight}
+                disabled={fieldsDisabled}
                 onClick={() => void submit('save')}
               >
                 {inFlight ? 'Saving…' : confirmButtonLabel(action)}
@@ -681,6 +773,7 @@ function ReasonActorFields({
   actorId,
   errors,
   disabled,
+  actors,
   onChange,
   reasonLabel = 'Reason for this administrative entry',
 }: {
@@ -688,6 +781,7 @@ function ReasonActorFields({
   actorId: string;
   errors: FieldErrors;
   disabled: boolean;
+  actors: readonly LifecycleActor[];
   onChange: (patch: Partial<CommonDraft>) => void;
   reasonLabel?: string;
 }) {
@@ -711,9 +805,9 @@ function ReasonActorFields({
           onChange={(event) => onChange({ actorId: event.target.value })}
         >
           <option value="">Select an active helper</option>
-          {ACTORS.map((actor) => (
+          {actors.map((actor) => (
             <option key={actor.id} value={actor.id}>
-              {actor.name}
+              {actor.label}
             </option>
           ))}
         </select>
@@ -727,11 +821,13 @@ function AddEvidenceFields({
   setDraft,
   errors,
   disabled,
+  actors,
 }: {
   draft: AddEvidenceDraft;
   setDraft: (draft: AddEvidenceDraft) => void;
   errors: FieldErrors;
   disabled: boolean;
+  actors: readonly LifecycleActor[];
 }) {
   return (
     <>
@@ -772,6 +868,7 @@ function AddEvidenceFields({
         actorId={draft.actorId}
         errors={errors}
         disabled={disabled}
+        actors={actors}
         onChange={(patch) => setDraft({ ...draft, ...patch })}
       />
     </>
@@ -857,7 +954,7 @@ function CorrectFields({
         <dt>Proposed purchase date</dt>
         <dd>
           {toDateInputValue(original.purchaseDate) !== draft.purchaseDate
-            ? `${formatOccurredAt(original.purchaseDate)} → ${draft.purchaseDate || 'Not recorded'}`
+            ? `${formatCalendarDate(original.purchaseDate)} → ${draft.purchaseDate || 'Not recorded'}`
             : draft.purchaseDate || 'Not recorded'}
         </dd>
         <dt>Proposed details</dt>
@@ -952,7 +1049,7 @@ function EvidenceSummary({ row, title = 'Existing evidence' }: { row: LifecycleE
       <strong>{title}</strong>
       <div>{evidenceKindLabel(row.kind)}</div>
       <div>Status: {row.status}</div>
-      <div>Purchase date: {formatOccurredAt(row.purchaseDate)}</div>
+      <div>Purchase date: {formatCalendarDate(row.purchaseDate)}</div>
       <div>Details: {row.details || 'None recorded'}</div>
     </article>
   );

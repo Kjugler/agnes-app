@@ -28,6 +28,8 @@ const ROUTE_FILES = [
   ['review-queue/route.ts', { exportTarget: "{ route: 'reviewQueue' }" }],
   ['communications/route.ts', { exportTarget: "{ route: 'communications' }" }],
   ['purchases-without-profile/route.ts', { exportTarget: "{ route: 'purchasesWithoutProfile' }" }],
+  ['actors/route.ts', { exportTarget: "{ route: 'actors' }" }],
+  ['readers/[readerProfileId]/audit-history/route.ts', { exportTarget: 'auditHistory' }],
 ];
 
 const MUTATION_ROUTE_FILES = [
@@ -229,7 +231,7 @@ async function main() {
       assert.equal(/from ['"]next\//.test(src), false);
     });
 
-    await check('six explicit GET route files exist and export GET only', () => {
+    await check('eight explicit GET route files exist and export GET only', () => {
       const dir = path.join(AGNES_NEXT_ROOT, 'src', 'app', 'api', 'admin', 'reader-lifecycle');
       for (const [rel, spec] of ROUTE_FILES) {
         const file = path.join(dir, rel);
@@ -503,7 +505,7 @@ async function main() {
       }
     });
 
-    await check('each of six GET operations maps to the exact fixed backend route', async () => {
+    await check('each of eight GET operations maps to the exact fixed backend route', async () => {
       const hits = [];
       const { server, baseUrl } = await startMockBackend((req, res) => {
         hits.push(collectRequest(req));
@@ -518,6 +520,8 @@ async function main() {
           [{ route: 'reviewQueue' }, '/api/admin/reader-lifecycle/review-queue', '/api/admin/reader-lifecycle/review-queue'],
           [{ route: 'communications' }, '/api/admin/reader-lifecycle/communications', '/api/admin/reader-lifecycle/communications'],
           [{ route: 'purchasesWithoutProfile' }, '/api/admin/reader-lifecycle/purchases-without-profile', '/api/admin/reader-lifecycle/purchases-without-profile'],
+          [{ route: 'actors' }, '/api/admin/reader-lifecycle/actors', '/api/admin/reader-lifecycle/actors'],
+          [{ route: 'auditHistory', readerProfileId: 'rp_abc123' }, '/api/admin/reader-lifecycle/readers/rp_abc123/audit-history', '/api/admin/reader-lifecycle/readers/rp_abc123/audit-history'],
         ];
         for (const [target, reqPath, expected] of cases) {
           const res = await proxyReaderLifecycleGet(
@@ -529,7 +533,68 @@ async function main() {
           assert.equal(hits[hits.length - 1].pathname, expected);
           assert.equal(hits[hits.length - 1].method, 'GET');
         }
-        assert.equal(hits.length, 6);
+        assert.equal(hits.length, 8);
+      } finally {
+        server.close();
+      }
+    });
+
+    await check('actors and audit-history reject missing cookie before backend call', async () => {
+      let backendHits = 0;
+      const { server, baseUrl } = await startMockBackend((_req, res) => {
+        backendHits += 1;
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      });
+      try {
+        const actorRes = await readResponse(
+          await proxyReaderLifecycleGet(makeRequest('/api/admin/reader-lifecycle/actors'), { route: 'actors' }, {
+            env: envFor(baseUrl),
+          }),
+        );
+        const auditRes = await readResponse(
+          await proxyReaderLifecycleGet(
+            makeRequest('/api/admin/reader-lifecycle/readers/rp_abc123/audit-history'),
+            { route: 'auditHistory', readerProfileId: 'rp_abc123' },
+            { env: envFor(baseUrl) },
+          ),
+        );
+        assert.equal(actorRes.status, 401);
+        assert.equal(actorRes.json.error, 'unauthorized');
+        assert.equal(actorRes.cacheControl, 'no-store');
+        assert.equal(auditRes.status, 401);
+        assert.equal(auditRes.json.error, 'unauthorized');
+        assert.equal(backendHits, 0);
+        assertNoSecret(actorRes.text, 'actors unauth');
+        assertNoSecret(auditRes.text, 'audit-history unauth');
+      } finally {
+        server.close();
+      }
+    });
+
+    await check('audit-history opaque cursor passes through unchanged', async () => {
+      let seen = null;
+      const { server, baseUrl } = await startMockBackend((req, res) => {
+        seen = collectRequest(req);
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, nextCursor: 'opaque-next', hasMore: true, totalCount: null, items: [] }));
+      });
+      try {
+        const cursor = 'eyJjcmVhdGVkQXQiOiIyMDI2LTA4LTI1VDEyOjAwOjAwLjAwMFoiLCJpZCI6ImF1ZF8xIn0';
+        const qs = `?pageSize=20&cursor=${cursor}`;
+        const res = await proxyReaderLifecycleGet(
+          makeRequest(`/api/admin/reader-lifecycle/readers/rp_abc123/audit-history${qs}`, { cookie: SESSION_COOKIE }),
+          { route: 'auditHistory', readerProfileId: 'rp_abc123' },
+          { env: envFor(baseUrl) },
+        );
+        const body = await readResponse(res);
+        assert.equal(body.status, 200);
+        assert.equal(seen.pathname, '/api/admin/reader-lifecycle/readers/rp_abc123/audit-history');
+        assert.equal(seen.search, qs);
+        assert.equal(body.json.nextCursor, 'opaque-next');
+        assert.equal(body.json.totalCount, null);
+        assert.equal(seen.headers['x-admin-key'], ADMIN_KEY);
+        assert.equal(seen.headers.cookie, undefined);
       } finally {
         server.close();
       }
@@ -565,6 +630,11 @@ async function main() {
       assert.equal(encodePathId('rp_plus+id'), 'rp_plus%2Bid');
       assert.equal(backendPathFor({ route: 'readerByProfileId', readerProfileId: 'rp_plus+id' }), `${FIXED_BACKEND_PATHS.readers}/rp_plus%2Bid`);
       assert.equal(backendPathFor({ route: 'readerByUserId', userId: 'user_1' }), `${BACKEND_NAMESPACE}/users/user_1`);
+      assert.equal(backendPathFor({ route: 'actors' }), FIXED_BACKEND_PATHS.actors);
+      assert.equal(
+        backendPathFor({ route: 'auditHistory', readerProfileId: 'rp_plus+id' }),
+        `${FIXED_BACKEND_PATHS.readers}/rp_plus%2Bid/audit-history`,
+      );
     });
 
     await check('path injection cannot change the fixed backend route', async () => {
@@ -588,6 +658,7 @@ async function main() {
         }
         assert.equal(backendHits, 0);
         assert.equal(backendPathFor({ route: 'readerByProfileId', readerProfileId: '../users/evil' }), null);
+        assert.equal(backendPathFor({ route: 'auditHistory', readerProfileId: '../users/evil' }), null);
       } finally {
         server.close();
       }

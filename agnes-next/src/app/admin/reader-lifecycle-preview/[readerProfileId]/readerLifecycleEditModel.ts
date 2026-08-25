@@ -3,7 +3,13 @@
  * Posts go through the committed 5D proxies. Do not import from non-preview UI.
  */
 
-import type { LifecycleEvidence, LifecycleIdentityReview, ReaderLifecycleDetail } from './readerLifecycleDetailModel';
+import {
+  errorCopy,
+  type LifecycleEvidence,
+  type LifecycleIdentityReview,
+  type LifecycleReadErrorKind,
+  type ReaderLifecycleDetail,
+} from './readerLifecycleDetailModel';
 
 export const LOCAL_EDITING_BANNER =
   'LOCAL EDITING PREVIEW — Synthetic reader records only. No production records, purchases or emails can be changed.';
@@ -103,9 +109,9 @@ export function toDateInputValue(value: string | null | undefined): string {
   return match ? match[1] : '';
 }
 
-export function actorName(actorId: string, actors: readonly SyntheticActor[] = SYNTHETIC_ACTORS): string {
+export function actorName(actorId: string, actors: readonly LifecycleActor[] = []): string {
   const found = actors.find((actor) => actor.id === actorId);
-  return found ? found.name : 'Unknown actor';
+  return found ? found.label : 'Unknown actor';
 }
 
 export const MIN_REASON_LENGTH = 8;
@@ -132,13 +138,32 @@ export const IDENTITY_RESOLVE_OPTIONS = [
   { value: 'resolved_keep_separate', label: 'Resolve—keep records separate' },
 ] as const;
 
-export const SYNTHETIC_ACTORS = [
-  { id: 'fu_preview_helper_a', name: 'Preview Helper A (synthetic)', active: true },
-  { id: 'fu_preview_helper_b', name: 'Preview Helper B (synthetic)', active: true },
-  { id: 'fu_preview_helper_inactive', name: 'Preview Helper Inactive (synthetic)', active: false },
-] as const;
+export const ACTORS_PROXY_PATH = '/api/admin/reader-lifecycle/actors';
+export const ACTORS_LOADING = 'Loading administrators…';
+export const ACTORS_UNAVAILABLE =
+  'Administrators could not be loaded. Saving is disabled until you retry. No helper was selected automatically.';
+export const ACTORS_EMPTY = 'No active administrators are available. Saving is disabled.';
 
-export type SyntheticActor = (typeof SYNTHETIC_ACTORS)[number];
+export function actorLoadErrorCopy(kind: LifecycleReadErrorKind): { title: string; body: string } {
+  if (kind === 'forbidden') return errorCopy(kind);
+  if (kind === 'unauthorized') {
+    return {
+      title: 'Sign in required',
+      body: 'Sign in is required before a helper can be chosen.',
+    };
+  }
+  return {
+    title: 'Administrators unavailable',
+    body: ACTORS_UNAVAILABLE,
+  };
+}
+
+export type LifecycleActor = {
+  id: string;
+  label: string;
+  active?: boolean;
+};
+
 export type AddEvidenceKind = (typeof ADD_KIND_OPTIONS)[number]['value'];
 export type IdentityOpenReason = (typeof IDENTITY_OPEN_REASON_OPTIONS)[number]['value'];
 export type IdentityResolveStatus = (typeof IDENTITY_RESOLVE_OPTIONS)[number]['value'];
@@ -174,8 +199,34 @@ const MUTABLE_KINDS = new Set([
   'kris_personal_knowledge',
 ]);
 
-export function selectableActors(actors: readonly SyntheticActor[] = SYNTHETIC_ACTORS): SyntheticActor[] {
-  return actors.filter((actor) => actor.active);
+export function selectableActors(actors: readonly LifecycleActor[] = []): LifecycleActor[] {
+  return actors.filter((actor) => actor.active !== false && Boolean(actor.id) && Boolean(actor.label));
+}
+
+export function isSelectableActorId(actorId: string, actors: readonly LifecycleActor[]): boolean {
+  return selectableActors(actors).some((actor) => actor.id === actorId);
+}
+
+export function canSubmitWithActors(actors: readonly LifecycleActor[]): boolean {
+  return selectableActors(actors).length > 0;
+}
+
+export function parseActorsResponse(raw: unknown): { actors: LifecycleActor[] } | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const body = raw as Record<string, unknown>;
+  if (body.ok === false) return null;
+  if (!Array.isArray(body.actors)) return null;
+  const actors: LifecycleActor[] = [];
+  for (const row of body.actors) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
+    const rec = row as Record<string, unknown>;
+    const id = typeof rec.id === 'string' ? rec.id.trim() : '';
+    const label = typeof rec.label === 'string' ? rec.label.trim() : '';
+    if (!id || !label) continue;
+    if (rec.active === false) continue;
+    actors.push({ id, label });
+  }
+  return { actors };
 }
 
 export function isWebsiteAccountingEvidence(row: Pick<LifecycleEvidence, 'kind' | 'accountingTruth'>): boolean {

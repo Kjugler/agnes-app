@@ -159,6 +159,22 @@
 .block dd {
   margin: 0 0 8px;
   font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.auditValue,
+.auditSummary {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.auditSummary {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.auditSummary li {
+  margin: 0 0 4px;
 }
 
 .archived {

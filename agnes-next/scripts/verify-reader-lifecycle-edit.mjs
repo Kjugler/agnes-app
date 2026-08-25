@@ -361,21 +361,33 @@ async function main() {
       assert.equal(grouped.historical.length, 2);
     });
 
-    await check('actor source is synthetic preview-only, not a new production endpoint', () => {
+    await check('actor picker uses dedicated /actors contract with no synthetic fallback', () => {
       const panel = scan(FILES.editPanel);
       const model = scan(FILES.editModel);
-      assert.match(model, /SYNTHETIC_ACTORS/);
-      assert.match(model, /fu_preview_helper_inactive/);
+      const client = scan(FILES.detailClient);
+      assert.doesNotMatch(model, /SYNTHETIC_ACTORS/);
+      assert.doesNotMatch(panel, /SYNTHETIC_ACTORS/);
+      assert.doesNotMatch(client, /SYNTHETIC_ACTORS/);
+      assert.doesNotMatch(panel, /fu_preview_helper_inactive/);
+      assert.doesNotMatch(model, /fu_preview_helper_inactive/);
       assert.doesNotMatch(panel, /\/api\/fulfillment\/users/);
       assert.doesNotMatch(model, /\/api\/fulfillment\/users/);
-      assert.doesNotMatch(panel, /\/api\/admin\/reader-lifecycle\/actors/);
-      const actors = edit.selectableActors();
+      assert.match(panel, /ACTORS_PROXY_PATH/);
+      assert.match(model, /\/api\/admin\/reader-lifecycle\/actors/);
+      assert.match(model, /ACTORS_UNAVAILABLE/);
+      assert.match(panel, /actorLoadErrorCopy/);
+      assert.match(panel, /Retry/);
+      assert.match(panel, /disabled=\{!actorsReady\}/);
+      const fixtures = live.ACTORS.map((row) => ({ id: row.id, label: row.name, active: row.active }));
+      const actors = edit.selectableActors(fixtures);
       assert.equal(actors.length, 2);
       assert.equal(actors.some((row) => row.id === 'fu_preview_helper_inactive'), false);
-      assert.deepEqual(
-        live.ACTORS.map((row) => row.id),
-        edit.SYNTHETIC_ACTORS.map((row) => row.id),
-      );
+      assert.deepEqual(edit.selectableActors(), []);
+      assert.equal(edit.canSubmitWithActors([]), false);
+      assert.equal(edit.actorName('fu_preview_helper_a'), 'Unknown actor');
+      assert.equal(edit.actorName('fu_preview_helper_a', actors), 'Preview Helper A (synthetic)');
+      assert.equal(edit.parseActorsResponse({ ok: true, actors: [{ id: 'x', label: 'Helper X' }] }).actors[0].label, 'Helper X');
+      assert.equal(edit.parseActorsResponse({ ok: true, actors: [{ id: 'x', name: 'no label' }] }).actors.length, 0);
     });
 
     await check('edit panel posts only through 5D proxies and has no local writes', () => {
@@ -490,6 +502,21 @@ async function main() {
       assert.equal(edit.parseMutationResponse({ ok: true, replay: true, reader: { readerProfileId: 'rp' } }).replay, true);
       const copy = JSON.stringify(edit.mutationErrorCopy('validation'));
       assert.doesNotMatch(copy, /stack|ADMIN_KEY|fulfillment-token|Idempotency/);
+    });
+
+    await check('calendar purchase dates and actor-load 403 stay honest', () => {
+      assert.equal(detail.formatCalendarDate('2026-07-01T00:00:00.000Z'), 'July 1, 2026');
+      assert.equal(detail.classifyLifecycleReadError(403, 'Forbidden - x-admin-key required in production'), 'forbidden');
+      assert.equal(detail.errorCopy('forbidden').title, 'Access denied');
+      assert.equal(edit.actorLoadErrorCopy('forbidden').title, 'Access denied');
+      assert.doesNotMatch(edit.actorLoadErrorCopy('forbidden').body, /x-admin-key|ADMIN_KEY|configuration/i);
+      const client = scan(FILES.detailClient);
+      const panel = scan(FILES.editPanel);
+      assert.match(client, /formatCalendarDate\(row\.purchaseDate\)/);
+      assert.doesNotMatch(client, /formatOccurredAt\(row\.purchaseDate\)/);
+      assert.match(panel, /formatCalendarDate\(row\.purchaseDate\)/);
+      assert.match(panel, /actorLoadErrorCopy/);
+      assert.match(panel, /disabled=\{!actorsReady\}/);
     });
 
     await check('history labels and identity reasons are plain language', () => {

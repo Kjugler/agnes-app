@@ -5,23 +5,30 @@ import { useCallback, useEffect, useState, type MouseEvent, type ReactNode } fro
 import {
   FULFILLMENT_AUTH_HREF,
   LIST_PREVIEW_PATH,
-  classifyHttpError,
   crmStatusLabel,
   categoryLabel,
   detailProxyPath,
-  type PreviewErrorKind,
 } from '../readerLifecyclePreviewModel';
 import listStyles from '../preview.module.css';
 import styles from './detail.module.css';
 import {
   AGGREGATE_NOT_PROOF,
+  AUDIT_HISTORY_EMPTY,
+  AUDIT_HISTORY_NOTE,
   CONTACT_DECISION_NOTE,
   EMPTY_HISTORY,
   IDENTITY_NO_MERGE,
+  LOAD_EARLIER_CHANGES,
   NURTURE_NOT_CONNECTED_TO_JOBS,
   OUTREACH_PAUSED,
   PURCHASE_ACCOUNTING_NOTE,
   SMS_CONSENT_NOTE,
+  auditActionLabel,
+  auditEntityTypeLabel,
+  auditHistoryErrorCopy,
+  auditHistoryProxyPath,
+  auditSummaryLines,
+  classifyLifecycleReadError,
   communicationHistoryOutcome,
   decisionLabel,
   emailDisplay,
@@ -31,6 +38,7 @@ import {
   evidenceReasonOriginLabel,
   evidenceStatusLabel,
   formatAmount,
+  formatCalendarDate,
   fulfillmentStatusLabel,
   formatOccurredAt,
   groupEvidence,
@@ -42,6 +50,8 @@ import {
   listContactLabel,
   listOwnershipLabel,
   listReviewSummary,
+  mergeAuditPages,
+  parseAuditHistoryResponse,
   parseDetailResponse,
   phoneDisplay,
   safeRelatedUserId,
@@ -53,11 +63,13 @@ import {
   supersededRelationshipLabel,
   templateOrAskLabel,
   triggerLabel,
+  type LifecycleAuditItem,
   type LifecycleCommunication,
   type LifecycleContactDecision,
   type LifecycleEvidence,
   type LifecycleIdentityReview,
   type LifecyclePurchase,
+  type LifecycleReadErrorKind,
   type ReaderLifecycleDetail,
 } from './readerLifecycleDetailModel';
 import ReaderLifecycleEditPanel from './ReaderLifecycleEditPanel';
@@ -70,9 +82,15 @@ export default function ReaderLifecycleDetailClient({
 }) {
   const [reader, setReader] = useState<ReaderLifecycleDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [errorKind, setErrorKind] = useState<PreviewErrorKind | null>(null);
+  const [errorKind, setErrorKind] = useState<LifecycleReadErrorKind | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const [requestedAction, setRequestedAction] = useState<EditAction | null>(null);
+  const [auditEpoch, setAuditEpoch] = useState(0);
+
+  const handleReaderUpdated = useCallback((next: ReaderLifecycleDetail) => {
+    setReader(next);
+    setAuditEpoch((n) => n + 1);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -95,7 +113,7 @@ export default function ReaderLifecycleDetailClient({
             ? String((body as { error?: unknown }).error || '')
             : '';
         setReader(null);
-        setErrorKind(classifyHttpError(res.status, code));
+        setErrorKind(classifyLifecycleReadError(res.status, code));
         return;
       }
       setReader(parseDetailResponse(body));
@@ -209,7 +227,7 @@ export default function ReaderLifecycleDetailClient({
             )}
             <ReaderLifecycleEditPanel
               reader={reader}
-              onReaderUpdated={setReader}
+              onReaderUpdated={handleReaderUpdated}
               requestedAction={requestedAction}
               onRequestedActionConsumed={() => setRequestedAction(null)}
             />
@@ -224,6 +242,7 @@ export default function ReaderLifecycleDetailClient({
           <DecisionsSection rows={reader.contactDecisions} />
           <IdentitySection rows={reader.identityReviews} />
           <NotesSection reader={reader} />
+          <AuditHistorySection readerProfileId={reader.readerProfileId} reloadToken={auditEpoch} />
         </>
       ) : null}
     </div>
@@ -339,7 +358,7 @@ function EvidenceBlock({ row, historical }: { row: LifecycleEvidence; historical
       ) : null}
       <dl>
         <dt>Purchase date</dt>
-        <dd>{formatOccurredAt(row.purchaseDate)}</dd>
+        <dd>{formatCalendarDate(row.purchaseDate)}</dd>
         <dt>Details</dt>
         <dd>{row.details || 'None recorded'}</dd>
         <dt>Reason / origin</dt>
@@ -539,6 +558,172 @@ function NotesSection({ reader }: { reader: ReaderLifecycleDetail }) {
           <dd>{phoneDisplay(reader.phone)}</dd>
         </div>
       </dl>
+    </section>
+  );
+}
+
+function AuditHistorySection({
+  readerProfileId,
+  reloadToken,
+}: {
+  readerProfileId: string;
+  reloadToken: number;
+}) {
+  const [items, setItems] = useState<LifecycleAuditItem[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
+  const [errorKind, setErrorKind] = useState<LifecycleReadErrorKind | null>(null);
+  const [retryToken, setRetryToken] = useState(0);
+
+  const loadPage = useCallback(
+    async (cursor: string | null, append: boolean) => {
+      if (append) setLoadingEarlier(true);
+      else {
+        setLoading(true);
+        setItems([]);
+        setNextCursor(null);
+        setHasMore(false);
+      }
+      setErrorKind(null);
+      try {
+        const res = await fetch(auditHistoryProxyPath(readerProfileId, cursor), {
+          method: 'GET',
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        let body: unknown = null;
+        try {
+          body = await res.json();
+        } catch {
+          body = null;
+        }
+        if (!res.ok) {
+          const code =
+            body && typeof body === 'object' && 'error' in body
+              ? String((body as { error?: unknown }).error || '')
+              : '';
+          setErrorKind(classifyLifecycleReadError(res.status, code));
+          if (!append) setItems([]);
+          return;
+        }
+        const parsed = parseAuditHistoryResponse(body);
+        if (!parsed || (parsed.readerProfileId && parsed.readerProfileId !== readerProfileId)) {
+          setErrorKind('generic');
+          if (!append) setItems([]);
+          return;
+        }
+        setItems((prev) => (append ? mergeAuditPages(prev, parsed.items) : parsed.items));
+        setNextCursor(parsed.nextCursor);
+        setHasMore(parsed.hasMore && Boolean(parsed.nextCursor));
+      } catch {
+        setErrorKind('unavailable');
+        if (!append) setItems([]);
+      } finally {
+        setLoading(false);
+        setLoadingEarlier(false);
+      }
+    },
+    [readerProfileId],
+  );
+
+  useEffect(() => {
+    void loadPage(null, false);
+  }, [loadPage, reloadToken, retryToken]);
+
+  const copy = errorKind ? auditHistoryErrorCopy(errorKind) : null;
+
+  return (
+    <section className={styles.section} aria-labelledby="audit-heading">
+      <h2 id="audit-heading" className={styles.sectionTitle}>
+        Administrative Change History
+      </h2>
+      <p className={styles.sectionNote}>{AUDIT_HISTORY_NOTE}</p>
+      {loading ? <p className={styles.muted}>Loading administrative history…</p> : null}
+      {copy ? (
+        <div className={listStyles.message} role="alert">
+          <p className={listStyles.errorTitle}>{copy.title}</p>
+          <p style={{ margin: '0 0 12px' }}>{copy.body}</p>
+          {errorKind === 'unauthorized' ? (
+            <p style={{ margin: '0 0 12px' }}>
+              <Link href={FULFILLMENT_AUTH_HREF} style={{ color: '#2563eb' }}>
+                Sign in at fulfillment auth
+              </Link>
+            </p>
+          ) : null}
+          <button
+            className={listStyles.buttonSecondary}
+            type="button"
+            onClick={() => setRetryToken((n) => n + 1)}
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
+      {!loading && !errorKind && items.length === 0 ? <Empty>{AUDIT_HISTORY_EMPTY}</Empty> : null}
+      {!errorKind
+        ? items.map((row) => {
+            const beforeLines = auditSummaryLines(row.before);
+            const afterLines = auditSummaryLines(row.after);
+            return (
+              <article className={styles.block} key={row.id}>
+                <strong>{formatOccurredAt(row.createdAt)}</strong>
+                <div>{auditActionLabel(row.action)}</div>
+                <dl>
+                  <dt>Affected record</dt>
+                  <dd>{auditEntityTypeLabel(row.entityType)}</dd>
+                  <dt>Administrator</dt>
+                  <dd>{row.actorLabel || 'Unknown administrator'}</dd>
+                  <dt>Administrative reason</dt>
+                  <dd className={styles.auditValue}>{row.reason || 'None recorded'}</dd>
+                  <dt>Before</dt>
+                  <dd>
+                    {beforeLines.length ? (
+                      <ul className={styles.auditSummary}>
+                        {beforeLines.map((line) => (
+                          <li key={`${row.id}-before-${line.label}`}>
+                            <span className={styles.muted}>{line.label}: </span>
+                            {line.value}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      'No earlier values to summarize.'
+                    )}
+                  </dd>
+                  <dt>After</dt>
+                  <dd>
+                    {afterLines.length ? (
+                      <ul className={styles.auditSummary}>
+                        {afterLines.map((line) => (
+                          <li key={`${row.id}-after-${line.label}`}>
+                            <span className={styles.muted}>{line.label}: </span>
+                            {line.value}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      'No later values to summarize.'
+                    )}
+                  </dd>
+                </dl>
+              </article>
+            );
+          })
+        : null}
+      {!errorKind && hasMore && nextCursor ? (
+        <p className={styles.manageBar}>
+          <button
+            className={styles.secondary}
+            type="button"
+            disabled={loadingEarlier}
+            onClick={() => void loadPage(nextCursor, true)}
+          >
+            {loadingEarlier ? 'Loading earlier changes…' : LOAD_EARLIER_CHANGES}
+          </button>
+        </p>
+      ) : null}
     </section>
   );
 }

@@ -51,7 +51,9 @@ export type ReaderLifecycleRoute =
   | 'readerByUserId'
   | 'reviewQueue'
   | 'communications'
-  | 'purchasesWithoutProfile';
+  | 'purchasesWithoutProfile'
+  | 'actors'
+  | 'auditHistory';
 
 export type ReaderLifecycleProxyTarget =
   | { route: 'readers' }
@@ -59,7 +61,9 @@ export type ReaderLifecycleProxyTarget =
   | { route: 'readerByUserId'; userId: string }
   | { route: 'reviewQueue' }
   | { route: 'communications' }
-  | { route: 'purchasesWithoutProfile' };
+  | { route: 'purchasesWithoutProfile' }
+  | { route: 'actors' }
+  | { route: 'auditHistory'; readerProfileId: string };
 
 export type ReaderLifecycleMutationTarget =
   | { route: 'addEvidence'; readerProfileId: string }
@@ -82,6 +86,7 @@ export const FIXED_BACKEND_PATHS = Object.freeze({
   reviewQueue: `${BACKEND_NAMESPACE}/review-queue`,
   communications: `${BACKEND_NAMESPACE}/communications`,
   purchasesWithoutProfile: `${BACKEND_NAMESPACE}/purchases-without-profile`,
+  actors: `${BACKEND_NAMESPACE}/actors`,
 });
 
 type CookieBag = { get: (name: string) => { value: string } | undefined };
@@ -196,6 +201,8 @@ export function backendPathFor(target: ReaderLifecycleProxyTarget): string | nul
       return FIXED_BACKEND_PATHS.communications;
     case 'purchasesWithoutProfile':
       return FIXED_BACKEND_PATHS.purchasesWithoutProfile;
+    case 'actors':
+      return FIXED_BACKEND_PATHS.actors;
     case 'readerByProfileId': {
       const id = encodePathId(target.readerProfileId);
       if (!id) return null;
@@ -205,6 +212,11 @@ export function backendPathFor(target: ReaderLifecycleProxyTarget): string | nul
       const id = encodePathId(target.userId);
       if (!id) return null;
       return `${BACKEND_NAMESPACE}/users/${id}`;
+    }
+    case 'auditHistory': {
+      const id = encodePathId(target.readerProfileId);
+      if (!id) return null;
+      return `${FIXED_BACKEND_PATHS.readers}/${id}/audit-history`;
     }
     default:
       return null;
