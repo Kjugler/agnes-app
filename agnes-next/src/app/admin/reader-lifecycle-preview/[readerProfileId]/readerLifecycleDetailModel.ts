@@ -66,8 +66,8 @@ const EVIDENCE_KIND_LABELS: Record<string, string> = {
 };
 
 const EVIDENCE_STATUS_LABELS: Record<string, string> = {
-  confirmed: 'Confirmed',
-  provisional: 'Provisional',
+  confirmed: 'Current—Confirmed',
+  provisional: 'Current—Provisional',
   disputed: 'Disputed',
   superseded: 'Superseded',
 };
@@ -102,6 +102,9 @@ const IDENTITY_STATUS_LABELS: Record<string, string> = {
 const IDENTITY_REASON_LABELS: Record<string, string> = {
   duplicate_name: 'Possible duplicate name',
   similar_email: 'Similar email addresses',
+  possible_wrong_website_owner: 'Possible wrong website owner',
+  stripe_session_user_mismatch: 'Stripe session/user mismatch',
+  other: 'Other',
 };
 
 const SALE_STATUS_LABELS: Record<string, string> = {
@@ -327,6 +330,11 @@ export function isAggregateEvidence(row: Pick<LifecycleEvidence, 'kind'>): boole
   return row.kind === 'aggregate_marketing_not_individual';
 }
 
+export function supersededRelationshipLabel(row: Pick<LifecycleEvidence, 'status' | 'supersededById'>): string | null {
+  if (row.status !== 'superseded') return null;
+  return 'A later administrative record replaced this one. The original snapshot stays in history.';
+}
+
 export function formatAmount(amount: number | null, currency: string | null): string {
   if (amount == null) return 'Amount not recorded';
   const cur = (currency || 'usd').toUpperCase();
@@ -357,18 +365,32 @@ export function enteredBy(actorLabel: string, actorType: string): string {
 export function groupEvidence(rows: LifecycleEvidence[]): {
   currentConfirmed: LifecycleEvidence[];
   currentProvisional: LifecycleEvidence[];
+  disputed: LifecycleEvidence[];
+  superseded: LifecycleEvidence[];
   historical: LifecycleEvidence[];
 } {
   const currentConfirmed: LifecycleEvidence[] = [];
   const currentProvisional: LifecycleEvidence[] = [];
+  const disputed: LifecycleEvidence[] = [];
+  const superseded: LifecycleEvidence[] = [];
   const historical: LifecycleEvidence[] = [];
   for (const row of rows) {
-    if (row.status === 'disputed' || row.status === 'superseded') historical.push(row);
-    else if (row.status === 'confirmed') currentConfirmed.push(row);
+    if (row.status === 'superseded') {
+      superseded.push(row);
+      historical.push(row);
+    } else if (row.status === 'disputed') {
+      disputed.push(row);
+      historical.push(row);
+    } else if (row.status === 'confirmed') currentConfirmed.push(row);
     else if (row.status === 'provisional') currentProvisional.push(row);
     else historical.push(row);
   }
-  return { currentConfirmed, currentProvisional, historical };
+  return { currentConfirmed, currentProvisional, disputed, superseded, historical };
+}
+
+export function supersededFoldLabel(count: number): string {
+  const n = Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : 0;
+  return n === 1 ? 'Earlier superseded evidence (1)' : `Earlier superseded evidence (${n})`;
 }
 
 function parsePurchase(raw: unknown): LifecyclePurchase | null {

@@ -229,12 +229,23 @@ async function main() {
       const grouped = detail.groupEvidence(row.evidenceHistory);
       assert.equal(grouped.currentConfirmed.length, 2);
       assert.equal(grouped.currentProvisional.length, 1);
+      assert.equal(grouped.disputed.length, 1);
+      assert.equal(grouped.superseded.length, 1);
       assert.equal(grouped.historical.length, 2);
+      assert.equal(grouped.disputed[0].id, 'e_hist_disp');
+      assert.equal(grouped.superseded[0].id, 'e_hist_sup');
+      assert.equal(detail.supersededFoldLabel(1), 'Earlier superseded evidence (1)');
+      assert.equal(detail.supersededFoldLabel(2), 'Earlier superseded evidence (2)');
       assert.equal(
         grouped.currentConfirmed.some((item) => detail.isAggregateEvidence(item)),
         true,
       );
       assert.equal(detail.AGGREGATE_NOT_PROOF.includes('not proof'), true);
+      const client = scanSource(FILES.detailClient);
+      assert.match(client, /Disputed or conflicting evidence/);
+      assert.match(client, /<details className=\{styles.supersededFold\}>/);
+      assert.match(client, /<summary>\{supersededFoldLabel/);
+      assert.doesNotMatch(client, /Earlier, disputed, or superseded/);
     });
 
     await check('missing reader 404 and backend unavailable 502', () => {

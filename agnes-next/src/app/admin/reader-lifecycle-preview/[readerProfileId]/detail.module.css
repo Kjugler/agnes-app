@@ -125,6 +125,23 @@
   color: #64748b;
 }
 
+.supersededFold {
+  margin: 16px 0 0;
+}
+
+.supersededFold > summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  color: #64748b;
+  padding: 6px 0;
+}
+
+.supersededFold > summary:focus-visible {
+  outline: 2px solid #0f172a;
+  outline-offset: 2px;
+}
+
 .block {
   border: 1px solid #e2e8f0;
   border-radius: 8px;
@@ -191,6 +208,304 @@
   display: none;
 }
 
+.manageBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 16px 0 0;
+}
+
+.success {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #166534;
+  background: #dcfce7;
+  color: #14532d;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.panel {
+  margin: 14px 0 0;
+  padding: 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.panelTitle {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.actionList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.actionDefault,
+.actionWarning,
+.actionDanger {
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 650;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.actionDefault {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #0f172a;
+}
+
+.actionWarning {
+  border: 1px solid #d97706;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.actionDanger {
+  border: 1px solid #b91c1c;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.actionDefault:disabled,
+.actionWarning:disabled,
+.actionDanger:disabled,
+.primary:disabled,
+.secondary:disabled,
+.danger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.form {
+  display: grid;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.field input,
+.field select,
+.field textarea {
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 14px;
+  background: #fff;
+  color: #0f172a;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.field textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
+.fieldError input,
+.fieldError select,
+.fieldError textarea {
+  border-color: #b91c1c;
+}
+
+.fieldMessage {
+  margin: 0;
+  font-size: 12px;
+  color: #b91c1c;
+}
+
+.formNote {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #334155;
+}
+
+.changeList {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  font-size: 13px;
+}
+
+.changeList dt {
+  font-weight: 650;
+  color: #475569;
+}
+
+.changeList dd {
+  margin: 0 0 8px;
+}
+
+.formActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.primary,
+.secondary,
+.danger {
+  padding: 8px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.primary {
+  border: none;
+  background: #0f172a;
+  color: #fff;
+}
+
+.secondary {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #0f172a;
+}
+
+.danger {
+  border: none;
+  background: #991b1b;
+  color: #fff;
+}
+
+.errorSummary {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #b91c1c;
+  background: #fef2f2;
+  color: #7f1d1d;
+  font-size: 13px;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  z-index: 40;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 16px;
+  overflow: auto;
+}
+
+.dialog {
+  width: min(36rem, 100%);
+  margin: 24px auto;
+  background: #fff;
+  border-radius: 10px;
+  padding: 16px;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.2);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+}
+
+.dialogDanger {
+  border: 2px solid #991b1b;
+}
+
+.dialogTitle {
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.confirmList {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.confirmList li {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.confirmList strong {
+  display: block;
+  font-size: 12px;
+  color: #475569;
+  margin-bottom: 2px;
+}
+
+.ack {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.statusText {
+  font-weight: 650;
+}
+
+.relationship {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #475569;
+}
+
+.accountingNote {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #334155;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.actionDefault:focus-visible,
+.actionWarning:focus-visible,
+.actionDanger:focus-visible,
+.primary:focus-visible,
+.secondary:focus-visible,
+.danger:focus-visible,
+.field input:focus-visible,
+.field select:focus-visible,
+.field textarea:focus-visible,
+.ack input:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
 @media (max-width: 860px) {
   .tableWrap {
     display: none;
@@ -203,5 +518,21 @@
   .summary,
   .axes {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 430px) {
+  .section,
+  .panel,
+  .dialog,
+  .block {
+    overflow-wrap: anywhere;
+  }
+
+  .actionList,
+  .formActions,
+  .manageBar {
+    flex-direction: column;
+    align-items: stretch;
   }
 }

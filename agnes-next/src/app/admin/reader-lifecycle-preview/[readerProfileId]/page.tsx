@@ -1,7 +1,10 @@
+import { PROVIDER_WARNING } from '../readerLifecyclePreviewModel';
 import {
-  PROVIDER_WARNING,
-  READ_ONLY_BANNER,
-} from '../readerLifecyclePreviewModel';
+  LOCAL_CLASSIFICATION_NOTE,
+  LOCAL_EDITING_BANNER,
+  NO_NURTURE_JOB,
+  WEBSITE_PURCHASE_CANNOT_EDIT,
+} from './readerLifecycleEditModel';
 import ReaderLifecycleDetailClient from './ReaderLifecycleDetailClient';
 import listStyles from '../preview.module.css';
 
@@ -20,10 +23,13 @@ export default async function ReaderLifecycleDetailPage({
         Reader Lifecycle detail
       </h1>
       <p className={listStyles.banner} role="status">
-        {READ_ONLY_BANNER}
+        {LOCAL_EDITING_BANNER}
       </p>
       <p className={listStyles.warning} role="note">
         {PROVIDER_WARNING}
+      </p>
+      <p className={listStyles.warning} role="note">
+        {WEBSITE_PURCHASE_CANNOT_EDIT} {NO_NURTURE_JOB} {LOCAL_CLASSIFICATION_NOTE}
       </p>
       <ReaderLifecycleDetailClient readerProfileId={readerProfileId} />
     </div>

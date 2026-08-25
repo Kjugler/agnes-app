@@ -49,6 +49,8 @@ import {
   smsConsentLabel,
   sourceLabel,
   sourcesLabel,
+  supersededFoldLabel,
+  supersededRelationshipLabel,
   templateOrAskLabel,
   triggerLabel,
   type LifecycleCommunication,
@@ -58,6 +60,8 @@ import {
   type LifecyclePurchase,
   type ReaderLifecycleDetail,
 } from './readerLifecycleDetailModel';
+import ReaderLifecycleEditPanel from './ReaderLifecycleEditPanel';
+import { WEBSITE_WRONG_OWNER_NOTE, type EditAction } from './readerLifecycleEditModel';
 
 export default function ReaderLifecycleDetailClient({
   readerProfileId,
@@ -68,6 +72,7 @@ export default function ReaderLifecycleDetailClient({
   const [loading, setLoading] = useState(true);
   const [errorKind, setErrorKind] = useState<PreviewErrorKind | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
+  const [requestedAction, setRequestedAction] = useState<EditAction | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -144,7 +149,7 @@ export default function ReaderLifecycleDetailClient({
         <>
           {isOutreachPaused(reader) ? (
             <p className={styles.paused} role="status">
-              {OUTREACH_PAUSED} This screen cannot resolve the record.
+              {OUTREACH_PAUSED}
             </p>
           ) : null}
 
@@ -202,9 +207,18 @@ export default function ReaderLifecycleDetailClient({
                 {NURTURE_NOT_CONNECTED_TO_JOBS}
               </p>
             )}
+            <ReaderLifecycleEditPanel
+              reader={reader}
+              onReaderUpdated={setReader}
+              requestedAction={requestedAction}
+              onRequestedActionConsumed={() => setRequestedAction(null)}
+            />
           </section>
 
-          <PurchasesSection rows={reader.purchases} />
+          <PurchasesSection
+            rows={reader.purchases}
+            onOpenIdentityReview={() => setRequestedAction({ type: 'openIdentityReview' })}
+          />
           <EvidenceSection rows={reader.evidenceHistory} />
           <CommunicationsSection rows={reader.communications} />
           <DecisionsSection rows={reader.contactDecisions} />
@@ -242,13 +256,20 @@ function Empty({ children }: { children?: ReactNode }) {
   return <p className={styles.empty}>{children || EMPTY_HISTORY}</p>;
 }
 
-function PurchasesSection({ rows }: { rows: LifecyclePurchase[] }) {
+function PurchasesSection({
+  rows,
+  onOpenIdentityReview,
+}: {
+  rows: LifecyclePurchase[];
+  onOpenIdentityReview: () => void;
+}) {
   return (
     <section className={styles.section} aria-labelledby="purchases-heading">
       <h2 id="purchases-heading" className={styles.sectionTitle}>
         Website Purchase Records
       </h2>
       <p className={styles.sectionNote}>{PURCHASE_ACCOUNTING_NOTE}</p>
+      <p className={styles.accountingNote}>{WEBSITE_WRONG_OWNER_NOTE}</p>
       {rows.length === 0 ? (
         <Empty>No website purchase records. {EMPTY_HISTORY}</Empty>
       ) : (
@@ -294,6 +315,13 @@ function PurchasesSection({ rows }: { rows: LifecyclePurchase[] }) {
           </div>
         </>
       )}
+      {rows.length > 0 ? (
+        <p className={styles.manageBar}>
+          <button className={styles.actionWarning} type="button" onClick={onOpenIdentityReview}>
+            Open identity review
+          </button>
+        </p>
+      ) : null}
     </section>
   );
 }
@@ -303,9 +331,12 @@ function EvidenceBlock({ row, historical }: { row: LifecycleEvidence; historical
     <article className={`${styles.block} ${historical ? styles.historical : ''}`}>
       <strong>{evidenceKindLabel(row.kind)}</strong>
       <div>
-        {evidenceStatusLabel(row.status)}
+        <span className={styles.statusText}>{evidenceStatusLabel(row.status)}</span>
         {row.sourceLabel ? ` · ${sourceLabel(row.sourceLabel)}` : ''}
       </div>
+      {supersededRelationshipLabel(row) ? (
+        <p className={styles.relationship}>{supersededRelationshipLabel(row)}</p>
+      ) : null}
       <dl>
         <dt>Purchase date</dt>
         <dd>{formatOccurredAt(row.purchaseDate)}</dd>
@@ -344,13 +375,21 @@ function EvidenceSection({ rows }: { rows: LifecycleEvidence[] }) {
           {grouped.currentProvisional.map((row) => (
             <EvidenceBlock key={row.id} row={row} />
           ))}
-          {grouped.historical.length ? (
+          {grouped.disputed.length ? (
             <>
-              <h3 className={styles.historicalTitle}>Earlier, disputed, or superseded evidence</h3>
-              {grouped.historical.map((row) => (
-                <EvidenceBlock key={row.id} row={row} historical />
+              <h3 className={styles.historicalTitle}>Disputed or conflicting evidence</h3>
+              {grouped.disputed.map((row) => (
+                <EvidenceBlock key={row.id} row={row} />
               ))}
             </>
+          ) : null}
+          {grouped.superseded.length ? (
+            <details className={styles.supersededFold}>
+              <summary>{supersededFoldLabel(grouped.superseded.length)}</summary>
+              {grouped.superseded.map((row) => (
+                <EvidenceBlock key={row.id} row={row} historical />
+              ))}
+            </details>
           ) : null}
         </>
       )}
