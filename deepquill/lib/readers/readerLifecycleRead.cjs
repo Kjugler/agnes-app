@@ -842,12 +842,175 @@ async function listCommunicationActivity(prisma, options = {}) {
   };
 }
 
+const AUDIT_SUMMARY_SCALAR_KEYS = Object.freeze([
+  'id',
+  'kind',
+  'status',
+  'sourceLabel',
+  'purchaseDate',
+  'supersededById',
+  'decision',
+  'reasonCode',
+  'resolutionReason',
+  'resolvedAt',
+  'createdAt',
+  'updatedAt',
+  'actorType',
+  'actorLabel',
+  'actorId',
+  'originalId',
+]);
+const AUDIT_SUMMARY_OBJECT_KEYS = Object.freeze(['replacement', 'opener', 'resolver']);
+const AUDIT_DATE_KEYS = Object.freeze(['purchaseDate', 'createdAt', 'updatedAt', 'resolvedAt']);
+const AUDIT_BLOCKED_KEYS = Object.freeze(['__proto__', 'prototype', 'constructor']);
+const AUDIT_MAX_SUMMARY_DEPTH = 4;
+
+function isOwnKey(object, key) {
+  if (!object || typeof object !== 'object') return false;
+  if (AUDIT_BLOCKED_KEYS.includes(key)) return false;
+  return Object.prototype.hasOwnProperty.call(object, key);
+}
+
+function sanitizeAuditSummary(value) {
+  try {
+    return sanitizeAuditSummaryAt(value, 0);
+  } catch {
+    return null;
+  }
+}
+
+function sanitizeAuditSummaryAt(value, depth) {
+  if (value == null) return null;
+  if (depth > AUDIT_MAX_SUMMARY_DEPTH) return null;
+  if (typeof value !== 'object') return null;
+  if (Array.isArray(value)) return null;
+  if (value instanceof Date) return null;
+  const out = {};
+  for (const key of AUDIT_SUMMARY_SCALAR_KEYS) {
+    if (!isOwnKey(value, key)) continue;
+    let raw;
+    try {
+      raw = value[key];
+    } catch {
+      continue;
+    }
+    if (raw == null) {
+      out[key] = null;
+      continue;
+    }
+    if (Array.isArray(raw) || (typeof raw === 'object' && !(raw instanceof Date))) continue;
+    if (AUDIT_DATE_KEYS.includes(key)) {
+      const asIso = typeof raw === 'string' ? raw : iso(raw);
+      if (asIso) out[key] = asIso;
+      continue;
+    }
+    if (typeof raw === 'string' || typeof raw === 'number' || typeof raw === 'boolean') {
+      out[key] = raw;
+    }
+  }
+  for (const key of AUDIT_SUMMARY_OBJECT_KEYS) {
+    if (!isOwnKey(value, key)) continue;
+    let nested;
+    try {
+      nested = value[key];
+    } catch {
+      continue;
+    }
+    if (nested == null || typeof nested !== 'object' || Array.isArray(nested) || nested instanceof Date) {
+      continue;
+    }
+    const cleaned = sanitizeAuditSummaryAt(nested, depth + 1);
+    if (cleaned != null) out[key] = cleaned;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+function serializeAuditRow(row) {
+  let before = null;
+  let after = null;
+  try {
+    before = sanitizeAuditSummary(row && row.beforeJson);
+  } catch {
+    before = null;
+  }
+  try {
+    after = sanitizeAuditSummary(row && row.afterJson);
+  } catch {
+    after = null;
+  }
+  return {
+    id: row.id,
+    createdAt: iso(row.createdAt),
+    action: row.action,
+    entityType: row.entityType,
+    entityId: row.entityId || null,
+    actorType: row.actorType,
+    actorLabel: row.actorLabel,
+    actorId: row.actorId || null,
+    reason: row.reason || null,
+    before,
+    after,
+  };
+}
+
+async function listLifecycleActors(prisma) {
+  const db = asReadOnlyPrisma(prisma);
+  const rows = await db.fulfillmentUser.findMany({
+    where: { active: true },
+    select: { id: true, name: true },
+    orderBy: [{ name: 'asc' }, { id: 'asc' }],
+  });
+  return {
+    actors: rows.map((row) => ({
+      id: row.id,
+      label: String(row.name || '').trim() || 'Unnamed helper',
+    })),
+  };
+}
+
+async function listReaderAuditHistory(prisma, options = {}) {
+  const db = asReadOnlyPrisma(prisma);
+  const readerProfileId = String(options.readerProfileId || '').trim();
+  if (!readerProfileId) return null;
+  const profile = await db.readerProfile.findUnique({
+    where: { id: readerProfileId },
+    select: { id: true, userId: true },
+  });
+  if (!profile) return null;
+  const pageSize = clampPageSize(options.pageSize);
+  const cursor = decodeCursor(options.cursor);
+  const after = descAfter(null, null, cursor);
+  const where = { relatedUserId: profile.userId };
+  if (after.OR) where.AND = [after];
+  const rows = await db.readerAdminAudit.findMany({
+    where,
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    take: pageSize + 1,
+  });
+  const page = rows.slice(0, pageSize);
+  const last = page[page.length - 1];
+  return {
+    readerProfileId: profile.id,
+    items: page.map(serializeAuditRow),
+    pageSize,
+    nextCursor:
+      rows.length > pageSize && last
+        ? encodeCursor({ createdAt: iso(last.createdAt), id: last.id })
+        : null,
+    hasMore: rows.length > pageSize,
+    totalCount: null,
+  };
+}
+
 module.exports = {
   listReaderLifecycle,
   getReaderLifecycleDetail,
   listReviewQueue,
   listCommunicationActivity,
   listPurchasesWithoutReaderProfile,
+  listLifecycleActors,
+  listReaderAuditHistory,
+  sanitizeAuditSummary,
   asReadOnlyPrisma,
   DEFAULT_PAGE_SIZE,
   MAX_PAGE_SIZE,
@@ -857,4 +1020,8 @@ module.exports = {
   CONTACTABLE_MEANS,
   WRITE_METHODS,
   RAW_CLIENT_METHODS,
+  AUDIT_SUMMARY_SCALAR_KEYS,
+  AUDIT_SUMMARY_OBJECT_KEYS,
+  AUDIT_BLOCKED_KEYS,
+  AUDIT_MAX_SUMMARY_DEPTH,
 };

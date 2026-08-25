@@ -21,6 +21,8 @@ const {
   listReviewQueue,
   listCommunicationActivity,
   listPurchasesWithoutReaderProfile,
+  listLifecycleActors,
+  listReaderAuditHistory,
   DEFAULT_PAGE_SIZE,
   MAX_PAGE_SIZE,
 } = require('../../lib/readers/readerLifecycleRead.cjs');
@@ -322,10 +324,43 @@ function createAdminReaderLifecycleRouter(prisma) {
     }
   }
 
+  router.get('/actors', (req, res) =>
+    guarded(req, res, async () => {
+      const result = await listLifecycleActors(prisma);
+      return sendOk(res, result);
+    }),
+  );
+
   router.get('/readers', (req, res) =>
     guarded(req, res, async () => {
       const options = compact(parseListQuery(req.query));
       const result = await listReaderLifecycle(prisma, options);
+      return sendOk(res, result);
+    }),
+  );
+
+  router.get('/readers/:readerProfileId/audit-history', (req, res) =>
+    guarded(req, res, async () => {
+      const readerProfileId = parseId(req.params.readerProfileId, 'readerProfileId');
+      const pageSize = parsePageSize(scalar(req.query, 'pageSize'));
+      const cursor = parseCursor(scalar(req.query, 'cursor'), 'createdAt');
+      let result;
+      try {
+        result = await listReaderAuditHistory(
+          prisma,
+          compact({ readerProfileId, pageSize, cursor }),
+        );
+      } catch (err) {
+        logInternalError(req, err);
+        return sendError(res, 500, 'Internal error');
+      }
+      if (!result) return sendError(res, 404, 'Not found');
+      try {
+        JSON.stringify(result);
+      } catch (err) {
+        logInternalError(req, err);
+        return sendError(res, 500, 'Internal error');
+      }
       return sendOk(res, result);
     }),
   );
