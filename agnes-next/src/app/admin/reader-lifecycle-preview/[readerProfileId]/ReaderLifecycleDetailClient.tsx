@@ -77,8 +77,10 @@ import { WEBSITE_WRONG_OWNER_NOTE, type EditAction } from './readerLifecycleEdit
 
 export default function ReaderLifecycleDetailClient({
   readerProfileId,
+  editingEnabled,
 }: {
   readerProfileId: string;
+  editingEnabled: boolean;
 }) {
   const [reader, setReader] = useState<ReaderLifecycleDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -225,17 +227,21 @@ export default function ReaderLifecycleDetailClient({
                 {NURTURE_NOT_CONNECTED_TO_JOBS}
               </p>
             )}
-            <ReaderLifecycleEditPanel
-              reader={reader}
-              onReaderUpdated={handleReaderUpdated}
-              requestedAction={requestedAction}
-              onRequestedActionConsumed={() => setRequestedAction(null)}
-            />
+            {editingEnabled ? (
+              <ReaderLifecycleEditPanel
+                reader={reader}
+                onReaderUpdated={handleReaderUpdated}
+                requestedAction={requestedAction}
+                onRequestedActionConsumed={() => setRequestedAction(null)}
+              />
+            ) : null}
           </section>
 
           <PurchasesSection
             rows={reader.purchases}
-            onOpenIdentityReview={() => setRequestedAction({ type: 'openIdentityReview' })}
+            onOpenIdentityReview={
+              editingEnabled ? () => setRequestedAction({ type: 'openIdentityReview' }) : undefined
+            }
           />
           <EvidenceSection rows={reader.evidenceHistory} />
           <CommunicationsSection rows={reader.communications} />
@@ -280,7 +286,7 @@ function PurchasesSection({
   onOpenIdentityReview,
 }: {
   rows: LifecyclePurchase[];
-  onOpenIdentityReview: () => void;
+  onOpenIdentityReview?: () => void;
 }) {
   return (
     <section className={styles.section} aria-labelledby="purchases-heading">
@@ -334,7 +340,7 @@ function PurchasesSection({
           </div>
         </>
       )}
-      {rows.length > 0 ? (
+      {rows.length > 0 && onOpenIdentityReview ? (
         <p className={styles.manageBar}>
           <button className={styles.actionWarning} type="button" onClick={onOpenIdentityReview}>
             Open identity review

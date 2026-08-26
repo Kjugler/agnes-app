@@ -930,6 +930,9 @@ async function main() {
           'backend',
           'backendUrl',
           'url',
+          'READER_LIFECYCLE_MUTATIONS_ENABLED',
+          'reader_lifecycle_editing_enabled',
+          'READER_LIFECYCLE_SYNTHETIC_PREVIEW',
         ];
         for (const key of forbiddenKeys) {
           const raw = JSON.stringify({

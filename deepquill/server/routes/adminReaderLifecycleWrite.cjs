@@ -22,6 +22,9 @@ const MAX_DETAILS = 2000;
 const MAX_IDEMPOTENCY = 128;
 const MIN_IDEMPOTENCY = 8;
 const FORBIDDEN_ERROR = 'Forbidden - x-admin-key required in production';
+const MUTATIONS_DISABLED_ERROR = 'lifecycle_mutations_disabled';
+const MUTATIONS_ENABLED_ENV = 'READER_LIFECYCLE_MUTATIONS_ENABLED';
+const MUTATIONS_ENABLED_VALUE = '1';
 const POLLUTION_KEYS = Object.freeze(['__proto__', 'constructor', 'prototype']);
 const FORBIDDEN_BODY_KEYS = Object.freeze([
   'stripeSessionId',
@@ -82,6 +85,10 @@ function headerValue(req, name) {
   const raw = req.headers[name];
   if (raw == null) return '';
   return Array.isArray(raw) ? String(raw[0] || '') : String(raw);
+}
+
+function lifecycleMutationsEnabled(env = process.env) {
+  return env[MUTATIONS_ENABLED_ENV] === MUTATIONS_ENABLED_VALUE;
 }
 
 function isAdminAuthorized(req) {
@@ -264,6 +271,9 @@ function createAdminReaderLifecycleWriteRouter(prisma) {
 
   router.use((req, res, next) => {
     setNoStore(res);
+    if (req.method === 'POST' && !lifecycleMutationsEnabled()) {
+      return sendError(res, 503, MUTATIONS_DISABLED_ERROR);
+    }
     next();
   });
 
@@ -435,4 +445,7 @@ function createAdminReaderLifecycleWriteRouter(prisma) {
 module.exports = createAdminReaderLifecycleWriteRouter;
 module.exports.createAdminReaderLifecycleWriteRouter = createAdminReaderLifecycleWriteRouter;
 module.exports.isAdminAuthorized = isAdminAuthorized;
+module.exports.lifecycleMutationsEnabled = lifecycleMutationsEnabled;
 module.exports.FORBIDDEN_ERROR = FORBIDDEN_ERROR;
+module.exports.MUTATIONS_DISABLED_ERROR = MUTATIONS_DISABLED_ERROR;
+module.exports.MUTATIONS_ENABLED_ENV = MUTATIONS_ENABLED_ENV;

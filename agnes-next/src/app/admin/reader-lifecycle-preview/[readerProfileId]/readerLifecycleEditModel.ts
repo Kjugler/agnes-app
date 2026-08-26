@@ -11,9 +11,8 @@ import {
   type ReaderLifecycleDetail,
 } from './readerLifecycleDetailModel';
 
-export const LOCAL_EDITING_BANNER =
-  'LOCAL EDITING PREVIEW — Synthetic reader records only. No production records, purchases or emails can be changed.';
-
+export const LOCAL_CLASSIFICATION_NOTE =
+  'Classification and nurture suppression shown here are local lifecycle results only.';
 export const NO_EMAIL_STATEMENT = 'No email will be sent.';
 export const NO_NURTURE_JOB = 'No nurture or Text-a-Friend request will be sent by these actions.';
 export const ALLOW_CONTACT_WARNING =
@@ -34,8 +33,6 @@ export const PROVISIONAL_ADD_NOTE =
   'Provisional evidence classifies the person using this local lifecycle result and pauses nurturing. It may later be corrected or confirmed. The UI cannot create confirmed evidence directly.';
 export const WEBSITE_PURCHASE_CANNOT_EDIT =
   'Website Purchase records are accounting truth and cannot be edited here.';
-export const LOCAL_CLASSIFICATION_NOTE =
-  'Classification and nurture suppression shown here are local lifecycle results only.';
 export const LOCALLY_CONTACTABLE_NOT_SAFE =
   '“Locally contactable” does not mean approved or safe to email.';
 export const AUDIT_HISTORY_NOT_IN_GET =
@@ -187,6 +184,7 @@ export type MutationErrorKind =
   | 'stale'
   | 'idempotency_conflict'
   | 'accounting_protected'
+  | 'mutations_disabled'
   | 'not_configured'
   | 'unavailable'
   | 'generic';
@@ -414,6 +412,7 @@ export function classifyMutationError(status: number, errorCode?: string): Mutat
   if (status === 401) return 'unauthorized';
   if (status === 403) return 'forbidden';
   if (status === 404) return 'not_found';
+  if (status === 503 || code === 'lifecycle_mutations_disabled') return 'mutations_disabled';
   if (status === 409 && code === 'idempotency_conflict') return 'idempotency_conflict';
   if (status === 409 && (code === 'website_purchase_protected' || code === 'stripe_session_not_allowed')) {
     return 'accounting_protected';
@@ -441,6 +440,13 @@ export function mutationErrorCopy(kind: MutationErrorKind): { title: string; bod
   }
   if (kind === 'forbidden') {
     return { title: 'Access denied', body: 'This action is not permitted.', allowRetry: false };
+  }
+  if (kind === 'mutations_disabled') {
+    return {
+      title: 'Saving is disabled',
+      body: 'Lifecycle edits are turned off on this server. Nothing was changed.',
+      allowRetry: false,
+    };
   }
   if (kind === 'not_found') {
     return {

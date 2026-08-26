@@ -443,8 +443,77 @@ export function parseListResponse(raw: unknown): {
   };
 }
 
-export const READ_ONLY_BANNER =
-  'READ-ONLY PREVIEW — No reader records or emails can be changed from this screen.';
+export const LIVE_READONLY_BANNER =
+  'LIVE READER LIFECYCLE BETA — Viewing live administrative records. Changes and emails are disabled.';
+
+export const SYNTHETIC_PREVIEW_BANNER = 'LOCAL SYNTHETIC PREVIEW — Test records only.';
+
+export const LIVE_EDITING_BANNER =
+  'LIVE READER LIFECYCLE BETA — Changes affect live administrative records. No email, nurture, or Text-a-Friend request will be sent.';
+
+/** @deprecated Use LIVE_READONLY_BANNER / readerLifecycleBannerText(). */
+export const READ_ONLY_BANNER = LIVE_READONLY_BANNER;
+
+export const EDITING_ENABLED_ENV = 'READER_LIFECYCLE_EDITING_ENABLED';
+export const SYNTHETIC_PREVIEW_ENV = 'READER_LIFECYCLE_SYNTHETIC_PREVIEW';
+export const FLAG_ENABLED_VALUE = '1';
+export const LOOPBACK_HOSTS = Object.freeze(['localhost', '127.0.0.1', '::1']);
+
+export function envFlagExactlyOne(value: string | undefined | null): boolean {
+  return value === FLAG_ENABLED_VALUE;
+}
+
+export function readerLifecycleEditingEnabled(
+  env: { [key: string]: string | undefined } = process.env,
+): boolean {
+  return envFlagExactlyOne(env[EDITING_ENABLED_ENV]);
+}
+
+export function configuredDeepquillBackendUrl(
+  env: { [key: string]: string | undefined } = process.env,
+): string | undefined {
+  const preferred = env.DEEPQUILL_URL;
+  if (typeof preferred === 'string' && preferred.length > 0) return preferred;
+  const fallback = env.NEXT_PUBLIC_API_BASE_URL;
+  if (typeof fallback === 'string' && fallback.length > 0) return fallback;
+  return undefined;
+}
+
+export function backendUrlIsAllowlistedLoopback(raw: string | undefined | null): boolean {
+  if (typeof raw !== 'string' || raw.length === 0) return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+  if (parsed.username !== '' || parsed.password !== '') return false;
+  const hostname = parsed.hostname.startsWith('[') && parsed.hostname.endsWith(']')
+    ? parsed.hostname.slice(1, -1)
+    : parsed.hostname;
+  for (const allowed of LOOPBACK_HOSTS) {
+    if (hostname === allowed) return true;
+  }
+  return false;
+}
+
+export function readerLifecycleSyntheticPreview(
+  env: { [key: string]: string | undefined } = process.env,
+): boolean {
+  return (
+    envFlagExactlyOne(env[SYNTHETIC_PREVIEW_ENV]) &&
+    backendUrlIsAllowlistedLoopback(configuredDeepquillBackendUrl(env))
+  );
+}
+
+export function readerLifecycleBannerText(
+  env: { [key: string]: string | undefined } = process.env,
+): string {
+  if (readerLifecycleSyntheticPreview(env)) return SYNTHETIC_PREVIEW_BANNER;
+  if (readerLifecycleEditingEnabled(env)) return LIVE_EDITING_BANNER;
+  return LIVE_READONLY_BANNER;
+}
 
 export const PROVIDER_WARNING =
   'Email-provider suppression status is not yet integrated. “Contactable” does not mean approved or safe to email.';

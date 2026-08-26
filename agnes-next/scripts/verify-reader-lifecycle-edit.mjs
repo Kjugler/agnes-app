@@ -248,6 +248,9 @@ function startNextDev({ backendUrl, port }) {
       NEXT_PUBLIC_API_BASE_URL: backendUrl,
       ADMIN_KEY,
       FULFILLMENT_ACCESS_TOKEN: FULFILLMENT_TOKEN,
+      READER_LIFECYCLE_MUTATIONS_ENABLED: '1',
+      READER_LIFECYCLE_EDITING_ENABLED: '1',
+      READER_LIFECYCLE_SYNTHETIC_PREVIEW: '1',
       NEXT_PUBLIC_SITE_URL: 'https://www.theagnesprotocol.com',
       SITE_URL: 'https://www.theagnesprotocol.com',
       PORT: String(port),
@@ -321,23 +324,48 @@ async function main() {
       assert.match(listClient, /method: 'GET'/);
       assert.doesNotMatch(listClient, /method:\s*['"]POST['"]/);
       assert.doesNotMatch(scan(FILES.listPage), /Manage lifecycle record/);
-      assert.match(scan(FILES.listPage), /READ_ONLY_BANNER/);
+      assert.match(scan(FILES.listPage), /readerLifecycleBannerText/);
     });
 
-    await check('detail page uses local editing banner, not production editing', () => {
+    await check('banners are server-selected and fail closed to live read-only', () => {
       const page = scan(FILES.detailPage);
-      assert.match(page, /LOCAL_EDITING_BANNER/);
-      assert.doesNotMatch(page, /READ_ONLY_BANNER/);
+      assert.match(page, /readerLifecycleBannerText/);
+      assert.match(page, /readerLifecycleEditingEnabled/);
+      assert.doesNotMatch(page, /searchParams|document\.cookie|NEXT_PUBLIC_READER/);
       assert.equal(
-        edit.LOCAL_EDITING_BANNER,
-        'LOCAL EDITING PREVIEW — Synthetic reader records only. No production records, purchases or emails can be changed.',
+        list.LIVE_READONLY_BANNER,
+        'LIVE READER LIFECYCLE BETA — Viewing live administrative records. Changes and emails are disabled.',
+      );
+      assert.equal(list.SYNTHETIC_PREVIEW_BANNER, 'LOCAL SYNTHETIC PREVIEW — Test records only.');
+      assert.match(list.LIVE_EDITING_BANNER, /live administrative records/i);
+      assert.doesNotMatch(list.LIVE_READONLY_BANNER, /synthetic records only/i);
+      assert.doesNotMatch(list.LIVE_EDITING_BANNER, /synthetic records only/i);
+      assert.equal(list.readerLifecycleEditingEnabled({}), false);
+      assert.equal(list.readerLifecycleEditingEnabled({ READER_LIFECYCLE_EDITING_ENABLED: '1' }), true);
+      assert.equal(list.readerLifecycleEditingEnabled({ READER_LIFECYCLE_EDITING_ENABLED: 'true' }), false);
+      assert.equal(list.readerLifecycleBannerText({}), list.LIVE_READONLY_BANNER);
+      assert.equal(
+        list.readerLifecycleBannerText({ READER_LIFECYCLE_SYNTHETIC_PREVIEW: '1' }),
+        list.LIVE_READONLY_BANNER,
+      );
+      assert.equal(
+        list.readerLifecycleBannerText({
+          READER_LIFECYCLE_SYNTHETIC_PREVIEW: '1',
+          DEEPQUILL_URL: 'http://127.0.0.1:9',
+        }),
+        list.SYNTHETIC_PREVIEW_BANNER,
+      );
+      assert.equal(
+        list.readerLifecycleBannerText({ READER_LIFECYCLE_EDITING_ENABLED: '1' }),
+        list.LIVE_EDITING_BANNER,
       );
       assert.match(page, /PROVIDER_WARNING/);
       assert.match(page, /WEBSITE_PURCHASE_CANNOT_EDIT/);
       assert.match(page, /NO_NURTURE_JOB/);
       assert.match(page, /LOCAL_CLASSIFICATION_NOTE/);
-      assert.doesNotMatch(page, /production editing is active/i);
       assert.doesNotMatch(page, /LOCALLY_CONTACTABLE_NOT_SAFE/);
+      assert.match(scan(FILES.detailClient), /editingEnabled \?/);
+      assert.doesNotMatch(scan(FILES.detailClient), /NEXT_PUBLIC_/);
     });
 
     await check('superseded evidence is collapsed; disputed evidence stays visible; history is preserved', () => {
@@ -498,6 +526,9 @@ async function main() {
       assert.equal(edit.classifyMutationError(409, 'idempotency_conflict'), 'idempotency_conflict');
       assert.equal(edit.classifyMutationError(500, 'admin_not_configured'), 'not_configured');
       assert.equal(edit.classifyMutationError(502, 'proxy_unavailable'), 'unavailable');
+      assert.equal(edit.classifyMutationError(503, 'lifecycle_mutations_disabled'), 'mutations_disabled');
+      assert.equal(edit.mutationErrorCopy('mutations_disabled').title, 'Saving is disabled');
+      assert.doesNotMatch(edit.mutationErrorCopy('mutations_disabled').body, /READER_LIFECYCLE/);
       assert.equal(edit.mutationErrorCopy('unavailable').allowRetry, true);
       assert.equal(edit.parseMutationResponse({ ok: true, replay: true, reader: { readerProfileId: 'rp' } }).replay, true);
       const copy = JSON.stringify(edit.mutationErrorCopy('validation'));
@@ -588,6 +619,7 @@ async function main() {
         const applied = await prisma.$queryRawUnsafe('SELECT COUNT(*) as n FROM "_prisma_migrations" WHERE finished_at IS NOT NULL');
         assert.equal(Number(applied[0].n), 48);
         await live.seedSyntheticPreview(prisma);
+        process.env.READER_LIFECYCLE_MUTATIONS_ENABLED = '1';
         backend = await live.startLifecycleBackend(prisma, { adminKey: ADMIN_KEY });
         const backendUrl = `http://127.0.0.1:${backend.port}`;
         const ping = await httpCall({ port: backend.port, method: 'GET', urlPath: '/ping' });
@@ -822,8 +854,8 @@ async function main() {
           headers: { cookie: SESSION_COOKIE },
         });
         assert.equal(page.status, 200, `detail page ${page.status}`);
-        assert.match(page.text, /LOCAL EDITING PREVIEW/);
-        assert.doesNotMatch(page.text, /READ-ONLY PREVIEW/);
+        assert.match(page.text, /LOCAL SYNTHETIC PREVIEW/);
+        assert.doesNotMatch(page.text, /synthetic records only/i);
         assert.match(scan(FILES.editPanel), /Manage lifecycle record/);
         assert.doesNotMatch(scan(FILES.editPanel), /fu_preview_helper_inactive/);
 

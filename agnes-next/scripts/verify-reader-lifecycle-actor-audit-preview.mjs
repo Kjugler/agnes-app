@@ -195,6 +195,9 @@ function startNextDev({ backendUrl, port }) {
       NEXT_PUBLIC_API_BASE_URL: backendUrl,
       ADMIN_KEY,
       FULFILLMENT_ACCESS_TOKEN: FULFILLMENT_TOKEN,
+      READER_LIFECYCLE_MUTATIONS_ENABLED: '1',
+      READER_LIFECYCLE_EDITING_ENABLED: '1',
+      READER_LIFECYCLE_SYNTHETIC_PREVIEW: '1',
       NEXT_PUBLIC_SITE_URL: 'https://www.theagnesprotocol.com',
       SITE_URL: 'https://www.theagnesprotocol.com',
       PORT: String(port),
@@ -520,6 +523,7 @@ async function main() {
       try {
         await prisma.$executeRawUnsafe('PRAGMA foreign_keys = ON');
         await live.seedSyntheticPreview(prisma);
+        process.env.READER_LIFECYCLE_MUTATIONS_ENABLED = '1';
         backend = await live.startLifecycleBackend(prisma, { adminKey: ADMIN_KEY });
         const backendUrl = `http://127.0.0.1:${backend.port}`;
         const nextPort = await getFreePort();
@@ -657,7 +661,7 @@ async function main() {
 
         const pageHtml = await proxyGet('/admin/reader-lifecycle-preview/rp_edit_blank');
         assert.equal(pageHtml.status, 200);
-        assert.match(pageHtml.text, /Administrative Change History|LOCAL EDITING PREVIEW/);
+        assert.match(pageHtml.text, /Administrative Change History|LOCAL SYNTHETIC PREVIEW/);
         assert.doesNotMatch(pageHtml.text, /\{"kind":/);
 
         const pw = tryPlaywright();

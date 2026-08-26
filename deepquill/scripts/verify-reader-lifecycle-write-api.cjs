@@ -25,6 +25,7 @@ if (normalized.includes('deepquill/dev.db') && !normalized.includes('/temp/') &&
 
 const ADMIN_KEY = 'checkpoint5c-synthetic-admin-key';
 process.env.ADMIN_KEY = ADMIN_KEY;
+process.env.READER_LIFECYCLE_MUTATIONS_ENABLED = '1';
 const FORBIDDEN = 'Forbidden - x-admin-key required in production';
 const prisma = new PrismaClient();
 const suffix = `cp5c${Date.now()}`;
@@ -216,7 +217,12 @@ function auditSources() {
   assert.doesNotMatch(writeSrc, /sendEmail|nodemailer|mailchimp|runBackfill|runReaderRecommendation|stripe-webhook/);
   const posts = writeSrc.match(/router\.post\(/g) || [];
   assert.strictEqual(posts.length, 8);
+  assert.match(writeSrc, /READER_LIFECYCLE_MUTATIONS_ENABLED/);
+  assert.match(writeSrc, /lifecycle_mutations_disabled/);
+  assert.doesNotMatch(writeSrc, /NEXT_PUBLIC_/);
+  assert.doesNotMatch(writeSrc, /req\.(query|body|headers).*MUTATIONS_ENABLED/);
   assert.match(getSrc, /if \(req\.method !== 'GET'\)/);
+  assert.doesNotMatch(getSrc, /READER_LIFECYCLE_MUTATIONS_ENABLED/);
   assert.doesNotMatch(getSrc, /createReaderLifecycleWriteService/);
   const writeMount = indexSrc.indexOf("createAdminReaderLifecycleWriteRouter(readerLifecyclePrisma)");
   const getMount = indexSrc.indexOf("app.use('/api/admin/reader-lifecycle', createAdminReaderLifecycleRouter(readerLifecyclePrisma))");
@@ -322,6 +328,79 @@ async function main() {
     reason: 'Known Amazon purchase evidence',
     actorId: helper.id,
   };
+
+  await check('kill switch: only exact 1 enables mutations; disabled POST never writes', async () => {
+    const { lifecycleMutationsEnabled, MUTATIONS_DISABLED_ERROR } = createAdminReaderLifecycleWriteRouter;
+    assert.strictEqual(lifecycleMutationsEnabled({}), false);
+    assert.strictEqual(lifecycleMutationsEnabled({ READER_LIFECYCLE_MUTATIONS_ENABLED: undefined }), false);
+    assert.strictEqual(lifecycleMutationsEnabled({ READER_LIFECYCLE_MUTATIONS_ENABLED: '' }), false);
+    assert.strictEqual(lifecycleMutationsEnabled({ READER_LIFECYCLE_MUTATIONS_ENABLED: 'true' }), false);
+    assert.strictEqual(lifecycleMutationsEnabled({ READER_LIFECYCLE_MUTATIONS_ENABLED: '0' }), false);
+    assert.strictEqual(lifecycleMutationsEnabled({ READER_LIFECYCLE_MUTATIONS_ENABLED: '2' }), false);
+    assert.strictEqual(lifecycleMutationsEnabled({ READER_LIFECYCLE_MUTATIONS_ENABLED: '1 ' }), false);
+    assert.strictEqual(lifecycleMutationsEnabled({ READER_LIFECYCLE_MUTATIONS_ENABLED: ' 1' }), false);
+    assert.strictEqual(lifecycleMutationsEnabled({ READER_LIFECYCLE_MUTATIONS_ENABLED: '1' }), true);
+
+    async function writeCounts() {
+      return {
+        evidence: await prisma.readerEvidence.count(),
+        communications: await prisma.readerCommunication.count(),
+        identity: await prisma.readerIdentityReview.count(),
+        audit: await prisma.readerAdminAudit.count(),
+        decisions: await prisma.readerContactDecision.count(),
+        idempotency: await prisma.readerMutationIdempotency.count(),
+      };
+    }
+
+    const previous = process.env.READER_LIFECYCLE_MUTATIONS_ENABLED;
+    const paths = [
+      evidencePath(amazonReader.readerProfile.id),
+      `${basePath}/evidence/ev_gate/confirm`,
+      `${basePath}/evidence/ev_gate/correct`,
+      `${basePath}/evidence/ev_gate/dispute`,
+      `${basePath}/evidence/ev_gate/replace`,
+      `${basePath}/readers/${amazonReader.readerProfile.id}/contact-decisions`,
+      `${basePath}/readers/${amazonReader.readerProfile.id}/identity-reviews`,
+      `${basePath}/identity-reviews/ir_gate/resolve`,
+    ];
+    try {
+      for (const value of [undefined, '', 'true', 'YES', '0', '2', '1 ', '1\n']) {
+        if (value === undefined) delete process.env.READER_LIFECYCLE_MUTATIONS_ENABLED;
+        else process.env.READER_LIFECYCLE_MUTATIONS_ENABLED = value;
+        const before = await writeCounts();
+        const getRes = await get(`${basePath}/readers?pageSize=5`);
+        assert.equal(getRes.status, 200, `GET still works when mutations flag=${String(value)}`);
+        for (const urlPath of paths) {
+          const res = await post(
+            urlPath,
+            { ...addBody, decision: 'suppress', reasonCode: 'duplicate_name', status: 'dismissed', resolutionReason: 'Not a duplicate after all', expectedStatus: 'provisional' },
+            {
+              'Idempotency-Key': nextKey('gate'),
+              'x-reader-lifecycle-mutations-enabled': '1',
+              cookie: 'READER_LIFECYCLE_MUTATIONS_ENABLED=1',
+            },
+          );
+          assert.equal(res.status, 503, `${urlPath} flag=${String(value)} status=${res.status} body=${res.text.slice(0, 200)}`);
+          assert.equal(res.json.error, MUTATIONS_DISABLED_ERROR);
+          assertNoStore(res);
+        }
+        const injected = await request({
+          method: 'POST',
+          path: `${evidencePath(amazonReader.readerProfile.id)}?READER_LIFECYCLE_MUTATIONS_ENABLED=1`,
+          headers: {
+            'Idempotency-Key': nextKey('gateq'),
+            'x-admin-key': ADMIN_KEY,
+            READER_LIFECYCLE_MUTATIONS_ENABLED: '1',
+          },
+          body: { ...addBody, READER_LIFECYCLE_MUTATIONS_ENABLED: '1' },
+        });
+        assert.equal(injected.status, 503);
+        assert.deepEqual(await writeCounts(), before);
+      }
+    } finally {
+      process.env.READER_LIFECYCLE_MUTATIONS_ENABLED = previous;
+    }
+  });
 
   await check('missing, empty, short, long, unicode keys share 403 and do not mutate', async () => {
     const before = await prisma.readerEvidence.count();

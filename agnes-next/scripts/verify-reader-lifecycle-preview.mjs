@@ -109,13 +109,27 @@ async function main() {
       const page = fs.readFileSync(FILES.page, 'utf8');
       const client = fs.readFileSync(FILES.client, 'utf8');
       const model = fs.readFileSync(FILES.model, 'utf8');
-      assert.match(page, /READ_ONLY_BANNER/);
+      assert.match(page, /readerLifecycleBannerText/);
       assert.match(page, /PROVIDER_WARNING/);
       assert.match(client, /CONTACTABLE_ASTERISK_NOTE/);
       assert.equal(
-        mod.READ_ONLY_BANNER,
-        'READ-ONLY PREVIEW — No reader records or emails can be changed from this screen.',
+        mod.LIVE_READONLY_BANNER,
+        'LIVE READER LIFECYCLE BETA — Viewing live administrative records. Changes and emails are disabled.',
       );
+      assert.equal(mod.readerLifecycleBannerText({}), mod.LIVE_READONLY_BANNER);
+      assert.equal(mod.readerLifecycleEditingEnabled({}), false);
+      assert.equal(
+        mod.readerLifecycleBannerText({ READER_LIFECYCLE_SYNTHETIC_PREVIEW: '1' }),
+        mod.LIVE_READONLY_BANNER,
+      );
+      assert.equal(
+        mod.readerLifecycleBannerText({
+          READER_LIFECYCLE_SYNTHETIC_PREVIEW: '1',
+          DEEPQUILL_URL: 'http://127.0.0.1:9',
+        }),
+        mod.SYNTHETIC_PREVIEW_BANNER,
+      );
+      assert.doesNotMatch(page, /synthetic records only/i);
       assert.match(model, /Email-provider suppression status is not yet integrated/);
       assert.equal(mod.PROVIDER_WARNING.includes('does not mean approved or safe to email'), true);
       assert.equal(mod.listContactLabel(item({})), 'Locally contactable*');
