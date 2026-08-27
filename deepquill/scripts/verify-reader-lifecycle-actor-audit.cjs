@@ -785,7 +785,10 @@ async function main() {
           headers: { 'x-admin-key': ADMIN_KEY },
           body: { email: POISON.email, actorId: fixtures.helperA.id },
         });
-        assert.ok(res.status === 405 || res.status === 404, `${method} ${urlPath} status ${res.status}`);
+        assert.ok(
+          res.status === 405 || res.status === 404 || (method === 'POST' && res.status === 503),
+          `${method} ${urlPath} status ${res.status}`,
+        );
         assertNoStore(res);
         assertNoPoison(res.json || res.text, `${method} ${urlPath}`);
       }

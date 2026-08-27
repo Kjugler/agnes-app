@@ -46,6 +46,32 @@ function isAdminAuthorized(req) {
   return !!process.env.ADMIN_KEY && key === process.env.ADMIN_KEY;
 }
 
+const ARCHIVED_CONTACT_EDIT_ERROR = 'restore_before_contact_edit';
+const ARCHIVED_CONTACT_EDIT_MESSAGE =
+  'Restore the operational reader before changing contact details. Archive suppression cannot be changed here.';
+
+function hasPromotionalContactEdit(body) {
+  if (!body || typeof body !== 'object') return false;
+  return (
+    body.firstName !== undefined ||
+    body.lastName !== undefined ||
+    body.email !== undefined ||
+    body.phone !== undefined ||
+    body.smsConsentGranted !== undefined ||
+    body.smsConsentSource !== undefined ||
+    body.smsConsentNotes !== undefined ||
+    body.mailingAddress !== undefined
+  );
+}
+
+function rejectArchivedContactEdit(res) {
+  return res.status(409).json({
+    ok: false,
+    error: ARCHIVED_CONTACT_EDIT_ERROR,
+    message: ARCHIVED_CONTACT_EDIT_MESSAGE,
+  });
+}
+
 router.use((req, res, next) => {
   if (!isAdminAuthorized(req)) {
     return res.status(403).json({ ok: false, error: 'Forbidden - x-admin-key required in production' });
@@ -332,6 +358,14 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ ok: false, error: 'Invalid status' });
     }
 
+    if (status === 'archived') {
+      return res.status(409).json({
+        ok: false,
+        error: 'use_lifecycle_archive',
+        message: 'Archive requires the audited Reader Lifecycle mutation.',
+      });
+    }
+
     let user;
     let userCreated = false;
     try {
@@ -352,6 +386,11 @@ router.post('/', async (req, res) => {
         });
       }
       throw contactErr;
+    }
+
+    let profile = await prisma.readerProfile.findUnique({ where: { userId: user.id } });
+    if (profile && profile.status === 'archived') {
+      return rejectArchivedContactEdit(res);
     }
 
     const nameUpdates = {};
@@ -391,7 +430,6 @@ router.post('/', async (req, res) => {
       smsData.smsConsentNotes = smsConsentNotes || null;
     }
 
-    let profile = await prisma.readerProfile.findUnique({ where: { userId: user.id } });
     const profileCreated = !profile;
 
     if (!profile) {
@@ -406,8 +444,15 @@ router.post('/', async (req, res) => {
         },
       });
     } else {
+      if (status === 'archived' && profile.status !== 'archived') {
+        return res.status(409).json({
+          ok: false,
+          error: 'use_lifecycle_archive',
+          message: 'Archive requires the audited Reader Lifecycle mutation.',
+        });
+      }
       const data = {
-        status: status || profile.status,
+        status: profile.status === 'archived' ? 'archived' : status || profile.status,
         ...smsData,
       };
       if (readerType) {
@@ -470,8 +515,26 @@ router.patch('/:id', async (req, res) => {
       typeof body.smsConsentSource === 'string' ? body.smsConsentSource.trim() : '';
     const smsConsentNotes =
       typeof body.smsConsentNotes === 'string' ? body.smsConsentNotes.trim() : '';
-    const archive = body.archive === true || body.status === 'archived';
-    const restore = body.restore === true || (body.status === 'active' && body.restore !== false);
+    const archiveRequested = body.archive === true || (body.status === 'archived' && profile.status !== 'archived');
+    const restoreRequested = body.restore === true;
+
+    if (archiveRequested) {
+      return res.status(409).json({
+        ok: false,
+        error: 'use_lifecycle_archive',
+        message: 'Archive requires the audited Reader Lifecycle mutation.',
+      });
+    }
+    if (restoreRequested) {
+      return res.status(409).json({
+        ok: false,
+        error: 'use_lifecycle_restore',
+        message: 'Restore requires the audited Reader Lifecycle mutation.',
+      });
+    }
+    if (profile.status === 'archived' && hasPromotionalContactEdit(body)) {
+      return rejectArchivedContactEdit(res);
+    }
 
     const contactFieldPresent =
       body.firstName !== undefined ||
@@ -485,21 +548,8 @@ router.patch('/:id', async (req, res) => {
       body.smsConsentNotes !== undefined ||
       body.mailingAddress !== undefined;
 
-    if ((archive && !restore && !contactFieldPresent) || (restore && !archive && !contactFieldPresent)) {
-      const updatedProfile = await prisma.readerProfile.update({
-        where: { id: profile.id },
-        data: { status: restore ? 'active' : 'archived' },
-      });
-      const updatedUser = await backfillUserCodes(prisma, user);
-      const lastActivity = await resolveLastActivity(updatedUser.id);
-      const mailingAddress = await resolveMailingAddress(updatedUser);
-      return res.json({
-        ok: true,
-        message: restore
-          ? 'Reader restored to active.'
-          : 'Reader archived. Their referral history and purchases are preserved.',
-        reader: serializeReader(updatedProfile, updatedUser, lastActivity, mailingAddress),
-      });
+    if (!contactFieldPresent) {
+      return res.status(400).json({ ok: false, error: 'No reader fields to update.' });
     }
 
     const normalizedPhone =
@@ -598,11 +648,6 @@ router.patch('/:id', async (req, res) => {
     if (notes !== undefined) {
       profileUpdates.notes = notes || null;
     }
-    if (archive && !restore) {
-      profileUpdates.status = 'archived';
-    } else if (restore) {
-      profileUpdates.status = 'active';
-    }
 
     if (smsConsentGranted === true) {
       profileUpdates.smsConsentGranted = true;
@@ -696,11 +741,6 @@ router.patch('/:id', async (req, res) => {
     const mailingAddress = await resolveMailingAddress(updatedUser);
 
     let message = 'Reader updated successfully.';
-    if (archive && !restore) {
-      message = 'Reader archived. Their referral history and purchases are preserved.';
-    } else if (restore) {
-      message = 'Reader restored to active.';
-    }
 
     return res.json({
       ok: true,

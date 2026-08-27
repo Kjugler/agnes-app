@@ -359,6 +359,8 @@ function mutationPaths(readerProfileId) {
     `/api/admin/reader-lifecycle/readers/${readerProfileId}/contact-decisions`,
     `/api/admin/reader-lifecycle/readers/${readerProfileId}/identity-reviews`,
     `/api/admin/reader-lifecycle/identity-reviews/ir_gate/resolve`,
+    `/api/admin/reader-lifecycle/readers/${readerProfileId}/archive`,
+    `/api/admin/reader-lifecycle/readers/${readerProfileId}/restore`,
   ];
 }
 

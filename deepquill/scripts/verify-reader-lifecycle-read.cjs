@@ -719,7 +719,8 @@ async function main() {
     assert.strictEqual(hold.contactabilityScope.notForSendingSystems, true);
     assert.strictEqual(hold.contactabilityScope.contactableMeans, CONTACTABLE_MEANS);
     assert.strictEqual(allow.contactabilityScope.safeToSend, false);
-    assert.match(CONTACTABLE_MEANS, /No manual DNC and a mailable address/);
+    assert.match(CONTACTABLE_MEANS, /No independent Do Not Contact/);
+    assert.match(CONTACTABLE_MEANS, /not labeled as Manual DNC/);
     assert.strictEqual(CONTACTABILITY_SCOPE.providerSuppressionIntegrated, false);
     assert.strictEqual(allow.distinctions.notForSendingSystems, true);
     assert.strictEqual(allow.distinctions.safeToSend, false);

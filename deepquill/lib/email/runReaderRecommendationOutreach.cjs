@@ -13,6 +13,7 @@ const {
 const { buildTextAFriendUrl } = require('../readers/readerUrls.cjs');
 const { displayName } = require('../readers/readerUser.cjs');
 const { validateAdminReaderEmail } = require('../readers/readerEmailValidation.cjs');
+const { promotionalOutreachEligibility } = require('../readers/readerOutreachEligibility.cjs');
 const {
   BATCH_2_LABEL,
   TEMPLATE_CURRENT,
@@ -44,6 +45,7 @@ function emptySkipped() {
     notPurchased: 0,
     noCode: 0,
     inactive: 0,
+    archived: 0,
     invalidEmail: 0,
     other: 0,
   };
@@ -202,8 +204,22 @@ async function runReaderRecommendationOutreach(prisma, options = {}) {
       continue;
     }
 
+    if ((profile.status || 'active') === 'archived') {
+      skipped.archived += 1;
+      continue;
+    }
     if ((profile.status || 'active') !== 'active') {
       skipped.inactive += 1;
+      continue;
+    }
+
+    const eligibility = await promotionalOutreachEligibility(prisma, {
+      userId: user.id,
+      email: user.email,
+    });
+    if (!eligibility.eligible || eligibility.lookup !== 'ok') {
+      if (eligibility.reason === 'archived') skipped.archived += 1;
+      else skipped.suppressed += 1;
       continue;
     }
 

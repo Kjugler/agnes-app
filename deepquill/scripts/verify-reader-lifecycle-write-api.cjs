@@ -216,7 +216,7 @@ function auditSources() {
   assert.doesNotMatch(writeSrc, /classifyReader\(/);
   assert.doesNotMatch(writeSrc, /sendEmail|nodemailer|mailchimp|runBackfill|runReaderRecommendation|stripe-webhook/);
   const posts = writeSrc.match(/router\.post\(/g) || [];
-  assert.strictEqual(posts.length, 8);
+  assert.strictEqual(posts.length, 10);
   assert.match(writeSrc, /READER_LIFECYCLE_MUTATIONS_ENABLED/);
   assert.match(writeSrc, /lifecycle_mutations_disabled/);
   assert.doesNotMatch(writeSrc, /NEXT_PUBLIC_/);
@@ -275,7 +275,7 @@ function poisonAuditCreate(client) {
 async function main() {
   await prisma.$executeRawUnsafe('PRAGMA foreign_keys = ON');
   auditSources();
-  console.log('ok  source audit: eight POST routes, write service used, GET router untouched');
+  console.log('ok  source audit: POST routes, write service used, GET router untouched');
 
   const helper = await prisma.fulfillmentUser.create({
     data: { name: 'Kris', email: `kris-${suffix}@fulfillment.test`, active: true },
@@ -362,6 +362,8 @@ async function main() {
       `${basePath}/readers/${amazonReader.readerProfile.id}/contact-decisions`,
       `${basePath}/readers/${amazonReader.readerProfile.id}/identity-reviews`,
       `${basePath}/identity-reviews/ir_gate/resolve`,
+      `${basePath}/readers/${amazonReader.readerProfile.id}/archive`,
+      `${basePath}/readers/${amazonReader.readerProfile.id}/restore`,
     ];
     try {
       for (const value of [undefined, '', 'true', 'YES', '0', '2', '1 ', '1\n']) {
@@ -840,6 +842,65 @@ async function main() {
     });
     assert.strictEqual(audit.actorId, resolver.id);
     assert.strictEqual(audit.actorLabel, 'Denise');
+  });
+
+  await check('archive and restore are guarded, audited, and do not change purchases', async () => {
+    const target = await createUser('ar');
+    const purchasesBefore = JSON.stringify(await prisma.purchase.findMany());
+    const missing = await post(
+      `${basePath}/readers/${target.readerProfile.id}/archive`,
+      {
+        reasonCode: 'test_record',
+        reason: 'Synthetic test operational archive',
+        expectedStatus: 'active',
+        actorId: helper.id,
+      },
+      { 'Idempotency-Key': nextKey('arch-noconfirm') },
+    );
+    assert.strictEqual(missing.status, 400, missing.text);
+    assert.strictEqual(missing.json.error, 'confirmation_required');
+    const archiveKey = nextKey('arch');
+    const archived = await post(
+      `${basePath}/readers/${target.readerProfile.id}/archive`,
+      {
+        reasonCode: 'test_record',
+        reason: 'Synthetic test operational archive',
+        expectedStatus: 'active',
+        confirmed: true,
+        actorId: helper.id,
+      },
+      { 'Idempotency-Key': archiveKey },
+    );
+    assert.strictEqual(archived.status, 200, archived.text);
+    assert.strictEqual(archived.json.reader.legacy.status, 'archived');
+    assert.strictEqual(archived.json.mutation.action, 'profile.archive');
+    assert.strictEqual(archived.json.replay, false);
+    const replay = await post(
+      `${basePath}/readers/${target.readerProfile.id}/archive`,
+      {
+        reasonCode: 'test_record',
+        reason: 'Synthetic test operational archive',
+        expectedStatus: 'active',
+        confirmed: true,
+        actorId: helper.id,
+      },
+      { 'Idempotency-Key': archiveKey },
+    );
+    assert.strictEqual(replay.status, 200, replay.text);
+    assert.strictEqual(replay.json.replay, true);
+    const restored = await post(
+      `${basePath}/readers/${target.readerProfile.id}/restore`,
+      {
+        reason: 'Synthetic restoration after archive test',
+        expectedStatus: 'archived',
+        confirmed: true,
+        actorId: helper.id,
+      },
+      { 'Idempotency-Key': nextKey('rest') },
+    );
+    assert.strictEqual(restored.status, 200, restored.text);
+    assert.strictEqual(restored.json.reader.legacy.status, 'active');
+    assert.strictEqual(JSON.stringify(await prisma.purchase.findMany()), purchasesBefore);
   });
 
   await check('accounting tables unchanged and resultJson has no reader payload', async () => {

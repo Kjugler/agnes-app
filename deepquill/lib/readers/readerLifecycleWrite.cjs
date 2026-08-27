@@ -25,6 +25,14 @@ const {
   WRITE_METHODS,
   RAW_CLIENT_METHODS,
 } = require('./readerLifecycleRead.cjs');
+const {
+  ARCHIVE_CONTACT_ORIGIN,
+  RESTORE_CONTACT_ORIGIN,
+  RESTORE_PRIOR_STATUS_REASON,
+  archiveLaneSuppressActive,
+  independentDncActive,
+  resolvedRestorePlan,
+} = require('./readerContactSuppression.cjs');
 
 const IDEMPOTENCY_ORIGIN = 'admin_lifecycle_mutation';
 const EVIDENCE_ORIGIN = Object.freeze({
@@ -57,7 +65,18 @@ const ALLOWED_WRITE_DELEGATES = Object.freeze([
   'readerIdentityReview',
   'readerAdminAudit',
   'readerMutationIdempotency',
+  'readerProfile',
 ]);
+const ARCHIVE_REASON_CODES = Object.freeze([
+  'test_record',
+  'invalid_contact',
+  'duplicate_or_identity_issue',
+  'other',
+]);
+const ARCHIVE_CONTACT_REASON_CODES = Object.freeze(['test_record', 'invalid_contact']);
+const ARCHIVEABLE_STATUSES = Object.freeze(['active', 'inactive']);
+const DUPLICATE_ARCHIVE_WARNING =
+  'Genuine duplicate-person uncertainty normally belongs in Identity Review. Archive does not merge or delete identities.';
 const SOURCE_LABEL_BY_KIND = Object.freeze({
   manual_amazon: 'Amazon',
   manual_bn: 'Barnes & Noble',
@@ -256,6 +275,52 @@ function requireExpectedStatus(raw, allowed) {
   return status;
 }
 
+function requireConfirmed(raw) {
+  if (raw !== true) {
+    throw new LifecycleWriteError('confirmation_required', 400, 'confirmed must be true');
+  }
+  return true;
+}
+
+function requireArchiveReasonCode(raw) {
+  const code = asTrimmedString(raw);
+  if (!ARCHIVE_REASON_CODES.includes(code)) {
+    throw new LifecycleWriteError('invalid_reason_code', 400, 'reasonCode is not an approved archive reason');
+  }
+  return code;
+}
+
+async function loadContactDecisions(tx, userId) {
+  return tx.readerContactDecision.findMany({
+    where: { userId },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+  });
+}
+
+async function openRestoreFallbackReview(tx, { userId, actor }) {
+  const existing = await tx.readerIdentityReview.findFirst({
+    where: {
+      primaryUserId: userId,
+      reasonCode: RESTORE_PRIOR_STATUS_REASON,
+      status: 'open',
+    },
+    select: { id: true },
+  });
+  if (existing) return existing;
+  return tx.readerIdentityReview.create({
+    data: {
+      primaryUserId: userId,
+      reasonCode: RESTORE_PRIOR_STATUS_REASON,
+      details:
+        'Restore could not use a recorded prior operational status. The profile was restored to inactive and held for administrative review. Discretionary outreach stays suppressed until review is resolved.',
+      status: 'open',
+      actorType: actor.actorType,
+      actorLabel: actor.actorLabel,
+      actorId: actor.actorId,
+    },
+  });
+}
+
 async function loadActor(tx, actorId) {
   const id = asTrimmedString(actorId);
   if (!id) {
@@ -278,7 +343,14 @@ async function loadProfile(tx, readerProfileId) {
   }
   const profile = await tx.readerProfile.findUnique({
     where: { id },
-    select: { id: true, userId: true },
+    select: {
+      id: true,
+      userId: true,
+      status: true,
+      archiveReasonCode: true,
+      archiveDetails: true,
+      archivePriorStatus: true,
+    },
   });
   if (!profile) {
     throw new LifecycleWriteError('reader_not_found', 404, 'Reader profile was not found');
@@ -1072,6 +1144,212 @@ async function resolveIdentityReview(prisma, input = {}) {
   });
 }
 
+async function archiveReader(prisma, input = {}) {
+  const expectedStatus = requireExpectedStatus(input.expectedStatus, [...ARCHIVEABLE_STATUSES]);
+  const reasonCode = requireArchiveReasonCode(input.reasonCode);
+  const details = optionalDetails(input.details, { required: reasonCode === 'other' });
+  if (reasonCode === 'other' && (!details || details.length < 8)) {
+    throw new LifecycleWriteError('invalid_details', 400, 'details are required when reasonCode is other');
+  }
+  const reason = requireReason(input.reason);
+  const confirmed = requireConfirmed(input.confirmed);
+  const request = {
+    readerProfileId: asTrimmedString(input.readerProfileId),
+    expectedStatus,
+    reasonCode,
+    details,
+    reason,
+    actorId: asTrimmedString(input.actorId),
+    confirmed,
+  };
+  return withIdempotency(prisma, { idempotencyKey: input.idempotencyKey, action: 'profile.archive', request }, async (tx) => {
+    const actor = await loadActor(tx, input.actorId);
+    const profile = await loadProfile(tx, input.readerProfileId);
+    const archiveDetails = details || reason;
+    const updated = await tx.readerProfile.updateMany({
+      where: { id: profile.id, status: expectedStatus },
+      data: {
+        status: 'archived',
+        archiveReasonCode: reasonCode,
+        archiveDetails,
+        archivePriorStatus: expectedStatus,
+      },
+    });
+    if (updated.count !== 1) {
+      throw new LifecycleWriteError('stale_status', 409, 'Reader profile status was changed by another request');
+    }
+    const after = await tx.readerProfile.findUnique({
+      where: { id: profile.id },
+      select: {
+        id: true,
+        status: true,
+        archiveReasonCode: true,
+        archiveDetails: true,
+        archivePriorStatus: true,
+      },
+    });
+    let contactDecisionId = null;
+    if (ARCHIVE_CONTACT_REASON_CODES.includes(reasonCode)) {
+      const createdDecision = await tx.readerContactDecision.create({
+        data: {
+          userId: profile.userId,
+          decision: 'suppress',
+          reason,
+          actorType: actor.actorType,
+          actorLabel: actor.actorLabel,
+          actorId: actor.actorId,
+          origin: ARCHIVE_CONTACT_ORIGIN,
+          originRef: requireIdempotencyKey(input.idempotencyKey),
+        },
+      });
+      contactDecisionId = createdDecision.id;
+    }
+    const warnings = reasonCode === 'duplicate_or_identity_issue' ? [DUPLICATE_ARCHIVE_WARNING] : [];
+    const audit = await writeAudit(tx, {
+      userId: profile.userId,
+      actor,
+      action: 'profile.archive',
+      entityType: 'ReaderProfile',
+      entityId: profile.id,
+      beforeJson: {
+        status: profile.status,
+        archiveReasonCode: profile.archiveReasonCode || null,
+        archiveDetails: profile.archiveDetails || null,
+        archivePriorStatus: profile.archivePriorStatus || null,
+      },
+      afterJson: {
+        status: after.status,
+        archiveReasonCode: after.archiveReasonCode,
+        archiveDetails: after.archiveDetails,
+        archivePriorStatus: after.archivePriorStatus,
+        contactDecisionId,
+        operation: 'archive',
+      },
+      reason,
+    });
+    return completeMutation(tx, {
+      profile,
+      warnings,
+      mutation: {
+        action: 'profile.archive',
+        entityType: 'ReaderProfile',
+        entityId: profile.id,
+        priorStatus: expectedStatus,
+        newStatus: 'archived',
+        reasonCode,
+        contactDecisionId,
+        auditId: audit.id,
+      },
+    });
+  });
+}
+
+async function restoreReader(prisma, input = {}) {
+  const expectedStatus = requireExpectedStatus(input.expectedStatus, ['archived']);
+  const reason = requireReason(input.reason);
+  const confirmed = requireConfirmed(input.confirmed);
+  const request = {
+    readerProfileId: asTrimmedString(input.readerProfileId),
+    expectedStatus,
+    reason,
+    actorId: asTrimmedString(input.actorId),
+    confirmed,
+  };
+  return withIdempotency(prisma, { idempotencyKey: input.idempotencyKey, action: 'profile.restore', request }, async (tx) => {
+    const actor = await loadActor(tx, input.actorId);
+    const profile = await loadProfile(tx, input.readerProfileId);
+    const restorePlan = resolvedRestorePlan(profile.archivePriorStatus);
+    const restoredStatus = restorePlan.status;
+    const updated = await tx.readerProfile.updateMany({
+      where: { id: profile.id, status: 'archived' },
+      data: {
+        status: restoredStatus,
+        archiveReasonCode: null,
+        archiveDetails: null,
+        archivePriorStatus: null,
+      },
+    });
+    if (updated.count !== 1) {
+      throw new LifecycleWriteError('stale_status', 409, 'Reader profile status was changed by another request');
+    }
+    const after = await tx.readerProfile.findUnique({
+      where: { id: profile.id },
+      select: {
+        id: true,
+        status: true,
+        archiveReasonCode: true,
+        archiveDetails: true,
+        archivePriorStatus: true,
+      },
+    });
+    const decisions = await loadContactDecisions(tx, profile.userId);
+    const independentDoNotContactPreserved = independentDncActive(decisions);
+    let contactDecisionId = null;
+    if (archiveLaneSuppressActive(decisions)) {
+      const createdDecision = await tx.readerContactDecision.create({
+        data: {
+          userId: profile.userId,
+          decision: 'allow',
+          reason,
+          actorType: actor.actorType,
+          actorLabel: actor.actorLabel,
+          actorId: actor.actorId,
+          origin: RESTORE_CONTACT_ORIGIN,
+          originRef: requireIdempotencyKey(input.idempotencyKey),
+        },
+      });
+      contactDecisionId = createdDecision.id;
+    }
+    let restoreReviewId = null;
+    const warnings = [];
+    if (restorePlan.fallback) {
+      const review = await openRestoreFallbackReview(tx, { userId: profile.userId, actor });
+      restoreReviewId = review.id;
+      warnings.push('prior_status_unavailable');
+    }
+    const audit = await writeAudit(tx, {
+      userId: profile.userId,
+      actor,
+      action: 'profile.restore',
+      entityType: 'ReaderProfile',
+      entityId: profile.id,
+      beforeJson: {
+        status: profile.status,
+        archiveReasonCode: profile.archiveReasonCode || null,
+        archiveDetails: profile.archiveDetails || null,
+        archivePriorStatus: profile.archivePriorStatus || null,
+      },
+      afterJson: {
+        status: after.status,
+        archiveReasonCode: after.archiveReasonCode,
+        archiveDetails: after.archiveDetails,
+        archivePriorStatus: after.archivePriorStatus,
+        contactDecisionId,
+        restoreReviewId,
+        operation: 'restore',
+        restoreFallback: restorePlan.fallback,
+        independentDoNotContactPreserved,
+      },
+      reason,
+    });
+    return completeMutation(tx, {
+      profile,
+      warnings,
+      mutation: {
+        action: 'profile.restore',
+        entityType: 'ReaderProfile',
+        entityId: profile.id,
+        priorStatus: 'archived',
+        newStatus: restoredStatus,
+        contactDecisionId,
+        restoreReviewId,
+        restoreFallback: restorePlan.fallback,
+        auditId: audit.id,
+      },
+    });
+  });
+}
+
 function createReaderLifecycleWriteService(prisma) {
   return {
     addEvidence: (input) => addEvidence(prisma, input),
@@ -1082,6 +1360,8 @@ function createReaderLifecycleWriteService(prisma) {
     addContactDecision: (input) => addContactDecision(prisma, input),
     openIdentityReview: (input) => openIdentityReview(prisma, input),
     resolveIdentityReview: (input) => resolveIdentityReview(prisma, input),
+    archiveReader: (input) => archiveReader(prisma, input),
+    restoreReader: (input) => restoreReader(prisma, input),
   };
 }
 
@@ -1092,5 +1372,10 @@ module.exports = {
   IDEMPOTENCY_ORIGIN,
   ADD_KINDS,
   IDENTITY_REASON_CODES,
+  ARCHIVE_REASON_CODES,
+  ARCHIVE_CONTACT_ORIGIN,
+  RESTORE_CONTACT_ORIGIN,
+  RESTORE_PRIOR_STATUS_REASON,
+  DUPLICATE_ARCHIVE_WARNING,
   ALLOWED_WRITE_DELEGATES,
 };

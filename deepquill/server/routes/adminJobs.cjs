@@ -11,6 +11,7 @@ const { buildNoPurchaseReminderEmail } = require('../../lib/email/builders/noPur
 const { buildNonParticipantReminderEmail } = require('../../lib/email/builders/nonParticipantReminder.cjs');
 const { buildMissionaryEmail } = require('../../lib/email/builders/missionaryEmail.cjs');
 const { guardMailableEmail } = require('../../lib/email/guardMailableEmail.cjs');
+const { promotionalOutreachEligibility } = require('../../lib/readers/readerOutreachEligibility.cjs');
 
 const router = express.Router();
 
@@ -31,6 +32,15 @@ function isAdminAuthorized(req) {
   if (process.env.NODE_ENV === 'development') return true;
   const key = req.headers['x-admin-key'];
   return !!process.env.ADMIN_KEY && key === process.env.ADMIN_KEY;
+}
+
+async function skipDiscretionaryOutreach(user, logLabel) {
+  const result = await promotionalOutreachEligibility(prisma, { userId: user.id, email: user.email });
+  if (result.eligible !== true || result.lookup !== 'ok') {
+    console.warn(`[${logLabel}] Skipping ineligible reader: ${result.reason || 'lookup_failed'}`);
+    return true;
+  }
+  return false;
 }
 
 // All job routes require admin auth
@@ -81,6 +91,7 @@ router.get('/send-engaged-reminders', async (req, res) => {
         if (!user.referralCode) { console.warn(`[engaged-reminder] Skipping ${user.email}: no referralCode`); continue; }
         const mailable = guardMailableEmail(user.email, 'engaged_reminder');
         if (!mailable) { console.warn(`[engaged-reminder] Skipping non-mailable ${user.email}`); continue; }
+        if (await skipDiscretionaryOutreach(user, 'engaged-reminder')) continue;
         const buyUrl = `${BASE_URL}/sample-chapters`;
         const challengeUrl = `${BASE_URL}/sample-chapters`;
         const shareUrl = `${BASE_URL}/refer?code=${user.referralCode}`;
@@ -152,6 +163,7 @@ router.get('/send-non-participant-reminders', async (req, res) => {
       try {
         const mailable = guardMailableEmail(user.email, 'non_participant_reminder');
         if (!mailable) continue;
+        if (await skipDiscretionaryOutreach(user, 'non-participant-reminder')) continue;
         const referUrl = user.referralCode ? `${BASE_URL}/refer?code=${user.referralCode}` : `${BASE_URL}/refer`;
         const { subject, html } = buildNonParticipantReminderEmail({
           firstName: user.firstName,
@@ -213,6 +225,7 @@ router.get('/send-no-purchase-reminders', async (req, res) => {
       try {
         const mailable = guardMailableEmail(user.email, 'no_purchase_reminder');
         if (!mailable) continue;
+        if (await skipDiscretionaryOutreach(user, 'no-purchase-reminder')) continue;
         const shareUrl = `${BASE_URL}/refer?code=${user.referralCode}`;
         const { subject, html } = buildNoPurchaseReminderEmail({
           firstName: user.firstName,
@@ -289,6 +302,7 @@ router.get('/send-missionary-emails', async (req, res) => {
       try {
         const mailable = guardMailableEmail(user.email, 'missionary_email');
         if (!mailable) continue;
+        if (await skipDiscretionaryOutreach(user, 'missionary-email')) continue;
         const referUrl = `${BASE_URL}/refer?code=${user.referralCode}`;
         const shareUrl = referUrl;
         const { subject, html } = buildMissionaryEmail({

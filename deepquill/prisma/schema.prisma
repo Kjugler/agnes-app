@@ -98,6 +98,10 @@ model ReaderProfile {
   readerType String?
   notes             String?
   status            String    @default("active")
+  /// Present only while status is archived. Null for every existing/unarchived row.
+  archiveReasonCode  String?
+  archiveDetails     String?
+  archivePriorStatus String?
   smsConsentGranted Boolean   @default(false)
   smsConsentAt      DateTime?
   smsConsentSource  String?

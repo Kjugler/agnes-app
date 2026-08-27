@@ -4,13 +4,16 @@
  * Maps existing User/ReaderProfile/Purchase plus lifecycle tables into
  * classifyReader(). Performs no writes. Not mounted as an API.
  *
- * Contactability uses the latest manual ReaderContactDecision only.
- * `contactable` means no manual DNC and a mailable address in local data.
+ * Contactability uses two-lane origin evaluation: independent DNC and
+ * archive-family suppression are distinct facts. Restore-allow retires only
+ * the archive lane. `contactable` means no independent DNC, no active archive
+ * exclusion, and a mailable address in local data.
  * Provider unsubscribe/reject/complaint is NOT integrated; not safe to send.
  */
 const { classifyReader } = require('./classifyReader.cjs');
 const { displayName } = require('./readerUser.cjs');
 const { displayReaderEmail } = require('./readerSyntheticEmail.cjs');
+const { independentDncActive } = require('./readerContactSuppression.cjs');
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 100;
@@ -35,7 +38,7 @@ const RAW_CLIENT_METHODS = Object.freeze([
   'queryRaw',
 ]);
 const CONTACTABLE_MEANS =
-  'No manual DNC and a mailable address according to locally available data; provider unsubscribe/reject/complaint status has not yet been integrated.';
+  'No independent Do Not Contact and a mailable address according to locally available data. Archived operational status is a separate suppression and is not labeled as Manual DNC. Provider unsubscribe/reject/complaint status has not yet been integrated.';
 
 const PROFILE_ORDER = Object.freeze([{ createdAt: 'desc' }, { id: 'desc' }]);
 const USER_SELECT = Object.freeze({
@@ -150,20 +153,8 @@ function iso(value) {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-function latestDecision(decisions) {
-  const rows = Array.isArray(decisions) ? [...decisions] : [];
-  rows.sort((a, b) => {
-    const ta = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-    if (ta !== 0) return ta;
-    return String(a.id).localeCompare(String(b.id));
-  });
-  return rows.length ? rows[rows.length - 1] : null;
-}
-
 function manualDoNotContact(decisions) {
-  const latest = latestDecision(decisions);
-  if (!latest) return false;
-  return String(latest.decision).toLowerCase() === 'suppress';
+  return independentDncActive(decisions);
 }
 
 function hasOpenIdentityReview(reviews, userId) {
@@ -378,7 +369,11 @@ function buildClassifierInput(user, profile, related) {
     doNotContact: manualDoNotContact(decisions),
     identityReviewRequired: hasOpenIdentityReview(reviews, userId),
     profile: profile
-      ? { readerType: profile.readerType || null, source: profile.source || null }
+      ? {
+          readerType: profile.readerType || null,
+          source: profile.source || null,
+          status: profile.status || 'active',
+        }
       : null,
     purchases: purchases.map((row) => ({
       userId: row.userId,
@@ -420,6 +415,9 @@ function toListItem(profile, user, related, classification) {
       source: profile.source || null,
       readerType: profile.readerType || null,
       status: profile.status || 'active',
+      archiveReasonCode: profile.archiveReasonCode || null,
+      archiveDetails: profile.archiveDetails || null,
+      archivePriorStatus: profile.archivePriorStatus || null,
     },
     ownership: classification.ownership,
     sources: classification.sources,

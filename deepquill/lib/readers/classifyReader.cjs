@@ -15,7 +15,7 @@
  * @property {boolean} [doNotContact]
  * @property {boolean} [identityReviewRequired]
  * @property {boolean} [identityAmbiguous] alias of identityReviewRequired
- * @property {{ readerType?: string|null, source?: string|null }|null} [profile]
+ * @property {{ readerType?: string|null, source?: string|null, status?: string|null }|null} [profile]
  * @property {Array<{
  *   userId?: string|null,
  *   sessionId?: string|null,
@@ -482,6 +482,7 @@ function classifyReader(input) {
     ownership === OWNERSHIP.NON_PURCHASER && review === REVIEW.CLEAR;
 
   const nurtureSuppressed =
+    (profile && String(profile.status || '') === 'archived') ||
     ownership === OWNERSHIP.PURCHASER ||
     ownership === OWNERSHIP.BOOK_OWNER_GIFTED ||
     ownership === OWNERSHIP.UNKNOWN ||

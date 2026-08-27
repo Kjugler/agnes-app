@@ -46,6 +46,7 @@ ensureDatabaseUrl();
 const mailchimp = require('@mailchimp/mailchimp_transactional');
 const { normalizeEmail } = require('../src/lib/normalize.cjs');
 const { getMailchimpClient } = require('../lib/email/sendEmail.cjs');
+const { loadPromotionalIneligibleEmailSet } = require('../lib/readers/readerOutreachEligibility.cjs');
 
 function getResolvedDatasource() {
   return (process.env.DATABASE_URL || String(datasourceUrl || '')).trim();
@@ -262,7 +263,7 @@ async function collectCandidates() {
 
 function summarizeSkips(skip) {
   return (
-    skip.invalid + skip.duplicate + skip.suppressed + skip.alreadySent + (skip.example || 0)
+    skip.invalid + skip.duplicate + skip.suppressed + skip.alreadySent + (skip.example || 0) + (skip.archived || 0)
   );
 }
 
@@ -287,11 +288,19 @@ async function main() {
     suppressed: 0,
     alreadySent: 0,
     example: 0,
+    archived: 0,
     testOnlyFiltered: 0,
   };
 
   const deduped = new Set();
   const eligible = [];
+  let archivedSet;
+  try {
+    archivedSet = await loadPromotionalIneligibleEmailSet(prisma);
+  } catch {
+    console.error('[QUIET_REVEAL] Could not establish promotional exclusion set; aborting before send.');
+    process.exit(1);
+  }
 
   for (const row of candidateRows) {
     const normalized = normalizeEmail(row.email);
@@ -309,6 +318,10 @@ async function main() {
     }
     deduped.add(normalized);
 
+    if (archivedSet.has(normalized)) {
+      skip.archived += 1;
+      continue;
+    }
     if (suppressed.set.has(normalized)) {
       skip.suppressed += 1;
       continue;
@@ -322,11 +335,17 @@ async function main() {
 
   let targets = eligible;
   if (TEST_EMAIL) {
-    targets = [TEST_EMAIL];
-    if (!eligible.includes(TEST_EMAIL)) {
-      skip.testOnlyFiltered = eligible.length;
+    if (archivedSet.has(TEST_EMAIL)) {
+      console.error('[QUIET_REVEAL] TEST_EMAIL is operationally ineligible (archived or do-not-contact); not sending.');
+      targets = [];
+      skip.archived += 1;
     } else {
-      skip.testOnlyFiltered = Math.max(0, eligible.length - 1);
+      targets = [TEST_EMAIL];
+      if (!eligible.includes(TEST_EMAIL)) {
+        skip.testOnlyFiltered = eligible.length;
+      } else {
+        skip.testOnlyFiltered = Math.max(0, eligible.length - 1);
+      }
     }
   }
 
@@ -370,6 +389,7 @@ async function main() {
         example: skip.example,
         suppressed: skip.suppressed,
         alreadySent: skip.alreadySent,
+        archived: skip.archived,
         testOnlyFiltered: skip.testOnlyFiltered,
         totalCoreSkipped: summarizeSkips(skip),
       },
@@ -468,6 +488,19 @@ async function main() {
   const client = getMailchimpClient();
   if (!client) {
     throw new Error('Mailchimp client not available (MAILCHIMP_TRANSACTIONAL_KEY missing?)');
+  }
+
+  if (TEST_EMAIL && archivedSet.has(TEST_EMAIL)) {
+    console.warn('[QUIET_REVEAL] TEST_EMAIL is operationally ineligible; not sending.');
+    console.log('[QUIET_REVEAL] Send complete', {
+      sent: 0,
+      failed: 0,
+      skipped: 1,
+      totalTargets: 0,
+      auditJson: RUN_JSON_PATH,
+      auditJsonl: RUN_JSONL_PATH,
+    });
+    return;
   }
 
   if (TEST_EMAIL && suppressed.set.has(TEST_EMAIL)) {

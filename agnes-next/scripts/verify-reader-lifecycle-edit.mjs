@@ -471,6 +471,14 @@ async function main() {
       });
       assert.ok(edit.permittedActions(openReview).some((row) => row.action.type === 'resolveIdentityReview'));
 
+      assert.ok(labels.includes('Archive as test/invalid operational reader'));
+      assert.equal(labels.includes('Restore operational reader'), false);
+      const archived = readerFixture({ legacy: { source: 'website', readerType: 'interested', status: 'archived' } });
+      const archivedActions = edit.permittedActions(archived).map((row) => row.action.type);
+      assert.ok(archivedActions.includes('restoreReader'));
+      assert.equal(archivedActions.includes('archiveReader'), false);
+      assert.doesNotMatch(edit.permittedActions(blank).map((row) => row.label).join('\n'), /Delete|Merge|Bulk /i);
+
       const panel = scan(FILES.editPanel);
       const modelSrc = scan(FILES.editModel);
       assert.doesNotMatch(panel, />Merge</);
@@ -479,6 +487,13 @@ async function main() {
       assert.match(modelSrc, /Allow local contact/);
       assert.equal(edit.confirmButtonLabel({ type: 'addDnc' }), 'Add Do Not Contact');
       assert.equal(edit.confirmButtonLabel({ type: 'allowContact' }), 'Allow local contact');
+      assert.equal(edit.confirmButtonLabel({ type: 'archiveReader' }), 'Archive operational reader');
+      assert.equal(edit.confirmButtonLabel({ type: 'restoreReader' }), 'Restore operational reader');
+      assert.equal(edit.inFlightLabel({ type: 'archiveReader' }), 'Archiving…');
+      assert.equal(edit.inFlightLabel({ type: 'restoreReader' }), 'Restoring…');
+      assert.doesNotMatch(edit.confirmButtonLabel({ type: 'archiveReader' }), /^Save$/);
+      assert.match(edit.mutationPath({ type: 'archiveReader' }, 'rp_x'), /\/archive$/);
+      assert.match(edit.mutationPath({ type: 'restoreReader' }, 'rp_x'), /\/restore$/);
       assert.doesNotMatch(panel, /simple on\/off switch/i);
     });
 
@@ -496,6 +511,12 @@ async function main() {
       assert.match(scan(FILES.detailClient), /Open identity review/);
       assert.doesNotMatch(scan(FILES.detailClient), /Edit purchase|Delete purchase|Change Stripe/i);
       assert.match(scan(FILES.detailCss), /max-width: 430px/);
+      assert.match(scan(FILES.detailCss), /overflow-x: hidden/);
+      assert.match(scan(FILES.editModel), /Archive as test\/invalid operational reader/);
+      assert.match(scan(FILES.editModel), /Restore operational reader/);
+      assert.match(scan(FILES.editPanel), /action\.type === 'archiveReader'/);
+      assert.match(scan(FILES.editPanel), /action\.type === 'restoreReader'/);
+      assert.doesNotMatch(scan(FILES.editPanel), /Bulk archive|Delete reader|Merge identities/);
     });
 
     await check('idempotency key session: retry keeps key, field change mints a new key', () => {
@@ -601,11 +622,11 @@ async function main() {
       }
     });
 
-    await check('48 migrations are present for disposable-db live chain', () => {
+    await check('49 migrations are present for disposable-db live chain', () => {
       const dirs = fs.readdirSync(path.join(DEEPQUILL_ROOT, 'prisma', 'migrations'), { withFileTypes: true })
         .filter((entry) => entry.isDirectory())
         .filter((entry) => fs.existsSync(path.join(DEEPQUILL_ROOT, 'prisma', 'migrations', entry.name, 'migration.sql')));
-      assert.equal(dirs.length, 48, `expected 48 migration folders, found ${dirs.length}`);
+      assert.equal(dirs.length, 49, `expected 49 migration folders, found ${dirs.length}`);
     });
 
     await check('live local chain: disposable SQLite, 5C API, 5D proxies, required mutations', async () => {
@@ -617,7 +638,7 @@ async function main() {
       try {
         await prisma.$executeRawUnsafe('PRAGMA foreign_keys = ON');
         const applied = await prisma.$queryRawUnsafe('SELECT COUNT(*) as n FROM "_prisma_migrations" WHERE finished_at IS NOT NULL');
-        assert.equal(Number(applied[0].n), 48);
+        assert.equal(Number(applied[0].n), 49);
         await live.seedSyntheticPreview(prisma);
         process.env.READER_LIFECYCLE_MUTATIONS_ENABLED = '1';
         backend = await live.startLifecycleBackend(prisma, { adminKey: ADMIN_KEY });
@@ -819,6 +840,36 @@ async function main() {
         const websitePurchases = await prisma.purchase.findMany({ where: { userId: 'user_edit_website' } });
         assert.equal(websitePurchases.length, 1);
         assert.equal(websitePurchases[0].userId, 'user_edit_website');
+
+        const archived = await proxyPost(
+          '/api/admin/reader-lifecycle/readers/rp_edit_identity/archive',
+          {
+            reasonCode: 'test_record',
+            reason: 'Synthetic test record for archive restore live chain',
+            actorId: 'fu_preview_helper_a',
+            expectedStatus: 'active',
+            confirmed: true,
+          },
+          nextKey('archive', 16),
+        );
+        assert.equal(archived.status, 200, archived.text.slice(0, 400));
+        assert.equal(archived.json.reader.legacy.status, 'archived');
+        assert.equal(archived.json.reader.legacy.archiveReasonCode, 'test_record');
+        assert.equal(archived.json.reader.nurtureSuppressed, true);
+
+        const restored = await proxyPost(
+          '/api/admin/reader-lifecycle/readers/rp_edit_identity/restore',
+          {
+            reason: 'Synthetic restore after archive live chain check',
+            actorId: 'fu_preview_helper_b',
+            expectedStatus: 'archived',
+            confirmed: true,
+          },
+          nextKey('restore', 17),
+        );
+        assert.equal(restored.status, 200, restored.text.slice(0, 400));
+        assert.equal(restored.json.reader.legacy.status, 'active');
+        assert.equal(restored.json.reader.legacy.archiveReasonCode, null);
 
         const replay = await proxyPost(
           '/api/admin/reader-lifecycle/readers/rp_edit_amazon/evidence',

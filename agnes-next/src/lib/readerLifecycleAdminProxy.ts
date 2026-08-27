@@ -76,7 +76,9 @@ export type ReaderLifecycleMutationTarget =
   | { route: 'replaceEvidence'; evidenceId: string }
   | { route: 'addContactDecision'; readerProfileId: string }
   | { route: 'openIdentityReview'; readerProfileId: string }
-  | { route: 'resolveIdentityReview'; reviewId: string };
+  | { route: 'resolveIdentityReview'; reviewId: string }
+  | { route: 'archiveReader'; readerProfileId: string }
+  | { route: 'restoreReader'; readerProfileId: string };
 
 export type ReaderLifecycleProxyDeps = {
   fetchImpl?: typeof fetch;
@@ -257,6 +259,16 @@ export function backendMutationPathFor(target: ReaderLifecycleMutationTarget): s
       const id = encodePathId(target.readerProfileId);
       if (!id) return null;
       return `${BACKEND_NAMESPACE}/readers/${id}/contact-decisions`;
+    }
+    case 'archiveReader': {
+      const id = encodePathId(target.readerProfileId);
+      if (!id) return null;
+      return `${BACKEND_NAMESPACE}/readers/${id}/archive`;
+    }
+    case 'restoreReader': {
+      const id = encodePathId(target.readerProfileId);
+      if (!id) return null;
+      return `${BACKEND_NAMESPACE}/readers/${id}/restore`;
     }
     case 'openIdentityReview': {
       const id = encodePathId(target.readerProfileId);

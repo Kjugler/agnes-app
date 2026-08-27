@@ -13,6 +13,7 @@ const {
   LifecycleWriteError,
   ADD_KINDS,
   IDENTITY_REASON_CODES,
+  ARCHIVE_REASON_CODES,
 } = require('../../lib/readers/readerLifecycleWrite.cjs');
 
 const MAX_ID_LENGTH = 128;
@@ -69,6 +70,10 @@ const REPLACE_FIELDS = Object.freeze([
 const DECISION_FIELDS = Object.freeze(['decision', 'reason', 'actorId']);
 const OPEN_REVIEW_FIELDS = Object.freeze(['reasonCode', 'details', 'otherUserId', 'reason', 'actorId']);
 const RESOLVE_FIELDS = Object.freeze(['status', 'resolutionReason', 'actorId', 'expectedStatus']);
+const ARCHIVE_FIELDS = Object.freeze(['reasonCode', 'details', 'reason', 'actorId', 'expectedStatus', 'confirmed']);
+const RESTORE_FIELDS = Object.freeze(['reason', 'actorId', 'expectedStatus', 'confirmed']);
+const DUPLICATE_ARCHIVE_WARNING =
+  'Genuine duplicate-person uncertainty normally belongs in Identity Review. Archive does not merge or delete identities.';
 
 function timingSafeEqualString(provided, expected) {
   const a = Buffer.from(String(provided));
@@ -201,6 +206,11 @@ function parseEnum(raw, allowed, key) {
   const value = raw.trim();
   if (!allowed.includes(value)) throw httpError(400, `invalid_${key}`);
   return value;
+}
+
+function parseConfirmed(raw) {
+  if (raw !== true) throw httpError(400, 'confirmation_required');
+  return true;
 }
 
 function parseOptionalEnum(raw, allowed, key) {
@@ -433,6 +443,49 @@ function createAdminReaderLifecycleWriteRouter(prisma) {
         status: parseEnum(body.status, RESOLUTION_STATUSES, 'status'),
         resolutionReason: parseReason(body.resolutionReason),
         expectedStatus: parseEnum(body.expectedStatus, ['open'], 'expectedStatus'),
+        actorId: parseId(body.actorId),
+        idempotencyKey: parseIdempotencyKey(req),
+      });
+    }),
+  );
+
+  router.post('/readers/:readerProfileId/archive', (req, res) =>
+    guarded(req, res, async () => {
+      const readerProfileId = parseId(req.params.readerProfileId);
+      const body = allowFields(req.body, ARCHIVE_FIELDS);
+      const reasonCode = parseEnum(body.reasonCode, [...ARCHIVE_REASON_CODES], 'reasonCode');
+      const details = parseOptionalString(body.details, 'details', MAX_DETAILS);
+      if (reasonCode === 'other' && (!details || details.length < MIN_REASON)) {
+        throw httpError(400, 'invalid_details');
+      }
+      const result = await writes.archiveReader({
+        readerProfileId,
+        reasonCode,
+        details,
+        reason: parseReason(body.reason),
+        expectedStatus: parseEnum(body.expectedStatus, ['active', 'inactive'], 'expectedStatus'),
+        confirmed: parseConfirmed(body.confirmed),
+        actorId: parseId(body.actorId),
+        idempotencyKey: parseIdempotencyKey(req),
+      });
+      if (reasonCode === 'duplicate_or_identity_issue' && Array.isArray(result.warnings)) {
+        if (!result.warnings.includes(DUPLICATE_ARCHIVE_WARNING)) {
+          result.warnings = [DUPLICATE_ARCHIVE_WARNING, ...result.warnings];
+        }
+      }
+      return result;
+    }),
+  );
+
+  router.post('/readers/:readerProfileId/restore', (req, res) =>
+    guarded(req, res, async () => {
+      const readerProfileId = parseId(req.params.readerProfileId);
+      const body = allowFields(req.body, RESTORE_FIELDS);
+      return writes.restoreReader({
+        readerProfileId,
+        reason: parseReason(body.reason),
+        expectedStatus: parseEnum(body.expectedStatus, ['archived'], 'expectedStatus'),
+        confirmed: parseConfirmed(body.confirmed),
         actorId: parseId(body.actorId),
         idempotencyKey: parseIdempotencyKey(req),
       });

@@ -50,6 +50,9 @@ export type LegacyCrm = {
   source: string | null;
   readerType: string | null;
   status: string | null;
+  archiveReasonCode?: string | null;
+  archiveDetails?: string | null;
+  archivePriorStatus?: string | null;
 };
 
 export type ReaderLifecycleListItem = {
@@ -230,8 +233,16 @@ export function listReviewSummary(item: Pick<ReaderLifecycleListItem, 'confidenc
   return { primary: confidenceLabel(item.confidence), secondary: reviewLabel(item.review) };
 }
 
-export function listContactLabel(item: Pick<ReaderLifecycleListItem, 'contactability' | 'review'>): string {
+export function listContactLabel(
+  item: Pick<ReaderLifecycleListItem, 'contactability' | 'review'> & {
+    legacy?: { status?: string | null } | null;
+  },
+): string {
   if (isConflictingReview(item)) return 'Nurture paused until resolved';
+  if (item.legacy?.status === 'archived') {
+    if (item.contactability === 'suppressed_do_not_contact') return 'Manual DNC';
+    return 'Archived — outreach paused';
+  }
   if (item.contactability === 'contactable') return 'Locally contactable*';
   return contactabilityLabel(item.contactability);
 }
@@ -411,6 +422,9 @@ export function parseListItem(raw: unknown): ReaderLifecycleListItem | null {
       source: asStringOrNull(legacyRaw.source),
       readerType: asStringOrNull(legacyRaw.readerType),
       status: asStringOrNull(legacyRaw.status),
+      archiveReasonCode: asStringOrNull(legacyRaw.archiveReasonCode),
+      archiveDetails: asStringOrNull(legacyRaw.archiveDetails),
+      archivePriorStatus: asStringOrNull(legacyRaw.archivePriorStatus),
     },
     ownership: asString(row.ownership) || 'unknown',
     sources,

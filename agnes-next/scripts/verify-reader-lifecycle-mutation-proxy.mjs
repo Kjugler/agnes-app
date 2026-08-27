@@ -58,6 +58,8 @@ const MUTATION_ROUTE_FILES = [
   ['evidence/[evidenceId]/dispute/route.ts', 'disputeEvidence'],
   ['evidence/[evidenceId]/replace/route.ts', 'replaceEvidence'],
   ['readers/[readerProfileId]/contact-decisions/route.ts', 'addContactDecision'],
+  ['readers/[readerProfileId]/archive/route.ts', 'archiveReader'],
+  ['readers/[readerProfileId]/restore/route.ts', 'restoreReader'],
   ['readers/[readerProfileId]/identity-reviews/route.ts', 'openIdentityReview'],
   ['identity-reviews/[reviewId]/resolve/route.ts', 'resolveIdentityReview'],
 ];
@@ -69,6 +71,8 @@ const MAPPINGS = [
   [{ route: 'disputeEvidence', evidenceId: 'ev_abc123' }, '/api/admin/reader-lifecycle/evidence/ev_abc123/dispute'],
   [{ route: 'replaceEvidence', evidenceId: 'ev_abc123' }, '/api/admin/reader-lifecycle/evidence/ev_abc123/replace'],
   [{ route: 'addContactDecision', readerProfileId: 'rp_abc123' }, '/api/admin/reader-lifecycle/readers/rp_abc123/contact-decisions'],
+  [{ route: 'archiveReader', readerProfileId: 'rp_abc123' }, '/api/admin/reader-lifecycle/readers/rp_abc123/archive'],
+  [{ route: 'restoreReader', readerProfileId: 'rp_abc123' }, '/api/admin/reader-lifecycle/readers/rp_abc123/restore'],
   [{ route: 'openIdentityReview', readerProfileId: 'rp_abc123' }, '/api/admin/reader-lifecycle/readers/rp_abc123/identity-reviews'],
   [{ route: 'resolveIdentityReview', reviewId: 'ir_abc123' }, '/api/admin/reader-lifecycle/identity-reviews/ir_abc123/resolve'],
 ];
@@ -442,7 +446,7 @@ async function main() {
       assert.doesNotMatch(src, /NEXT_PUBLIC_ADMIN_KEY/);
     });
 
-    await check('eight explicit POST route files exist and export POST only', () => {
+    await check('explicit POST route files exist and export POST only', () => {
       for (const [rel, routeName] of MUTATION_ROUTE_FILES) {
         const file = path.join(LIFECYCLE_DIR, rel);
         assert.equal(fs.existsSync(file), true, `missing ${rel}`);
@@ -654,7 +658,7 @@ async function main() {
       }
     });
 
-    await check('all eight fixed route mappings reach the exact backend paths', async () => {
+    await check('all fixed route mappings reach the exact backend paths', async () => {
       const hits = [];
       const { server, baseUrl } = await startMockBackend(async (req, res) => {
         const seen = collectRequest(req);
@@ -673,7 +677,7 @@ async function main() {
           assert.equal(hits[hits.length - 1].headers['x-admin-key'], ADMIN_KEY);
           assert.equal(hits[hits.length - 1].headers.cookie, undefined);
         }
-        assert.equal(hits.length, 8);
+        assert.equal(hits.length, MAPPINGS.length);
       } finally {
         server.close();
       }

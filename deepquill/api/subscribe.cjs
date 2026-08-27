@@ -21,6 +21,28 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ ok: false, error: 'Email is required.' });
   }
 
+  try {
+    const { prisma } = require('../server/prisma.cjs');
+    const {
+      resolveSubscribePromotionalGate,
+      subscribeLocalAccessResponse,
+    } = require('../lib/readers/readerOutreachEligibility.cjs');
+    const gate = await resolveSubscribePromotionalGate(prisma, email);
+    if (!gate.mailchimpAllowed) {
+      if (!gate.localAccess) {
+        return res.status(400).json({ ok: false, error: 'Email is required.' });
+      }
+      return res.status(200).json(subscribeLocalAccessResponse(gate));
+    }
+  } catch (eligibilityErr) {
+    console.warn('subscribe eligibility lookup failed');
+    return res.status(200).json({
+      ok: true,
+      status: 'soft-fail',
+      message: 'Access granted. We’ll finish sign-up shortly.',
+    });
+  }
+
   const subscriberHash = crypto.createHash('md5').update(email.toLowerCase()).digest('hex');
 
   try {

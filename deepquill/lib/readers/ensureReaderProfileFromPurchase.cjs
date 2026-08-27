@@ -1,6 +1,7 @@
 const { isMailableEmail } = require('../../src/lib/normalize.cjs');
 const { ARCHIVED_SALE_STATUS } = require('../archivedBetaPurchases.cjs');
 const { appendNotes } = require('./readerUser.cjs');
+const { surfaceArchivedLaterPurchase } = require('./surfaceArchivedLaterPurchase.cjs');
 
 const AUTO_READER_SOURCE = 'Website';
 const AUTO_READER_TYPE = 'purchased';
@@ -92,6 +93,10 @@ async function ensureReaderProfileFromPurchase(
     return { action: 'skipped', reason: 'already_logged', userId, sessionId };
   }
 
+  if (profile && profile.status === 'archived' && !dryRun) {
+    await surfaceArchivedLaterPurchase(prisma, profile);
+  }
+
   if (dryRun) {
     return {
       action: profile ? 'would_update' : 'would_create',
@@ -116,8 +121,10 @@ async function ensureReaderProfileFromPurchase(
   const data = {
     notes: appendNotes(profile.notes, noteLine),
   };
-  if (!profile.readerType) data.readerType = AUTO_READER_TYPE;
-  if (!profile.source) data.source = AUTO_READER_SOURCE;
+  if (profile.status !== 'archived') {
+    if (!profile.readerType) data.readerType = AUTO_READER_TYPE;
+    if (!profile.source) data.source = AUTO_READER_SOURCE;
+  }
 
   profile = await prisma.readerProfile.update({
     where: { id: profile.id },

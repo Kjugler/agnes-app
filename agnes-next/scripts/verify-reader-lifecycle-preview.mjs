@@ -133,6 +133,19 @@ async function main() {
       assert.match(model, /Email-provider suppression status is not yet integrated/);
       assert.equal(mod.PROVIDER_WARNING.includes('does not mean approved or safe to email'), true);
       assert.equal(mod.listContactLabel(item({})), 'Locally contactable*');
+      assert.equal(
+        mod.listContactLabel(item({ legacy: { source: 'website', readerType: 'purchased', status: 'archived' } })),
+        'Archived — outreach paused',
+      );
+      assert.equal(
+        mod.listContactLabel(
+          item({
+            contactability: 'suppressed_do_not_contact',
+            legacy: { source: 'website', readerType: 'purchased', status: 'archived' },
+          }),
+        ),
+        'Manual DNC',
+      );
       assert.doesNotMatch(client, /Provider status not integrated; not approved to email/);
     });
 

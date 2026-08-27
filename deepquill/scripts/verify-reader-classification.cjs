@@ -286,6 +286,19 @@ check('14 aggregate marketing report only is never a purchaser', {
   nurtureSuppressed: false,
 });
 
+check('14b archived operational non-purchaser is nurture-suppressed', {
+  userId: 'u14b',
+  email: mail,
+  profile: { readerType: 'interested', status: 'archived' },
+}, {
+  ownership: OWNERSHIP.NON_PURCHASER,
+  sources: [],
+  confidence: CONFIDENCE.UNKNOWN,
+  contactability: CONTACTABILITY.CONTACTABLE,
+  review: REVIEW.CLEAR,
+  nurtureSuppressed: true,
+});
+
 check('15 confirmed purchaser who is DNC', {
   userId: 'u15',
   email: mail,

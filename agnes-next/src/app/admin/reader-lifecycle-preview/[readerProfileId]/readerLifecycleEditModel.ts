@@ -37,6 +37,12 @@ export const LOCALLY_CONTACTABLE_NOT_SAFE =
   '“Locally contactable” does not mean approved or safe to email.';
 export const AUDIT_HISTORY_NOT_IN_GET =
   'Administrative audit entries are stored by the write service but are not included in the current GET-detail contract.';
+export const ARCHIVE_CONSEQUENCE =
+  'The operational profile status becomes archived. Purchase, order, Stripe, referral, commission, fulfillment, and accounting records are not deleted or changed. Discretionary outreach stops. Required receipts and fulfillment notices keep their existing rules.';
+export const RESTORE_CONSEQUENCE =
+  'The operational profile is restored to the recorded prior status when that status is still valid. Archive history remains in administrative audit. Independent Do Not Contact decisions stay in force. Restore does not by itself authorize outreach.';
+export const DUPLICATE_ARCHIVE_WARNING =
+  'Genuine duplicate-person uncertainty normally belongs in Identity Review. Archive does not merge or delete identities.';
 
 export type PermittedActionItem = {
   action: EditAction;
@@ -87,6 +93,20 @@ export function permittedActions(reader: ReaderLifecycleDetail): PermittedAction
       action: { type: 'resolveIdentityReview', reviewId: review.id },
       label: 'Resolve identity review',
       tone: 'default',
+    });
+  }
+  const status = reader.legacy.status || 'active';
+  if (status === 'archived') {
+    items.push({
+      action: { type: 'restoreReader' },
+      label: 'Restore operational reader',
+      tone: 'warning',
+    });
+  } else {
+    items.push({
+      action: { type: 'archiveReader' },
+      label: 'Archive as test/invalid operational reader',
+      tone: 'danger',
     });
   }
   return items;
@@ -174,7 +194,9 @@ export type EditAction =
   | { type: 'addDnc' }
   | { type: 'allowContact' }
   | { type: 'openIdentityReview' }
-  | { type: 'resolveIdentityReview'; reviewId: string };
+  | { type: 'resolveIdentityReview'; reviewId: string }
+  | { type: 'archiveReader' }
+  | { type: 'restoreReader' };
 
 export type MutationErrorKind =
   | 'validation'
@@ -272,7 +294,9 @@ export function fieldErrorFromCode(code: string | undefined): { field: string; m
     invalid_details: { field: 'details', message: 'Details are missing or too long.' },
     invalid_purchase_date: { field: 'purchaseDate', message: 'Enter a valid purchase date, or leave it blank.' },
     invalid_kind: { field: 'kind', message: 'Select an allowed evidence type.' },
-    invalid_reason_code: { field: 'reasonCode', message: 'Select a review reason.' },
+    invalid_reason_code: { field: 'reasonCode', message: 'Select an approved reason.' },
+    confirmation_required: { field: 'acknowledged', message: 'Confirm this action before continuing.' },
+    stale_status: { field: 'form', message: 'This record changed. Reload before trying again.' },
     invalid_other_user: { field: 'otherUserId', message: 'The related record ID cannot be this same reader.' },
     other_user_not_found: { field: 'otherUserId', message: 'That related record ID was not found.' },
     invalid_decision: { field: 'decision', message: 'Choose Add Do Not Contact or Allow local contact.' },
@@ -316,6 +340,10 @@ export function mutationPath(action: EditAction, readerProfileId: string): strin
       return `${base}/readers/${encodeURIComponent(readerProfileId)}/identity-reviews`;
     case 'resolveIdentityReview':
       return `${base}/identity-reviews/${encodeURIComponent(action.reviewId)}/resolve`;
+    case 'archiveReader':
+      return `${base}/readers/${encodeURIComponent(readerProfileId)}/archive`;
+    case 'restoreReader':
+      return `${base}/readers/${encodeURIComponent(readerProfileId)}/restore`;
     default:
       return '';
   }
@@ -372,6 +400,10 @@ export function actionTitle(action: EditAction): string {
       return 'Open identity review';
     case 'resolveIdentityReview':
       return 'Resolve identity review';
+    case 'archiveReader':
+      return 'Archive as test/invalid operational reader';
+    case 'restoreReader':
+      return 'Restore operational reader';
     default:
       return 'Lifecycle action';
   }
@@ -397,9 +429,19 @@ export function confirmButtonLabel(action: EditAction): string {
       return 'Open identity review';
     case 'resolveIdentityReview':
       return 'Resolve identity review';
+    case 'archiveReader':
+      return 'Archive operational reader';
+    case 'restoreReader':
+      return 'Restore operational reader';
     default:
       return 'Save';
   }
+}
+
+export function inFlightLabel(action: EditAction): string {
+  if (action.type === 'archiveReader') return 'Archiving…';
+  if (action.type === 'restoreReader') return 'Restoring…';
+  return 'Saving…';
 }
 
 export function successMessage(action: EditAction): string {
@@ -594,6 +636,50 @@ export function resolveIdentityReviewPayload(
   return { status, resolutionReason: resolutionReason.trim(), actorId, expectedStatus: 'open' };
 }
 
+export const ARCHIVE_REASON_OPTIONS = [
+  { value: 'test_record', label: 'Test record' },
+  { value: 'invalid_contact', label: 'Invalid contact' },
+  { value: 'duplicate_or_identity_issue', label: 'Duplicate or identity issue' },
+  { value: 'other', label: 'Other' },
+] as const;
+
+export type ArchiveReasonCode = (typeof ARCHIVE_REASON_OPTIONS)[number]['value'];
+
+export type ArchiveDraft = {
+  reasonCode: ArchiveReasonCode;
+  details: string;
+};
+
+export function archiveReaderPayload(
+  draft: ArchiveDraft,
+  reason: string,
+  actorId: string,
+  expectedStatus: string,
+): Record<string, string | boolean> {
+  const body: Record<string, string | boolean> = {
+    reasonCode: draft.reasonCode,
+    reason: reason.trim(),
+    actorId,
+    expectedStatus,
+    confirmed: true,
+  };
+  if (draft.details.trim()) body.details = draft.details.trim();
+  return body;
+}
+
+export function restoreReaderPayload(
+  reason: string,
+  actorId: string,
+  expectedStatus: string,
+): Record<string, string | boolean> {
+  return {
+    reason: reason.trim(),
+    actorId,
+    expectedStatus,
+    confirmed: true,
+  };
+}
+
 export function expectedClassificationNote(action: EditAction): string {
   switch (action.type) {
     case 'addEvidence':
@@ -614,6 +700,10 @@ export function expectedClassificationNote(action: EditAction): string {
       return 'Ownership is held as unknown and outreach is paused until the review is resolved.';
     case 'resolveIdentityReview':
       return 'Classification is recomputed. No merge and no Purchase reassignment occur.';
+    case 'archiveReader':
+      return 'The reader leaves default operational lists and discretionary outreach queues. Classification is recomputed. Purchase history is unchanged.';
+    case 'restoreReader':
+      return 'Classification is recomputed from the restored operational status. Independent Do Not Contact still suppresses outreach.';
     default:
       return 'Classification will be recomputed from current lifecycle records.';
   }
@@ -638,6 +728,10 @@ export function historyPreservationNote(action: EditAction): string {
       return 'Existing identity-review rows remain. This opens a new review.';
     case 'resolveIdentityReview':
       return IDENTITY_RESOLVE_NOTE;
+    case 'archiveReader':
+      return 'Purchase, order, Stripe, referral, commission, fulfillment, and accounting records remain. Administrative history remains.';
+    case 'restoreReader':
+      return 'Archive history remains in administrative audit. Only the archive-created operational exclusion is removed.';
     default:
       return 'Existing history rows remain.';
   }

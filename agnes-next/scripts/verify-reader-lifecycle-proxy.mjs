@@ -39,6 +39,8 @@ const MUTATION_ROUTE_FILES = [
   ['evidence/[evidenceId]/dispute/route.ts', 'disputeEvidence'],
   ['evidence/[evidenceId]/replace/route.ts', 'replaceEvidence'],
   ['readers/[readerProfileId]/contact-decisions/route.ts', 'addContactDecision'],
+  ['readers/[readerProfileId]/archive/route.ts', 'archiveReader'],
+  ['readers/[readerProfileId]/restore/route.ts', 'restoreReader'],
   ['readers/[readerProfileId]/identity-reviews/route.ts', 'openIdentityReview'],
   ['identity-reviews/[reviewId]/resolve/route.ts', 'resolveIdentityReview'],
 ];

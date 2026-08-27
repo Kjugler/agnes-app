@@ -83,7 +83,7 @@ export const PURCHASE_ACCOUNTING_NOTE =
   'Website Purchase records come from the checkout/webhook system and are not changed by Reader Manager classifications.';
 
 export const CONTACT_DECISION_NOTE =
-  'The newest manual decision controls the local Do Not Contact state. Email-provider unsubscribe, complaint, rejection, and invalid-address information is not yet integrated.';
+  'Independent Do Not Contact and archive-created exclusion are evaluated separately. Email-provider unsubscribe, complaint, rejection, and invalid-address information is not yet integrated.';
 
 export const IDENTITY_NO_MERGE = 'No automatic merge has occurred.';
 

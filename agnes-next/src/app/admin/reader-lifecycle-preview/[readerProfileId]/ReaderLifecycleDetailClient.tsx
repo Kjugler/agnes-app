@@ -190,6 +190,9 @@ export default function ReaderLifecycleDetailClient({
                     reader.legacy.readerType ? `Type: ${reader.legacy.readerType}` : null,
                     reader.legacy.source ? `Source: ${reader.legacy.source}` : null,
                     reader.legacy.status ? `Status: ${crmStatusLabel(reader.legacy.status)}` : null,
+                    reader.legacy.status === 'archived' && reader.legacy.archiveReasonCode
+                      ? `Archive reason: ${reader.legacy.archiveReasonCode}`
+                      : null,
                   ]
                     .filter(Boolean)
                     .join(' · ') || 'No legacy CRM fields'}

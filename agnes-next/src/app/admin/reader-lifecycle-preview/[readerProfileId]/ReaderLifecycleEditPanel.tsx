@@ -17,12 +17,15 @@ import listStyles from '../preview.module.css';
 import {
   ADD_KIND_OPTIONS,
   ALLOW_CONTACT_WARNING,
+  ARCHIVE_CONSEQUENCE,
+  ARCHIVE_REASON_OPTIONS,
   ACTORS_EMPTY,
   ACTORS_LOADING,
   ACTORS_PROXY_PATH,
   actorLoadErrorCopy,
   CONFIRM_REPLACES_NOTE,
   DISPUTE_CONSEQUENCE,
+  DUPLICATE_ARCHIVE_WARNING,
   IDENTITY_OPEN_REASON_OPTIONS,
   IDENTITY_RESOLVE_NOTE,
   IDENTITY_RESOLVE_OPTIONS,
@@ -30,11 +33,13 @@ import {
   NO_NURTURE_JOB,
   PROVISIONAL_ADD_NOTE,
   REPLACE_CONSEQUENCE,
+  RESTORE_CONSEQUENCE,
   SUPERSEDE_CONFIRM_NOTE,
   WEBSITE_WRONG_OWNER_NOTE,
   actionTitle,
   actorName,
   addEvidencePayload,
+  archiveReaderPayload,
   beginIdempotencySession,
   canCorrectEvidence,
   canSubmitWithActors,
@@ -48,6 +53,7 @@ import {
   fieldErrorFromCode,
   historyPreservationNote,
   idempotencyKeyForAttempt,
+  inFlightLabel,
   isSelectableActorId,
   mutationErrorCopy,
   mutationPath,
@@ -57,6 +63,7 @@ import {
   permittedActions,
   replaceEvidencePayload,
   resolveIdentityReviewPayload,
+  restoreReaderPayload,
   selectableActors,
   successMessage,
   toDateInputValue,
@@ -64,6 +71,8 @@ import {
   validateReason,
   type AddEvidenceDraft,
   type AddEvidenceKind,
+  type ArchiveDraft,
+  type ArchiveReasonCode,
   type CorrectEvidenceDraft,
   type EditAction,
   type IdempotencySession,
@@ -102,6 +111,10 @@ function emptyOpenDraft(): OpenReviewDraft {
   return { reasonCode: 'possible_wrong_website_owner', details: '', otherUserId: '', reason: '', actorId: '' };
 }
 
+function emptyArchiveDraft(): ArchiveDraft {
+  return { reasonCode: 'test_record', details: '' };
+}
+
 function emptyCommon(): CommonDraft {
   return { reason: '', actorId: '', acknowledged: false };
 }
@@ -128,6 +141,7 @@ export default function ReaderLifecycleEditPanel({
   const [addDraft, setAddDraft] = useState<AddEvidenceDraft>(emptyAddDraft());
   const [correctDraft, setCorrectDraft] = useState<CorrectEvidenceDraft>(emptyCorrectDraft());
   const [openDraft, setOpenDraft] = useState<OpenReviewDraft>(emptyOpenDraft());
+  const [archiveDraft, setArchiveDraft] = useState<ArchiveDraft>(emptyArchiveDraft());
   const [common, setCommon] = useState<CommonDraft>(emptyCommon());
   const [resolveStatus, setResolveStatus] = useState<IdentityResolveStatus>('resolved_keep_separate');
   const [actors, setActors] = useState<LifecycleActor[]>([]);
@@ -239,6 +253,7 @@ export default function ReaderLifecycleEditPanel({
     setCommon(emptyCommon());
     setOpenDraft(emptyOpenDraft());
     setAddDraft(emptyAddDraft());
+    setArchiveDraft(emptyArchiveDraft());
     const row = findEvidence(reader, next);
     if (row && (next.type === 'correctEvidence' || next.type === 'replaceEvidence')) {
       setCorrectDraft({
@@ -266,7 +281,7 @@ export default function ReaderLifecycleEditPanel({
     queueMicrotask(() => manageRef.current?.focus());
   }
 
-  function currentPayload(): Record<string, string> | null {
+  function currentPayload(): Record<string, string | boolean> | null {
     if (!action) return null;
     if (action.type === 'addEvidence') return addEvidencePayload(addDraft);
     if (action.type === 'confirmEvidence') {
@@ -288,6 +303,17 @@ export default function ReaderLifecycleEditPanel({
     }
     if (action.type === 'resolveIdentityReview') {
       return resolveIdentityReviewPayload(resolveStatus, common.reason, common.actorId);
+    }
+    if (action.type === 'archiveReader') {
+      return archiveReaderPayload(
+        archiveDraft,
+        common.reason,
+        common.actorId,
+        reader.legacy.status || 'active',
+      );
+    }
+    if (action.type === 'restoreReader') {
+      return restoreReaderPayload(common.reason, common.actorId, 'archived');
     }
     return null;
   }
@@ -311,8 +337,15 @@ export default function ReaderLifecycleEditPanel({
       const detailsErr = validateDetails(openDraft.details, true);
       if (detailsErr) errors.details = detailsErr;
     }
+    if (action?.type === 'archiveReader' && archiveDraft.reasonCode === 'other') {
+      const detailsErr = validateDetails(archiveDraft.details, true);
+      if (detailsErr) errors.details = detailsErr;
+    }
     if (action?.type === 'confirmEvidence' && !common.acknowledged) {
       errors.acknowledged = 'Confirm that a new confirmed record will replace the provisional record.';
+    }
+    if ((action?.type === 'archiveReader' || action?.type === 'restoreReader') && !common.acknowledged) {
+      errors.acknowledged = 'Confirm that you understand the consequences before continuing.';
     }
     if (action?.type === 'correctEvidence' || action?.type === 'replaceEvidence') {
       const detailsErr = validateDetails(correctDraft.details);
@@ -611,6 +644,62 @@ export default function ReaderLifecycleEditPanel({
                   />
                 </>
               ) : null}
+              {action.type === 'archiveReader' ? (
+                <>
+                  <p className={styles.formNote}>{ARCHIVE_CONSEQUENCE}</p>
+                  {archiveDraft.reasonCode === 'duplicate_or_identity_issue' ? (
+                    <p className={styles.formNote}>{DUPLICATE_ARCHIVE_WARNING}</p>
+                  ) : null}
+                  <ArchiveFields
+                    draft={archiveDraft}
+                    expectedStatus={reader.legacy.status || 'active'}
+                    errors={fieldErrors}
+                    disabled={fieldsDisabled}
+                    onChange={setArchiveDraft}
+                  />
+                  <AckField
+                    checked={common.acknowledged}
+                    disabled={fieldsDisabled}
+                    error={fieldErrors.acknowledged}
+                    label="I understand this archives the operational reader only. Purchases and accounting are not deleted or changed, and discretionary outreach stops."
+                    onChange={(acknowledged) => setCommon((prev) => ({ ...prev, acknowledged }))}
+                  />
+                  <ReasonActorFields
+                    reason={common.reason}
+                    actorId={common.actorId}
+                    errors={fieldErrors}
+                    disabled={fieldsDisabled}
+                    actors={selectable}
+                    reasonLabel="Administrative explanation"
+                    onChange={(patch) => setCommon((prev) => ({ ...prev, ...patch }))}
+                  />
+                </>
+              ) : null}
+              {action.type === 'restoreReader' ? (
+                <>
+                  <p className={styles.formNote}>{RESTORE_CONSEQUENCE}</p>
+                  <p className={styles.formNote}>
+                    Current archive reason: {reader.legacy.archiveReasonCode || 'not recorded'}.
+                    {reader.legacy.archiveDetails ? ` ${reader.legacy.archiveDetails}` : ''}
+                  </p>
+                  <AckField
+                    checked={common.acknowledged}
+                    disabled={fieldsDisabled}
+                    error={fieldErrors.acknowledged}
+                    label="I understand restore does not erase archive history and does not authorize outreach if another suppression still applies."
+                    onChange={(acknowledged) => setCommon((prev) => ({ ...prev, acknowledged }))}
+                  />
+                  <ReasonActorFields
+                    reason={common.reason}
+                    actorId={common.actorId}
+                    errors={fieldErrors}
+                    disabled={fieldsDisabled}
+                    actors={selectable}
+                    reasonLabel="Administrative restoration reason"
+                    onChange={(patch) => setCommon((prev) => ({ ...prev, ...patch }))}
+                  />
+                </>
+              ) : null}
 
               <div className={styles.formActions}>
                 <button className={styles.secondary} type="button" disabled={inFlight} onClick={() => setAction(null)}>
@@ -628,7 +717,7 @@ export default function ReaderLifecycleEditPanel({
       {step === 'confirm' && action ? (
         <div className={styles.overlay}>
           <div
-            className={`${styles.dialog} ${action.type === 'disputeEvidence' || action.type === 'addDnc' ? styles.dialogDanger : ''}`}
+            className={`${styles.dialog} ${action.type === 'disputeEvidence' || action.type === 'addDnc' || action.type === 'archiveReader' ? styles.dialogDanger : ''}`}
             role="dialog"
             aria-modal="true"
             aria-labelledby={dialogTitleId}
@@ -644,7 +733,7 @@ export default function ReaderLifecycleEditPanel({
             <ol className={styles.confirmList}>
               <li>
                 <strong>What will be added or changed</strong>
-                {changeSummary(action, { addDraft, correctDraft, openDraft, common, resolveStatus, evidence })}
+                {changeSummary(action, { addDraft, correctDraft, openDraft, archiveDraft, common, resolveStatus, evidence })}
               </li>
               <li>
                 <strong>What history will be preserved</strong>
@@ -684,12 +773,12 @@ export default function ReaderLifecycleEditPanel({
                 Cancel—make no changes
               </button>
               <button
-                className={action.type === 'disputeEvidence' || action.type === 'addDnc' ? styles.danger : styles.primary}
+                className={action.type === 'disputeEvidence' || action.type === 'addDnc' || action.type === 'archiveReader' ? styles.danger : styles.primary}
                 type="button"
                 disabled={fieldsDisabled}
                 onClick={() => void submit('save')}
               >
-                {inFlight ? 'Saving…' : confirmButtonLabel(action)}
+                {inFlight ? inFlightLabel(action) : confirmButtonLabel(action)}
               </button>
             </div>
           </div>
@@ -927,6 +1016,52 @@ function OpenReviewFields({
   );
 }
 
+function ArchiveFields({
+  draft,
+  expectedStatus,
+  errors,
+  disabled,
+  onChange,
+}: {
+  draft: ArchiveDraft;
+  expectedStatus: string;
+  errors: FieldErrors;
+  disabled: boolean;
+  onChange: (draft: ArchiveDraft) => void;
+}) {
+  return (
+    <>
+      <p className={styles.formNote}>Expected current status: {expectedStatus}</p>
+      <Field id="reasonCode" label="Archive reason" error={errors.reasonCode}>
+        <select
+          id="field-reasonCode"
+          value={draft.reasonCode}
+          disabled={disabled}
+          onChange={(event) => onChange({ ...draft, reasonCode: event.target.value as ArchiveReasonCode })}
+        >
+          {ARCHIVE_REASON_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field
+        id="details"
+        label={draft.reasonCode === 'other' ? 'Details (required for Other)' : 'Additional details (optional)'}
+        error={errors.details}
+      >
+        <textarea
+          id="field-details"
+          value={draft.details}
+          disabled={disabled}
+          onChange={(event) => onChange({ ...draft, details: event.target.value })}
+        />
+      </Field>
+    </>
+  );
+}
+
 function CorrectFields({
   draft,
   original,
@@ -1017,11 +1152,13 @@ function AckField({
   disabled,
   error,
   onChange,
+  label,
 }: {
   checked: boolean;
   disabled: boolean;
   error?: string;
   onChange: (value: boolean) => void;
+  label?: string;
 }) {
   return (
     <div className={`${styles.field} ${error ? styles.fieldError : ''}`}>
@@ -1034,8 +1171,8 @@ function AckField({
           onChange={(event) => onChange(event.target.checked)}
         />
         <span>
-          I understand a new confirmed record will replace the provisional record while preserving the original
-          history.
+          {label ||
+            'I understand a new confirmed record will replace the provisional record while preserving the original history.'}
         </span>
       </label>
       {error ? <p className={styles.fieldMessage}>{error}</p> : null}
@@ -1061,6 +1198,7 @@ function changeSummary(
     addDraft: AddEvidenceDraft;
     correctDraft: CorrectEvidenceDraft;
     openDraft: OpenReviewDraft;
+    archiveDraft: ArchiveDraft;
     common: CommonDraft;
     resolveStatus: IdentityResolveStatus;
     evidence: LifecycleEvidence | null;
@@ -1083,6 +1221,13 @@ function changeSummary(
   if (action.type === 'resolveIdentityReview') {
     const option = IDENTITY_RESOLVE_OPTIONS.find((item) => item.value === drafts.resolveStatus);
     return option?.label || 'Resolve the identity review.';
+  }
+  if (action.type === 'archiveReader') {
+    const option = ARCHIVE_REASON_OPTIONS.find((item) => item.value === drafts.archiveDraft.reasonCode);
+    return `Archive this operational reader (${option?.label || 'reason'}). Purchases and accounting stay unchanged.`;
+  }
+  if (action.type === 'restoreReader') {
+    return 'Restore this operational reader. Archive history remains. Independent Do Not Contact stays in force.';
   }
   return 'Apply this administrative change.';
 }

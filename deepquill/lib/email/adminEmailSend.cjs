@@ -5,6 +5,7 @@ const { ensureDatabaseUrl } = require('../../server/prisma.cjs');
 const { normalizeEmail, isSyntheticReaderEmail } = require('../../src/lib/normalize.cjs');
 const { getMailchimpClient } = require('./sendEmail.cjs');
 const { getTemplateContent } = require('./adminEmailTemplates.cjs');
+const { loadPromotionalIneligibleEmailSet } = require('../readers/readerOutreachEligibility.cjs');
 
 const BATCH_SIZE = Math.max(1, Number(process.env.ADMIN_EMAIL_BATCH_SIZE || 50));
 const BATCH_DELAY_MS = Math.max(0, Number(process.env.ADMIN_EMAIL_BATCH_DELAY_MS || 1500));
@@ -148,16 +149,17 @@ async function fetchSuppressedSet() {
 }
 
 function emptySkip() {
-  return { invalid: 0, duplicate: 0, example: 0, suppressed: 0, alreadySent: 0 };
+  return { invalid: 0, duplicate: 0, example: 0, suppressed: 0, alreadySent: 0, archived: 0 };
 }
 
 /**
  * Build eligible list from DB union + filter rules.
  */
-function buildEligiblePipeline(candidateRows, { excludeExample, suppressedSet, sentIndex }) {
+function buildEligiblePipeline(candidateRows, { excludeExample, suppressedSet, sentIndex, archivedSet }) {
   const skip = emptySkip();
   const deduped = new Set();
   const eligible = [];
+  const operational = archivedSet || new Set();
 
   for (const row of candidateRows) {
     const normalized = normalizeEmail(row.email);
@@ -178,6 +180,10 @@ function buildEligiblePipeline(candidateRows, { excludeExample, suppressedSet, s
       continue;
     }
     deduped.add(normalized);
+    if (operational.has(normalized)) {
+      skip.archived += 1;
+      continue;
+    }
     if (suppressedSet.has(normalized)) {
       skip.suppressed += 1;
       continue;
@@ -299,10 +305,21 @@ async function runAdminEmailSend(prisma, body) {
   const candidateRows = await collectCandidateRows(prisma);
   const suppressed = await fetchSuppressedSet();
   const sentIndex = loadSentIndex(template);
+  let archivedSet;
+  try {
+    archivedSet = await loadPromotionalIneligibleEmailSet(prisma);
+  } catch {
+    return {
+      ...emptyResponse({ database }),
+      ok: false,
+      error: 'Could not establish promotional exclusion set',
+      sent: 0,
+    };
+  }
 
   const { totalCandidates, eligible: baseEligible, skip: baseSkip } = buildEligiblePipeline(
     candidateRows,
-    { excludeExample, suppressedSet: suppressed.set, sentIndex },
+    { excludeExample, suppressedSet: suppressed.set, sentIndex, archivedSet },
   );
 
   let targets = [];
@@ -334,6 +351,14 @@ async function runAdminEmailSend(prisma, body) {
         error: 'testEmail is on Mailchimp reject list',
       };
     }
+    if (archivedSet.has(testEmail)) {
+      return {
+        ...emptyResponse({ totalCandidates, eligible: 0, skipped: baseSkip }),
+        ok: false,
+        database,
+        error: 'testEmail is operationally ineligible (archived or do-not-contact)',
+      };
+    }
     if (excludeExample && testEmail.endsWith('@example.com')) {
       return {
         ...emptyResponse(),
@@ -361,6 +386,10 @@ async function runAdminEmailSend(prisma, body) {
         continue;
       }
       seen.add(n);
+      if (archivedSet.has(n)) {
+        selectionSkip.archived += 1;
+        continue;
+      }
       if (suppressed.set.has(n)) {
         selectionSkip.suppressed += 1;
         continue;
