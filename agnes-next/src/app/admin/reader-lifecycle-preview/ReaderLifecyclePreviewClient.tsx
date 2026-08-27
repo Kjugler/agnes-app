@@ -9,6 +9,8 @@ import {
   CRM_STATUS_VALUES,
   EMPTY_FILTERS,
   FULFILLMENT_AUTH_HREF,
+  LIST_FILTER_EXPLANATION,
+  LIST_FILTER_HEADING,
   LIST_PROXY_PATH,
   OWNERSHIP_VALUES,
   REVIEW_VALUES,
@@ -248,10 +250,16 @@ export default function ReaderLifecyclePreviewClient() {
           applyFilters();
         }}
         aria-labelledby={`${formId}-filters`}
+        aria-describedby={`${formId}-filter-hint`}
       >
-        <h2 id={`${formId}-filters`} className={styles.srOnly}>
-          Filter readers
-        </h2>
+        <div className={styles.filterIntro}>
+          <h2 id={`${formId}-filters`} className={styles.filterHeading}>
+            {LIST_FILTER_HEADING}
+          </h2>
+          <p id={`${formId}-filter-hint`} className={styles.filterHint}>
+            {LIST_FILTER_EXPLANATION}
+          </p>
+        </div>
         <label className={styles.fieldWide}>
           <span className={styles.label} id={`${formId}-q-label`}>
             Search name or email

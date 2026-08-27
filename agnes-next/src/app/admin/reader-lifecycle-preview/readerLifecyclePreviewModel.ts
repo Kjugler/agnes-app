@@ -521,6 +521,9 @@ export const PROVIDER_WARNING =
 export const CONTACTABLE_ASTERISK_NOTE =
   '* “Locally contactable” is a local record only. Provider suppression status is not yet integrated.';
 
+export const LIST_FILTER_HEADING = 'FILTER THE READER LIST';
+export const LIST_FILTER_EXPLANATION = 'These controls do not change reader records.';
+
 export const LIST_PROXY_PATH = '/api/admin/reader-lifecycle/readers';
 export const LIST_PREVIEW_PATH = '/admin/reader-lifecycle-preview';
 

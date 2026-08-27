@@ -152,6 +152,47 @@ async function main() {
       assert.doesNotMatch(client, /Save|Approve batch|Send email|Add reader/i);
     });
 
+    await check('list filter heading is visible and filter activity stays GET-only', () => {
+      const client = fs.readFileSync(FILES.client, 'utf8');
+      const css = fs.readFileSync(FILES.css, 'utf8');
+      assert.equal(mod.LIST_FILTER_HEADING, 'FILTER THE READER LIST');
+      assert.equal(mod.LIST_FILTER_EXPLANATION, 'These controls do not change reader records.');
+      assert.match(client, /LIST_FILTER_HEADING/);
+      assert.match(client, /LIST_FILTER_EXPLANATION/);
+      assert.match(client, /className=\{styles\.filterHeading\}/);
+      assert.match(client, /className=\{styles\.filterHint\}/);
+      assert.doesNotMatch(client, /styles\.srOnly[\s\S]{0,120}LIST_FILTER_HEADING/);
+      assert.doesNotMatch(client, /LIST_FILTER_HEADING[\s\S]{0,80}styles\.srOnly/);
+      assert.doesNotMatch(client, /className=\{styles\.srOnly\}>\s*Filter readers/);
+      const formIdx = client.indexOf('className={styles.filters}');
+      const headingIdx = client.indexOf('{LIST_FILTER_HEADING}');
+      const searchIdx = client.indexOf('Search name or email');
+      const loadingIdx = client.indexOf('Loading readers');
+      const emptyIdx = client.indexOf('No readers found for these filters.');
+      const errorIdx = client.indexOf('ERROR_COPY[errorKind]');
+      assert.ok(formIdx > 0 && headingIdx > formIdx && headingIdx < searchIdx, 'heading must sit above search/filter controls');
+      assert.ok(formIdx < loadingIdx && formIdx < emptyIdx && formIdx < errorIdx, 'filter copy must remain mounted through loading/empty/error');
+      assert.match(client, /fetch\(`\$\{LIST_PROXY_PATH\}\?\$\{qs\.toString\(\)\}`, \{\s*method: 'GET'/);
+      assert.doesNotMatch(client, /proxyReaderLifecyclePost/);
+      assert.doesNotMatch(client, /\/evidence|\/contact-decisions|\/identity-reviews|\/communications/);
+      const applyFn = client.match(/function applyFilters\(\) \{[\s\S]*?\n  \}/);
+      const clearFn = client.match(/function clearFilters\(\) \{[\s\S]*?\n  \}/);
+      assert.ok(applyFn && clearFn, 'apply/clear filter helpers missing');
+      assert.doesNotMatch(applyFn[0], /fetch\(/);
+      assert.doesNotMatch(clearFn[0], /fetch\(/);
+      assert.match(applyFn[0], /setApplied/);
+      assert.match(clearFn[0], /EMPTY_FILTERS/);
+      const headingCss = css.match(/\.filterHeading \{[\s\S]*?\n\}/);
+      const introCss = css.match(/\.filterIntro \{[\s\S]*?\n\}/);
+      assert.ok(headingCss && introCss, 'filter heading styles missing');
+      assert.doesNotMatch(headingCss[0], /clip:|width:\s*1px|height:\s*1px|position:\s*absolute/);
+      assert.match(introCss[0], /grid-column:\s*1\s*\/\s*-1/);
+      assert.match(introCss[0], /min-width:\s*0/);
+      assert.match(css, /\.filterHint \{/);
+      assert.match(css, /overflow-wrap:\s*anywhere/);
+      assert.match(css, /@media \(max-width: 520px\) \{\s*\.filters \{\s*grid-template-columns: 1fr;/);
+    });
+
     await check('confirmed website purchaser labels', () => {
       const row = mod.parseListItem(item({}));
       assert.equal(mod.ownershipLabel(row.ownership), 'Purchaser');

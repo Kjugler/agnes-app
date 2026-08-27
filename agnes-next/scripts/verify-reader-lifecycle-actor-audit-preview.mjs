@@ -27,6 +27,8 @@ const requireCjs = createRequire(import.meta.url);
 const live = requireCjs('./reader-lifecycle-edit-live.cjs');
 
 const FILES = {
+  listClient: path.join(PREVIEW_DIR, 'ReaderLifecyclePreviewClient.tsx'),
+  listCss: path.join(PREVIEW_DIR, 'preview.module.css'),
   detailPage: path.join(DETAIL_DIR, 'page.tsx'),
   detailClient: path.join(DETAIL_DIR, 'ReaderLifecycleDetailClient.tsx'),
   detailModel: path.join(DETAIL_DIR, 'readerLifecycleDetailModel.ts'),
@@ -277,6 +279,20 @@ async function main() {
   const screenshotPaths = [];
 
   try {
+    await check('list preview filter clarity remains GET-only', () => {
+      const client = scan(FILES.listClient);
+      const css = scan(FILES.listCss);
+      assert.match(client, /LIST_FILTER_HEADING/);
+      assert.match(client, /LIST_FILTER_EXPLANATION/);
+      assert.match(client, /className=\{styles\.filterHeading\}/);
+      assert.doesNotMatch(client, /styles\.srOnly[\s\S]{0,120}LIST_FILTER_HEADING/);
+      assert.match(client, /method: 'GET'/);
+      assert.doesNotMatch(client, /method:\s*['"]POST['"]/);
+      assert.doesNotMatch(client, /proxyReaderLifecyclePost/);
+      assert.match(css, /\.filterHeading \{/);
+      assert.match(css, /overflow-wrap: anywhere/);
+    });
+
     await check('5F-B proxy routes exist and are GET-only', () => {
       for (const file of [FILES.actorsRoute, FILES.auditRoute]) {
         const src = scan(file);
@@ -699,6 +715,57 @@ async function main() {
             screenshotPaths.push(mobileShot);
             const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
             assert.equal(overflow, false, 'mobile viewport has horizontal overflow');
+
+            const listPage = await context.newPage();
+            const listApiCalls = [];
+            listPage.on('request', (req) => {
+              const href = req.url();
+              if (!href.includes('/api/')) return;
+              listApiCalls.push({ method: req.method(), href });
+            });
+            await listPage.goto(`http://127.0.0.1:${nextPort}/admin/reader-lifecycle-preview`, {
+              waitUntil: 'domcontentloaded',
+            });
+            const filterHeading = listPage.getByRole('heading', { name: 'FILTER THE READER LIST' });
+            await filterHeading.waitFor({ timeout: 20000 });
+            await listPage.getByText(/Showing \d+ reader|No readers found for these filters/).waitFor({
+              timeout: 20000,
+            });
+            assert.equal(await filterHeading.isVisible(), true, 'list filter heading missing');
+            assert.equal(
+              await listPage.getByText('These controls do not change reader records.').isVisible(),
+              true,
+              'list filter explanation missing',
+            );
+            const listGetCount = () =>
+              listApiCalls.filter(
+                (row) => row.method === 'GET' && row.href.includes('/api/admin/reader-lifecycle/readers'),
+              ).length;
+            const getsBeforeApply = listGetCount();
+            await listPage.getByLabel('Ownership').selectOption('purchaser');
+            await listPage.getByRole('button', { name: 'Apply filters' }).click();
+            await listPage.getByText(/Showing \d+ reader|No readers found for these filters/).waitFor({
+              timeout: 20000,
+            });
+            assert.ok(listGetCount() > getsBeforeApply, 'applying filters never issued a list GET');
+            const listNonGet = listApiCalls.filter((row) => row.method !== 'GET');
+            assert.equal(
+              listNonGet.length,
+              0,
+              `list filters issued ${listNonGet.map((row) => `${row.method} ${row.href}`).join(', ')}`,
+            );
+            assert.equal(
+              listApiCalls.some((row) => /\/evidence|\/contact-decisions|\/identity-reviews/.test(row.href)),
+              false,
+              'list filter activity called a mutation proxy',
+            );
+            await listPage.setViewportSize({ width: 390, height: 844 });
+            assert.equal(await filterHeading.isVisible(), true, 'list filter heading hidden on mobile');
+            const listOverflow = await listPage.evaluate(
+              () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+            );
+            assert.equal(listOverflow, false, 'list preview mobile viewport has horizontal overflow');
+            await listPage.close();
 
             const denyPage = await context.newPage();
             let allowActors = false;

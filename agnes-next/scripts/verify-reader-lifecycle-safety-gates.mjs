@@ -458,6 +458,107 @@ async function assertManageVisible(port, expected, label) {
   process.stdout.write(`note  playwright not installed; used SSR HTML for ${label}\n`);
 }
 
+async function recordCounts(prisma) {
+  return {
+    ...(await writeCounts(prisma)),
+    profiles: await prisma.readerProfile.count(),
+    users: await prisma.user.count(),
+    purchases: await prisma.purchase.count(),
+  };
+}
+
+async function assertListFilterClarity(port, prisma, label) {
+  const before = await recordCounts(prisma);
+  const pw = tryPlaywright();
+  if (pw && pw.chromium) {
+    const browser = await pw.chromium.launch();
+    try {
+      const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+      await context.addCookies([
+        {
+          name: 'fulfillment-token',
+          value: FULFILLMENT_TOKEN,
+          url: `http://127.0.0.1:${port}`,
+        },
+      ]);
+      const page = await context.newPage();
+      const apiCalls = [];
+      page.on('request', (req) => {
+        const href = req.url();
+        if (!href.includes('/api/')) return;
+        apiCalls.push({ method: req.method(), href });
+      });
+      await page.goto(`http://127.0.0.1:${port}/admin/reader-lifecycle-preview`, {
+        waitUntil: 'domcontentloaded',
+      });
+      const heading = page.getByRole('heading', { name: 'FILTER THE READER LIST' });
+      await heading.waitFor({ timeout: 20000 });
+      await page.getByText(/Showing \d+ reader|No readers found for these filters/).waitFor({
+        timeout: 20000,
+      });
+      assert.equal(await heading.isVisible(), true, `${label}: heading not visible on desktop`);
+      assert.equal(
+        await page.getByText('These controls do not change reader records.').isVisible(),
+        true,
+        `${label}: explanation not visible on desktop`,
+      );
+      const box = await heading.boundingBox();
+      assert.ok(box && box.height >= 10 && box.width >= 40, `${label}: heading is not visually rendered`);
+      const listGetCount = () =>
+        apiCalls.filter(
+          (row) => row.method === 'GET' && row.href.includes('/api/admin/reader-lifecycle/readers'),
+        ).length;
+      const getsBeforeApply = listGetCount();
+      await page.getByLabel('Ownership').selectOption('purchaser');
+      await page.getByRole('button', { name: 'Apply filters' }).click();
+      await page.getByText(/Showing \d+ reader|No readers found for these filters/).waitFor({
+        timeout: 20000,
+      });
+      assert.ok(listGetCount() > getsBeforeApply, `${label}: applying filters never issued a list GET`);
+      const getsBeforeClear = listGetCount();
+      await page.getByRole('button', { name: 'Clear filters' }).click();
+      await page.getByText(/Showing \d+ reader|No readers found for these filters/).waitFor({
+        timeout: 20000,
+      });
+      assert.ok(listGetCount() > getsBeforeClear, `${label}: clearing filters never issued a list GET`);
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await heading.waitFor({ timeout: 20000 });
+      await page.getByText(/Showing \d+ reader|No readers found for these filters/).waitFor({
+        timeout: 20000,
+      });
+      const nonGet = apiCalls.filter((row) => row.method !== 'GET');
+      assert.equal(
+        nonGet.length,
+        0,
+        `${label}: filter activity issued ${nonGet.map((row) => `${row.method} ${row.href}`).join(', ')}`,
+      );
+      assert.equal(
+        apiCalls.some((row) =>
+          /\/evidence|\/contact-decisions|\/identity-reviews|\/communications/.test(row.href),
+        ),
+        false,
+        `${label}: filter activity called a mutation proxy`,
+      );
+      await page.setViewportSize({ width: 390, height: 844 });
+      assert.equal(await heading.isVisible(), true, `${label}: heading not visible on mobile`);
+      assert.equal(
+        await page.getByText('These controls do not change reader records.').isVisible(),
+        true,
+        `${label}: explanation not visible on mobile`,
+      );
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+      );
+      assert.equal(overflow, false, `${label}: list preview mobile viewport has horizontal overflow`);
+    } finally {
+      await browser.close();
+    }
+  } else {
+    process.stdout.write(`note  playwright not installed; used record counts for ${label}\n`);
+  }
+  assert.deepEqual(await recordCounts(prisma), before, `${label}: filter activity altered reader records`);
+}
+
 async function main() {
   const initialDbHash = sha256File(DEV_DB);
   assert.equal(initialDbHash, CANONICAL_DEV_DB_SHA256, 'dev.db hash changed before tests');
@@ -714,8 +815,11 @@ async function main() {
         assert.equal(listPage.status, 200);
         assert.match(listPage.text, /LIVE READER LIFECYCLE BETA/);
         assert.match(listPage.text, /Viewing live administrative records/);
+        assert.match(listPage.text, /FILTER THE READER LIST/);
+        assert.match(listPage.text, /These controls do not change reader records\./);
         assert.doesNotMatch(listPage.text, /LOCAL SYNTHETIC PREVIEW/);
         assert.doesNotMatch(listPage.text, /synthetic records only/i);
+        await assertListFilterClarity(readOnlyPort, prisma, 'both flags absent');
 
         const detailPage = await httpCall({
           port: readOnlyPort,
