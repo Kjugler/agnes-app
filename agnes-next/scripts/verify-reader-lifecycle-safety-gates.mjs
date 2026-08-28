@@ -41,6 +41,7 @@ const FILES = {
   writeRouter: WRITE_ROUTER,
   getRouter: GET_ROUTER,
   liveHelper: path.join(SCRIPT_DIR, 'reader-lifecycle-edit-live.cjs'),
+  adminPage: path.join(AGNES_NEXT_ROOT, 'src', 'app', 'admin', 'page.tsx'),
 };
 
 const ADMIN_KEY = 'checkpoint5h-synthetic-admin-key-not-for-production';
@@ -390,7 +391,20 @@ function assertDisabledPost(res, label) {
   assert.equal(res.status, 503, `${label} status=${res.status} body=${String(res.text).slice(0, 240)}`);
   assert.equal(res.json && res.json.ok, false);
   assert.equal(res.json && res.json.error, MUTATIONS_DISABLED);
+  assert.equal(res.json && Object.prototype.hasOwnProperty.call(res.json, 'reader'), false, `${label}: reader payload`);
+  assert.equal(res.json && Object.prototype.hasOwnProperty.call(res.json, 'mutation'), false, `${label}: mutation payload`);
+  assert.deepEqual(res.json, { ok: false, error: MUTATIONS_DISABLED }, `${label}: extra payload fields`);
   assert.match(String(res.headers['cache-control'] || ''), /no-store/i);
+}
+
+function assertNoFlagLeak(text, label) {
+  const src = String(text);
+  assert.doesNotMatch(src, /NEXT_PUBLIC_READER_LIFECYCLE/, `${label}: public flag leaked`);
+  assert.doesNotMatch(
+    src,
+    /READER_LIFECYCLE_(?:EDITING_ENABLED|MUTATIONS_ENABLED|SYNTHETIC_PREVIEW)\s*[=:]\s*["']?1["']?/,
+    `${label}: flag value leaked`,
+  );
 }
 
 function tryPlaywright() {
@@ -458,6 +472,71 @@ async function assertManageVisible(port, expected, label) {
     assert.doesNotMatch(page.text, />Open identity review</);
   }
   process.stdout.write(`note  playwright not installed; used SSR HTML for ${label}\n`);
+}
+
+async function assertNoOverflow(page, label) {
+  const overflow = await page.evaluate(() => {
+    const docOverflow = document.documentElement.scrollWidth > document.documentElement.clientWidth + 1;
+    const clipped = [...document.querySelectorAll('button, select, textarea, input, [role="dialog"]')].some((el) => {
+      const box = el.getBoundingClientRect();
+      if (box.width < 2 || box.height < 2) return false;
+      if (!el.checkVisibility || !el.checkVisibility()) return false;
+      return box.right > window.innerWidth + 2 || box.left < -2;
+    });
+    return { docOverflow, clipped };
+  });
+  assert.equal(overflow.docOverflow, false, `${label}: horizontal overflow`);
+  assert.equal(overflow.clipped, false, `${label}: control clipped or hidden`);
+}
+
+async function assertSubmitLocked(port, label) {
+  const pw = tryPlaywright();
+  if (!pw || !pw.chromium) {
+    process.stdout.write(`note  playwright not installed; skipped submit-locked UI for ${label}\n`);
+    return;
+  }
+  const browser = await pw.chromium.launch();
+  try {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    await context.addCookies([
+      {
+        name: 'fulfillment-token',
+        value: FULFILLMENT_TOKEN,
+        url: `http://127.0.0.1:${port}`,
+      },
+    ]);
+    const page = await context.newPage();
+    const posts = [];
+    page.on('request', (req) => {
+      if (req.method() === 'POST' && /\/api\/admin\/reader-lifecycle\//.test(req.url())) {
+        posts.push(req.url());
+      }
+    });
+    await page.goto(`http://127.0.0.1:${port}/admin/reader-lifecycle-preview/rp_edit_blank`, {
+      waitUntil: 'domcontentloaded',
+    });
+    await page.getByRole('heading', { name: /Blank Reader/i }).waitFor({ timeout: 20000 });
+    assert.match(await page.locator('[role="status"]').first().innerText(), /Management controls are visible for review/);
+    assert.match(await page.locator('[role="status"]').first().innerText(), /Saving remains disabled/);
+    await page.getByRole('button', { name: 'Manage lifecycle record' }).click();
+    await page.getByText('Saving has not been authorized.').first().waitFor({ timeout: 10000 });
+    await page.getByRole('button', { name: /Archive as test\/invalid operational reader/ }).click();
+    const review = page.getByRole('button', { name: 'Review changes' });
+    await review.waitFor({ timeout: 10000 });
+    await page.getByLabel(/Administrative explanation/).fill('Synthetic review of archive controls');
+    await page.getByLabel(/Action taken by/).selectOption({ index: 1 });
+    await page.getByLabel(/I understand this archives/).check();
+    await review.click();
+    const save = page.getByRole('button', { name: 'Archive operational reader' });
+    await save.waitFor({ timeout: 10000 });
+    assert.equal(await save.isDisabled(), true, `${label}: save button should be disabled`);
+    assert.match(await page.getByRole('dialog').innerText(), /Saving has not been authorized/);
+    await assertNoOverflow(page, `${label} confirm dialog`);
+    await save.click({ force: true }).catch(() => {});
+    assert.equal(posts.length, 0, `${label}: disabled save sent a mutation POST`);
+  } finally {
+    await browser.close();
+  }
 }
 
 async function recordCounts(prisma) {
@@ -592,22 +671,43 @@ async function main() {
       assert.doesNotMatch(flagFn[0], /\.trim\(/);
       assert.match(flagFn[0], /=== MUTATIONS_ENABLED_VALUE/);
       assert.doesNotMatch(getSrc, /READER_LIFECYCLE_MUTATIONS_ENABLED/);
-      assert.doesNotMatch(proxySrc, /READER_LIFECYCLE_EDITING_ENABLED/);
-      assert.doesNotMatch(proxySrc, /READER_LIFECYCLE_MUTATIONS_ENABLED/);
+      assert.match(proxySrc, /READER_LIFECYCLE_EDITING_ENABLED/);
+      assert.match(proxySrc, /READER_LIFECYCLE_MUTATIONS_ENABLED/);
+      assert.match(proxySrc, /lifecycle_mutations_disabled/);
+      assert.match(proxySrc, /vercelLifecycleMutationForwardAuthorized/);
+      const getFnStart = proxySrc.indexOf('export async function proxyReaderLifecycleGet');
+      const postFnStart = proxySrc.indexOf('export async function proxyReaderLifecyclePost');
+      assert.ok(getFnStart >= 0 && postFnStart > getFnStart, 'proxy GET/POST helpers missing');
+      const getFn = proxySrc.slice(getFnStart, postFnStart);
+      const postFn = proxySrc.slice(postFnStart);
+      assert.doesNotMatch(getFn, /READER_LIFECYCLE_EDITING_ENABLED/);
+      assert.doesNotMatch(getFn, /READER_LIFECYCLE_MUTATIONS_ENABLED/);
+      assert.doesNotMatch(getFn, /vercelLifecycleMutationForwardAuthorized/);
+      assert.match(postFn, /vercelLifecycleEditingAuthorized/);
+      assert.match(postFn, /vercelLifecycleMutationsAuthorized/);
+      assert.doesNotMatch(getFn, /vercelLifecycleEditingAuthorized/);
+      assert.doesNotMatch(getFn, /vercelLifecycleMutationsAuthorized/);
       assert.match(proxySrc, /reader_lifecycle_mutations_enabled/);
       assert.match(proxySrc, /reader_lifecycle_editing_enabled/);
       assert.match(listModel, /READER_LIFECYCLE_EDITING_ENABLED/);
+      assert.match(listModel, /READER_LIFECYCLE_MUTATIONS_ENABLED/);
       assert.match(listModel, /READER_LIFECYCLE_SYNTHETIC_PREVIEW/);
+      assert.match(listModel, /LIVE_REVIEW_BANNER/);
       assert.match(listModel, /new URL\(raw\)/);
       assert.match(listModel, /parsed\.hostname/);
       assert.doesNotMatch(listModel, /\.includes\(['"]localhost['"]\)/);
       assert.doesNotMatch(listModel, /\.includes\(['"]127\.0\.0\.1['"]\)/);
       assert.doesNotMatch(listModel, /raw\.includes\(/);
-      assert.doesNotMatch(listModel, /READER_LIFECYCLE_MUTATIONS_ENABLED/);
       assert.doesNotMatch(listPage, /searchParams/);
       assert.doesNotMatch(detailPage, /searchParams|document\.cookie|NEXT_PUBLIC_READER/);
       assert.match(detailPage, /readerLifecycleEditingEnabled/);
+      assert.match(detailPage, /readerLifecycleSavingEnabled/);
       assert.match(scan(FILES.detailClient), /editingEnabled \?/);
+      assert.match(scan(FILES.detailClient), /savingEnabled=\{savingEnabled\}/);
+      assert.match(scan(FILES.editPanel), /savingEnabled/);
+      assert.match(scan(FILES.editPanel), /SAVING_LOCKED_NOTE/);
+      assert.match(scan(FILES.editModel), /Saving has not been authorized/);
+      assert.doesNotMatch(scan(FILES.adminPage), /reader-lifecycle-preview/);
       assert.doesNotMatch(scan(FILES.liveHelper), /READER_LIFECYCLE_MUTATIONS_ENABLED\s*=/);
       for (const file of walkFiles(path.join(AGNES_NEXT_ROOT, 'src'))) {
         if (!/\.(ts|tsx|js|jsx)$/.test(file)) continue;
@@ -619,6 +719,8 @@ async function main() {
       assert.equal(list.envFlagExactlyOne('1 '), false);
       assert.equal(list.envFlagExactlyOne(''), false);
       assert.equal(list.readerLifecycleEditingEnabled({}), false);
+      assert.equal(list.readerLifecycleMutationsAuthorized({}), false);
+      assert.equal(list.readerLifecycleSavingEnabled({}), false);
       assert.equal(list.readerLifecycleSyntheticPreview({}), false);
       assert.equal(list.readerLifecycleSyntheticPreview({ READER_LIFECYCLE_SYNTHETIC_PREVIEW: '1' }), false);
       assert.equal(list.readerLifecycleBannerText({}), list.LIVE_READONLY_BANNER);
@@ -627,16 +729,26 @@ async function main() {
         'LIVE READER LIFECYCLE BETA — Viewing live administrative records. Changes and emails are disabled.',
       );
       assert.equal(list.SYNTHETIC_PREVIEW_BANNER, 'LOCAL SYNTHETIC PREVIEW — Test records only.');
+      assert.equal(
+        list.LIVE_REVIEW_BANNER,
+        'LIVE READER LIFECYCLE BETA — Management controls are visible for review. Saving remains disabled. No email, nurture, or Text-a-Friend request will be sent.',
+      );
+      assert.equal(
+        list.LIVE_EDITING_BANNER,
+        'LIVE READER LIFECYCLE BETA — Changes affect live administrative records. No email, nurture, or Text-a-Friend request will be sent.',
+      );
       assert.match(list.LIVE_EDITING_BANNER, /live administrative records/i);
       assert.match(list.LIVE_EDITING_BANNER, /No email/i);
       assert.doesNotMatch(list.LIVE_READONLY_BANNER, /synthetic records only/i);
       assert.doesNotMatch(list.LIVE_EDITING_BANNER, /synthetic records only/i);
+      assert.doesNotMatch(list.LIVE_REVIEW_BANNER, /synthetic records only/i);
+      assert.doesNotMatch(list.LIVE_REVIEW_BANNER, /Changes affect live administrative records/);
       assert.equal(
         list.readerLifecycleBannerText({
           READER_LIFECYCLE_SYNTHETIC_PREVIEW: '1',
           READER_LIFECYCLE_EDITING_ENABLED: '1',
         }),
-        list.LIVE_EDITING_BANNER,
+        list.LIVE_REVIEW_BANNER,
       );
       assert.equal(
         list.readerLifecycleBannerText({
@@ -648,7 +760,27 @@ async function main() {
       );
       assert.equal(
         list.readerLifecycleBannerText({ READER_LIFECYCLE_EDITING_ENABLED: '1' }),
+        list.LIVE_REVIEW_BANNER,
+      );
+      assert.equal(
+        list.readerLifecycleBannerText({ READER_LIFECYCLE_MUTATIONS_ENABLED: '1' }),
+        list.LIVE_READONLY_BANNER,
+      );
+      assert.equal(
+        list.readerLifecycleBannerText({
+          READER_LIFECYCLE_EDITING_ENABLED: '1',
+          READER_LIFECYCLE_MUTATIONS_ENABLED: '1',
+        }),
         list.LIVE_EDITING_BANNER,
+      );
+      assert.equal(list.readerLifecycleEditingEnabled({ READER_LIFECYCLE_MUTATIONS_ENABLED: '1' }), false);
+      assert.equal(list.readerLifecycleSavingEnabled({ READER_LIFECYCLE_EDITING_ENABLED: '1' }), false);
+      assert.equal(
+        list.readerLifecycleSavingEnabled({
+          READER_LIFECYCLE_EDITING_ENABLED: '1',
+          READER_LIFECYCLE_MUTATIONS_ENABLED: '1',
+        }),
+        true,
       );
       for (const file of [FILES.listPage, FILES.listClient, FILES.detailPage, FILES.detailClient, FILES.editModel]) {
         assert.doesNotMatch(scan(file), /synthetic records only/i, file);
@@ -728,6 +860,14 @@ async function main() {
           READER_LIFECYCLE_EDITING_ENABLED: '1',
           DEEPQUILL_URL: 'https://agnes-protocol-production.up.railway.app',
         }),
+        list.LIVE_REVIEW_BANNER,
+      );
+      assert.equal(
+        list.readerLifecycleBannerText({
+          READER_LIFECYCLE_EDITING_ENABLED: '1',
+          READER_LIFECYCLE_MUTATIONS_ENABLED: '1',
+          DEEPQUILL_URL: 'https://agnes-protocol-production.up.railway.app',
+        }),
         list.LIVE_EDITING_BANNER,
       );
     });
@@ -790,20 +930,62 @@ async function main() {
           });
         }
 
+        async function proxyGet(port, urlPath, extraHeaders = {}) {
+          return httpCall({
+            port,
+            method: 'GET',
+            urlPath,
+            headers: { cookie: SESSION_COOKIE, ...extraHeaders },
+          });
+        }
+
+        async function waitCompiled(port, urlPath) {
+          let res = await proxyGet(port, urlPath);
+          for (let i = 0; i < 30 && res.status === 404 && !res.json; i += 1) {
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            res = await proxyGet(port, urlPath);
+          }
+          return res;
+        }
+
+        async function restartNext(flags) {
+          if (nextHandle) {
+            killProcessTree(nextHandle.child.pid);
+            nextHandle = null;
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+          }
+          const port = await getFreePort();
+          nextHandle = startNextDev({ backendUrl, port, flags });
+          await waitForNextReady(nextHandle);
+          return port;
+        }
+
         const paths = mutationPaths('rp_edit_blank');
+        const archivePath = '/api/admin/reader-lifecycle/readers/rp_edit_other/archive';
+        const restorePath = '/api/admin/reader-lifecycle/readers/rp_edit_other/restore';
+        const archiveBody = {
+          reasonCode: 'test_record',
+          reason: 'Synthetic archive for staged authorization',
+          actorId: 'fu_preview_helper_a',
+          expectedStatus: 'active',
+          confirmed: true,
+        };
+        const restoreBody = {
+          reason: 'Synthetic restore after staged authorization',
+          actorId: 'fu_preview_helper_b',
+          expectedStatus: 'archived',
+          confirmed: true,
+        };
 
-        const readOnlyPort = await getFreePort();
-        nextHandle = startNextDev({ backendUrl, port: readOnlyPort, flags: {} });
-        await waitForNextReady(nextHandle);
-
-        const getList = await httpCall({
-          port: readOnlyPort,
-          method: 'GET',
-          urlPath: '/api/admin/reader-lifecycle/readers?pageSize=5',
-          headers: { cookie: SESSION_COOKIE },
-        });
+        const readOnlyPort = await restartNext({});
+        const getList = await waitCompiled(readOnlyPort, '/api/admin/reader-lifecycle/readers?pageSize=5');
         assert.equal(getList.status, 200, getList.text.slice(0, 240));
         assert.equal(getList.json && getList.json.ok, true);
+        assertNoFlagLeak(getList.text, 'GET list API');
+
+        const adminHub = await waitCompiled(readOnlyPort, '/admin');
+        assert.equal(adminHub.status, 200, adminHub.text.slice(0, 240));
+        assert.doesNotMatch(adminHub.text, /reader-lifecycle-preview/);
 
         const listPage = await httpCall({
           port: readOnlyPort,
@@ -817,11 +999,18 @@ async function main() {
         assert.equal(listPage.status, 200);
         assert.match(listPage.text, /LIVE READER LIFECYCLE BETA/);
         assert.match(listPage.text, /Viewing live administrative records/);
+        assert.match(listPage.text, /Changes and emails are disabled/);
         assert.match(listPage.text, /FILTER THE READER LIST/);
         assert.match(listPage.text, /These controls do not change reader records\./);
         assert.doesNotMatch(listPage.text, /LOCAL SYNTHETIC PREVIEW/);
         assert.doesNotMatch(listPage.text, /synthetic records only/i);
+        assert.doesNotMatch(listPage.text, /Management controls are visible for review/);
         await assertListFilterClarity(readOnlyPort, prisma, 'both flags absent');
+
+        const cleanList = await proxyGet(readOnlyPort, '/admin/reader-lifecycle-preview');
+        assert.equal(cleanList.status, 200);
+        assert.match(cleanList.text, /Viewing live administrative records/);
+        assertNoFlagLeak(cleanList.text, 'read-only list HTML');
 
         const detailPage = await httpCall({
           port: readOnlyPort,
@@ -831,7 +1020,12 @@ async function main() {
         });
         assert.equal(detailPage.status, 200);
         assert.match(detailPage.text, /LIVE READER LIFECYCLE BETA/);
-        await assertManageVisible(readOnlyPort, false, 'both flags absent');
+        assert.match(detailPage.text, /Viewing live administrative records/);
+        const cleanDetail = await proxyGet(readOnlyPort, '/admin/reader-lifecycle-preview/rp_edit_blank');
+        assert.equal(cleanDetail.status, 200);
+        assert.match(cleanDetail.text, /Viewing live administrative records/);
+        assertNoFlagLeak(cleanDetail.text, 'read-only detail HTML');
+        await assertManageVisible(readOnlyPort, false, 'neither Vercel flag');
 
         const beforeDisabled = await writeCounts(prisma);
         for (const urlPath of paths) {
@@ -864,15 +1058,13 @@ async function main() {
         assert.deepEqual(await writeCounts(prisma), beforeDisabled);
 
         process.env.READER_LIFECYCLE_MUTATIONS_ENABLED = '1';
-        const stillReadOnly = await httpCall({
-          port: readOnlyPort,
-          method: 'GET',
-          urlPath: '/admin/reader-lifecycle-preview/rp_edit_blank',
-          headers: { cookie: SESSION_COOKIE },
-        });
+        const stillReadOnly = await proxyGet(readOnlyPort, '/admin/reader-lifecycle-preview/rp_edit_blank');
         assert.equal(stillReadOnly.status, 200);
-        assert.match(stillReadOnly.text, /LIVE READER LIFECYCLE BETA/);
-        await assertManageVisible(readOnlyPort, false, 'backend on / UI off');
+        assert.match(stillReadOnly.text, /Viewing live administrative records/);
+        await assertManageVisible(readOnlyPort, false, 'Railway on / Vercel editing off');
+        const proxyWhileRailwayOn = await proxyPost(readOnlyPort, paths[0], ADD_BODY);
+        assertDisabledPost(proxyWhileRailwayOn, 'neither Vercel flag proxy POST while Railway on');
+        assert.deepEqual(await writeCounts(prisma), beforeDisabled, 'proxy reached Deepquill while Vercel editing off');
         const directOk = await directPost(paths[0], ADD_BODY);
         assert.equal(directOk.status, 200, directOk.text.slice(0, 300));
         assert.equal(directOk.json && directOk.json.ok, true);
@@ -881,51 +1073,68 @@ async function main() {
         assert.ok(afterDirect.audit > beforeDisabled.audit);
         assert.ok(afterDirect.idempotency > beforeDisabled.idempotency);
 
-        killProcessTree(nextHandle.child.pid);
-        nextHandle = null;
         delete process.env.READER_LIFECYCLE_MUTATIONS_ENABLED;
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-
-        const editingPort = await getFreePort();
-        nextHandle = startNextDev({
-          backendUrl,
-          port: editingPort,
-          flags: {
-            READER_LIFECYCLE_EDITING_ENABLED: '1',
-            READER_LIFECYCLE_SYNTHETIC_PREVIEW: '1',
-          },
-        });
-        await waitForNextReady(nextHandle);
-
-        const editingPage = await httpCall({
-          port: editingPort,
-          method: 'GET',
-          urlPath: '/admin/reader-lifecycle-preview/rp_edit_blank',
-          headers: { cookie: SESSION_COOKIE },
-        });
+        const editingPort = await restartNext({ READER_LIFECYCLE_EDITING_ENABLED: '1' });
+        const editingPage = await waitCompiled(editingPort, '/admin/reader-lifecycle-preview/rp_edit_blank');
         assert.equal(editingPage.status, 200);
-        assert.match(editingPage.text, /LOCAL SYNTHETIC PREVIEW/);
-        assert.doesNotMatch(editingPage.text, /synthetic records only/i);
-        await assertManageVisible(editingPort, true, 'UI on / backend off');
+        assert.match(editingPage.text, /Management controls are visible for review/);
+        assert.match(editingPage.text, /Saving remains disabled/);
+        assert.doesNotMatch(editingPage.text, /Changes affect live administrative records/);
+        assert.doesNotMatch(editingPage.text, /LOCAL SYNTHETIC PREVIEW/);
+        assertNoFlagLeak(editingPage.text, 'editing-only detail HTML');
+        await assertManageVisible(editingPort, true, 'editing only');
+        await assertSubmitLocked(editingPort, 'editing only');
         const beforeUiBlocked = await writeCounts(prisma);
-        const uiBlocked = await proxyPost(editingPort, paths[0], {
-          kind: 'manual_bn',
-          reason: 'Known Barnes and Noble purchase',
-          actorId: 'fu_preview_helper_b',
-        });
-        assertDisabledPost(uiBlocked, 'UI on / backend off proxy POST');
+        const uiBlocked = await proxyPost(editingPort, archivePath, archiveBody);
+        assertDisabledPost(uiBlocked, 'editing only proxy Archive');
         assert.deepEqual(await writeCounts(prisma), beforeUiBlocked);
 
         process.env.READER_LIFECYCLE_MUTATIONS_ENABLED = '1';
-        const proxyOk = await proxyPost(editingPort, paths[0], {
-          kind: 'manual_bn',
-          reason: 'Known Barnes and Noble purchase',
-          actorId: 'fu_preview_helper_b',
+        const editingWhileRailwayOn = await proxyPost(editingPort, archivePath, archiveBody);
+        assertDisabledPost(editingWhileRailwayOn, 'editing only proxy Archive while Railway on');
+        assert.deepEqual(await writeCounts(prisma), beforeUiBlocked, 'editing-only proxy reached Deepquill');
+        delete process.env.READER_LIFECYCLE_MUTATIONS_ENABLED;
+
+        const mutationsOnlyPort = await restartNext({ READER_LIFECYCLE_MUTATIONS_ENABLED: '1' });
+        const mutationsOnlyPage = await waitCompiled(mutationsOnlyPort, '/admin/reader-lifecycle-preview/rp_edit_blank');
+        assert.equal(mutationsOnlyPage.status, 200);
+        assert.match(mutationsOnlyPage.text, /Viewing live administrative records/);
+        assert.doesNotMatch(mutationsOnlyPage.text, /Management controls are visible for review/);
+        assertNoFlagLeak(mutationsOnlyPage.text, 'mutations-only detail HTML');
+        await assertManageVisible(mutationsOnlyPort, false, 'Vercel mutations only');
+        process.env.READER_LIFECYCLE_MUTATIONS_ENABLED = '1';
+        const mutationsOnlyBlocked = await proxyPost(mutationsOnlyPort, archivePath, archiveBody);
+        assertDisabledPost(mutationsOnlyBlocked, 'Vercel mutations only proxy POST');
+        assert.deepEqual(await writeCounts(prisma), beforeUiBlocked);
+        delete process.env.READER_LIFECYCLE_MUTATIONS_ENABLED;
+
+        const bothPort = await restartNext({
+          READER_LIFECYCLE_EDITING_ENABLED: '1',
+          READER_LIFECYCLE_MUTATIONS_ENABLED: '1',
         });
-        assert.equal(proxyOk.status, 200, proxyOk.text.slice(0, 300));
-        assert.equal(proxyOk.json && proxyOk.json.ok, true);
+        const bothPage = await waitCompiled(bothPort, '/admin/reader-lifecycle-preview/rp_edit_blank');
+        assert.equal(bothPage.status, 200);
+        assert.match(bothPage.text, /Changes affect live administrative records/);
+        assert.doesNotMatch(bothPage.text, /Saving remains disabled/);
+        assertNoFlagLeak(bothPage.text, 'both Vercel flags detail HTML');
+        await assertManageVisible(bothPort, true, 'both Vercel flags');
+        const beforeForward = await writeCounts(prisma);
+        const forwardedDisabled = await proxyPost(bothPort, archivePath, archiveBody);
+        assertDisabledPost(forwardedDisabled, 'both Vercel flags / Railway absent');
+        assert.deepEqual(await writeCounts(prisma), beforeForward);
+
+        process.env.READER_LIFECYCLE_MUTATIONS_ENABLED = '1';
+        const archived = await proxyPost(bothPort, archivePath, archiveBody);
+        assert.equal(archived.status, 200, archived.text.slice(0, 400));
+        assert.equal(archived.json && archived.json.ok, true);
+        assert.equal(archived.json.reader.legacy.status, 'archived');
+        const restored = await proxyPost(bothPort, restorePath, restoreBody);
+        assert.equal(restored.status, 200, restored.text.slice(0, 400));
+        assert.equal(restored.json && restored.json.ok, true);
+        assert.equal(restored.json.reader.legacy.status, 'active');
         const afterBoth = await writeCounts(prisma);
-        assert.ok(afterBoth.evidence > afterDirect.evidence);
+        assert.ok(afterBoth.audit > beforeForward.audit);
+        assert.ok(afterBoth.idempotency > beforeForward.idempotency);
 
         liveCleanup = async () => {
           killProcessTree(nextHandle && nextHandle.child && nextHandle.child.pid);

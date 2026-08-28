@@ -118,6 +118,22 @@ async function main() {
       );
       assert.equal(mod.readerLifecycleBannerText({}), mod.LIVE_READONLY_BANNER);
       assert.equal(mod.readerLifecycleEditingEnabled({}), false);
+      assert.equal(mod.readerLifecycleSavingEnabled({}), false);
+      assert.equal(
+        mod.readerLifecycleBannerText({ READER_LIFECYCLE_EDITING_ENABLED: '1' }),
+        mod.LIVE_REVIEW_BANNER,
+      );
+      assert.equal(
+        mod.readerLifecycleBannerText({
+          READER_LIFECYCLE_EDITING_ENABLED: '1',
+          READER_LIFECYCLE_MUTATIONS_ENABLED: '1',
+        }),
+        mod.LIVE_EDITING_BANNER,
+      );
+      assert.equal(
+        mod.LIVE_REVIEW_BANNER,
+        'LIVE READER LIFECYCLE BETA — Management controls are visible for review. Saving remains disabled. No email, nurture, or Text-a-Friend request will be sent.',
+      );
       assert.equal(
         mod.readerLifecycleBannerText({ READER_LIFECYCLE_SYNTHETIC_PREVIEW: '1' }),
         mod.LIVE_READONLY_BANNER,

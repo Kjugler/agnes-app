@@ -46,7 +46,31 @@ export const JSON_ERROR = Object.freeze({
   adminNotConfigured: { ok: false, error: 'admin_not_configured' },
   invalidRequest: { ok: false, error: 'invalid_request' },
   proxyUnavailable: { ok: false, error: 'proxy_unavailable' },
+  mutationsDisabled: { ok: false, error: 'lifecycle_mutations_disabled' },
 });
+
+export const EDITING_ENABLED_ENV = 'READER_LIFECYCLE_EDITING_ENABLED';
+export const MUTATIONS_ENABLED_ENV = 'READER_LIFECYCLE_MUTATIONS_ENABLED';
+export const FLAG_ENABLED_VALUE = '1';
+
+export function vercelLifecycleFlagEnabled(
+  env: NodeJS.ProcessEnv,
+  name: 'READER_LIFECYCLE_EDITING_ENABLED' | 'READER_LIFECYCLE_MUTATIONS_ENABLED',
+): boolean {
+  return env[name] === FLAG_ENABLED_VALUE;
+}
+
+export function vercelLifecycleEditingAuthorized(env: NodeJS.ProcessEnv = process.env): boolean {
+  return vercelLifecycleFlagEnabled(env, EDITING_ENABLED_ENV);
+}
+
+export function vercelLifecycleMutationsAuthorized(env: NodeJS.ProcessEnv = process.env): boolean {
+  return vercelLifecycleFlagEnabled(env, MUTATIONS_ENABLED_ENV);
+}
+
+export function vercelLifecycleMutationForwardAuthorized(env: NodeJS.ProcessEnv = process.env): boolean {
+  return vercelLifecycleEditingAuthorized(env) && vercelLifecycleMutationsAuthorized(env);
+}
 
 export type ReaderLifecycleRoute =
   | 'readers'
@@ -528,6 +552,13 @@ export async function proxyReaderLifecyclePost(
   }
   if (mutationBodyHasForbiddenFields(parsed)) {
     return noStoreJson(JSON_ERROR.invalidRequest, 400);
+  }
+
+  if (!vercelLifecycleEditingAuthorized(env)) {
+    return noStoreJson(JSON_ERROR.mutationsDisabled, 503);
+  }
+  if (!vercelLifecycleMutationsAuthorized(env)) {
+    return noStoreJson(JSON_ERROR.mutationsDisabled, 503);
   }
 
   const backendUrl = `${baseUrl}${backendPath}`;

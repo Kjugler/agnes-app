@@ -462,6 +462,9 @@ export const LIVE_READONLY_BANNER =
 
 export const SYNTHETIC_PREVIEW_BANNER = 'LOCAL SYNTHETIC PREVIEW — Test records only.';
 
+export const LIVE_REVIEW_BANNER =
+  'LIVE READER LIFECYCLE BETA — Management controls are visible for review. Saving remains disabled. No email, nurture, or Text-a-Friend request will be sent.';
+
 export const LIVE_EDITING_BANNER =
   'LIVE READER LIFECYCLE BETA — Changes affect live administrative records. No email, nurture, or Text-a-Friend request will be sent.';
 
@@ -469,6 +472,7 @@ export const LIVE_EDITING_BANNER =
 export const READ_ONLY_BANNER = LIVE_READONLY_BANNER;
 
 export const EDITING_ENABLED_ENV = 'READER_LIFECYCLE_EDITING_ENABLED';
+export const MUTATIONS_ENABLED_ENV = 'READER_LIFECYCLE_MUTATIONS_ENABLED';
 export const SYNTHETIC_PREVIEW_ENV = 'READER_LIFECYCLE_SYNTHETIC_PREVIEW';
 export const FLAG_ENABLED_VALUE = '1';
 export const LOOPBACK_HOSTS = Object.freeze(['localhost', '127.0.0.1', '::1']);
@@ -481,6 +485,18 @@ export function readerLifecycleEditingEnabled(
   env: { [key: string]: string | undefined } = process.env,
 ): boolean {
   return envFlagExactlyOne(env[EDITING_ENABLED_ENV]);
+}
+
+export function readerLifecycleMutationsAuthorized(
+  env: { [key: string]: string | undefined } = process.env,
+): boolean {
+  return envFlagExactlyOne(env[MUTATIONS_ENABLED_ENV]);
+}
+
+export function readerLifecycleSavingEnabled(
+  env: { [key: string]: string | undefined } = process.env,
+): boolean {
+  return readerLifecycleEditingEnabled(env) && readerLifecycleMutationsAuthorized(env);
 }
 
 export function configuredDeepquillBackendUrl(
@@ -525,8 +541,9 @@ export function readerLifecycleBannerText(
   env: { [key: string]: string | undefined } = process.env,
 ): string {
   if (readerLifecycleSyntheticPreview(env)) return SYNTHETIC_PREVIEW_BANNER;
-  if (readerLifecycleEditingEnabled(env)) return LIVE_EDITING_BANNER;
-  return LIVE_READONLY_BANNER;
+  if (!readerLifecycleEditingEnabled(env)) return LIVE_READONLY_BANNER;
+  if (!readerLifecycleMutationsAuthorized(env)) return LIVE_REVIEW_BANNER;
+  return LIVE_EDITING_BANNER;
 }
 
 export const PROVIDER_WARNING =

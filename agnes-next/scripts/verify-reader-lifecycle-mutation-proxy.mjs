@@ -269,6 +269,17 @@ function envFor(baseUrl, extra = {}) {
     DEEPQUILL_URL: baseUrl,
     ADMIN_KEY,
     FULFILLMENT_ACCESS_TOKEN: FULFILLMENT_TOKEN,
+    READER_LIFECYCLE_EDITING_ENABLED: '1',
+    READER_LIFECYCLE_MUTATIONS_ENABLED: '1',
+    ...extra,
+  };
+}
+
+function envWithoutVercelGates(baseUrl, extra = {}) {
+  return {
+    DEEPQUILL_URL: baseUrl,
+    ADMIN_KEY,
+    FULFILLMENT_ACCESS_TOKEN: FULFILLMENT_TOKEN,
     ...extra,
   };
 }
@@ -369,6 +380,8 @@ function startNextDev({ mockBaseUrl, port }) {
     NEXT_PUBLIC_SITE_URL: 'https://www.theagnesprotocol.com',
     SITE_URL: 'https://www.theagnesprotocol.com',
     PORT: String(port),
+    READER_LIFECYCLE_EDITING_ENABLED: '1',
+    READER_LIFECYCLE_MUTATIONS_ENABLED: '1',
   };
   const child = spawn(process.execPath, [nextBin, 'dev', '-p', String(port), '-H', '127.0.0.1'], {
     cwd: AGNES_NEXT_ROOT,
@@ -678,6 +691,43 @@ async function main() {
           assert.equal(hits[hits.length - 1].headers.cookie, undefined);
         }
         assert.equal(hits.length, MAPPINGS.length);
+      } finally {
+        server.close();
+      }
+    });
+
+    await check('Vercel editing and mutation gates reject POST before Deepquill', async () => {
+      let backendHits = 0;
+      const { server, baseUrl } = await startMockBackend((_req, res) => {
+        backendHits += 1;
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, leaked: true }));
+      });
+      try {
+        const cases = [
+          ['neither Vercel flag', envWithoutVercelGates(baseUrl)],
+          ['editing only', envWithoutVercelGates(baseUrl, { READER_LIFECYCLE_EDITING_ENABLED: '1' })],
+          ['mutations only', envWithoutVercelGates(baseUrl, { READER_LIFECYCLE_MUTATIONS_ENABLED: '1' })],
+          ['editing true not 1', envWithoutVercelGates(baseUrl, {
+            READER_LIFECYCLE_EDITING_ENABLED: 'true',
+            READER_LIFECYCLE_MUTATIONS_ENABLED: '1',
+          })],
+          ['mutations 1 with space', envFor(baseUrl, { READER_LIFECYCLE_MUTATIONS_ENABLED: '1 ' })],
+        ];
+        for (const [label, env] of cases) {
+          const body = await readResponse(await postDefault(mod, { env }));
+          assert.equal(body.status, 503, label);
+          assert.deepEqual(body.json, { ok: false, error: 'lifecycle_mutations_disabled' }, label);
+          assert.equal(body.cacheControl, 'no-store', label);
+          assert.equal(Object.prototype.hasOwnProperty.call(body.json, 'reader'), false, label);
+          assert.equal(body.text.includes('leaked'), false, label);
+        }
+        assert.equal(backendHits, 0, 'gated POST reached Deepquill');
+
+        const forwarded = await readResponse(await postDefault(mod, { env: envFor(baseUrl) }));
+        assert.equal(forwarded.status, 200);
+        assert.equal(forwarded.json.ok, true);
+        assert.equal(backendHits, 1);
       } finally {
         server.close();
       }
@@ -1127,12 +1177,26 @@ async function main() {
           headers: { cookie: SESSION_COOKIE },
         });
         const body = await readResponse(
-          await proxyReaderLifecycleGet(req, { route: 'readers' }, { env: envFor(baseUrl) }),
+          await proxyReaderLifecycleGet(req, { route: 'readers' }, { env: envWithoutVercelGates(baseUrl) }),
         );
         assert.equal(body.status, 200);
         assert.equal(seen.method, 'GET');
         assert.equal(seen.pathname, '/api/admin/reader-lifecycle/readers');
         assert.equal(seen.headers['x-admin-key'], ADMIN_KEY);
+
+        seen = null;
+        const gatedGet = await readResponse(
+          await proxyReaderLifecycleGet(
+            new Request('http://agnes-next.local/api/admin/reader-lifecycle/readers', {
+              method: 'GET',
+              headers: { cookie: SESSION_COOKIE },
+            }),
+            { route: 'readers' },
+            { env: envFor(baseUrl) },
+          ),
+        );
+        assert.equal(gatedGet.status, 200);
+        assert.equal(seen.method, 'GET');
       } finally {
         server.close();
       }
@@ -1164,6 +1228,11 @@ async function main() {
       assert.doesNotMatch(helper, /LIFECYCLE_MUTATION_HTTP_METHOD/);
       assert.match(getFn, /method:\s*'GET'/);
       assert.match(postFn, /method:\s*'POST'/);
+      assert.doesNotMatch(getFn, /READER_LIFECYCLE_EDITING_ENABLED/);
+      assert.doesNotMatch(getFn, /READER_LIFECYCLE_MUTATIONS_ENABLED/);
+      assert.doesNotMatch(getFn, /vercelLifecycleEditingAuthorized/);
+      assert.match(postFn, /vercelLifecycleEditingAuthorized/);
+      assert.match(postFn, /vercelLifecycleMutationsAuthorized/);
       assert.doesNotMatch(helper, /method:\s*[a-zA-Z_$]/);
       assert.match(helper, /redirect: 'error'/);
       assert.match(helper, /cache: 'no-store'/);

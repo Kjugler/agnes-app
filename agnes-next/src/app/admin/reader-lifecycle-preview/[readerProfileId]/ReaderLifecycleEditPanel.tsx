@@ -31,6 +31,7 @@ import {
   IDENTITY_RESOLVE_OPTIONS,
   NO_EMAIL_STATEMENT,
   NO_NURTURE_JOB,
+  SAVING_LOCKED_NOTE,
   PROVISIONAL_ADD_NOTE,
   REPLACE_CONSEQUENCE,
   RESTORE_CONSEQUENCE,
@@ -121,11 +122,13 @@ function emptyCommon(): CommonDraft {
 
 export default function ReaderLifecycleEditPanel({
   reader,
+  savingEnabled,
   onReaderUpdated,
   requestedAction,
   onRequestedActionConsumed,
 }: {
   reader: ReaderLifecycleDetail;
+  savingEnabled: boolean;
   onReaderUpdated: (next: ReaderLifecycleDetail) => void;
   requestedAction?: EditAction | null;
   onRequestedActionConsumed?: () => void;
@@ -371,6 +374,7 @@ export default function ReaderLifecycleEditPanel({
   }
 
   async function submit(mode: 'save' | 'retry') {
+    if (!savingEnabled) return;
     if (!action || inFlightRef.current || !actorsReady) return;
     const payload = currentPayload();
     if (!payload) return;
@@ -448,6 +452,7 @@ export default function ReaderLifecycleEditPanel({
         >
           Manage lifecycle record
         </button>
+        {!savingEnabled ? <p className={styles.formNote}>{SAVING_LOCKED_NOTE}</p> : null}
         {actorsStatus === 'loading' ? <p className={styles.formNote}>{ACTORS_LOADING}</p> : null}
         {actorsStatus === 'ready' && !actorsReady ? <p className={styles.formNote}>{ACTORS_EMPTY}</p> : null}
         {actorsStatus === 'error' && actorError ? (
@@ -479,6 +484,7 @@ export default function ReaderLifecycleEditPanel({
             Permitted lifecycle actions
           </h3>
           <p className={styles.formNote}>{NO_NURTURE_JOB}</p>
+          {!savingEnabled ? <p className={styles.formNote}>{SAVING_LOCKED_NOTE}</p> : null}
           {!action ? (
             <>
               <div className={styles.actionList} role="group" aria-labelledby={headingId}>
@@ -727,6 +733,7 @@ export default function ReaderLifecycleEditPanel({
             <h3 id={dialogTitleId} className={styles.dialogTitle}>
               Confirm {actionTitle(action).toLowerCase()}
             </h3>
+            {!savingEnabled ? <p className={styles.formNote}>{SAVING_LOCKED_NOTE}</p> : null}
             {error ? (
               <ErrorBox kind={errorKind} copy={error} inFlight={inFlight} onRetry={() => void submit('retry')} />
             ) : null}
@@ -775,8 +782,11 @@ export default function ReaderLifecycleEditPanel({
               <button
                 className={action.type === 'disputeEvidence' || action.type === 'addDnc' || action.type === 'archiveReader' ? styles.danger : styles.primary}
                 type="button"
-                disabled={fieldsDisabled}
-                onClick={() => void submit('save')}
+                disabled={fieldsDisabled || !savingEnabled}
+                onClick={() => {
+                  if (!savingEnabled) return;
+                  void submit('save');
+                }}
               >
                 {inFlight ? inFlightLabel(action) : confirmButtonLabel(action)}
               </button>

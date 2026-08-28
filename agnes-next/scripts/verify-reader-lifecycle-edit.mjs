@@ -340,9 +340,19 @@ async function main() {
       assert.match(list.LIVE_EDITING_BANNER, /live administrative records/i);
       assert.doesNotMatch(list.LIVE_READONLY_BANNER, /synthetic records only/i);
       assert.doesNotMatch(list.LIVE_EDITING_BANNER, /synthetic records only/i);
+      assert.doesNotMatch(list.LIVE_REVIEW_BANNER, /synthetic records only/i);
       assert.equal(list.readerLifecycleEditingEnabled({}), false);
       assert.equal(list.readerLifecycleEditingEnabled({ READER_LIFECYCLE_EDITING_ENABLED: '1' }), true);
       assert.equal(list.readerLifecycleEditingEnabled({ READER_LIFECYCLE_EDITING_ENABLED: 'true' }), false);
+      assert.equal(list.readerLifecycleMutationsAuthorized({}), false);
+      assert.equal(list.readerLifecycleSavingEnabled({ READER_LIFECYCLE_EDITING_ENABLED: '1' }), false);
+      assert.equal(
+        list.readerLifecycleSavingEnabled({
+          READER_LIFECYCLE_EDITING_ENABLED: '1',
+          READER_LIFECYCLE_MUTATIONS_ENABLED: '1',
+        }),
+        true,
+      );
       assert.equal(list.readerLifecycleBannerText({}), list.LIVE_READONLY_BANNER);
       assert.equal(
         list.readerLifecycleBannerText({ READER_LIFECYCLE_SYNTHETIC_PREVIEW: '1' }),
@@ -356,15 +366,34 @@ async function main() {
         list.SYNTHETIC_PREVIEW_BANNER,
       );
       assert.equal(
+        list.LIVE_REVIEW_BANNER,
+        'LIVE READER LIFECYCLE BETA — Management controls are visible for review. Saving remains disabled. No email, nurture, or Text-a-Friend request will be sent.',
+      );
+      assert.equal(
         list.readerLifecycleBannerText({ READER_LIFECYCLE_EDITING_ENABLED: '1' }),
+        list.LIVE_REVIEW_BANNER,
+      );
+      assert.equal(
+        list.readerLifecycleBannerText({ READER_LIFECYCLE_MUTATIONS_ENABLED: '1' }),
+        list.LIVE_READONLY_BANNER,
+      );
+      assert.equal(
+        list.readerLifecycleBannerText({
+          READER_LIFECYCLE_EDITING_ENABLED: '1',
+          READER_LIFECYCLE_MUTATIONS_ENABLED: '1',
+        }),
         list.LIVE_EDITING_BANNER,
       );
       assert.match(page, /PROVIDER_WARNING/);
       assert.match(page, /WEBSITE_PURCHASE_CANNOT_EDIT/);
       assert.match(page, /NO_NURTURE_JOB/);
       assert.match(page, /LOCAL_CLASSIFICATION_NOTE/);
+      assert.match(page, /readerLifecycleSavingEnabled/);
       assert.doesNotMatch(page, /LOCALLY_CONTACTABLE_NOT_SAFE/);
       assert.match(scan(FILES.detailClient), /editingEnabled \?/);
+      assert.match(scan(FILES.detailClient), /savingEnabled=\{savingEnabled\}/);
+      assert.match(scan(FILES.editPanel), /SAVING_LOCKED_NOTE/);
+      assert.match(scan(FILES.editPanel), /disabled=\{fieldsDisabled \|\| !savingEnabled\}/);
       assert.doesNotMatch(scan(FILES.detailClient), /NEXT_PUBLIC_/);
     });
 

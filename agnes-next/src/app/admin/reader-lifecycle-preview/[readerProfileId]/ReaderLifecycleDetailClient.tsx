@@ -78,9 +78,11 @@ import { WEBSITE_WRONG_OWNER_NOTE, type EditAction } from './readerLifecycleEdit
 export default function ReaderLifecycleDetailClient({
   readerProfileId,
   editingEnabled,
+  savingEnabled,
 }: {
   readerProfileId: string;
   editingEnabled: boolean;
+  savingEnabled: boolean;
 }) {
   const [reader, setReader] = useState<ReaderLifecycleDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -233,6 +235,7 @@ export default function ReaderLifecycleDetailClient({
             {editingEnabled ? (
               <ReaderLifecycleEditPanel
                 reader={reader}
+                savingEnabled={savingEnabled}
                 onReaderUpdated={handleReaderUpdated}
                 requestedAction={requestedAction}
                 onRequestedActionConsumed={() => setRequestedAction(null)}

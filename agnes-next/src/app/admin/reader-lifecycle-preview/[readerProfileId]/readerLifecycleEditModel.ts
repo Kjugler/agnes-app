@@ -15,6 +15,7 @@ export const LOCAL_CLASSIFICATION_NOTE =
   'Classification and nurture suppression shown here are local lifecycle results only.';
 export const NO_EMAIL_STATEMENT = 'No email will be sent.';
 export const NO_NURTURE_JOB = 'No nurture or Text-a-Friend request will be sent by these actions.';
+export const SAVING_LOCKED_NOTE = 'Saving has not been authorized.';
 export const ALLOW_CONTACT_WARNING =
   'This removes the latest manual Do Not Contact decision only. It does not create an email address, override an email-provider unsubscribe or mean that sending is safe.';
 export const WEBSITE_WRONG_OWNER_NOTE =

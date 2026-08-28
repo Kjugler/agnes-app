@@ -1,4 +1,9 @@
-import { PROVIDER_WARNING, readerLifecycleBannerText, readerLifecycleEditingEnabled } from '../readerLifecyclePreviewModel';
+import {
+  PROVIDER_WARNING,
+  readerLifecycleBannerText,
+  readerLifecycleEditingEnabled,
+  readerLifecycleSavingEnabled,
+} from '../readerLifecyclePreviewModel';
 import {
   LOCAL_CLASSIFICATION_NOTE,
   NO_NURTURE_JOB,
@@ -18,6 +23,7 @@ export default async function ReaderLifecycleDetailPage({
   const { readerProfileId } = await params;
   const banner = readerLifecycleBannerText();
   const editingEnabled = readerLifecycleEditingEnabled();
+  const savingEnabled = readerLifecycleSavingEnabled();
   return (
     <div className={listStyles.page}>
       <h1 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 12px 0' }}>
@@ -32,7 +38,11 @@ export default async function ReaderLifecycleDetailPage({
       <p className={listStyles.warning} role="note">
         {WEBSITE_PURCHASE_CANNOT_EDIT} {NO_NURTURE_JOB} {LOCAL_CLASSIFICATION_NOTE}
       </p>
-      <ReaderLifecycleDetailClient readerProfileId={readerProfileId} editingEnabled={editingEnabled} />
+      <ReaderLifecycleDetailClient
+        readerProfileId={readerProfileId}
+        editingEnabled={editingEnabled}
+        savingEnabled={savingEnabled}
+      />
     </div>
   );
 }
