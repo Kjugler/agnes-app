@@ -365,7 +365,7 @@ function classifyReader(input) {
       hasGiftEvidence = true;
       if (status === EVIDENCE_STATUS.CONFIRMED) hasConfirmedOwnershipEvidence = true;
       else hasProvisionalOwnershipEvidence = true;
-      if (!hasText(row.purchaseDate)) missingDate = true;
+      if (status !== EVIDENCE_STATUS.CONFIRMED && !hasText(row.purchaseDate)) missingDate = true;
       continue;
     }
 

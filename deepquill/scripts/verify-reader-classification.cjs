@@ -207,6 +207,185 @@ check('09 gifted owner only', {
   nurtureSuppressed: true,
 });
 
+check('09b Dave shape: confirmed gift_book_owner with no date → clear', {
+  userId: 'cmrz1nhtm011ymo2qwqr7326w',
+  email: 'butterfieldd@churchorjesuschrist.org',
+  profile: { readerType: 'gifted', source: 'Gift', status: 'active' },
+  evidence: [{
+    kind: EVIDENCE_KIND.GIFT_BOOK_OWNER,
+    status: EVIDENCE_STATUS.CONFIRMED,
+    sourceLabel: 'gift',
+    purchaseDate: null,
+    details: null,
+  }],
+}, {
+  ownership: OWNERSHIP.BOOK_OWNER_GIFTED,
+  sources: [],
+  confidence: CONFIDENCE.CONFIRMED,
+  contactability: CONTACTABILITY.CONTACTABLE,
+  review: REVIEW.CLEAR,
+  nurtureSuppressed: true,
+  reasons: [REASON.GIFT_WITHOUT_PURCHASE],
+  conflicts: [],
+});
+
+check('09c provisional gift with no date remains incomplete', {
+  userId: 'u9c',
+  email: mail,
+  evidence: [{
+    kind: EVIDENCE_KIND.GIFT_BOOK_OWNER,
+    status: EVIDENCE_STATUS.PROVISIONAL,
+    sourceLabel: 'gift',
+  }],
+}, {
+  ownership: OWNERSHIP.BOOK_OWNER_GIFTED,
+  sources: [],
+  confidence: CONFIDENCE.PROVISIONAL,
+  review: REVIEW.INCOMPLETE,
+  nurtureSuppressed: true,
+  reasons: [REASON.GIFT_WITHOUT_PURCHASE, REASON.MISSING_PURCHASE_DATE],
+});
+
+check('09d confirmed Amazon with no date remains incomplete', {
+  userId: 'u9d',
+  email: mail,
+  evidence: [{
+    kind: EVIDENCE_KIND.MANUAL_AMAZON,
+    status: EVIDENCE_STATUS.CONFIRMED,
+    sourceLabel: 'Amazon',
+  }],
+}, {
+  ownership: OWNERSHIP.PURCHASER,
+  sources: [SOURCE.AMAZON],
+  confidence: CONFIDENCE.CONFIRMED,
+  review: REVIEW.INCOMPLETE,
+  nurtureSuppressed: true,
+  reasons: [REASON.CONFIRMED_MANUAL_RETAILER, REASON.MISSING_PURCHASE_DATE],
+});
+
+check('09e confirmed B&N with no date remains incomplete', {
+  userId: 'u9e',
+  email: mail,
+  evidence: [{
+    kind: EVIDENCE_KIND.MANUAL_BN,
+    status: EVIDENCE_STATUS.CONFIRMED,
+    sourceLabel: 'Barnes & Noble',
+  }],
+}, {
+  ownership: OWNERSHIP.PURCHASER,
+  sources: [SOURCE.BARNES_NOBLE],
+  confidence: CONFIDENCE.CONFIRMED,
+  review: REVIEW.INCOMPLETE,
+  reasons: [REASON.CONFIRMED_MANUAL_RETAILER, REASON.MISSING_PURCHASE_DATE],
+});
+
+check('09f confirmed other retailer with no date remains incomplete', {
+  userId: 'u9f',
+  email: mail,
+  evidence: [{
+    kind: EVIDENCE_KIND.MANUAL_OTHER,
+    status: EVIDENCE_STATUS.CONFIRMED,
+    sourceLabel: 'other',
+  }],
+}, {
+  ownership: OWNERSHIP.PURCHASER,
+  sources: [SOURCE.OTHER],
+  confidence: CONFIDENCE.CONFIRMED,
+  review: REVIEW.INCOMPLETE,
+  reasons: [REASON.CONFIRMED_MANUAL_RETAILER, REASON.MISSING_PURCHASE_DATE],
+});
+
+check('09g website purchase only remains confirmed/clear', {
+  userId: 'u9g',
+  email: mail,
+  purchases: [{ sessionId: 'cs_9g', purchasedAt: '2026-07-16' }],
+}, {
+  ownership: OWNERSHIP.PURCHASER,
+  sources: [SOURCE.WEBSITE],
+  confidence: CONFIDENCE.CONFIRMED,
+  review: REVIEW.CLEAR,
+  nurtureSuppressed: true,
+});
+
+check('09h disputed gift remains conflicting', {
+  userId: 'u9h',
+  email: mail,
+  profile: { readerType: 'gifted', source: 'Gift', status: 'active' },
+  evidence: [{
+    kind: EVIDENCE_KIND.GIFT_BOOK_OWNER,
+    status: EVIDENCE_STATUS.DISPUTED,
+    sourceLabel: 'gift',
+  }],
+}, {
+  ownership: OWNERSHIP.UNKNOWN,
+  sources: [],
+  confidence: CONFIDENCE.UNKNOWN,
+  review: REVIEW.CONFLICTING,
+  nurtureSuppressed: true,
+  reasons: [REASON.DISPUTED_ASSOCIATION, REASON.LEGACY_GIFTED_LABEL_WITHOUT_EVIDENCE],
+  conflicts: [{ code: REASON.DISPUTED_ASSOCIATION }],
+});
+
+check('09i identity review still wins over confirmed gift', {
+  userId: 'u9i',
+  email: mail,
+  identityReviewRequired: true,
+  evidence: [{
+    kind: EVIDENCE_KIND.GIFT_BOOK_OWNER,
+    status: EVIDENCE_STATUS.CONFIRMED,
+    sourceLabel: 'gift',
+  }],
+}, {
+  ownership: OWNERSHIP.UNKNOWN,
+  review: REVIEW.IDENTITY_REVIEW_REQUIRED,
+  nurtureSuppressed: true,
+});
+
+check('09j confirmed gift plus undated retailer remains incomplete', {
+  userId: 'u9j',
+  email: mail,
+  evidence: [
+    {
+      kind: EVIDENCE_KIND.GIFT_BOOK_OWNER,
+      status: EVIDENCE_STATUS.CONFIRMED,
+      sourceLabel: 'gift',
+    },
+    {
+      kind: EVIDENCE_KIND.MANUAL_AMAZON,
+      status: EVIDENCE_STATUS.CONFIRMED,
+      sourceLabel: 'Amazon',
+    },
+  ],
+}, {
+  ownership: OWNERSHIP.PURCHASER,
+  sources: [SOURCE.AMAZON],
+  confidence: CONFIDENCE.CONFIRMED,
+  review: REVIEW.INCOMPLETE,
+  nurtureSuppressed: true,
+  reasons: [REASON.CONFIRMED_MANUAL_RETAILER, REASON.GIFT_AND_PURCHASE, REASON.MISSING_PURCHASE_DATE],
+});
+
+check('09k confirmed personal-knowledge gift without date still incomplete', {
+  userId: 'u9k',
+  email: mail,
+  evidence: [{
+    kind: EVIDENCE_KIND.KRIS_PERSONAL_KNOWLEDGE,
+    status: EVIDENCE_STATUS.CONFIRMED,
+    sourceLabel: 'gift',
+  }],
+}, {
+  ownership: OWNERSHIP.BOOK_OWNER_GIFTED,
+  sources: [],
+  confidence: CONFIDENCE.CONFIRMED,
+  review: REVIEW.INCOMPLETE,
+  nurtureSuppressed: true,
+  reasons: [
+    REASON.PROVISIONAL_PERSONAL_KNOWLEDGE,
+    REASON.GIFT_WITHOUT_PURCHASE,
+    REASON.MISSING_PURCHASE_DATE,
+  ],
+});
+
 check('10 gifted owner plus website purchase', {
   userId: 'u10',
   email: mail,
