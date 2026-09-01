@@ -41,13 +41,6 @@ const btnSecondary: React.CSSProperties = {
   border: '1px solid #cbd5e1',
 };
 
-const btnDanger: React.CSSProperties = {
-  ...btnPrimary,
-  background: '#fff',
-  color: '#b91c1c',
-  border: '1px solid #fecaca',
-};
-
 function formatDateTime(iso: string | null) {
   if (!iso) return '—';
   try {
@@ -179,8 +172,6 @@ export default function ReaderDetailClient({
   const [form, setForm] = useState<EditForm | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
-  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
-  const [archiving, setArchiving] = useState(false);
 
   const clearEditQuery = useCallback(() => {
     router.replace(`/admin/readers/${encodeURIComponent(readerId)}`, { scroll: false });
@@ -228,7 +219,6 @@ export default function ReaderDetailClient({
     setEditing(false);
     setForm(null);
     setSaveMessage(null);
-    setShowArchiveConfirm(false);
     load();
   }, [readerId, load]);
 
@@ -331,56 +321,6 @@ export default function ReaderDetailClient({
     }
   };
 
-  const handleArchive = async () => {
-    setArchiving(true);
-    setSaveMessage(null);
-    try {
-      const res = await fetch(`/api/admin/readers/${encodeURIComponent(readerId)}`, {
-        method: 'PATCH',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ archive: true }),
-      });
-      const json = await res.json();
-      if (!res.ok || !json.ok) {
-        setSaveMessage(json.error || 'Archive failed');
-        return;
-      }
-      setReader(json.reader);
-      setShowArchiveConfirm(false);
-      setSaveMessage(json.message || 'Reader archived.');
-      exitEditMode({ keepSaveMessage: true });
-    } catch {
-      setSaveMessage('Archive failed. Please try again.');
-    } finally {
-      setArchiving(false);
-    }
-  };
-
-  const handleRestore = async () => {
-    setSaving(true);
-    setSaveMessage(null);
-    try {
-      const res = await fetch(`/api/admin/readers/${encodeURIComponent(readerId)}`, {
-        method: 'PATCH',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ restore: true }),
-      });
-      const json = await res.json();
-      if (!res.ok || !json.ok) {
-        setSaveMessage(json.error || 'Restore failed');
-        return;
-      }
-      setReader(json.reader);
-      setSaveMessage(json.message || 'Reader restored.');
-    } catch {
-      setSaveMessage('Restore failed. Please try again.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const isArchived = reader?.status === 'archived';
 
   if (loading) {
@@ -434,20 +374,9 @@ export default function ReaderDetailClient({
               </button>
             </>
           ) : (
-            <>
               <button type="button" style={btnPrimary} onClick={beginEdit}>
                 Edit
               </button>
-              {isArchived ? (
-                <button type="button" style={btnSecondary} disabled={saving} onClick={handleRestore}>
-                  Restore Reader
-                </button>
-              ) : (
-                <button type="button" style={btnDanger} onClick={() => setShowArchiveConfirm(true)}>
-                  Archive Reader
-                </button>
-              )}
-            </>
           )}
         </div>
       )}
@@ -810,55 +739,6 @@ export default function ReaderDetailClient({
             <p style={{ margin: 0 }}>Coming in a future phase.</p>
           </section>
         </>
-      )}
-
-      {showArchiveConfirm && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 10000,
-            background: 'rgba(15, 23, 42, 0.45)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16,
-          }}
-          onClick={() => !archiving && setShowArchiveConfirm(false)}
-        >
-          <div
-            style={{
-              background: '#fff',
-              borderRadius: 8,
-              padding: 24,
-              maxWidth: 440,
-              width: '100%',
-              boxShadow: '0 20px 40px rgba(0,0,0,0.15)',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 style={{ margin: '0 0 12px', fontSize: 18, fontWeight: 700 }}>Archive this reader?</h2>
-            <p style={{ margin: '0 0 16px', fontSize: 14, color: '#475569', lineHeight: 1.5 }}>
-              This hides the reader from your main list. Their referral code, purchases, and email
-              history are <strong>not</strong> deleted — you can restore them anytime.
-            </p>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button
-                type="button"
-                style={btnSecondary}
-                disabled={archiving}
-                onClick={() => setShowArchiveConfirm(false)}
-              >
-                Cancel
-              </button>
-              <button type="button" style={btnDanger} disabled={archiving} onClick={handleArchive}>
-                {archiving ? 'Archiving…' : 'Archive Reader'}
-              </button>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );

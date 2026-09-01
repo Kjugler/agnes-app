@@ -52,6 +52,10 @@ export type PermittedActionItem = {
 };
 
 export function permittedActions(reader: ReaderLifecycleDetail): PermittedActionItem[] {
+  const status = reader.legacy.status || 'active';
+  if (status === 'archived') {
+    return [{ action: { type: 'restoreReader' }, label: 'Restore operational reader', tone: 'warning' }];
+  }
   const items: PermittedActionItem[] = [];
   if (canAddEvidence(reader)) {
     items.push({ action: { type: 'addEvidence' }, label: 'Add provisional evidence', tone: 'default' });
@@ -96,20 +100,11 @@ export function permittedActions(reader: ReaderLifecycleDetail): PermittedAction
       tone: 'default',
     });
   }
-  const status = reader.legacy.status || 'active';
-  if (status === 'archived') {
-    items.push({
-      action: { type: 'restoreReader' },
-      label: 'Restore operational reader',
-      tone: 'warning',
-    });
-  } else {
-    items.push({
-      action: { type: 'archiveReader' },
-      label: 'Archive as test/invalid operational reader',
-      tone: 'danger',
-    });
-  }
+  items.push({
+    action: { type: 'archiveReader' },
+    label: 'Archive as test/invalid operational reader',
+    tone: 'danger',
+  });
   return items;
 }
 
@@ -304,6 +299,10 @@ export function fieldErrorFromCode(code: string | undefined): { field: string; m
     invalid_resolution: { field: 'status', message: 'Choose dismiss or keep records separate.' },
     invalid_status: { field: 'status', message: 'Status must be provisional or confirmed.' },
     invalid_expected_status: { field: 'form', message: 'This record changed. Reload before trying again.' },
+    lifecycle_profile_archived: {
+      field: 'form',
+      message: 'This operational reader is archived. Restore it before making other changes.',
+    },
   };
   return code && map[code] ? map[code] : null;
 }

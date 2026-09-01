@@ -249,6 +249,8 @@ async function main() {
       assert.ok(!source.includes(banned), `write service mentions ${banned}`);
     }
     assert.ok(source.includes('getReaderLifecycleDetail'));
+    assert.ok(source.includes('lifecycle_profile_archived'));
+    assert.ok(source.includes('assertProfileNotArchived'));
     assert.ok(ALLOWED_WRITE_DELEGATES.includes('readerMutationIdempotency'));
   });
 
@@ -1017,6 +1019,158 @@ async function main() {
     assert.strictEqual(website.reader.purchases[0].accountingTruth, true);
     const purchases = await prisma.purchase.findMany({ where: { userId: websiteReader.id } });
     assert.strictEqual(purchases[0].userId, websiteReader.id);
+  });
+
+  await check('archived profile blocks every mutation family except restore', async () => {
+    const target = await createUser('ab');
+    const added = await writes.addEvidence({
+      readerProfileId: target.readerProfile.id,
+      kind: 'manual_amazon',
+      reason: 'Setup evidence before archive',
+      actorId: helper.id,
+      idempotencyKey: nextKey('ab-add'),
+    });
+    const provisional = evidenceByKind(added.reader, 'manual_amazon', 'provisional')[0];
+    const toDispute = await writes.addEvidence({
+      readerProfileId: target.readerProfile.id,
+      kind: 'manual_bn',
+      reason: 'Second evidence to dispute before archive',
+      actorId: helper.id,
+      idempotencyKey: nextKey('ab-bn'),
+    });
+    const disputedRow = evidenceByKind(toDispute.reader, 'manual_bn', 'provisional')[0];
+    await writes.disputeEvidence({
+      evidenceId: disputedRow.id,
+      expectedStatus: 'provisional',
+      reason: 'Dispute before archive to test replace block',
+      actorId: helper.id,
+      idempotencyKey: nextKey('ab-disp'),
+    });
+    const opened = await writes.openIdentityReview({
+      readerProfileId: target.readerProfile.id,
+      reasonCode: 'duplicate_name',
+      reason: 'Identity review opened before archive',
+      actorId: helper.id,
+      idempotencyKey: nextKey('ab-id'),
+    });
+    const reviewId = opened.mutation.reviewId;
+    await writes.archiveReader({
+      readerProfileId: target.readerProfile.id,
+      reasonCode: 'test_record',
+      reason: 'Archive synthetic profile to test mutation block',
+      expectedStatus: 'active',
+      confirmed: true,
+      actorId: helper.id,
+      idempotencyKey: nextKey('ab-arch'),
+    });
+
+    const blocked = [
+      () =>
+        writes.addEvidence({
+          readerProfileId: target.readerProfile.id,
+          kind: 'manual_other',
+          reason: 'Should not add evidence while archived',
+          actorId: helper.id,
+          idempotencyKey: nextKey('ab-add2'),
+        }),
+      () =>
+        writes.confirmEvidence({
+          evidenceId: provisional.id,
+          expectedStatus: 'provisional',
+          reason: 'Should not confirm while archived',
+          actorId: helper.id,
+          idempotencyKey: nextKey('ab-conf'),
+        }),
+      () =>
+        writes.correctEvidence({
+          evidenceId: provisional.id,
+          expectedStatus: 'provisional',
+          reason: 'Should not correct while archived',
+          actorId: helper.id,
+          idempotencyKey: nextKey('ab-corr'),
+        }),
+      () =>
+        writes.disputeEvidence({
+          evidenceId: provisional.id,
+          expectedStatus: 'provisional',
+          reason: 'Should not dispute while archived',
+          actorId: helper.id,
+          idempotencyKey: nextKey('ab-disp2'),
+        }),
+      () =>
+        writes.replaceEvidence({
+          evidenceId: disputedRow.id,
+          expectedStatus: 'disputed',
+          reason: 'Should not replace while archived',
+          actorId: helper.id,
+          idempotencyKey: nextKey('ab-repl'),
+        }),
+      () =>
+        writes.addContactDecision({
+          readerProfileId: target.readerProfile.id,
+          decision: 'suppress',
+          reason: 'Should not add DNC while archived',
+          actorId: helper.id,
+          idempotencyKey: nextKey('ab-dnc'),
+        }),
+      () =>
+        writes.addContactDecision({
+          readerProfileId: target.readerProfile.id,
+          decision: 'allow',
+          reason: 'Should not allow contact while archived',
+          actorId: helper.id,
+          idempotencyKey: nextKey('ab-allow'),
+        }),
+      () =>
+        writes.openIdentityReview({
+          readerProfileId: target.readerProfile.id,
+          reasonCode: 'possible_wrong_website_owner',
+          details: 'Should not open while archived',
+          reason: 'Should not open identity while archived',
+          actorId: helper.id,
+          idempotencyKey: nextKey('ab-open'),
+        }),
+      () =>
+        writes.resolveIdentityReview({
+          reviewId,
+          expectedStatus: 'open',
+          status: 'dismissed',
+          resolutionReason: 'Should not resolve while archived',
+          actorId: helper.id,
+          idempotencyKey: nextKey('ab-resv'),
+        }),
+      () =>
+        writes.archiveReader({
+          readerProfileId: target.readerProfile.id,
+          reasonCode: 'test_record',
+          reason: 'Should not archive an archived profile',
+          expectedStatus: 'active',
+          confirmed: true,
+          actorId: helper.id,
+          idempotencyKey: nextKey('ab-arch2'),
+        }),
+    ];
+    for (const fn of blocked) {
+      await expectWriteError(fn, 'lifecycle_profile_archived', 409);
+    }
+
+    const evidenceAfter = await prisma.readerEvidence.findMany({ where: { userId: target.id } });
+    assert.strictEqual(evidenceAfter.filter((row) => row.status === 'provisional').length, 1);
+    assert.strictEqual(evidenceAfter.filter((row) => row.status === 'disputed').length, 1);
+    const review = await prisma.readerIdentityReview.findUnique({ where: { id: reviewId } });
+    assert.strictEqual(review.status, 'open');
+    const profile = await prisma.readerProfile.findUnique({ where: { id: target.readerProfile.id } });
+    assert.strictEqual(profile.status, 'archived');
+
+    const restored = await writes.restoreReader({
+      readerProfileId: target.readerProfile.id,
+      reason: 'Restore is the only allowed archived-profile mutation',
+      expectedStatus: 'archived',
+      confirmed: true,
+      actorId: helper.id,
+      idempotencyKey: nextKey('ab-rest'),
+    });
+    assert.strictEqual(restored.reader.legacy.status, 'active');
   });
 
   const accountingAfter = await snapshotAccounting();

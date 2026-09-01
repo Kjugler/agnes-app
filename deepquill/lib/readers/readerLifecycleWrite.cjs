@@ -75,6 +75,7 @@ const ARCHIVE_REASON_CODES = Object.freeze([
 ]);
 const ARCHIVE_CONTACT_REASON_CODES = Object.freeze(['test_record', 'invalid_contact']);
 const ARCHIVEABLE_STATUSES = Object.freeze(['active', 'inactive']);
+const ARCHIVED_PROFILE_ERROR = 'lifecycle_profile_archived';
 const DUPLICATE_ARCHIVE_WARNING =
   'Genuine duplicate-person uncertainty normally belongs in Identity Review. Archive does not merge or delete identities.';
 const SOURCE_LABEL_BY_KIND = Object.freeze({
@@ -373,12 +374,29 @@ async function loadEvidence(tx, evidenceId) {
 async function profileForUser(tx, userId) {
   const profile = await tx.readerProfile.findUnique({
     where: { userId },
-    select: { id: true, userId: true },
+    select: {
+      id: true,
+      userId: true,
+      status: true,
+      archiveReasonCode: true,
+      archiveDetails: true,
+      archivePriorStatus: true,
+    },
   });
   if (!profile) {
     throw new LifecycleWriteError('reader_not_found', 404, 'Reader profile was not found for this evidence');
   }
   return profile;
+}
+
+function assertProfileNotArchived(profile) {
+  if (profile && profile.status === 'archived') {
+    throw new LifecycleWriteError(
+      ARCHIVED_PROFILE_ERROR,
+      409,
+      'Archived operational readers can only be restored',
+    );
+  }
 }
 
 function assertCurrentEvidence(row) {
@@ -603,6 +621,7 @@ async function addEvidence(prisma, input = {}) {
   return withIdempotency(prisma, { idempotencyKey: input.idempotencyKey, action: 'evidence.add', request }, async (tx) => {
     const actor = await loadActor(tx, input.actorId);
     const profile = await loadProfile(tx, input.readerProfileId);
+    assertProfileNotArchived(profile);
     const sameKind = await countCurrentSameKind(tx, profile.userId, kind);
     const created = await insertEvidence(tx, {
       userId: profile.userId,
@@ -656,6 +675,7 @@ async function confirmEvidence(prisma, input = {}) {
     assertCurrentEvidence(original);
     assertExpectedCurrent(original, expectedStatus);
     const profile = await profileForUser(tx, original.userId);
+    assertProfileNotArchived(profile);
     const replacement = await insertEvidence(tx, {
       userId: original.userId,
       kind: original.kind,
@@ -738,6 +758,7 @@ async function correctEvidence(prisma, input = {}) {
         ? sourceLabelForKind(kind, input.sourceLabel)
         : original.sourceLabel;
     const profile = await profileForUser(tx, original.userId);
+    assertProfileNotArchived(profile);
     const replacement = await insertEvidence(tx, {
       userId: original.userId,
       kind,
@@ -797,6 +818,7 @@ async function disputeEvidence(prisma, input = {}) {
     assertCurrentEvidence(original);
     assertExpectedCurrent(original, expectedStatus);
     const profile = await profileForUser(tx, original.userId);
+    assertProfileNotArchived(profile);
     const updated = await tx.readerEvidence.updateMany({
       where: { id: original.id, status: expectedStatus, supersededById: null },
       data: { status: 'disputed' },
@@ -873,6 +895,7 @@ async function replaceEvidence(prisma, input = {}) {
         ? sourceLabelForKind(kind, input.sourceLabel)
         : original.sourceLabel;
     const profile = await profileForUser(tx, original.userId);
+    assertProfileNotArchived(profile);
     const replacement = await insertEvidence(tx, {
       userId: original.userId,
       kind,
@@ -930,6 +953,7 @@ async function addContactDecision(prisma, input = {}) {
   return withIdempotency(prisma, { idempotencyKey: input.idempotencyKey, action: 'contact_decision.add', request }, async (tx) => {
     const actor = await loadActor(tx, input.actorId);
     const profile = await loadProfile(tx, input.readerProfileId);
+    assertProfileNotArchived(profile);
     const created = await tx.readerContactDecision.create({
       data: {
         userId: profile.userId,
@@ -987,6 +1011,7 @@ async function openIdentityReview(prisma, input = {}) {
   return withIdempotency(prisma, { idempotencyKey: input.idempotencyKey, action: 'identity_review.open', request }, async (tx) => {
     const actor = await loadActor(tx, input.actorId);
     const profile = await loadProfile(tx, input.readerProfileId);
+    assertProfileNotArchived(profile);
     if (otherUserId) {
       if (otherUserId === profile.userId) {
         throw new LifecycleWriteError('invalid_other_user', 400, 'otherUserId cannot be the same as the primary reader');
@@ -1077,6 +1102,8 @@ async function resolveIdentityReview(prisma, input = {}) {
     if (original.status !== expectedStatus) {
       throw new LifecycleWriteError('stale_review', 409, 'Identity review was changed by another request');
     }
+    const profile = await profileForUser(tx, original.primaryUserId);
+    assertProfileNotArchived(profile);
     const resolvedAt = new Date();
     const updated = await tx.readerIdentityReview.updateMany({
       where: { id: original.id, status: 'open' },
@@ -1097,7 +1124,6 @@ async function resolveIdentityReview(prisma, input = {}) {
     ) {
       throw new LifecycleWriteError('opener_attribution_lost', 500, 'Resolver must not overwrite opener actor fields');
     }
-    const profile = await profileForUser(tx, original.primaryUserId);
     const audit = await writeAudit(tx, {
       userId: original.primaryUserId,
       actor,
@@ -1165,6 +1191,7 @@ async function archiveReader(prisma, input = {}) {
   return withIdempotency(prisma, { idempotencyKey: input.idempotencyKey, action: 'profile.archive', request }, async (tx) => {
     const actor = await loadActor(tx, input.actorId);
     const profile = await loadProfile(tx, input.readerProfileId);
+    assertProfileNotArchived(profile);
     const archiveDetails = details || reason;
     const updated = await tx.readerProfile.updateMany({
       where: { id: profile.id, status: expectedStatus },
@@ -1377,5 +1404,6 @@ module.exports = {
   RESTORE_CONTACT_ORIGIN,
   RESTORE_PRIOR_STATUS_REASON,
   DUPLICATE_ARCHIVE_WARNING,
+  ARCHIVED_PROFILE_ERROR,
   ALLOWED_WRITE_DELEGATES,
 };

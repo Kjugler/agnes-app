@@ -246,7 +246,9 @@ export default function ReaderLifecycleDetailClient({
           <PurchasesSection
             rows={reader.purchases}
             onOpenIdentityReview={
-              editingEnabled ? () => setRequestedAction({ type: 'openIdentityReview' }) : undefined
+              editingEnabled && reader.legacy.status !== 'archived'
+                ? () => setRequestedAction({ type: 'openIdentityReview' })
+                : undefined
             }
           />
           <EvidenceSection rows={reader.evidenceHistory} />

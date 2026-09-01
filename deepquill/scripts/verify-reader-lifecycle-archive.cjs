@@ -408,7 +408,7 @@ async function main() {
     await writes.archiveReader(body);
     await expectWriteError(
       () => writes.archiveReader({ ...body, expectedStatus: 'inactive', idempotencyKey: nextKey('stale-2') }),
-      'stale_status',
+      'lifecycle_profile_archived',
       409,
     );
     await expectWriteError(
@@ -538,7 +538,10 @@ async function main() {
     const rejected = results.filter((row) => row.status === 'rejected');
     assert.strictEqual(fulfilled.length, 1);
     assert.strictEqual(rejected.length, 1);
-    assert.strictEqual(rejected[0].reason.code, 'stale_status');
+    assert.ok(
+      ['stale_status', 'lifecycle_profile_archived'].includes(rejected[0].reason.code),
+      rejected[0].reason && rejected[0].reason.code,
+    );
     const profile = await prisma.readerProfile.findUnique({ where: { id: raced.readerProfile.id } });
     assert.strictEqual(profile.status, 'archived');
     assert.ok(['test_record', 'invalid_contact'].includes(profile.archiveReasonCode));
@@ -590,14 +593,21 @@ async function main() {
     });
     assert.strictEqual(again.action, 'skipped');
     assert.strictEqual(await prisma.readerIdentityReview.count({ where: { primaryUserId: later.id } }), 1);
-    await writes.resolveIdentityReview({
-      reviewId: review.id,
-      status: 'dismissed',
-      resolutionReason: 'Recorded the later purchase without unarchiving',
-      expectedStatus: 'open',
-      actorId: helper.id,
-      idempotencyKey: nextKey('lat-resolve'),
-    });
+    await expectWriteError(
+      () =>
+        writes.resolveIdentityReview({
+          reviewId: review.id,
+          status: 'dismissed',
+          resolutionReason: 'Recorded the later purchase without unarchiving',
+          expectedStatus: 'open',
+          actorId: helper.id,
+          idempotencyKey: nextKey('lat-resolve'),
+        }),
+      'lifecycle_profile_archived',
+      409,
+    );
+    const stillOpen = await prisma.readerIdentityReview.findUnique({ where: { id: review.id } });
+    assert.strictEqual(stillOpen.status, 'open');
     const replay = await ensureReaderProfileFromPurchase(prisma, {
       userId: later.id,
       sessionId: `cs_${suffix}_later`,
@@ -631,7 +641,7 @@ async function main() {
     assert.strictEqual(profile.status, 'archived');
   });
 
-  await check('independent DNC during archive remains after restore', async () => {
+  await check('archived profile rejects contact-decision mutations; restore remains allowed', async () => {
     const during = await createUser('dur');
     await writes.archiveReader({
       readerProfileId: during.readerProfile.id,
@@ -642,16 +652,39 @@ async function main() {
       actorId: helper.id,
       idempotencyKey: nextKey('dur-arch'),
     });
-    await writes.addContactDecision({
-      readerProfileId: during.readerProfile.id,
-      decision: 'suppress',
-      reason: 'Independent DNC recorded while archived',
-      actorId: helper.id,
-      idempotencyKey: nextKey('dur-dnc'),
-    });
+    await expectWriteError(
+      () =>
+        writes.addContactDecision({
+          readerProfileId: during.readerProfile.id,
+          decision: 'suppress',
+          reason: 'Independent DNC recorded while archived',
+          actorId: helper.id,
+          idempotencyKey: nextKey('dur-dnc'),
+        }),
+      'lifecycle_profile_archived',
+      409,
+    );
+    await expectWriteError(
+      () =>
+        writes.addContactDecision({
+          readerProfileId: during.readerProfile.id,
+          decision: 'allow',
+          reason: 'Allow contact recorded while archived',
+          actorId: helper.id,
+          idempotencyKey: nextKey('dur-allow'),
+        }),
+      'lifecycle_profile_archived',
+      409,
+    );
+    assert.strictEqual(
+      await prisma.readerContactDecision.count({
+        where: { userId: during.id, origin: { not: ARCHIVE_CONTACT_ORIGIN } },
+      }),
+      0,
+    );
     const restored = await writes.restoreReader({
       readerProfileId: during.readerProfile.id,
-      reason: 'Restore after DNC during archive',
+      reason: 'Restore after blocked DNC during archive',
       expectedStatus: 'archived',
       confirmed: true,
       actorId: helper.id,
@@ -659,8 +692,7 @@ async function main() {
     });
     assert.strictEqual(restored.reader.legacy.status, 'active');
     const eligibility = await promotionalOutreachEligibility(prisma, { userId: during.id });
-    assert.strictEqual(eligibility.eligible, false);
-    assert.strictEqual(eligibility.reason, 'manual_dnc');
+    assert.strictEqual(eligibility.eligible, true);
   });
 
   await check('independent DNC after restore suppresses; removing it does not revive archive suppression', async () => {
@@ -880,6 +912,147 @@ async function main() {
     } finally {
       await new Promise((resolve) => server.close(() => resolve()));
     }
+  });
+
+  await check('archived profile blocks every mutation family except restore', async () => {
+    const target = await createUser('ab');
+    const added = await writes.addEvidence({
+      readerProfileId: target.readerProfile.id,
+      kind: 'manual_amazon',
+      reason: 'Setup evidence before archive',
+      actorId: helper.id,
+      idempotencyKey: nextKey('ab-add'),
+    });
+    const provisional = added.reader.evidenceHistory.find((row) => row.kind === 'manual_amazon' && row.status === 'provisional');
+    const toDispute = await writes.addEvidence({
+      readerProfileId: target.readerProfile.id,
+      kind: 'manual_bn',
+      reason: 'Second evidence to dispute before archive',
+      actorId: helper.id,
+      idempotencyKey: nextKey('ab-bn'),
+    });
+    const disputedRow = toDispute.reader.evidenceHistory.find((row) => row.kind === 'manual_bn' && row.status === 'provisional');
+    await writes.disputeEvidence({
+      evidenceId: disputedRow.id,
+      expectedStatus: 'provisional',
+      reason: 'Dispute before archive to test replace block',
+      actorId: helper.id,
+      idempotencyKey: nextKey('ab-disp'),
+    });
+    const opened = await writes.openIdentityReview({
+      readerProfileId: target.readerProfile.id,
+      reasonCode: 'duplicate_name',
+      reason: 'Identity review opened before archive',
+      actorId: helper.id,
+      idempotencyKey: nextKey('ab-id'),
+    });
+    await writes.archiveReader({
+      readerProfileId: target.readerProfile.id,
+      reasonCode: 'test_record',
+      reason: 'Archive synthetic profile to test mutation block',
+      expectedStatus: 'active',
+      confirmed: true,
+      actorId: helper.id,
+      idempotencyKey: nextKey('ab-arch'),
+    });
+    const blocked = [
+      () =>
+        writes.addEvidence({
+          readerProfileId: target.readerProfile.id,
+          kind: 'manual_other',
+          reason: 'Should not add evidence while archived',
+          actorId: helper.id,
+          idempotencyKey: nextKey('ab-add2'),
+        }),
+      () =>
+        writes.confirmEvidence({
+          evidenceId: provisional.id,
+          expectedStatus: 'provisional',
+          reason: 'Should not confirm while archived',
+          actorId: helper.id,
+          idempotencyKey: nextKey('ab-conf'),
+        }),
+      () =>
+        writes.correctEvidence({
+          evidenceId: provisional.id,
+          expectedStatus: 'provisional',
+          reason: 'Should not correct while archived',
+          actorId: helper.id,
+          idempotencyKey: nextKey('ab-corr'),
+        }),
+      () =>
+        writes.disputeEvidence({
+          evidenceId: provisional.id,
+          expectedStatus: 'provisional',
+          reason: 'Should not dispute while archived',
+          actorId: helper.id,
+          idempotencyKey: nextKey('ab-disp2'),
+        }),
+      () =>
+        writes.replaceEvidence({
+          evidenceId: disputedRow.id,
+          expectedStatus: 'disputed',
+          reason: 'Should not replace while archived',
+          actorId: helper.id,
+          idempotencyKey: nextKey('ab-repl'),
+        }),
+      () =>
+        writes.addContactDecision({
+          readerProfileId: target.readerProfile.id,
+          decision: 'suppress',
+          reason: 'Should not add DNC while archived',
+          actorId: helper.id,
+          idempotencyKey: nextKey('ab-dnc'),
+        }),
+      () =>
+        writes.addContactDecision({
+          readerProfileId: target.readerProfile.id,
+          decision: 'allow',
+          reason: 'Should not allow contact while archived',
+          actorId: helper.id,
+          idempotencyKey: nextKey('ab-allow'),
+        }),
+      () =>
+        writes.openIdentityReview({
+          readerProfileId: target.readerProfile.id,
+          reasonCode: 'possible_wrong_website_owner',
+          details: 'Should not open while archived',
+          reason: 'Should not open identity while archived',
+          actorId: helper.id,
+          idempotencyKey: nextKey('ab-open'),
+        }),
+      () =>
+        writes.resolveIdentityReview({
+          reviewId: opened.mutation.reviewId,
+          expectedStatus: 'open',
+          status: 'dismissed',
+          resolutionReason: 'Should not resolve while archived',
+          actorId: helper.id,
+          idempotencyKey: nextKey('ab-resv'),
+        }),
+      () =>
+        writes.archiveReader({
+          readerProfileId: target.readerProfile.id,
+          reasonCode: 'test_record',
+          reason: 'Should not archive an archived profile',
+          expectedStatus: 'active',
+          confirmed: true,
+          actorId: helper.id,
+          idempotencyKey: nextKey('ab-arch2'),
+        }),
+    ];
+    for (const fn of blocked) {
+      await expectWriteError(fn, 'lifecycle_profile_archived', 409);
+    }
+    const restored = await writes.restoreReader({
+      readerProfileId: target.readerProfile.id,
+      reason: 'Restore is the only allowed archived-profile mutation',
+      expectedStatus: 'archived',
+      confirmed: true,
+      actorId: helper.id,
+      idempotencyKey: nextKey('ab-rest'),
+    });
+    assert.strictEqual(restored.reader.legacy.status, 'active');
   });
 
   await check('restore requires archived expected status', async () => {

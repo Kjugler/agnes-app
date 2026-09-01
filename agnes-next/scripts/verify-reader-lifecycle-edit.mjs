@@ -502,10 +502,28 @@ async function main() {
 
       assert.ok(labels.includes('Archive as test/invalid operational reader'));
       assert.equal(labels.includes('Restore operational reader'), false);
-      const archived = readerFixture({ legacy: { source: 'website', readerType: 'interested', status: 'archived' } });
+      const archived = readerFixture({
+        legacy: { source: 'website', readerType: 'interested', status: 'archived' },
+        evidenceHistory: [
+          evidenceRow({ status: 'provisional' }),
+          evidenceRow({ id: 'ev_2', status: 'disputed' }),
+        ],
+        identityReviews: [{
+          id: 'ir_1',
+          primaryUserId: 'u1',
+          otherUserId: null,
+          reasonCode: 'duplicate_name',
+          details: null,
+          status: 'open',
+          resolutionReason: null,
+          resolvedAt: null,
+          actorType: 'admin',
+          actorLabel: 'A',
+          createdAt: '2026-08-01T00:00:00.000Z',
+        }],
+      });
       const archivedActions = edit.permittedActions(archived).map((row) => row.action.type);
-      assert.ok(archivedActions.includes('restoreReader'));
-      assert.equal(archivedActions.includes('archiveReader'), false);
+      assert.deepEqual(archivedActions, ['restoreReader']);
       assert.doesNotMatch(edit.permittedActions(blank).map((row) => row.label).join('\n'), /Delete|Merge|Bulk /i);
 
       const panel = scan(FILES.editPanel);
@@ -538,6 +556,7 @@ async function main() {
       assert.match(panel, /Cancel—make no changes/);
       assert.doesNotMatch(panel, />OK</);
       assert.match(scan(FILES.detailClient), /Open identity review/);
+      assert.match(scan(FILES.detailClient), /reader\.legacy\.status !== 'archived'/);
       assert.doesNotMatch(scan(FILES.detailClient), /Edit purchase|Delete purchase|Change Stripe/i);
       assert.match(scan(FILES.detailCss), /max-width: 430px/);
       assert.match(scan(FILES.detailCss), /overflow-x: hidden/);
@@ -572,6 +591,11 @@ async function main() {
       assert.equal(edit.classifyMutationError(403), 'forbidden');
       assert.equal(edit.classifyMutationError(404), 'not_found');
       assert.equal(edit.classifyMutationError(409, 'stale_evidence'), 'stale');
+      assert.equal(edit.classifyMutationError(409, 'lifecycle_profile_archived'), 'stale');
+      assert.equal(
+        edit.fieldErrorFromCode('lifecycle_profile_archived').message,
+        'This operational reader is archived. Restore it before making other changes.',
+      );
       assert.equal(edit.mutationErrorCopy('stale').body, 'Someone else changed this record. Reload before trying again.');
       assert.equal(edit.classifyMutationError(409, 'idempotency_conflict'), 'idempotency_conflict');
       assert.equal(edit.classifyMutationError(500, 'admin_not_configured'), 'not_configured');

@@ -903,6 +903,147 @@ async function main() {
     assert.strictEqual(JSON.stringify(await prisma.purchase.findMany()), purchasesBefore);
   });
 
+  await check('archived profile POST mutations return 409 lifecycle_profile_archived except restore', async () => {
+    const target = await createUser('ab');
+    const added = await post(
+      evidencePath(target.readerProfile.id),
+      {
+        kind: 'manual_amazon',
+        details: 'Setup evidence before archive',
+        reason: 'Known Amazon purchase before archive',
+        actorId: helper.id,
+      },
+      { 'Idempotency-Key': nextKey('ab-add') },
+    );
+    assert.strictEqual(added.status, 200, added.text);
+    const provisional = added.json.reader.evidenceHistory.find((row) => row.status === 'provisional');
+    const toDispute = await post(
+      evidencePath(target.readerProfile.id),
+      {
+        kind: 'manual_bn',
+        details: 'Second evidence to dispute before archive',
+        reason: 'Known B&N purchase before archive',
+        actorId: helper.id,
+      },
+      { 'Idempotency-Key': nextKey('ab-bn') },
+    );
+    assert.strictEqual(toDispute.status, 200, toDispute.text);
+    const disputedId = toDispute.json.reader.evidenceHistory.find((row) => row.kind === 'manual_bn').id;
+    const disputed = await post(
+      `${basePath}/evidence/${disputedId}/dispute`,
+      { expectedStatus: 'provisional', reason: 'Dispute before archive to test replace block', actorId: helper.id },
+      { 'Idempotency-Key': nextKey('ab-disp') },
+    );
+    assert.strictEqual(disputed.status, 200, disputed.text);
+    const opened = await post(
+      `${basePath}/readers/${target.readerProfile.id}/identity-reviews`,
+      {
+        reasonCode: 'duplicate_name',
+        reason: 'Identity review opened before archive',
+        actorId: helper.id,
+      },
+      { 'Idempotency-Key': nextKey('ab-id') },
+    );
+    assert.strictEqual(opened.status, 200, opened.text);
+    const reviewId = opened.json.mutation.entityId;
+    const archived = await post(
+      `${basePath}/readers/${target.readerProfile.id}/archive`,
+      {
+        reasonCode: 'test_record',
+        reason: 'Archive synthetic profile to test mutation block',
+        expectedStatus: 'active',
+        confirmed: true,
+        actorId: helper.id,
+      },
+      { 'Idempotency-Key': nextKey('ab-arch') },
+    );
+    assert.strictEqual(archived.status, 200, archived.text);
+    assert.strictEqual(archived.json.reader.legacy.status, 'archived');
+
+    const blocked = [
+      [evidencePath(target.readerProfile.id), {
+        kind: 'manual_other',
+        details: 'Should not add',
+        reason: 'Should not add evidence while archived',
+        actorId: helper.id,
+      }],
+      [`${basePath}/evidence/${provisional.id}/confirm`, {
+        expectedStatus: 'provisional',
+        reason: 'Should not confirm while archived',
+        actorId: helper.id,
+      }],
+      [`${basePath}/evidence/${provisional.id}/correct`, {
+        expectedStatus: 'provisional',
+        reason: 'Should not correct while archived',
+        actorId: helper.id,
+      }],
+      [`${basePath}/evidence/${provisional.id}/dispute`, {
+        expectedStatus: 'provisional',
+        reason: 'Should not dispute while archived',
+        actorId: helper.id,
+      }],
+      [`${basePath}/evidence/${disputedId}/replace`, {
+        expectedStatus: 'disputed',
+        reason: 'Should not replace while archived',
+        actorId: helper.id,
+      }],
+      [`${basePath}/readers/${target.readerProfile.id}/contact-decisions`, {
+        decision: 'suppress',
+        reason: 'Should not add DNC while archived',
+        actorId: helper.id,
+      }],
+      [`${basePath}/readers/${target.readerProfile.id}/contact-decisions`, {
+        decision: 'allow',
+        reason: 'Should not allow contact while archived',
+        actorId: helper.id,
+      }],
+      [`${basePath}/readers/${target.readerProfile.id}/identity-reviews`, {
+        reasonCode: 'possible_wrong_website_owner',
+        details: 'Should not open while archived',
+        reason: 'Should not open identity while archived',
+        actorId: helper.id,
+      }],
+      [`${basePath}/identity-reviews/${reviewId}/resolve`, {
+        status: 'dismissed',
+        resolutionReason: 'Should not resolve while archived',
+        expectedStatus: 'open',
+        actorId: helper.id,
+      }],
+      [`${basePath}/readers/${target.readerProfile.id}/archive`, {
+        reasonCode: 'test_record',
+        reason: 'Should not archive an archived profile',
+        expectedStatus: 'active',
+        confirmed: true,
+        actorId: helper.id,
+      }],
+    ];
+    for (const [urlPath, body] of blocked) {
+      const res = await post(urlPath, body, { 'Idempotency-Key': nextKey('ab-block') });
+      assertError(res, 409, 'lifecycle_profile_archived');
+    }
+
+    const evidenceAfter = await prisma.readerEvidence.findMany({ where: { userId: target.id } });
+    assert.strictEqual(evidenceAfter.filter((row) => row.status === 'provisional').length, 1);
+    assert.strictEqual(evidenceAfter.filter((row) => row.status === 'disputed').length, 1);
+    const review = await prisma.readerIdentityReview.findUnique({ where: { id: reviewId } });
+    assert.strictEqual(review.status, 'open');
+    const profile = await prisma.readerProfile.findUnique({ where: { id: target.readerProfile.id } });
+    assert.strictEqual(profile.status, 'archived');
+
+    const restored = await post(
+      `${basePath}/readers/${target.readerProfile.id}/restore`,
+      {
+        reason: 'Restore is the only allowed archived-profile mutation',
+        expectedStatus: 'archived',
+        confirmed: true,
+        actorId: helper.id,
+      },
+      { 'Idempotency-Key': nextKey('ab-rest') },
+    );
+    assert.strictEqual(restored.status, 200, restored.text);
+    assert.strictEqual(restored.json.reader.legacy.status, 'active');
+  });
+
   await check('accounting tables unchanged and resultJson has no reader payload', async () => {
     assert.strictEqual(await snapshotAccounting(), accountingBefore);
     const rows = await prisma.readerMutationIdempotency.findMany();
