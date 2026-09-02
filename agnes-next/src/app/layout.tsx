@@ -14,6 +14,7 @@ import MicrosoftUET from "@/components/analytics/MicrosoftUET";
 import MicrosoftUETPageView from "@/components/analytics/MicrosoftUETPageView";
 import GoogleAds from "@/components/analytics/GoogleAds";
 import GoogleAdsPageView from "@/components/analytics/GoogleAdsPageView";
+import GoogleTagManager from "@/components/analytics/GoogleTagManager";
 
 const SITE_URL = "https://www.theagnesprotocol.com";
 /** Absolute URL for crawlers (og:image, Twitter cards). */
@@ -57,6 +58,7 @@ export default function RootLayout({
         <link rel="preload" as="image" href="/images/score-bg.jpg" />
       </head>
       <body suppressHydrationWarning={true}>
+        <GoogleTagManager />
         <TikTokPixel />
         <MetaPixel />
         <MicrosoftUET />
