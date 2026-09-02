@@ -28,8 +28,8 @@ export default function ReaderLifecyclePreviewPage() {
         {PROVIDER_WARNING}
       </p>
       <p className={styles.lede}>
-        Classified readers from the lifecycle API. This screen does not replace Reader Manager and
-        does not send email.
+        Operational workbench for classified readers. Primary queues are mutually exclusive. This
+        screen does not replace Reader Manager and does not send email.
       </p>
       <ReaderLifecyclePreviewClient />
     </div>

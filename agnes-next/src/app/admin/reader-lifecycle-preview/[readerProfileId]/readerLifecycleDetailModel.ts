@@ -93,6 +93,14 @@ export const NURTURE_NOT_CONNECTED_TO_JOBS =
 export const SMS_CONSENT_NOTE =
   'This is an existing CRM record only. SMS consent is not email-marketing permission.';
 
+export const HISTORICAL_CRM_NOTES_LABEL = 'Historical CRM notes';
+
+export const HISTORICAL_CRM_NOTES_NOTE =
+  'These notes are historical CRM wording. They are not current lifecycle evidence and were not edited by this workbench.';
+
+export const IDENTITY_CLUSTER_NOTE =
+  'These are derived name/email/phone matches for review only. No merge is performed.';
+
 export const AGGREGATE_NOT_PROOF =
   'Campaign-level information—not proof that this individual purchased.';
 
@@ -194,7 +202,14 @@ export type LifecyclePurchase = {
   source: string | null;
   saleStatus: string;
   fulfillmentStatus: string | null;
+  sessionMode: string;
   accountingTruth: boolean;
+};
+
+export type HistoricalCrmConflict = {
+  code: string;
+  message: string;
+  detail: string | null;
 };
 
 export type LifecycleEvidence = {
@@ -260,6 +275,7 @@ export type ReaderLifecycleDetail = ReaderLifecycleListItem & {
   communications: LifecycleCommunication[];
   contactDecisions: LifecycleContactDecision[];
   identityReviews: LifecycleIdentityReview[];
+  historicalCrmConflict: HistoricalCrmConflict | null;
   distinctions: {
     purchasesAreAccountingTruth: boolean;
     evidenceIsLifecycleHistory: boolean;
@@ -333,6 +349,15 @@ export function identityReasonLabel(value: unknown): string {
 
 export function saleStatusLabel(value: unknown): string {
   return humanizeCode(value, SALE_STATUS_LABELS);
+}
+
+export function purchaseSessionModeLabel(value: unknown): string {
+  const mode = String(value || '').toLowerCase();
+  if (mode === 'test') return 'TEST';
+  if (mode === 'live') return 'LIVE';
+  if (mode === 'mixed') return 'MIXED';
+  if (mode === 'other') return 'Other session';
+  return 'Unknown session';
 }
 
 export function fulfillmentStatusLabel(value: unknown): string {
@@ -445,6 +470,7 @@ function parsePurchase(raw: unknown): LifecyclePurchase | null {
     source: asStringOrNull(row.source),
     saleStatus: asString(row.saleStatus) || 'live',
     fulfillmentStatus: asStringOrNull(row.fulfillmentStatus),
+    sessionMode: asString(row.sessionMode) || 'unknown',
     accountingTruth: row.accountingTruth !== false,
   };
 }
@@ -498,6 +524,18 @@ function parseDecision(raw: unknown): LifecycleContactDecision | null {
     actorType: asString(row.actorType),
     actorLabel: asString(row.actorLabel),
     createdAt: asStringOrNull(row.createdAt),
+  };
+}
+
+function parseHistoricalConflict(raw: unknown): HistoricalCrmConflict | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const row = raw as Record<string, unknown>;
+  const message = asString(row.message).trim();
+  if (!message) return null;
+  return {
+    code: asString(row.code) || 'format_conflict',
+    message,
+    detail: asStringOrNull(row.detail),
   };
 }
 
@@ -555,6 +593,7 @@ export function parseDetailResponse(raw: unknown): ReaderLifecycleDetail | null 
           .map(parseIdentity)
           .filter((item): item is LifecycleIdentityReview => item !== null)
       : [],
+    historicalCrmConflict: parseHistoricalConflict(row.historicalCrmConflict),
     distinctions: {
       purchasesAreAccountingTruth: distinctionsRaw.purchasesAreAccountingTruth !== false,
       evidenceIsLifecycleHistory: distinctionsRaw.evidenceIsLifecycleHistory !== false,

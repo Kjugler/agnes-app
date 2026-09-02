@@ -728,7 +728,7 @@ async function main() {
             });
             const filterHeading = listPage.getByRole('heading', { name: 'FILTER THE READER LIST' });
             await filterHeading.waitFor({ timeout: 20000 });
-            await listPage.getByText(/Showing \d+ reader|No readers found for these filters/).waitFor({
+            await listPage.getByText(/Showing .+|No readers found for these filters/).waitFor({
               timeout: 20000,
             });
             assert.equal(await filterHeading.isVisible(), true, 'list filter heading missing');
@@ -744,7 +744,7 @@ async function main() {
             const getsBeforeApply = listGetCount();
             await listPage.getByLabel('Ownership').selectOption('purchaser');
             await listPage.getByRole('button', { name: 'Apply filters' }).click();
-            await listPage.getByText(/Showing \d+ reader|No readers found for these filters/).waitFor({
+            await listPage.getByText(/Showing .+|No readers found for these filters/).waitFor({
               timeout: 20000,
             });
             assert.ok(listGetCount() > getsBeforeApply, 'applying filters never issued a list GET');

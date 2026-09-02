@@ -3,7 +3,22 @@
  * No React/Next imports so the verification script can transpile this file.
  */
 
-export const DEFAULT_PAGE_SIZE = 50;
+export const DEFAULT_PAGE_SIZE = 100;
+
+export const PRIMARY_QUEUES = [
+  'archived',
+  'dnc',
+  'identity',
+  'test_synthetic',
+  'legacy_gifted',
+  'legacy_purchaser',
+  'prospects',
+  'needs_review',
+  'clear_no_action',
+] as const;
+
+export type PrimaryQueue = (typeof PRIMARY_QUEUES)[number];
+export type PurchaseMode = 'none' | 'live' | 'test' | 'mixed' | 'other' | string;
 
 export const OWNERSHIP_VALUES = ['purchaser', 'book_owner_gifted', 'non_purchaser', 'unknown'] as const;
 export const SOURCE_VALUES = ['website', 'amazon', 'barnes_noble', 'other'] as const;
@@ -72,7 +87,19 @@ export type ReaderLifecycleListItem = {
   reasons: string[];
   latestCommunication: LatestCommunication | null;
   createdAt: string | null;
+  primaryQueue: string;
+  purchaseMode: PurchaseMode;
+  recommendedAction: string;
+  evidenceSummary: string;
+  identityWarning: boolean;
+  identityClusterPeers: Array<{
+    readerProfileId: string;
+    name: string;
+    email: string | null;
+  }>;
 };
+
+export type QueueCounts = Record<PrimaryQueue, number>;
 
 export type ReaderLifecycleListResponse = {
   ok: true;
@@ -81,7 +108,9 @@ export type ReaderLifecycleListResponse = {
   nextCursor: string | null;
   hasMore: boolean;
   partial: boolean;
-  totalCount: null;
+  totalCount: number | null;
+  populationCount: number | null;
+  queueCounts: QueueCounts | null;
 };
 
 export type LifecycleListFilters = {
@@ -93,6 +122,7 @@ export type LifecycleListFilters = {
   contactability: string;
   status: string;
   includeArchived: boolean;
+  queue: string;
 };
 
 export const EMPTY_FILTERS: LifecycleListFilters = {
@@ -104,6 +134,7 @@ export const EMPTY_FILTERS: LifecycleListFilters = {
   contactability: '',
   status: '',
   includeArchived: false,
+  queue: '',
 };
 
 export type PreviewErrorKind =
@@ -174,6 +205,26 @@ const CRM_STATUS_LABELS: Record<string, string> = {
   active: 'Active',
   inactive: 'Inactive',
   archived: 'Archived',
+};
+
+const QUEUE_LABELS: Record<string, string> = {
+  archived: 'Archived',
+  dnc: 'Do not contact',
+  identity: 'Identity',
+  test_synthetic: 'Test / synthetic',
+  legacy_gifted: 'Legacy gifted',
+  legacy_purchaser: 'Legacy purchaser',
+  prospects: 'Prospects',
+  needs_review: 'Needs review',
+  clear_no_action: 'Clear — no action',
+};
+
+const PURCHASE_MODE_LABELS: Record<string, string> = {
+  none: 'None',
+  live: 'LIVE',
+  test: 'TEST',
+  mixed: 'MIXED',
+  other: 'Other session',
 };
 
 export function humanizeCode(raw: unknown, labels: Record<string, string>): string {
@@ -259,6 +310,68 @@ export function crmStatusLabel(value: unknown): string {
   return humanizeCode(value, CRM_STATUS_LABELS);
 }
 
+export function queueLabel(value: unknown): string {
+  return humanizeCode(value, QUEUE_LABELS);
+}
+
+export function purchaseModeLabel(value: unknown): string {
+  if (value == null || value === '' || value === 'none') return '—';
+  return humanizeCode(value, PURCHASE_MODE_LABELS);
+}
+
+export function emptyQueueCounts(): QueueCounts {
+  return {
+    archived: 0,
+    dnc: 0,
+    identity: 0,
+    test_synthetic: 0,
+    legacy_gifted: 0,
+    legacy_purchaser: 0,
+    prospects: 0,
+    needs_review: 0,
+    clear_no_action: 0,
+  };
+}
+
+export function parseQueueCounts(raw: unknown): QueueCounts {
+  const counts = emptyQueueCounts();
+  if (!raw || typeof raw !== 'object') return counts;
+  const row = raw as Record<string, unknown>;
+  for (const key of PRIMARY_QUEUES) {
+    const n = row[key];
+    if (typeof n === 'number' && Number.isFinite(n) && n >= 0) counts[key] = Math.floor(n);
+  }
+  return counts;
+}
+
+export function showingRangeText(options: {
+  itemCount: number;
+  totalCount: number | null;
+  pageIndex: number;
+  pageSize: number;
+  populationCount?: number | null;
+}): string {
+  const { itemCount, totalCount, pageIndex, pageSize, populationCount } = options;
+  if (itemCount <= 0) {
+    if (typeof totalCount === 'number') return `Showing 0 of ${totalCount}`;
+    return 'Showing 0 readers';
+  }
+  const start = pageIndex * pageSize + 1;
+  const end = start + itemCount - 1;
+  if (typeof totalCount === 'number') {
+    let text = `Showing ${start}–${end} of ${totalCount}`;
+    if (
+      typeof populationCount === 'number' &&
+      populationCount !== totalCount &&
+      populationCount > 0
+    ) {
+      text += ` (${populationCount} in this population)`;
+    }
+    return text;
+  }
+  return `Showing ${itemCount} reader${itemCount === 1 ? '' : 's'}`;
+}
+
 export function emailDisplay(item: Pick<ReaderLifecycleListItem, 'email' | 'hasRealEmail' | 'emailDisplay'>): string {
   if (item.hasRealEmail && item.email) return item.email;
   return 'No mailable email.';
@@ -323,6 +436,7 @@ export function buildListQuery(filters: LifecycleListFilters, cursor: string | n
   if (filters.contactability) params.set('contactability', filters.contactability);
   if (filters.status) params.set('status', filters.status);
   else if (filters.includeArchived) params.set('includeArchived', 'true');
+  if (filters.queue) params.set('queue', filters.queue);
   if (cursor) params.set('cursor', cursor);
   return params;
 }
@@ -336,7 +450,8 @@ export function filtersEqual(a: LifecycleListFilters, b: LifecycleListFilters): 
     a.review === b.review &&
     a.contactability === b.contactability &&
     a.status === b.status &&
-    a.includeArchived === b.includeArchived
+    a.includeArchived === b.includeArchived &&
+    a.queue === b.queue
   );
 }
 
@@ -435,6 +550,26 @@ export function parseListItem(raw: unknown): ReaderLifecycleListItem | null {
     reasons,
     latestCommunication: parseLatestCommunication(row.latestCommunication),
     createdAt: asStringOrNull(row.createdAt),
+    primaryQueue: asString(row.primaryQueue) || 'needs_review',
+    purchaseMode: asString(row.purchaseMode) || 'none',
+    recommendedAction: asString(row.recommendedAction) || 'Insufficient evidence — do not guess.',
+    evidenceSummary: asString(row.evidenceSummary) || 'No purchase or evidence',
+    identityWarning: asBool(row.identityWarning),
+    identityClusterPeers: Array.isArray(row.identityClusterPeers)
+      ? row.identityClusterPeers
+          .map((peer) => {
+            if (!peer || typeof peer !== 'object') return null;
+            const p = peer as Record<string, unknown>;
+            const readerProfileId = asString(p.readerProfileId);
+            if (!readerProfileId) return null;
+            return {
+              readerProfileId,
+              name: asString(p.name) || 'Unnamed reader',
+              email: asStringOrNull(p.email),
+            };
+          })
+          .filter((peer): peer is { readerProfileId: string; name: string; email: string | null } => peer !== null)
+      : [],
   };
 }
 
@@ -444,16 +579,24 @@ export function parseListResponse(raw: unknown): {
   hasMore: boolean;
   partial: boolean;
   pageSize: number;
+  totalCount: number | null;
+  populationCount: number | null;
+  queueCounts: QueueCounts;
 } {
   const body = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   const itemsRaw = Array.isArray(body.items) ? body.items : [];
   const items = itemsRaw.map(parseListItem).filter((row): row is ReaderLifecycleListItem => row !== null);
+  const asCount = (value: unknown): number | null =>
+    typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : null;
   return {
     items,
     nextCursor: typeof body.nextCursor === 'string' && body.nextCursor ? body.nextCursor : null,
     hasMore: body.hasMore === true,
     partial: body.partial === true,
     pageSize: typeof body.pageSize === 'number' && body.pageSize > 0 ? body.pageSize : DEFAULT_PAGE_SIZE,
+    totalCount: asCount(body.totalCount),
+    populationCount: asCount(body.populationCount),
+    queueCounts: parseQueueCounts(body.queueCounts),
   };
 }
 

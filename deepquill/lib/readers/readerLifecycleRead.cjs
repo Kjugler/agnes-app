@@ -14,6 +14,17 @@ const { classifyReader } = require('./classifyReader.cjs');
 const { displayName } = require('./readerUser.cjs');
 const { displayReaderEmail } = require('./readerSyntheticEmail.cjs');
 const { independentDncActive } = require('./readerContactSuppression.cjs');
+const {
+  PRIMARY_QUEUES,
+  assignPrimaryQueue,
+  recommendedAction,
+  purchaseMode,
+  purchaseSessionMode,
+  evidenceSummary,
+  historicalCrmConflict,
+  buildIdentityClusters,
+  tallyPrimaryQueues,
+} = require('./readerLifecycleWorkbench.cjs');
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 100;
@@ -228,7 +239,8 @@ function hasDerivedFilters(options) {
       options.contactability ||
       options.review ||
       options.purchaseSource ||
-      options.reason,
+      options.reason ||
+      options.queue,
   );
 }
 
@@ -243,6 +255,7 @@ function matchesDerived(item, options) {
   if (options.review && item.review !== options.review) return false;
   if (options.purchaseSource && !(item.sources || []).includes(options.purchaseSource)) return false;
   if (options.reason && !(item.reasons || []).includes(options.reason)) return false;
+  if (options.queue && item.primaryQueue !== options.queue) return false;
   return true;
 }
 
@@ -278,6 +291,7 @@ function serializePurchase(row) {
     fulfillmentStatus: row.fulfillmentStatus || null,
     countsForShipping: Boolean(row.countsForShipping),
     countsForPoints: Boolean(row.countsForPoints),
+    sessionMode: purchaseSessionMode(row),
     accountingTruth: true,
   };
 }
@@ -439,93 +453,152 @@ function classifyProfile(profile, related) {
   return toListItem(profile, profile.user, related, classification);
 }
 
+function peerSummary(profile) {
+  const user = profile.user || {};
+  return {
+    readerProfileId: profile.id,
+    name: displayName(user) || '',
+    email: displayReaderEmail(user.email) || null,
+  };
+}
+
+function isAfterCursor(item, cursor) {
+  if (!cursor || !cursor.createdAt || !cursor.id) return true;
+  if (!item.createdAt) return false;
+  if (item.createdAt < cursor.createdAt) return true;
+  return item.createdAt === cursor.createdAt && item.readerProfileId < cursor.id;
+}
+
+function sliceAfterCursor(items, cursor, pageSize) {
+  let start = 0;
+  if (cursor && cursor.createdAt && cursor.id) {
+    const exact = items.findIndex(
+      (row) => row.createdAt === cursor.createdAt && row.readerProfileId === cursor.id,
+    );
+    if (exact >= 0) start = exact + 1;
+    else {
+      start = items.findIndex((row) => isAfterCursor(row, cursor));
+      if (start < 0) start = items.length;
+    }
+  }
+  const page = items.slice(start, start + pageSize);
+  const last = page[page.length - 1];
+  return {
+    page,
+    hasMore: start + page.length < items.length,
+    last,
+  };
+}
+
+function workbenchInput(profile, item, related, inIdentityCluster) {
+  const user = profile.user || {};
+  return {
+    readerProfileId: profile.id,
+    user,
+    email: user.email,
+    phone: user.phone,
+    purchases: related.purchasesByUser.get(user.id) || [],
+    evidence: related.evidenceByUser.get(user.id) || [],
+    notes: profile.notes || '',
+    ownership: item.ownership,
+    sources: item.sources,
+    review: item.review,
+    reasons: item.reasons,
+    contactability: item.contactability,
+    legacyStatus: item.legacy && item.legacy.status,
+    openIdentityReview: item.openReview === true,
+    inIdentityCluster,
+  };
+}
+
+function attachWorkbench(profile, item, related, clusterByProfile, peerById, extras = {}) {
+  const cluster = clusterByProfile.get(profile.id) || null;
+  const inIdentityCluster = Boolean(cluster);
+  const input = workbenchInput(profile, item, related, inIdentityCluster);
+  const primaryQueue = assignPrimaryQueue(input);
+  const peers = inIdentityCluster
+    ? (cluster.memberIds || [])
+        .filter((id) => id !== profile.id)
+        .map((id) => peerById.get(id))
+        .filter(Boolean)
+    : [];
+  const enriched = {
+    ...item,
+    primaryQueue,
+    purchaseMode: purchaseMode(input.purchases),
+    recommendedAction: recommendedAction(primaryQueue, input),
+    evidenceSummary: evidenceSummary(input),
+    identityWarning: Boolean(inIdentityCluster || item.openReview),
+    identityClusterPeers: peers,
+  };
+  if (extras.includeHistorical) {
+    enriched.historicalCrmConflict = historicalCrmConflict(input);
+  }
+  return enriched;
+}
+
+async function loadScopedProfiles(db, options) {
+  const where = profileWhere(options);
+  const rows = await db.readerProfile.findMany({
+    where,
+    include: { user: { select: USER_SELECT } },
+    orderBy: PROFILE_ORDER,
+    take: SAFETY_SCAN_LIMIT + 1,
+  });
+  const partial = rows.length > SAFETY_SCAN_LIMIT;
+  return {
+    profiles: partial ? rows.slice(0, SAFETY_SCAN_LIMIT) : rows,
+    partial,
+  };
+}
+
+function inventoryWorkbench(profiles, related) {
+  const clusterByProfile = buildIdentityClusters(
+    profiles.map((row) => ({
+      readerProfileId: row.id,
+      user: row.user,
+      email: row.user && row.user.email,
+      phone: row.user && row.user.phone,
+    })),
+  );
+  const peerById = new Map(profiles.map((row) => [row.id, peerSummary(row)]));
+  const items = profiles.map((row) => {
+    const classified = classifyProfile(row, related);
+    return attachWorkbench(row, classified, related, clusterByProfile, peerById);
+  });
+  return { items, clusterByProfile, peerById };
+}
+
 async function listReaderLifecycle(prisma, options = {}) {
   const db = asReadOnlyPrisma(prisma);
   const pageSize = clampPageSize(options.pageSize);
   const cursor = decodeCursor(options.cursor);
-  const where = profileWhere(options);
-  const after = descAfter(null, null, cursor);
-
-  if (!needsScan(options)) {
-    const whereWithCursor = after.OR ? { AND: [where, after] } : where;
-    const rows = await db.readerProfile.findMany({
-      where: whereWithCursor,
-      include: { user: { select: USER_SELECT } },
-      orderBy: PROFILE_ORDER,
-      take: pageSize + 1,
-    });
-    const page = rows.slice(0, pageSize);
-    const related = await loadRelated(db, page.map((row) => row.userId));
-    const items = page.map((row) => classifyProfile(row, related));
-    const last = page[page.length - 1];
-    return {
-      items,
-      pageSize,
-      nextCursor:
-        rows.length > pageSize && last
-          ? encodeCursor({ createdAt: iso(last.createdAt), id: last.id })
-          : null,
-      hasMore: rows.length > pageSize,
-      partial: false,
-      totalCount: null,
-    };
-  }
-
-  const items = [];
-  let scanned = 0;
-  let lastScanned = cursor;
-  let exhausted = false;
-  let scanCursor = cursor;
-
-  while (items.length < pageSize && scanned < SAFETY_SCAN_LIMIT) {
-    const whereWithCursor = scanCursor
-      ? { AND: [where, descAfter(null, null, scanCursor)] }
-      : where;
-    const batch = await db.readerProfile.findMany({
-      where: whereWithCursor,
-      include: { user: { select: USER_SELECT } },
-      orderBy: PROFILE_ORDER,
-      take: SCAN_BATCH,
-    });
-    if (!batch.length) {
-      exhausted = true;
-      break;
-    }
-    const related = await loadRelated(db, batch.map((row) => row.userId));
-    let filledPage = false;
-    let consumedEntireBatch = true;
-    for (let i = 0; i < batch.length; i += 1) {
-      const row = batch[i];
-      scanned += 1;
-      lastScanned = { createdAt: iso(row.createdAt), id: row.id };
-      if (!matchesSearch(row.user, options.q)) continue;
-      const item = classifyProfile(row, related);
-      if (matchesDerived(item, options)) items.push(item);
-      if (items.length >= pageSize) {
-        filledPage = true;
-        consumedEntireBatch = i === batch.length - 1;
-        break;
-      }
-    }
-    scanCursor = lastScanned;
-    if (consumedEntireBatch && batch.length < SCAN_BATCH) {
-      exhausted = true;
-      break;
-    }
-    if (filledPage) break;
-  }
-
-  const filled = items.length >= pageSize;
-  const hitSafety = !exhausted && !filled && scanned >= SAFETY_SCAN_LIMIT;
-  const hasMore = (filled && !exhausted) || hitSafety;
+  const { profiles, partial } = await loadScopedProfiles(db, options);
+  const related = await loadRelated(
+    db,
+    profiles.map((row) => row.userId),
+  );
+  const { items: population } = inventoryWorkbench(profiles, related);
+  const queueCounts = tallyPrimaryQueues(population);
+  const matched = population.filter(
+    (item, index) =>
+      matchesSearch(profiles[index].user, options.q) && matchesDerived(item, options),
+  );
+  const sliced = sliceAfterCursor(matched, cursor, pageSize);
+  const last = sliced.last;
   return {
-    items: items.slice(0, pageSize),
+    items: sliced.page,
     pageSize,
-    nextCursor: hasMore && lastScanned ? encodeCursor(lastScanned) : null,
-    hasMore,
-    partial: hitSafety,
-    scanned,
-    totalCount: null,
+    nextCursor:
+      sliced.hasMore && last
+        ? encodeCursor({ createdAt: last.createdAt, id: last.readerProfileId })
+        : null,
+    hasMore: sliced.hasMore,
+    partial,
+    scanned: profiles.length,
+    totalCount: matched.length,
+    populationCount: population.length,
+    queueCounts,
   };
 }
 
@@ -544,8 +617,26 @@ async function getReaderLifecycleDetail(prisma, options = {}) {
     });
   }
   if (!profile) return null;
-  const related = await loadRelated(db, [profile.userId]);
-  const listItem = classifyProfile(profile, related);
+  const scope =
+    profile.status === 'archived' ? { includeArchived: true } : {};
+  const { profiles } = await loadScopedProfiles(db, scope);
+  if (!profiles.some((row) => row.id === profile.id)) {
+    profiles.push(profile);
+    profiles.sort((a, b) => {
+      const at = new Date(b.createdAt) - new Date(a.createdAt);
+      if (at !== 0) return at;
+      return String(b.id).localeCompare(String(a.id));
+    });
+  }
+  const related = await loadRelated(
+    db,
+    profiles.map((row) => row.userId),
+  );
+  const { clusterByProfile, peerById } = inventoryWorkbench(profiles, related);
+  const classified = classifyProfile(profile, related);
+  const listItem = attachWorkbench(profile, classified, related, clusterByProfile, peerById, {
+    includeHistorical: true,
+  });
   const evidence = [...(related.evidenceByUser.get(profile.userId) || [])].sort((a, b) => {
     const t = new Date(b.createdAt) - new Date(a.createdAt);
     if (t !== 0) return t;
@@ -1014,6 +1105,7 @@ module.exports = {
   MAX_PAGE_SIZE,
   SCAN_BATCH,
   SAFETY_SCAN_LIMIT,
+  PRIMARY_QUEUES,
   CONTACTABILITY_SCOPE,
   CONTACTABLE_MEANS,
   WRITE_METHODS,

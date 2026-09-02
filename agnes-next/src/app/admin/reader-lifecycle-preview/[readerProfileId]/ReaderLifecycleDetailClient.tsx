@@ -7,7 +7,10 @@ import {
   LIST_PREVIEW_PATH,
   crmStatusLabel,
   categoryLabel,
+  detailPreviewPath,
   detailProxyPath,
+  purchaseModeLabel,
+  queueLabel,
 } from '../readerLifecyclePreviewModel';
 import listStyles from '../preview.module.css';
 import styles from './detail.module.css';
@@ -17,6 +20,9 @@ import {
   AUDIT_HISTORY_NOTE,
   CONTACT_DECISION_NOTE,
   EMPTY_HISTORY,
+  HISTORICAL_CRM_NOTES_LABEL,
+  HISTORICAL_CRM_NOTES_NOTE,
+  IDENTITY_CLUSTER_NOTE,
   IDENTITY_NO_MERGE,
   LOAD_EARLIER_CHANGES,
   NURTURE_NOT_CONNECTED_TO_JOBS,
@@ -54,6 +60,7 @@ import {
   parseAuditHistoryResponse,
   parseDetailResponse,
   phoneDisplay,
+  purchaseSessionModeLabel,
   safeRelatedUserId,
   saleStatusLabel,
   smsConsentLabel,
@@ -222,6 +229,18 @@ export default function ReaderLifecycleDetailClient({
                 <dt>Contactability</dt>
                 <dd>{listContactLabel(reader)}</dd>
               </div>
+              <div className={styles.axis}>
+                <dt>Primary queue</dt>
+                <dd>{queueLabel(reader.primaryQueue)}</dd>
+              </div>
+              <div className={styles.axis}>
+                <dt>LIVE / TEST</dt>
+                <dd>{purchaseModeLabel(reader.purchaseMode)}</dd>
+              </div>
+              <div className={styles.axis}>
+                <dt>Needed action</dt>
+                <dd>{reader.recommendedAction}</dd>
+              </div>
             </dl>
             {reader.nurtureSuppressed ? (
               <p className={styles.sectionNote} style={{ marginTop: 12 }}>
@@ -255,6 +274,7 @@ export default function ReaderLifecycleDetailClient({
           <CommunicationsSection rows={reader.communications} />
           <DecisionsSection rows={reader.contactDecisions} />
           <IdentitySection rows={reader.identityReviews} />
+          <IdentityClusterSection reader={reader} />
           <NotesSection reader={reader} />
           <AuditHistorySection readerProfileId={reader.readerProfileId} reloadToken={auditEpoch} />
         </>
@@ -315,6 +335,7 @@ function PurchasesSection({
                   <th scope="col">Source</th>
                   <th scope="col">Amount</th>
                   <th scope="col">Sale status</th>
+                  <th scope="col">Session</th>
                   <th scope="col">Fulfillment</th>
                 </tr>
               </thead>
@@ -326,6 +347,11 @@ function PurchasesSection({
                     <td>{formatAmount(row.amount, row.currency)}</td>
                     <td className={isArchivedBetaPurchase(row) ? styles.archived : undefined}>
                       {saleStatusLabel(row.saleStatus)}
+                    </td>
+                    <td>
+                      <span className={styles.sessionBadge}>
+                        {purchaseSessionModeLabel(row.sessionMode)}
+                      </span>
                     </td>
                     <td>{fulfillmentStatusLabel(row.fulfillmentStatus)}</td>
                   </tr>
@@ -342,6 +368,7 @@ function PurchasesSection({
                 <div className={isArchivedBetaPurchase(row) ? styles.archived : undefined}>
                   {saleStatusLabel(row.saleStatus)}
                 </div>
+                <div>{purchaseSessionModeLabel(row.sessionMode)}</div>
                 <div className={styles.muted}>{fulfillmentStatusLabel(row.fulfillmentStatus)}</div>
               </article>
             ))}
@@ -544,6 +571,38 @@ function IdentitySection({ rows }: { rows: LifecycleIdentityReview[] }) {
   );
 }
 
+function IdentityClusterSection({ reader }: { reader: ReaderLifecycleDetail }) {
+  const peers = reader.identityClusterPeers || [];
+  if (!reader.identityWarning && peers.length === 0) return null;
+  return (
+    <section className={styles.section} aria-labelledby="cluster-heading">
+      <h2 id="cluster-heading" className={styles.sectionTitle}>
+        Derived identity-cluster peers
+      </h2>
+      <p className={styles.sectionNote}>{IDENTITY_CLUSTER_NOTE}</p>
+      {peers.length === 0 ? (
+        <p className={styles.empty}>
+          Identity warning is present, but no other Reader Lifecycle profile is linked as a
+          read-only peer.
+        </p>
+      ) : (
+        <ul className={styles.peerList}>
+          {peers.map((peer) => (
+            <li key={peer.readerProfileId}>
+              <Link className={styles.peerLink} href={detailPreviewPath(peer.readerProfileId)}>
+                {peer.name || 'Unnamed reader'}
+              </Link>
+              <span className={styles.muted}>
+                {peer.email || 'No mailable email'}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function NotesSection({ reader }: { reader: ReaderLifecycleDetail }) {
   const notes = reader.notes.trim();
   return (
@@ -551,10 +610,19 @@ function NotesSection({ reader }: { reader: ReaderLifecycleDetail }) {
       <h2 id="notes-heading" className={styles.sectionTitle}>
         Notes and legacy contact information
       </h2>
+      {reader.historicalCrmConflict ? (
+        <p className={styles.conflict} role="status">
+          {reader.historicalCrmConflict.message}
+          {reader.historicalCrmConflict.detail ? ` ${reader.historicalCrmConflict.detail}` : ''}
+        </p>
+      ) : null}
       <dl className={styles.summary}>
         <div>
-          <dt>CRM notes</dt>
-          <dd>{notes || `No notes. ${EMPTY_HISTORY}`}</dd>
+          <dt>{HISTORICAL_CRM_NOTES_LABEL}</dt>
+          <dd>
+            {notes || `No notes. ${EMPTY_HISTORY}`}
+            <div className={styles.muted}>{HISTORICAL_CRM_NOTES_NOTE}</div>
+          </dd>
         </div>
         <div>
           <dt>SMS consent</dt>

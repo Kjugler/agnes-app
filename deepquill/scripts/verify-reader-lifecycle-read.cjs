@@ -127,7 +127,8 @@ async function paginateSearch(q, pageSize) {
     const page = await listReaderLifecycle(prisma, { q, pageSize, cursor });
     pages += 1;
     lastPartial = Boolean(page.partial);
-    assert.strictEqual(page.totalCount, null);
+    assert.strictEqual(typeof page.totalCount, 'number');
+    assert.ok(page.totalCount >= page.items.length);
     for (const item of page.items) ids.push(item.readerProfileId);
     scannedFlags.push(page.scanned);
     cursor = page.nextCursor;
@@ -489,6 +490,220 @@ async function seed() {
     },
   });
 
+  special.testOnly = await prisma.user.create({
+    data: {
+      email: 'special-testonly@example.net',
+      code: 'sptest',
+      referralCode: 'SPTEST',
+      fname: 'TestOnly',
+      lname: 'Checkout',
+      readerProfile: { create: { source: 'Website', readerType: 'purchased', status: 'active' } },
+      purchases: {
+        create: {
+          sessionId: 'cs_test_workbench_1',
+          amount: 2499,
+          currency: 'usd',
+          source: 'stripe',
+          saleStatus: 'live',
+        },
+      },
+    },
+    include: { readerProfile: true },
+  });
+
+  special.namelessLive = await prisma.user.create({
+    data: {
+      email: 'special-nameless-live@example.net',
+      code: 'spnoname',
+      referralCode: 'SPNONAME',
+      fname: '',
+      lname: null,
+      readerProfile: { create: { source: 'Website', readerType: 'purchased', status: 'active' } },
+      purchases: {
+        create: {
+          sessionId: 'cs_live_workbench_nameless',
+          amount: 2499,
+          currency: 'usd',
+          source: 'stripe',
+          saleStatus: 'live',
+        },
+      },
+    },
+    include: { readerProfile: true },
+  });
+
+  special.liveOnly = await prisma.user.create({
+    data: {
+      email: 'special-liveonly@example.net',
+      code: 'splive',
+      referralCode: 'SPLIVE',
+      fname: 'LiveOnly',
+      lname: 'Checkout',
+      readerProfile: { create: { source: 'Website', readerType: 'purchased', status: 'active' } },
+      purchases: {
+        create: {
+          sessionId: 'cs_live_workbench_1',
+          amount: 2499,
+          currency: 'usd',
+          source: 'stripe',
+          saleStatus: 'live',
+        },
+      },
+    },
+    include: { readerProfile: true },
+  });
+
+  special.mixed = await prisma.user.create({
+    data: {
+      email: 'special-mixed@example.net',
+      code: 'spmix',
+      referralCode: 'SPMIX',
+      fname: 'Mixed',
+      lname: 'Sessions',
+      readerProfile: { create: { source: 'Website', readerType: 'purchased', status: 'active' } },
+      purchases: {
+        create: [
+          {
+            sessionId: 'cs_live_workbench_mix',
+            amount: 2499,
+            currency: 'usd',
+            source: 'stripe',
+            saleStatus: 'live',
+          },
+          {
+            sessionId: 'cs_test_workbench_mix',
+            amount: 2499,
+            currency: 'usd',
+            source: 'stripe',
+            saleStatus: 'live',
+          },
+        ],
+      },
+    },
+    include: { readerProfile: true },
+  });
+
+  special.krisA = await prisma.user.create({
+    data: {
+      email: 'special-kris-a@example.net',
+      code: 'spkrisa',
+      referralCode: 'SPKRISA',
+      fname: 'Kris',
+      lname: 'Jugler',
+      readerProfile: { create: { source: 'Website', readerType: 'purchased', status: 'active' } },
+      purchases: {
+        create: {
+          sessionId: 'cs_live_kris_a',
+          amount: 2499,
+          currency: 'usd',
+          source: 'stripe',
+          saleStatus: 'live',
+        },
+      },
+    },
+    include: { readerProfile: true },
+  });
+
+  special.krisB = await prisma.user.create({
+    data: {
+      email: 'special-kris-b@example.net',
+      code: 'spkrisb',
+      referralCode: 'SPKRISB',
+      fname: 'Kris Jugler',
+      lname: null,
+      readerProfile: { create: { source: 'Website', readerType: 'interested', status: 'active' } },
+    },
+    include: { readerProfile: true },
+  });
+
+  special.lastNameA = await prisma.user.create({
+    data: {
+      email: 'special-denise-jugler@example.net',
+      code: 'spdenj',
+      referralCode: 'SPDENJ',
+      fname: 'Denise',
+      lname: 'Jugler',
+      readerProfile: { create: { source: 'Website', readerType: 'interested', status: 'active' } },
+    },
+    include: { readerProfile: true },
+  });
+
+  special.lastNameB = await prisma.user.create({
+    data: {
+      email: 'special-frank-jugler@example.net',
+      code: 'spfranj',
+      referralCode: 'SPFRANJ',
+      fname: 'Frank',
+      lname: 'Jugler',
+      readerProfile: { create: { source: 'Website', readerType: 'interested', status: 'active' } },
+    },
+    include: { readerProfile: true },
+  });
+
+  special.randyConflict = await prisma.user.create({
+    data: {
+      email: 'special-randy-conflict@example.net',
+      code: 'sprandy',
+      referralCode: 'SPRANDY',
+      fname: 'Randy',
+      lname: 'Conflict',
+      readerProfile: {
+        create: {
+          source: 'Gift',
+          readerType: 'gifted',
+          status: 'active',
+          notes: '[2026-07-24] drove ebook to him',
+        },
+      },
+    },
+    include: { readerProfile: true },
+  });
+  await prisma.readerEvidence.create({
+    data: actorEvidence({
+      userId: special.randyConflict.id,
+      kind: 'gift_book_owner',
+      status: 'confirmed',
+      details: 'Kris personally gave Randy a physical paperback copy of The Agnes Protocol.',
+      originRef: 'randy-gift',
+    }),
+  });
+
+  special.legacyGifted = await prisma.user.create({
+    data: {
+      email: 'special-legacy-gifted@example.net',
+      code: 'splgift',
+      referralCode: 'SPLGIFT',
+      fname: 'Legacy',
+      lname: 'Gifted',
+      readerProfile: { create: { source: null, readerType: 'gifted', status: 'active' } },
+    },
+    include: { readerProfile: true },
+  });
+
+  special.fixtureEmail = await prisma.user.create({
+    data: {
+      email: 'deploy-test@example.com',
+      code: 'spfix',
+      referralCode: 'SPFIX',
+      fname: 'Deploy',
+      lname: 'Fixture',
+      readerProfile: { create: { source: 'Website', readerType: 'interested', status: 'active' } },
+    },
+    include: { readerProfile: true },
+  });
+
+  special.statusArchivedWorkbench = await prisma.user.create({
+    data: {
+      email: 'special-archived-status@example.net',
+      code: 'sparchst',
+      referralCode: 'SPARCHST',
+      fname: 'Archived',
+      lname: 'Status',
+      readerProfile: { create: { source: 'Website', readerType: 'interested', status: 'archived' } },
+    },
+    include: { readerProfile: true },
+  });
+
   special.noProfile = await prisma.user.create({
     data: {
       email: 'special-noprofile@example.net',
@@ -612,7 +827,17 @@ async function main() {
     const ids = await paginateAll();
     assert.ok(ids.length > 500, `paged ${ids.length}`);
     assert.strictEqual(new Set(ids).size, ids.length);
-    assert.strictEqual(ids.length, before.profiles);
+    assert.ok(!ids.includes(special.statusArchivedWorkbench.readerProfile.id));
+    const allIds = [];
+    let cursor;
+    do {
+      const page = await listReaderLifecycle(prisma, { pageSize: 100, cursor, includeArchived: true });
+      for (const item of page.items) allIds.push(item.readerProfileId);
+      cursor = page.nextCursor;
+    } while (cursor);
+    assert.strictEqual(allIds.length, before.profiles);
+    assert.strictEqual(new Set(allIds).size, allIds.length);
+    assert.ok(allIds.includes(special.statusArchivedWorkbench.readerProfile.id));
   });
 
   await check('search finds B&N special reader', async () => {
@@ -628,7 +853,8 @@ async function main() {
         page.items.some((row) => row.userId === special.jeff.id),
         `q=${q} should find Jeff`,
       );
-      assert.strictEqual(page.totalCount, null);
+      assert.strictEqual(typeof page.totalCount, 'number');
+      assert.ok(page.totalCount >= 1);
       assert.strictEqual(page.partial, false);
     }
     const emails = ['jeff.reader@example.net', 'JEFF.READER@EXAMPLE.NET', 'Jeff.Reader@Example.NET'];
@@ -852,6 +1078,110 @@ async function main() {
     assert.ok(archived.items.some((row) => row.userId === special.archived.id));
     const legacy = await listReviewQueue(prisma, { kind: 'legacy_purchased_without_evidence', pageSize: 20 });
     assert.ok(legacy.items.some((row) => row.userId === special.legacy.id));
+  });
+
+  await check('every profile has exactly one exclusive primary queue', async () => {
+    const { PRIMARY_QUEUES } = require('../lib/readers/readerLifecycleWorkbench.cjs');
+    const ids = [];
+    let cursor;
+    let queueCounts = null;
+    let populationCount = null;
+    do {
+      const page = await listReaderLifecycle(prisma, { pageSize: 100, cursor, includeArchived: true });
+      if (!queueCounts) {
+        queueCounts = page.queueCounts;
+        populationCount = page.populationCount;
+      }
+      assert.strictEqual(typeof page.totalCount, 'number');
+      assert.strictEqual(page.populationCount, populationCount);
+      assert.deepStrictEqual(page.queueCounts, queueCounts);
+      for (const item of page.items) {
+        assert.ok(PRIMARY_QUEUES.includes(item.primaryQueue), item.primaryQueue);
+        ids.push(item.readerProfileId);
+      }
+      cursor = page.nextCursor;
+    } while (cursor);
+    const sum = PRIMARY_QUEUES.reduce((n, key) => n + queueCounts[key], 0);
+    assert.strictEqual(ids.length, populationCount);
+    assert.strictEqual(new Set(ids).size, ids.length);
+    assert.strictEqual(sum, populationCount);
+  });
+
+  await check('identity precedence and conservative fixture/test rules', async () => {
+    const krisA = await getReaderLifecycleDetail(prisma, { userId: special.krisA.id });
+    const krisB = await getReaderLifecycleDetail(prisma, { userId: special.krisB.id });
+    assert.strictEqual(krisA.primaryQueue, 'identity');
+    assert.strictEqual(krisB.primaryQueue, 'identity');
+    assert.strictEqual(krisA.identityWarning, true);
+    assert.ok(krisA.identityClusterPeers.some((row) => row.readerProfileId === special.krisB.readerProfile.id));
+    assert.ok(krisB.identityClusterPeers.some((row) => row.readerProfileId === special.krisA.readerProfile.id));
+    assert.strictEqual(krisA.purchaseMode, 'live');
+
+    const denise = await getReaderLifecycleDetail(prisma, { userId: special.lastNameA.id });
+    const frank = await getReaderLifecycleDetail(prisma, { userId: special.lastNameB.id });
+    assert.notStrictEqual(denise.primaryQueue, 'identity');
+    assert.notStrictEqual(frank.primaryQueue, 'identity');
+    assert.strictEqual(denise.identityWarning, false);
+    assert.strictEqual(frank.identityWarning, false);
+    assert.ok(!denise.identityClusterPeers.some((row) => row.readerProfileId === special.lastNameB.readerProfile.id));
+
+    const testOnly = await getReaderLifecycleDetail(prisma, { userId: special.testOnly.id });
+    const nameless = await getReaderLifecycleDetail(prisma, { userId: special.namelessLive.id });
+    assert.strictEqual(nameless.primaryQueue, 'needs_review');
+    assert.strictEqual(nameless.recommendedAction, 'Review missing reader identity');
+    assert.strictEqual(nameless.purchaseMode, 'live');
+    assert.notStrictEqual(nameless.primaryQueue, 'clear_no_action');
+
+    const liveOnly = await getReaderLifecycleDetail(prisma, { userId: special.liveOnly.id });
+    const mixed = await getReaderLifecycleDetail(prisma, { userId: special.mixed.id });
+    assert.strictEqual(testOnly.purchaseMode, 'test');
+    assert.strictEqual(testOnly.primaryQueue, 'test_synthetic');
+    assert.strictEqual(liveOnly.purchaseMode, 'live');
+    assert.notStrictEqual(liveOnly.primaryQueue, 'test_synthetic');
+    assert.strictEqual(mixed.purchaseMode, 'mixed');
+    assert.notStrictEqual(mixed.primaryQueue, 'test_synthetic');
+    assert.ok(mixed.purchases.some((row) => row.sessionMode === 'test'));
+    assert.ok(mixed.purchases.some((row) => row.sessionMode === 'live'));
+
+    const fixture = await getReaderLifecycleDetail(prisma, { userId: special.fixtureEmail.id });
+    assert.strictEqual(fixture.primaryQueue, 'test_synthetic');
+
+    const gifted = await getReaderLifecycleDetail(prisma, { userId: special.legacyGifted.id });
+    assert.strictEqual(gifted.primaryQueue, 'legacy_gifted');
+    const purchaser = await getReaderLifecycleDetail(prisma, { userId: special.legacy.id });
+    assert.strictEqual(purchaser.primaryQueue, 'legacy_purchaser');
+    const dnc = await getReaderLifecycleDetail(prisma, { userId: special.dncHold.id });
+    assert.strictEqual(dnc.primaryQueue, 'dnc');
+    const archived = await getReaderLifecycleDetail(prisma, { userId: special.statusArchivedWorkbench.id });
+    assert.strictEqual(archived.primaryQueue, 'archived');
+  });
+
+  await check('historical CRM conflict is display-only and GET does not write', async () => {
+    const beforeNotes = await prisma.readerProfile.findUnique({
+      where: { id: special.randyConflict.readerProfile.id },
+    });
+    const detail = await getReaderLifecycleDetail(prisma, { userId: special.randyConflict.id });
+    assert.ok(detail.historicalCrmConflict);
+    assert.strictEqual(detail.historicalCrmConflict.code, 'format_conflict');
+    assert.strictEqual(detail.primaryQueue, 'clear_no_action');
+    const afterNotes = await prisma.readerProfile.findUnique({
+      where: { id: special.randyConflict.readerProfile.id },
+    });
+    assert.strictEqual(afterNotes.notes, beforeNotes.notes);
+    assert.match(afterNotes.notes, /ebook/);
+    const evidenceCount = await prisma.readerEvidence.count({ where: { userId: special.randyConflict.id } });
+    assert.strictEqual(evidenceCount, 1);
+  });
+
+  await check('queue filter uses exclusive membership and keeps population counts', async () => {
+    const all = await listReaderLifecycle(prisma, { pageSize: 100 });
+    const identity = await listReaderLifecycle(prisma, { queue: 'identity', pageSize: 100 });
+    assert.ok(identity.items.length > 0);
+    assert.ok(identity.items.every((row) => row.primaryQueue === 'identity'));
+    assert.strictEqual(identity.populationCount, all.populationCount);
+    assert.deepStrictEqual(identity.queueCounts, all.queueCounts);
+    assert.strictEqual(identity.totalCount, identity.queueCounts.identity);
+    assert.ok(identity.items.some((row) => row.userId === special.krisA.id));
   });
 
   await check('row counts and snapshot hash unchanged after all reads', async () => {

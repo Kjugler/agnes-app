@@ -259,6 +259,19 @@ async function main() {
       const payload = getListPayload(new URL('http://127.0.0.1/api/admin/reader-lifecycle/readers?pageSize=50'));
       assert.equal(payload.items.length, 12);
       assert.equal(payload.items[0].name, 'Website Confirmed');
+      assert.equal(payload.totalCount, 12);
+      assert.equal(payload.pageSize, 100);
+    });
+
+    await check('detail workbench labels historical CRM notes and session mode', () => {
+      assert.equal(detail.HISTORICAL_CRM_NOTES_LABEL, 'Historical CRM notes');
+      assert.equal(detail.purchaseSessionModeLabel('test'), 'TEST');
+      assert.equal(detail.purchaseSessionModeLabel('live'), 'LIVE');
+      const client = scanSource(FILES.detailClient);
+      assert.match(client, /HISTORICAL_CRM_NOTES_LABEL/);
+      assert.match(client, /IdentityClusterSection/);
+      assert.match(client, /purchaseSessionModeLabel/);
+      assert.doesNotMatch(client, />CRM notes</);
     });
 
     await check('detail proxy path encodes the id', () => {

@@ -399,7 +399,8 @@ async function paginateAll(extraQuery = {}) {
   do {
     const res = await get(`${basePath}/readers`, { query: { pageSize: '100', cursor, ...extraQuery } });
     assert.strictEqual(res.status, 200);
-    assert.strictEqual(res.json.totalCount, null);
+    assert.strictEqual(typeof res.json.totalCount, 'number');
+    assert.strictEqual(typeof res.json.populationCount, 'number');
     for (const item of res.json.items) ids.push(item.readerProfileId);
     cursor = res.json.nextCursor;
     pages += 1;
@@ -543,7 +544,9 @@ async function main() {
     assert.strictEqual(row.contactabilityScope.safeToSend, false);
     assert.strictEqual(row.contactabilityScope.notForSendingSystems, true);
     assert.strictEqual(res.json.partial, false);
-    assert.strictEqual(res.json.totalCount, null);
+    assert.strictEqual(typeof res.json.totalCount, 'number');
+    assert.ok(res.json.totalCount >= 1);
+    assert.ok(row.primaryQueue);
     assertNoSecrets(res.json);
   });
 
@@ -653,7 +656,23 @@ async function main() {
     assert.ok(res.json.items.some((row) => row.userId === special.website.id));
     assert.ok('partial' in res.json);
     assert.ok('hasMore' in res.json);
-    assert.strictEqual(res.json.totalCount, null);
+    assert.strictEqual(typeof res.json.totalCount, 'number');
+  });
+
+  await check('queue query is exclusive and rejects unknown values', async () => {
+    const parsed = parseListQuery({ queue: 'identity', pageSize: '10' });
+    assert.strictEqual(parsed.queue, 'identity');
+    let invalidStatus = 0;
+    try {
+      parseListQuery({ queue: 'overlapping_filter' });
+    } catch (err) {
+      invalidStatus = err.status;
+    }
+    assert.strictEqual(invalidStatus, 400);
+    const res = await get(`${basePath}/readers`, { query: { queue: 'prospects', pageSize: '20' } });
+    assert.strictEqual(res.status, 200);
+    assert.ok(res.json.items.every((row) => row.primaryQueue === 'prospects'));
+    assert.strictEqual(res.json.totalCount, res.json.queueCounts.prospects);
   });
 
   await check('malformed cursor returns 400', async () => {
@@ -696,7 +715,8 @@ async function main() {
     assert.strictEqual(res.status, 200);
     assert.strictEqual(typeof res.json.partial, 'boolean');
     assert.ok(res.json.nextCursor);
-    assert.strictEqual(res.json.totalCount, null);
+    assert.strictEqual(typeof res.json.totalCount, 'number');
+    assert.ok(res.json.totalCount > 50);
     const page2 = await get(`${basePath}/readers`, {
       query: { q: 'pad', pageSize: '50', cursor: res.json.nextCursor },
     });

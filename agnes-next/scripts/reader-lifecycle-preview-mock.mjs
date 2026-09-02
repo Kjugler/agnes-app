@@ -51,6 +51,8 @@ function purchase(partial) {
     saleStatus: 'live',
     fulfillmentStatus: 'unfulfilled',
     accountingTruth: true,
+    sessionId: 'cs_live_mock',
+    sessionMode: 'live',
     createdAt: iso('2026-06-01'),
     ...partial,
   };
@@ -427,11 +429,23 @@ export function getListPayload(url) {
   return {
     ok: true,
     items,
-    pageSize: 50,
+    pageSize: 100,
     nextCursor: cursor === 'page2' || items.length === 0 ? null : 'page2',
     hasMore: cursor !== 'page2' && q !== 'zzzempty',
     partial: q === 'partialscan',
-    totalCount: null,
+    totalCount: items.length,
+    populationCount: cursor === 'page2' ? PAGE2.length : PAGE1.length,
+    queueCounts: {
+      archived: 0,
+      dnc: 1,
+      identity: 1,
+      test_synthetic: 0,
+      legacy_gifted: 0,
+      legacy_purchaser: 0,
+      prospects: 1,
+      needs_review: 3,
+      clear_no_action: 6,
+    },
   };
 }
 

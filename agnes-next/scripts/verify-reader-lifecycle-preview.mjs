@@ -345,7 +345,11 @@ async function main() {
       assert.equal(qs.get('confidence'), 'confirmed');
       assert.equal(qs.get('review'), 'clear');
       assert.equal(qs.get('contactability'), 'contactable');
-      assert.equal(qs.get('pageSize'), '50');
+      assert.equal(qs.get('pageSize'), '100');
+      assert.equal(qs.get('queue'), null);
+      const queued = mod.buildListQuery({ ...mod.EMPTY_FILTERS, queue: 'identity' }, null);
+      assert.equal(queued.get('queue'), 'identity');
+      assert.equal(queued.get('pageSize'), '100');
       assert.equal(qs.get('cursor'), null);
       const archived = mod.buildListQuery({ ...mod.EMPTY_FILTERS, includeArchived: true }, 'opaque-cursor');
       assert.equal(archived.get('includeArchived'), 'true');
@@ -388,11 +392,39 @@ async function main() {
         nextCursor: null,
         hasMore: false,
         partial: true,
-        totalCount: null,
+        totalCount: 81,
+        populationCount: 81,
+        queueCounts: { identity: 11, prospects: 19 },
       });
       assert.equal(parsed.items.length, 0);
       assert.equal(parsed.partial, true);
       assert.equal(parsed.hasMore, false);
+      assert.equal(parsed.totalCount, 81);
+      assert.equal(parsed.populationCount, 81);
+      assert.equal(parsed.queueCounts.identity, 11);
+      assert.equal(parsed.queueCounts.prospects, 19);
+      assert.equal(parsed.queueCounts.clear_no_action, 0);
+    });
+
+    await check('showing range and exclusive queue labels', () => {
+      assert.equal(
+        mod.showingRangeText({
+          itemCount: 81,
+          totalCount: 81,
+          pageIndex: 0,
+          pageSize: 100,
+          populationCount: 81,
+        }),
+        'Showing 1–81 of 81',
+      );
+      assert.equal(mod.queueLabel('clear_no_action'), 'Clear — no action');
+      assert.equal(mod.purchaseModeLabel('mixed'), 'MIXED');
+      assert.equal(mod.purchaseModeLabel('test'), 'TEST');
+      assert.equal(mod.purchaseModeLabel('live'), 'LIVE');
+      assert.equal(mod.purchaseModeLabel('none'), '—');
+      const mixed = mod.parseListItem(item({ purchaseMode: 'mixed', primaryQueue: 'clear_no_action' }));
+      assert.equal(mixed.purchaseMode, 'mixed');
+      assert.equal(mixed.primaryQueue, 'clear_no_action');
     });
 
     await check('existing Reader Manager files are untouched', () => {
@@ -409,6 +441,9 @@ async function main() {
       assert.equal(mod.LIST_PROXY_PATH, '/api/admin/reader-lifecycle/readers');
       assert.match(model, /\/api\/admin\/reader-lifecycle\/readers/);
       assert.doesNotMatch(client, /\/api\/admin\/readers[^-]/);
+      assert.match(client, /PRIMARY_QUEUES/);
+      assert.match(client, /showingRangeText/);
+      assert.match(client, /queueChips/);
     });
   } finally {
     fs.rmSync(outDir, { recursive: true, force: true });

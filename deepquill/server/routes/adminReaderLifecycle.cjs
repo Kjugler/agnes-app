@@ -25,6 +25,7 @@ const {
   listReaderAuditHistory,
   DEFAULT_PAGE_SIZE,
   MAX_PAGE_SIZE,
+  PRIMARY_QUEUES,
 } = require('../../lib/readers/readerLifecycleRead.cjs');
 
 const MAX_CURSOR_LENGTH = 512;
@@ -219,6 +220,7 @@ function parseListQuery(query) {
   );
   const source = parseLimitedString(scalar(query, 'source'), 'source', MAX_CRM_STRING);
   const statusRaw = parseLimitedString(scalar(query, 'status'), 'status', MAX_CRM_STRING);
+  const queue = parseEnum(scalar(query, 'queue'), PRIMARY_QUEUES, 'queue');
   if (statusRaw && statusRaw !== 'all' && !CRM_STATUSES.includes(statusRaw)) {
     throw httpError(400, 'Invalid status');
   }
@@ -232,6 +234,7 @@ function parseListQuery(query) {
     review,
     purchaseSource,
     source,
+    queue,
     ...resolveCrmStatusFilter(statusRaw, includeArchived),
   };
 }

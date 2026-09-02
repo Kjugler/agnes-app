@@ -13,17 +13,18 @@ import {
   LIST_FILTER_HEADING,
   LIST_PROXY_PATH,
   OWNERSHIP_VALUES,
+  PRIMARY_QUEUES,
   REVIEW_VALUES,
   SOURCE_VALUES,
   accentTone,
   buildListQuery,
   classifyHttpError,
-  communicationListSummary,
   confidenceLabel,
   detailPreviewPath,
   contactabilityLabel,
   crmStatusLabel,
   emailDisplay,
+  emptyQueueCounts,
   goNextPage,
   goPreviousPage,
   initialCursorHistory,
@@ -32,14 +33,18 @@ import {
   listReviewSummary,
   ownershipLabel,
   parseListResponse,
+  purchaseModeLabel,
+  queueLabel,
   resetCursorHistory,
   reviewLabel,
+  showingRangeText,
   sourceLabel,
   sourcesLabel,
   type AccentTone,
   type CursorHistory,
   type LifecycleListFilters,
   type PreviewErrorKind,
+  type QueueCounts,
   type ReaderLifecycleListItem,
 } from './readerLifecyclePreviewModel';
 import styles from './preview.module.css';
@@ -77,7 +82,8 @@ function isFilters(value: unknown): value is LifecycleListFilters {
     typeof row.review === 'string' &&
     typeof row.contactability === 'string' &&
     typeof row.status === 'string' &&
-    typeof row.includeArchived === 'boolean'
+    typeof row.includeArchived === 'boolean' &&
+    (typeof row.queue === 'string' || row.queue == null)
   );
 }
 
@@ -103,7 +109,15 @@ function readPreviewSession(): {
     if (!parsed || typeof parsed !== 'object') return null;
     const row = parsed as Record<string, unknown>;
     if (!isFilters(row.draft) || !isFilters(row.applied) || !isHistory(row.history)) return null;
-    return { draft: row.draft, applied: row.applied, history: row.history };
+    const withQueue = (filters: LifecycleListFilters): LifecycleListFilters => ({
+      ...filters,
+      queue: filters.queue || '',
+    });
+    return {
+      draft: withQueue(row.draft),
+      applied: withQueue(row.applied),
+      history: row.history,
+    };
   } catch {
     return null;
   }
@@ -153,6 +167,10 @@ export default function ReaderLifecyclePreviewClient() {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [partial, setPartial] = useState(false);
+  const [totalCount, setTotalCount] = useState<number | null>(null);
+  const [populationCount, setPopulationCount] = useState<number | null>(null);
+  const [pageSize, setPageSize] = useState(100);
+  const [queueCounts, setQueueCounts] = useState<QueueCounts>(emptyQueueCounts);
   const [loading, setLoading] = useState(true);
   const [errorKind, setErrorKind] = useState<PreviewErrorKind | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
@@ -183,6 +201,9 @@ export default function ReaderLifecyclePreviewClient() {
         setHasMore(false);
         setPartial(false);
         setNextCursor(null);
+        setTotalCount(null);
+        setPopulationCount(null);
+        setQueueCounts(emptyQueueCounts());
         setErrorKind(classifyHttpError(res.status, code));
         return;
       }
@@ -191,11 +212,18 @@ export default function ReaderLifecyclePreviewClient() {
       setHasMore(parsed.hasMore);
       setPartial(parsed.partial);
       setNextCursor(parsed.nextCursor);
+      setTotalCount(parsed.totalCount);
+      setPopulationCount(parsed.populationCount);
+      setPageSize(parsed.pageSize);
+      setQueueCounts(parsed.queueCounts);
     } catch {
       setItems([]);
       setHasMore(false);
       setPartial(false);
       setNextCursor(null);
+      setTotalCount(null);
+      setPopulationCount(null);
+      setQueueCounts(emptyQueueCounts());
       setErrorKind('unavailable');
     } finally {
       setLoading(false);
@@ -234,6 +262,13 @@ export default function ReaderLifecyclePreviewClient() {
   function clearFilters() {
     setDraft(EMPTY_FILTERS);
     setApplied(EMPTY_FILTERS);
+    setHistory(resetCursorHistory());
+  }
+
+  function selectQueue(queue: string) {
+    const next = { ...draft, queue };
+    setDraft(next);
+    setApplied({ ...next, q: next.q.trim() });
     setHistory(resetCursorHistory());
   }
 
@@ -348,11 +383,46 @@ export default function ReaderLifecyclePreviewClient() {
         </div>
       </form>
 
+      <div className={styles.queueBar} role="group" aria-label="Primary operational queues">
+        <p className={styles.queueHint}>
+          Each reader belongs to exactly one primary queue. Badge filters do not overlap.
+        </p>
+        <div className={styles.queueChips}>
+          <button
+            type="button"
+            className={`${styles.queueChip} ${applied.queue === '' ? styles.queueChipActive : ''}`}
+            onClick={() => selectQueue('')}
+          >
+            All
+            <span className={styles.queueCount}>
+              {populationCount == null ? '—' : populationCount}
+            </span>
+          </button>
+          {PRIMARY_QUEUES.map((queue) => (
+            <button
+              key={queue}
+              type="button"
+              className={`${styles.queueChip} ${applied.queue === queue ? styles.queueChipActive : ''}`}
+              onClick={() => selectQueue(queue)}
+            >
+              {queueLabel(queue)}
+              <span className={styles.queueCount}>{queueCounts[queue]}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className={styles.statusBar} aria-live="polite">
         {loading ? <span>Loading readers…</span> : null}
         {!loading && !errorKind ? (
           <span>
-            Showing {items.length} reader{items.length === 1 ? '' : 's'}
+            {showingRangeText({
+              itemCount: items.length,
+              totalCount,
+              pageIndex: history.stack.length,
+              pageSize,
+              populationCount,
+            })}
             {hasMore ? ' — more records exist' : ''}
           </span>
         ) : null}
@@ -402,10 +472,13 @@ export default function ReaderLifecyclePreviewClient() {
               <thead>
                 <tr>
                   <th scope="col">Reader</th>
-                  <th scope="col">Ownership / sources</th>
+                  <th scope="col">Ownership</th>
                   <th scope="col">Confidence / review</th>
+                  <th scope="col">Source / evidence</th>
+                  <th scope="col">LIVE / TEST</th>
+                  <th scope="col">Identity</th>
                   <th scope="col">Contact</th>
-                  <th scope="col">Latest communication</th>
+                  <th scope="col">Needed action</th>
                 </tr>
               </thead>
               <tbody>
@@ -499,16 +572,23 @@ function ReaderRow({ item }: { item: ReaderLifecycleListItem }) {
       </td>
       <td>
         <span className={`${styles.pill} ${PILL_CLASS[tone]}`}>{listOwnershipLabel(item)}</span>
-        <div style={{ marginTop: 6 }}>{sourcesLabel(item.sources)}</div>
+        <div className={styles.muted} style={{ marginTop: 6 }}>
+          {queueLabel(item.primaryQueue)}
+        </div>
       </td>
       <td>
         <div>{review.primary}</div>
         {review.secondary ? <div style={{ marginTop: 6 }}>{review.secondary}</div> : null}
       </td>
+      <td>{item.evidenceSummary || sourcesLabel(item.sources)}</td>
+      <td>
+        <PurchaseModeBadge mode={item.purchaseMode} />
+      </td>
+      <td>{item.identityWarning ? <span className={styles.identityWarn}>Identity warning</span> : '—'}</td>
       <td>
         <div>{listContactLabel(item)}</div>
       </td>
-      <td>{communicationListSummary(item.latestCommunication)}</td>
+      <td>{item.recommendedAction}</td>
     </tr>
   );
 }
@@ -524,17 +604,25 @@ function ReaderCard({ item }: { item: ReaderLifecycleListItem }) {
         {listOwnershipLabel(item)}
       </span>
       <dl className={styles.cardRow}>
-        <dt>Sources</dt>
-        <dd style={{ margin: 0 }}>{sourcesLabel(item.sources)}</dd>
+        <dt>Queue</dt>
+        <dd style={{ margin: 0 }}>{queueLabel(item.primaryQueue)}</dd>
+        <dt>Source / evidence</dt>
+        <dd style={{ margin: 0 }}>{item.evidenceSummary || sourcesLabel(item.sources)}</dd>
         <dt>Confidence / review</dt>
         <dd style={{ margin: 0 }}>
           {review.primary}
           {review.secondary ? ` · ${review.secondary}` : ''}
         </dd>
+        <dt>LIVE / TEST</dt>
+        <dd style={{ margin: 0 }}>
+          <PurchaseModeBadge mode={item.purchaseMode} />
+        </dd>
+        <dt>Identity</dt>
+        <dd style={{ margin: 0 }}>{item.identityWarning ? 'Identity warning' : '—'}</dd>
         <dt>Contact</dt>
         <dd style={{ margin: 0 }}>{listContactLabel(item)}</dd>
-        <dt>Last communication</dt>
-        <dd style={{ margin: 0 }}>{communicationListSummary(item.latestCommunication)}</dd>
+        <dt>Needed action</dt>
+        <dd style={{ margin: 0 }}>{item.recommendedAction}</dd>
         <dt>Legacy CRM</dt>
         <dd style={{ margin: 0 }}>{legacyLine(item)}</dd>
       </dl>
@@ -543,6 +631,20 @@ function ReaderCard({ item }: { item: ReaderLifecycleListItem }) {
       </Link>
     </article>
   );
+}
+
+function PurchaseModeBadge({ mode }: { mode: string }) {
+  const label = purchaseModeLabel(mode);
+  if (label === '—') return <span className={styles.muted}>—</span>;
+  const tone =
+    mode === 'mixed'
+      ? styles.modeMixed
+      : mode === 'test'
+        ? styles.modeTest
+        : mode === 'live'
+          ? styles.modeLive
+          : styles.modeOther;
+  return <span className={`${styles.modeBadge} ${tone}`}>{label}</span>;
 }
 
 function legacyLine(item: ReaderLifecycleListItem): string {

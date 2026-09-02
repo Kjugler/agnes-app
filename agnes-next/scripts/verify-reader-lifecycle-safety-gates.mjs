@@ -574,7 +574,7 @@ async function assertListFilterClarity(port, prisma, label) {
       });
       const heading = page.getByRole('heading', { name: 'FILTER THE READER LIST' });
       await heading.waitFor({ timeout: 20000 });
-      await page.getByText(/Showing \d+ reader|No readers found for these filters/).waitFor({
+      await page.getByText(/Showing .+|No readers found for these filters/).waitFor({
         timeout: 20000,
       });
       assert.equal(await heading.isVisible(), true, `${label}: heading not visible on desktop`);
@@ -592,19 +592,19 @@ async function assertListFilterClarity(port, prisma, label) {
       const getsBeforeApply = listGetCount();
       await page.getByLabel('Ownership').selectOption('purchaser');
       await page.getByRole('button', { name: 'Apply filters' }).click();
-      await page.getByText(/Showing \d+ reader|No readers found for these filters/).waitFor({
+      await page.getByText(/Showing .+|No readers found for these filters/).waitFor({
         timeout: 20000,
       });
       assert.ok(listGetCount() > getsBeforeApply, `${label}: applying filters never issued a list GET`);
       const getsBeforeClear = listGetCount();
       await page.getByRole('button', { name: 'Clear filters' }).click();
-      await page.getByText(/Showing \d+ reader|No readers found for these filters/).waitFor({
+      await page.getByText(/Showing .+|No readers found for these filters/).waitFor({
         timeout: 20000,
       });
       assert.ok(listGetCount() > getsBeforeClear, `${label}: clearing filters never issued a list GET`);
       await page.reload({ waitUntil: 'domcontentloaded' });
       await heading.waitFor({ timeout: 20000 });
-      await page.getByText(/Showing \d+ reader|No readers found for these filters/).waitFor({
+      await page.getByText(/Showing .+|No readers found for these filters/).waitFor({
         timeout: 20000,
       });
       const nonGet = apiCalls.filter((row) => row.method !== 'GET');
