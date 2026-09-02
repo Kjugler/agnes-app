@@ -17,8 +17,8 @@ import { isReadersAgreeDorothyBridgeEnabled } from '@/lib/funnelConfig';
 import { trackMeta } from '@/lib/metaPixel';
 import { trackTikTok } from '@/lib/tiktokPixel';
 import {
-  AMAZON_REVIEWS_URL,
   BARNES_NOBLE_REVIEWS_URL,
+  READERS_AGREE_AMAZON_ATTRIBUTION_URL,
   buildReadersAgreePathWithTracking,
   READERS_AGREE_CATALOG_PATH,
   READERS_AGREE_CHAPTER_1_PATH,
@@ -146,10 +146,10 @@ export default function ReadersAgreeLandingClient() {
   const amazonReviewControl =
     BRIDGE_ENABLED && !mobileTwoTap ? (
       <a
-        href={AMAZON_REVIEWS_URL}
+        href={READERS_AGREE_AMAZON_ATTRIBUTION_URL}
         className="ra-bn-cta-secondary"
         onClick={(event) =>
-          handleRetailerTap(event, AMAZON_REVIEWS_URL, amazonGoHref, handleAmazonClick)
+          handleRetailerTap(event, READERS_AGREE_AMAZON_ATTRIBUTION_URL, amazonGoHref, handleAmazonClick)
         }
         rel="noopener noreferrer"
       >
