@@ -640,6 +640,176 @@ async function seed() {
     include: { readerProfile: true },
   });
 
+  special.flyeStripe = await prisma.user.create({
+    data: {
+      email: 'special-flye16@example.net',
+      code: 'spflye16',
+      referralCode: 'SPFLYE16',
+      fname: 'Kevin',
+      lname: 'Flye',
+      readerProfile: { create: { source: 'Website', readerType: 'purchased', status: 'active' } },
+      purchases: {
+        create: {
+          sessionId: 'cs_live_flye_stripe',
+          amount: 2210,
+          currency: 'usd',
+          source: 'stripe',
+          saleStatus: 'live',
+        },
+      },
+    },
+    include: { readerProfile: true },
+  });
+  special.flyeCrm = await prisma.user.create({
+    data: {
+      email: 'special-flye-crm@example.net',
+      code: 'spflyecrm',
+      referralCode: 'SPFLYECRM',
+      fname: 'kevin',
+      lname: 'Flye',
+      readerProfile: { create: { source: 'Amazon', readerType: 'purchased', status: 'active' } },
+    },
+    include: { readerProfile: true },
+  });
+  await prisma.readerIdentityReview.create({
+    data: {
+      primaryUserId: special.flyeStripe.id,
+      otherUserId: special.flyeCrm.id,
+      reasonCode: 'duplicate_name',
+      status: 'resolved_keep_separate',
+      details: 'same person, keep records separate',
+      resolutionReason: 'Keep Beta and Stripe records unmerged',
+      resolvedAt: new Date(),
+      ...ACTOR,
+    },
+  });
+
+  special.flyeDismissA = await prisma.user.create({
+    data: {
+      email: 'special-flye-dismiss-a@example.net',
+      code: 'spflda',
+      referralCode: 'SPFLDA',
+      fname: 'Kevin',
+      lname: 'Dismiss',
+      readerProfile: { create: { source: 'Website', readerType: 'interested', status: 'active' } },
+    },
+    include: { readerProfile: true },
+  });
+  special.flyeDismissB = await prisma.user.create({
+    data: {
+      email: 'special-flye-dismiss-b@example.net',
+      code: 'spfldb',
+      referralCode: 'SPFLDB',
+      fname: 'Kevin',
+      lname: 'Dismiss',
+      readerProfile: { create: { source: 'Amazon', readerType: 'purchased', status: 'active' } },
+    },
+    include: { readerProfile: true },
+  });
+  await prisma.readerIdentityReview.create({
+    data: {
+      primaryUserId: special.flyeDismissA.id,
+      otherUserId: special.flyeDismissB.id,
+      reasonCode: 'duplicate_name',
+      status: 'dismissed',
+      details: 'opened in error',
+      resolutionReason: 'Not a reviewed keep-separate pair',
+      resolvedAt: new Date(),
+      ...ACTOR,
+    },
+  });
+
+  special.lincA = await prisma.user.create({
+    data: {
+      email: 'special-linc-a@example.net',
+      code: 'splinca',
+      referralCode: 'SPLINCA',
+      fname: 'Linc',
+      lname: 'Leapley',
+      readerProfile: { create: { source: 'Website', readerType: 'purchased', status: 'active' } },
+    },
+    include: { readerProfile: true },
+  });
+  special.lincB = await prisma.user.create({
+    data: {
+      email: 'special-linc-b@example.net',
+      code: 'splincb',
+      referralCode: 'SPLINCB',
+      fname: 'Linc',
+      lname: 'Leapley',
+      readerProfile: { create: { source: 'Website', readerType: 'purchased', status: 'active' } },
+    },
+    include: { readerProfile: true },
+  });
+  special.lincC = await prisma.user.create({
+    data: {
+      email: 'special-linc-c@example.net',
+      code: 'splincc',
+      referralCode: 'SPLINCC',
+      fname: 'Linc',
+      lname: 'Leapley',
+      readerProfile: { create: { source: 'Website', readerType: 'purchased', status: 'active' } },
+    },
+    include: { readerProfile: true },
+  });
+  await prisma.readerIdentityReview.create({
+    data: {
+      primaryUserId: special.lincA.id,
+      otherUserId: special.lincB.id,
+      reasonCode: 'duplicate_name',
+      status: 'resolved_keep_separate',
+      details: 'A and B reviewed only',
+      resolutionReason: 'Do not suppress A-C or B-C',
+      resolvedAt: new Date(),
+      ...ACTOR,
+    },
+  });
+
+  special.openAfterClearA = await prisma.user.create({
+    data: {
+      email: 'special-open-clear-a@example.net',
+      code: 'spoca',
+      referralCode: 'SPOCA',
+      fname: 'Open',
+      lname: 'Cleared',
+      readerProfile: { create: { source: 'Website', readerType: 'interested', status: 'active' } },
+    },
+    include: { readerProfile: true },
+  });
+  special.openAfterClearB = await prisma.user.create({
+    data: {
+      email: 'special-open-clear-b@example.net',
+      code: 'spocb',
+      referralCode: 'SPOCB',
+      fname: 'Open',
+      lname: 'Cleared',
+      readerProfile: { create: { source: 'Website', readerType: 'interested', status: 'active' } },
+    },
+    include: { readerProfile: true },
+  });
+  await prisma.readerIdentityReview.create({
+    data: {
+      primaryUserId: special.openAfterClearA.id,
+      otherUserId: special.openAfterClearB.id,
+      reasonCode: 'duplicate_name',
+      status: 'resolved_keep_separate',
+      details: 'name edge resolved',
+      resolutionReason: 'Keep separate',
+      resolvedAt: new Date(),
+      ...ACTOR,
+    },
+  });
+  await prisma.readerIdentityReview.create({
+    data: {
+      primaryUserId: special.openAfterClearA.id,
+      otherUserId: special.openAfterClearB.id,
+      reasonCode: 'similar_email',
+      status: 'open',
+      details: 'new open hold after name resolve',
+      ...ACTOR,
+    },
+  });
+
   special.randyConflict = await prisma.user.create({
     data: {
       email: 'special-randy-conflict@example.net',
@@ -1145,6 +1315,38 @@ async function main() {
 
     const fixture = await getReaderLifecycleDetail(prisma, { userId: special.fixtureEmail.id });
     assert.strictEqual(fixture.primaryQueue, 'test_synthetic');
+
+    const flyeStripe = await getReaderLifecycleDetail(prisma, { userId: special.flyeStripe.id });
+    const flyeCrm = await getReaderLifecycleDetail(prisma, { userId: special.flyeCrm.id });
+    assert.strictEqual(flyeStripe.primaryQueue, 'clear_no_action');
+    assert.strictEqual(flyeCrm.primaryQueue, 'legacy_purchaser');
+    assert.strictEqual(flyeStripe.identityWarning, false);
+    assert.strictEqual(flyeCrm.identityWarning, false);
+    assert.strictEqual(flyeStripe.identityClusterPeers.length, 0);
+    assert.strictEqual(flyeCrm.identityClusterPeers.length, 0);
+    assert.strictEqual(flyeStripe.ownership, 'purchaser');
+    assert.strictEqual(flyeCrm.ownership, 'unknown');
+
+    const dismissA = await getReaderLifecycleDetail(prisma, { userId: special.flyeDismissA.id });
+    const dismissB = await getReaderLifecycleDetail(prisma, { userId: special.flyeDismissB.id });
+    assert.strictEqual(dismissA.primaryQueue, 'identity');
+    assert.strictEqual(dismissB.primaryQueue, 'identity');
+
+    const lincA = await getReaderLifecycleDetail(prisma, { userId: special.lincA.id });
+    const lincB = await getReaderLifecycleDetail(prisma, { userId: special.lincB.id });
+    const lincC = await getReaderLifecycleDetail(prisma, { userId: special.lincC.id });
+    assert.strictEqual(lincA.primaryQueue, 'identity');
+    assert.strictEqual(lincB.primaryQueue, 'identity');
+    assert.strictEqual(lincC.primaryQueue, 'identity');
+    assert.ok(!lincA.identityClusterPeers.some((row) => row.readerProfileId === special.lincB.readerProfile.id));
+    assert.ok(lincA.identityClusterPeers.some((row) => row.readerProfileId === special.lincC.readerProfile.id));
+    assert.ok(lincB.identityClusterPeers.some((row) => row.readerProfileId === special.lincC.readerProfile.id));
+    assert.ok(lincC.identityClusterPeers.some((row) => row.readerProfileId === special.lincA.readerProfile.id));
+    assert.ok(lincC.identityClusterPeers.some((row) => row.readerProfileId === special.lincB.readerProfile.id));
+
+    const openAfterClear = await getReaderLifecycleDetail(prisma, { userId: special.openAfterClearA.id });
+    assert.strictEqual(openAfterClear.openReview, true);
+    assert.strictEqual(openAfterClear.primaryQueue, 'identity');
 
     const gifted = await getReaderLifecycleDetail(prisma, { userId: special.legacyGifted.id });
     assert.strictEqual(gifted.primaryQueue, 'legacy_gifted');

@@ -23,6 +23,7 @@ const {
   evidenceSummary,
   historicalCrmConflict,
   buildIdentityClusters,
+  resolvedKeepSeparateSignals,
   tallyPrimaryQueues,
 } = require('./readerLifecycleWorkbench.cjs');
 
@@ -552,14 +553,34 @@ async function loadScopedProfiles(db, options) {
   };
 }
 
+function uniqueRelatedReviews(related) {
+  const byId = new Map();
+  const groups = related && related.reviewsByUser;
+  if (!groups || typeof groups.values !== 'function') return [];
+  for (const rows of groups.values()) {
+    for (const row of Array.isArray(rows) ? rows : []) {
+      if (!row || typeof row !== 'object') continue;
+      const id = row.id;
+      if (id) {
+        if (!byId.has(id)) byId.set(id, row);
+        continue;
+      }
+      byId.set(`anon:${byId.size}`, row);
+    }
+  }
+  return [...byId.values()];
+}
+
 function inventoryWorkbench(profiles, related) {
   const clusterByProfile = buildIdentityClusters(
     profiles.map((row) => ({
       readerProfileId: row.id,
       user: row.user,
+      userId: row.user && row.user.id,
       email: row.user && row.user.email,
       phone: row.user && row.user.phone,
     })),
+    resolvedKeepSeparateSignals(uniqueRelatedReviews(related)),
   );
   const peerById = new Map(profiles.map((row) => [row.id, peerSummary(row)]));
   const items = profiles.map((row) => {

@@ -4,6 +4,11 @@
  * Pure: no Prisma, filesystem, env, or writes. Does not call classifyReader.
  * Primary queues are mutually exclusive. Secondary badges (LIVE/TEST/MIXED,
  * identity warning, historical conflict) never create extra queue membership.
+ *
+ * resolved_keep_separate reviews suppress only the reviewed pair-edge for the
+ * signal named by reasonCode (duplicate_name → name, similar_email → email).
+ * Phone edges are never suppressed here. Open reviews are a separate Identity
+ * force and are not interpreted in this file.
  */
 
 const PRIMARY_QUEUES = Object.freeze([
@@ -137,25 +142,105 @@ function clusterKeysForReader(input) {
   return keys;
 }
 
-function buildIdentityClusters(readers) {
+function signalForClusterKey(key) {
+  const raw = asTrimmed(key);
+  if (raw.startsWith('name:')) return 'name';
+  if (raw.startsWith('email:')) return 'email';
+  if (raw.startsWith('phone:')) return 'phone';
+  return null;
+}
+
+function signalForIdentityReasonCode(reasonCode) {
+  const code = asTrimmed(reasonCode).toLowerCase();
+  if (code === 'duplicate_name') return 'name';
+  if (code === 'similar_email') return 'email';
+  return null;
+}
+
+function pairSignalKey(userIdA, userIdB, signal) {
+  const a = asTrimmed(userIdA);
+  const b = asTrimmed(userIdB);
+  const kind = asTrimmed(signal);
+  if (!a || !b || a === b || !kind) return null;
+  return a < b ? `${a}|${b}|${kind}` : `${b}|${a}|${kind}`;
+}
+
+function readerUserId(row) {
+  if (!row || typeof row !== 'object') return '';
+  return asTrimmed((row.user && row.user.id) || row.userId);
+}
+
+function resolvedKeepSeparateSignals(reviews) {
+  const set = new Set();
+  for (const row of Array.isArray(reviews) ? reviews : []) {
+    if (!row || typeof row !== 'object') continue;
+    if (asTrimmed(row.status).toLowerCase() !== 'resolved_keep_separate') continue;
+    const key = pairSignalKey(row.primaryUserId, row.otherUserId, signalForIdentityReasonCode(row.reasonCode));
+    if (key) set.add(key);
+  }
+  return set;
+}
+
+function isPairSignalResolved(resolvedSignals, userIdA, userIdB, signal) {
+  const key = pairSignalKey(userIdA, userIdB, signal);
+  if (!key) return false;
+  if (resolvedSignals instanceof Set) return resolvedSignals.has(key);
+  if (Array.isArray(resolvedSignals)) return resolvedSignals.includes(key);
+  return false;
+}
+
+function buildIdentityClusters(readers, resolvedSignals) {
   const byKey = new Map();
+  const userIdByProfile = new Map();
   for (const row of Array.isArray(readers) ? readers : []) {
     const profileId = asTrimmed(row.readerProfileId);
     if (!profileId) continue;
+    const userId = readerUserId(row);
+    if (userId) userIdByProfile.set(profileId, userId);
     for (const key of clusterKeysForReader(row)) {
       if (!byKey.has(key)) byKey.set(key, new Set());
       byKey.get(key).add(profileId);
     }
   }
-  const clusterByProfile = new Map();
+
+  const peersByProfile = new Map();
+  const firstKeyByProfile = new Map();
   for (const [key, ids] of byKey.entries()) {
     if (ids.size < 2) continue;
-    const memberIds = [...ids];
-    for (const id of memberIds) {
-      const current = clusterByProfile.get(id) || { key, memberIds: [] };
-      const merged = new Set([...current.memberIds, ...memberIds]);
-      clusterByProfile.set(id, { key: current.key || key, memberIds: [...merged] });
+    const signal = signalForClusterKey(key);
+    const members = [...ids];
+    for (let i = 0; i < members.length; i += 1) {
+      for (let j = i + 1; j < members.length; j += 1) {
+        const left = members[i];
+        const right = members[j];
+        if (
+          signal &&
+          isPairSignalResolved(
+            resolvedSignals,
+            userIdByProfile.get(left),
+            userIdByProfile.get(right),
+            signal,
+          )
+        ) {
+          continue;
+        }
+        if (!peersByProfile.has(left)) peersByProfile.set(left, new Set());
+        if (!peersByProfile.has(right)) peersByProfile.set(right, new Set());
+        peersByProfile.get(left).add(right);
+        peersByProfile.get(right).add(left);
+        if (!firstKeyByProfile.has(left)) firstKeyByProfile.set(left, key);
+        if (!firstKeyByProfile.has(right)) firstKeyByProfile.set(right, key);
+      }
     }
+  }
+
+  const clusterByProfile = new Map();
+  for (const [id, peers] of peersByProfile.entries()) {
+    if (!peers.size) continue;
+    clusterByProfile.set(id, {
+      key: firstKeyByProfile.get(id),
+      memberIds: [id, ...peers],
+    });
   }
   return clusterByProfile;
 }
@@ -320,6 +405,10 @@ module.exports = {
   emailClusterKey,
   phoneClusterKey,
   clusterKeysForReader,
+  signalForClusterKey,
+  signalForIdentityReasonCode,
+  pairSignalKey,
+  resolvedKeepSeparateSignals,
   buildIdentityClusters,
   isFixtureEmail,
   isTestSynthetic,

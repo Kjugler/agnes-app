@@ -13,6 +13,8 @@ const {
   nameParts,
   nameClusterKey,
   buildIdentityClusters,
+  signalForIdentityReasonCode,
+  resolvedKeepSeparateSignals,
   isTestSynthetic,
   isFixtureEmail,
   hasUsableReaderName,
@@ -240,6 +242,284 @@ check('last name alone never creates a cluster', () => {
     { readerProfileId: 'c', user: { fname: 'Tanner Jugler', lname: null } },
   ]);
   assert.strictEqual(clusters.size, 0);
+});
+
+check('reason codes map only name and email; other codes do not suppress', () => {
+  assert.strictEqual(signalForIdentityReasonCode('duplicate_name'), 'name');
+  assert.strictEqual(signalForIdentityReasonCode('similar_email'), 'email');
+  assert.strictEqual(signalForIdentityReasonCode('other'), null);
+  assert.strictEqual(signalForIdentityReasonCode('possible_wrong_website_owner'), null);
+  assert.strictEqual(signalForIdentityReasonCode('stripe_session_user_mismatch'), null);
+  assert.strictEqual(signalForIdentityReasonCode('dismissed'), null);
+});
+
+check('Kevin-style name pair clears only after resolved_keep_separate duplicate_name', () => {
+  const readers = [
+    {
+      readerProfileId: 'flye-16',
+      user: { id: 'u-flye-16', fname: 'Kevin', lname: 'Flye' },
+      email: 'kevinflye16@yahoo.com',
+    },
+    {
+      readerProfileId: 'flye-crm',
+      user: { id: 'u-flye-crm', fname: 'kevin', lname: 'Flye' },
+      email: 'kevinflye@yahoo.com',
+    },
+  ];
+  const before = buildIdentityClusters(readers);
+  assert.ok(before.get('flye-16'));
+  assert.ok(before.get('flye-16').memberIds.includes('flye-crm'));
+
+  const resolved = resolvedKeepSeparateSignals([
+    {
+      status: 'resolved_keep_separate',
+      reasonCode: 'duplicate_name',
+      primaryUserId: 'u-flye-16',
+      otherUserId: 'u-flye-crm',
+    },
+  ]);
+  const after = buildIdentityClusters(readers, resolved);
+  assert.strictEqual(after.size, 0);
+  assert.strictEqual(
+    assignPrimaryQueue({
+      inIdentityCluster: after.has('flye-16'),
+      user: { fname: 'Kevin', lname: 'Flye' },
+      ownership: 'purchaser',
+      review: 'clear',
+      reasons: ['live_website_purchase'],
+    }),
+    'clear_no_action',
+  );
+  assert.strictEqual(
+    assignPrimaryQueue({
+      inIdentityCluster: after.has('flye-crm'),
+      ownership: 'unknown',
+      review: 'incomplete',
+      reasons: ['legacy_purchased_label_without_evidence'],
+    }),
+    'legacy_purchaser',
+  );
+});
+
+check('dismissed, missing otherUserId, or non-suppressing reason leave the name edge', () => {
+  const readers = [
+    {
+      readerProfileId: 'a',
+      user: { id: 'ua', fname: 'Kevin', lname: 'Flye' },
+      email: 'a@example.net',
+    },
+    {
+      readerProfileId: 'b',
+      user: { id: 'ub', fname: 'Kevin', lname: 'Flye' },
+      email: 'b@example.net',
+    },
+  ];
+  const dismissed = buildIdentityClusters(
+    readers,
+    resolvedKeepSeparateSignals([
+      {
+        status: 'dismissed',
+        reasonCode: 'duplicate_name',
+        primaryUserId: 'ua',
+        otherUserId: 'ub',
+      },
+    ]),
+  );
+  const missingOther = buildIdentityClusters(
+    readers,
+    resolvedKeepSeparateSignals([
+      {
+        status: 'resolved_keep_separate',
+        reasonCode: 'duplicate_name',
+        primaryUserId: 'ua',
+        otherUserId: null,
+      },
+    ]),
+  );
+  const otherReason = buildIdentityClusters(
+    readers,
+    resolvedKeepSeparateSignals([
+      {
+        status: 'resolved_keep_separate',
+        reasonCode: 'other',
+        primaryUserId: 'ua',
+        otherUserId: 'ub',
+      },
+    ]),
+  );
+  const wrongOwner = buildIdentityClusters(
+    readers,
+    resolvedKeepSeparateSignals([
+      {
+        status: 'resolved_keep_separate',
+        reasonCode: 'possible_wrong_website_owner',
+        primaryUserId: 'ua',
+        otherUserId: 'ub',
+      },
+    ]),
+  );
+  const stripeMismatch = buildIdentityClusters(
+    readers,
+    resolvedKeepSeparateSignals([
+      {
+        status: 'resolved_keep_separate',
+        reasonCode: 'stripe_session_user_mismatch',
+        primaryUserId: 'ua',
+        otherUserId: 'ub',
+      },
+    ]),
+  );
+  for (const clusters of [dismissed, missingOther, otherReason, wrongOwner, stripeMismatch]) {
+    assert.ok(clusters.get('a'));
+    assert.ok(clusters.get('a').memberIds.includes('b'));
+  }
+});
+
+check('resolving a name edge does not suppress an independently shared email edge', () => {
+  const readers = [
+    {
+      readerProfileId: 'p1',
+      user: { id: 'u1', fname: 'Same', lname: 'Person' },
+      email: 'shared@example.net',
+    },
+    {
+      readerProfileId: 'p2',
+      user: { id: 'u2', fname: 'Same', lname: 'Person' },
+      email: 'shared@example.net',
+    },
+  ];
+  const clusters = buildIdentityClusters(
+    readers,
+    resolvedKeepSeparateSignals([
+      {
+        status: 'resolved_keep_separate',
+        reasonCode: 'duplicate_name',
+        primaryUserId: 'u1',
+        otherUserId: 'u2',
+      },
+    ]),
+  );
+  assert.ok(clusters.get('p1'));
+  assert.ok(clusters.get('p1').memberIds.includes('p2'));
+  assert.strictEqual(clusters.get('p1').key, 'email:shared@example.net');
+});
+
+check('resolving an email edge does not suppress an independently shared name edge', () => {
+  const readers = [
+    {
+      readerProfileId: 'p1',
+      user: { id: 'u1', fname: 'Same', lname: 'Person' },
+      email: 'shared@example.net',
+    },
+    {
+      readerProfileId: 'p2',
+      user: { id: 'u2', fname: 'Same', lname: 'Person' },
+      email: 'shared@example.net',
+    },
+  ];
+  const clusters = buildIdentityClusters(
+    readers,
+    resolvedKeepSeparateSignals([
+      {
+        status: 'resolved_keep_separate',
+        reasonCode: 'similar_email',
+        primaryUserId: 'u1',
+        otherUserId: 'u2',
+      },
+    ]),
+  );
+  assert.ok(clusters.get('p1'));
+  assert.ok(clusters.get('p1').memberIds.includes('p2'));
+  assert.strictEqual(clusters.get('p1').key, 'name:same person');
+});
+
+check('Linc-style A/B/C name clique: resolving A↔B leaves A↔C and B↔C', () => {
+  const readers = [
+    {
+      readerProfileId: 'linc-a',
+      user: { id: 'ua', fname: 'Linc', lname: 'Leapley' },
+      email: 'leapleyl@yahoo.com',
+    },
+    {
+      readerProfileId: 'linc-b',
+      user: { id: 'ub', fname: 'Linc', lname: 'Leapley' },
+      email: 'phone+15752021686@reader.crm',
+    },
+    {
+      readerProfileId: 'linc-c',
+      user: { id: 'uc', fname: 'Linc', lname: 'Leapley' },
+      email: 'leapleyl@gmail.com',
+    },
+  ];
+  const clusters = buildIdentityClusters(
+    readers,
+    resolvedKeepSeparateSignals([
+      {
+        status: 'resolved_keep_separate',
+        reasonCode: 'duplicate_name',
+        primaryUserId: 'ua',
+        otherUserId: 'ub',
+      },
+    ]),
+  );
+  assert.ok(clusters.get('linc-a'));
+  assert.ok(clusters.get('linc-b'));
+  assert.ok(clusters.get('linc-c'));
+  assert.ok(!clusters.get('linc-a').memberIds.includes('linc-b'));
+  assert.ok(clusters.get('linc-a').memberIds.includes('linc-c'));
+  assert.ok(!clusters.get('linc-b').memberIds.includes('linc-a'));
+  assert.ok(clusters.get('linc-b').memberIds.includes('linc-c'));
+  assert.ok(clusters.get('linc-c').memberIds.includes('linc-a'));
+  assert.ok(clusters.get('linc-c').memberIds.includes('linc-b'));
+  for (const id of ['linc-a', 'linc-b', 'linc-c']) {
+    assert.strictEqual(
+      assignPrimaryQueue({ inIdentityCluster: true, review: 'incomplete' }),
+      'identity',
+    );
+    assert.strictEqual(Boolean(clusters.get(id)), true);
+  }
+});
+
+check('all three pairwise name resolutions remove the Linc-style name cluster', () => {
+  const readers = [
+    {
+      readerProfileId: 'linc-a',
+      user: { id: 'ua', fname: 'Linc', lname: 'Leapley' },
+      email: 'leapleyl@yahoo.com',
+    },
+    {
+      readerProfileId: 'linc-b',
+      user: { id: 'ub', fname: 'Linc', lname: 'Leapley' },
+      email: 'phone+15752021686@reader.crm',
+    },
+    {
+      readerProfileId: 'linc-c',
+      user: { id: 'uc', fname: 'Linc', lname: 'Leapley' },
+      email: 'leapleyl@gmail.com',
+    },
+  ];
+  const clusters = buildIdentityClusters(
+    readers,
+    resolvedKeepSeparateSignals([
+      { status: 'resolved_keep_separate', reasonCode: 'duplicate_name', primaryUserId: 'ua', otherUserId: 'ub' },
+      { status: 'resolved_keep_separate', reasonCode: 'duplicate_name', primaryUserId: 'ua', otherUserId: 'uc' },
+      { status: 'resolved_keep_separate', reasonCode: 'duplicate_name', primaryUserId: 'ub', otherUserId: 'uc' },
+    ]),
+  );
+  assert.strictEqual(clusters.size, 0);
+});
+
+check('open review still forces Identity after derived edges are gone', () => {
+  assert.strictEqual(
+    assignPrimaryQueue({
+      openIdentityReview: true,
+      inIdentityCluster: false,
+      ownership: 'purchaser',
+      review: 'clear',
+      reasons: ['live_website_purchase'],
+    }),
+    'identity',
+  );
 });
 
 check('Kris-style name pair clusters; email/phone also cluster', () => {
