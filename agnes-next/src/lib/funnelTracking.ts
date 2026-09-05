@@ -88,7 +88,7 @@ export function getOrCreateVisitorId(): string {
   return id;
 }
 
-export function getAttributionFromPage(searchParams?: URLSearchParams | null) {
+export function getAttributionFromPage(searchParams?: { get: (key: string) => string | null } | null) {
   if (typeof window === 'undefined') {
     return { ref: null as string | null, utm: {} as Record<string, string> };
   }

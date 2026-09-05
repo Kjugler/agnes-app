@@ -278,6 +278,10 @@ const jodyChapterDeliverHandler = require('../api/jody/chapterDeliver.cjs');
 app.post('/api/jody/chapter/deliver', jodyChapterDeliverHandler);
 console.log('✅ Mounted POST /api/jody/chapter/deliver');
 
+const readersAgreeLeadHandler = require('../api/readersAgree/lead.cjs');
+app.post('/api/readers-agree/lead', readersAgreeLeadHandler);
+console.log('✅ Mounted POST /api/readers-agree/lead');
+
 const jodyChapterDownloadHandler = require('../api/jody/chapterDownload.cjs');
 app.get('/api/jody/chapter/download', jodyChapterDownloadHandler);
 console.log('✅ Mounted GET /api/jody/chapter/download');

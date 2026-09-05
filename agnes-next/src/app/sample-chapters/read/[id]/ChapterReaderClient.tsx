@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { getChapter, isValidChapterId } from '../../chapters';
 import { readAssociate } from '@/lib/identity';
@@ -14,6 +14,11 @@ import { isJodyConciergeEnabled, isJodyMobileDeliveryEnabled } from '@/lib/funne
 import { useJodyChapterExit } from '@/hooks/useJodyConcierge';
 import { JODY_CONCIERGE_CONFIG } from '@/config/jodyConcierge';
 import { isReadingSessionDwellMet } from '@/lib/readerJourney';
+import { isReadersAgreeLeadSessionActive } from '@/lib/readersAgreeLeadSession';
+
+function subscribeNoop() {
+  return () => {};
+}
 
 interface ChapterReaderClientProps {
   chapterId: string;
@@ -23,6 +28,8 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
   const chapter = getChapter(chapterId);
   const viewContentFiredRef = useRef(false);
   const { showJody, tryShowOnExit, dismissJody, readerStatus } = useJodyChapterExit(chapterId);
+  const isClient = useSyncExternalStore(subscribeNoop, () => true, () => false);
+  const skipJodyMobileGate = isClient && isReadersAgreeLeadSessionActive();
 
   useFunnelPageEngagement({
     pageViewType: FUNNEL_EVENT_TYPES.SAMPLE_CHAPTER_OPEN,
@@ -81,6 +88,7 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
 
   const { title, pdfUrl } = chapter;
   const mobileDeliveryEnabled = isJodyMobileDeliveryEnabled();
+  const showMobileJodyGate = isClient && mobileDeliveryEnabled && !skipJodyMobileGate;
 
   const handleTextThisScene = () => {
     const ref = readAssociate()?.code ?? null;
@@ -105,13 +113,13 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
 
   return (
     <>
-      {mobileDeliveryEnabled && (
+      {showMobileJodyGate && (
         <div className="chapter-mobile-jody-delivery">
           <MobileChapterLanding chapterId={chapterId} title={title} pdfUrl={pdfUrl} />
         </div>
       )}
 
-      <div className={mobileDeliveryEnabled ? 'chapter-desktop-reader' : undefined}>
+      <div className={showMobileJodyGate ? 'chapter-desktop-reader' : undefined}>
     <div
       style={{
         minHeight: '100svh',
