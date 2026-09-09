@@ -10,7 +10,7 @@ export {
 
 /** Amazon Attribution destination for the /readers-agree Amazon button only. */
 export const READERS_AGREE_AMAZON_ATTRIBUTION_URL =
-  'https://www.amazon.com/dp/B0GWQBDH66?maas=maas_adg_E5C8224920E9BC65BF33E3DF146BF6E1_afap_abs&ref_=aa_maas&tag=maas&utm_source=chatgpt.com';
+  'https://www.amazon.com/dp/B0GWQBDH66?maas=maas_adg_B1F3C0D9F386C2563E467F32B9954434_afap_abs&ref_=aa_maas&tag=maas';
 
 export const READERS_AGREE_PATH = '/readers-agree';
 export const READERS_AGREE_CATALOG_PATH = '/catalog';
