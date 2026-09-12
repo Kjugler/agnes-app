@@ -12,9 +12,12 @@ export type SubmitReadersAgreeLeadResult =
 
 type SearchParamsLike = { get: (key: string) => string | null } | null | undefined;
 
+export type ReadersAgreeCaptureSurface = 'landing' | 'bridge';
+
 export async function submitReadersAgreeLead(input: {
   email: string;
   searchParams?: SearchParamsLike;
+  captureSurface?: ReadersAgreeCaptureSurface;
 }): Promise<SubmitReadersAgreeLeadResult> {
   const email = input.email.trim().toLowerCase();
   if (!email || !email.includes('@')) {
@@ -39,7 +42,7 @@ export async function submitReadersAgreeLead(input: {
         ref,
         code,
         utm,
-        captureSurface: 'landing',
+        captureSurface: input.captureSurface === 'bridge' ? 'bridge' : 'landing',
       }),
       credentials: 'include',
     });

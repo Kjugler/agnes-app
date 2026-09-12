@@ -1,7 +1,7 @@
 // Minimal checks for /api/readers-agree/lead helpers (no DB writes).
 
 const assert = require('assert');
-const { buildRedirectPath } = require('../api/readersAgree/lead.cjs');
+const { buildRedirectPath, resolveCaptureSurface } = require('../api/readersAgree/lead.cjs');
 
 assert.strictEqual(buildRedirectPath({}), '/sample-chapters');
 assert.strictEqual(
@@ -12,6 +12,10 @@ assert.strictEqual(
   buildRedirectPath({ code: 'xyz', utm: { fbclid: '1' } }),
   '/sample-chapters?code=xyz&fbclid=1',
 );
+assert.strictEqual(resolveCaptureSurface(undefined), 'landing');
+assert.strictEqual(resolveCaptureSurface('landing'), 'landing');
+assert.strictEqual(resolveCaptureSurface('other'), 'landing');
+assert.strictEqual(resolveCaptureSurface('bridge'), 'bridge');
 
 function mockRes() {
   return {

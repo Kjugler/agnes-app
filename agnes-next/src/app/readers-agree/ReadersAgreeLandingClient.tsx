@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useSyncExternalStore, type MouseEvent } from 'react';
 import { useSearchParams } from 'next/navigation';
 import SiteFooter from '@/components/SiteFooter';
 import ReadersAgreeScrollCue from '@/components/readers-agree/ReadersAgreeScrollCue';
@@ -12,6 +12,8 @@ import {
   READERS_AGREE_SYNOPSIS_HOOK,
   READERS_AGREE_SYNOPSIS_PARAGRAPHS,
 } from '@/config/readersAgreeBnFunnel';
+import { isMobileTouchBrowser } from '@/lib/device';
+import { isReadersAgreeDorothyBridgeEnabled } from '@/lib/funnelConfig';
 import { trackMeta } from '@/lib/metaPixel';
 import { trackTikTok } from '@/lib/tiktokPixel';
 import {
@@ -19,8 +21,17 @@ import {
   READERS_AGREE_AMAZON_ATTRIBUTION_URL,
   buildReadersAgreePathWithTracking,
   READERS_AGREE_CATALOG_PATH,
+  READERS_AGREE_GO_AMAZON_PATH,
+  READERS_AGREE_GO_BN_PATH,
   READERS_AGREE_HERO_IMAGE_PATH,
 } from '@/lib/readerRecommendationLanding';
+import {
+  clearBridgeTabDeparted,
+  markBridgeTabDeparted,
+  markReadersAgreeReviewOpened,
+  markRetailerPopupBlocked,
+  resetBridgeSessionState,
+} from '@/lib/readersAgreeMomentum';
 import {
   FUNNEL_EVENT_TYPES,
   trackFunnelEvent,
@@ -28,10 +39,17 @@ import {
 } from '@/lib/funnelTracking';
 import './readers-agree-bn.css';
 
+const BRIDGE_ENABLED = isReadersAgreeDorothyBridgeEnabled();
+
+function subscribeNoop() {
+  return () => {};
+}
+
 export default function ReadersAgreeLandingClient() {
   const searchParams = useSearchParams();
   const viewFiredRef = useRef(false);
   const emailFormRef = useRef<HTMLFormElement>(null);
+  const mobileTwoTap = useSyncExternalStore(subscribeNoop, isMobileTouchBrowser, () => false);
 
   useFunnelPageEngagement({
     pageViewType: FUNNEL_EVENT_TYPES.READERS_AGREE_PAGE_VIEW,
@@ -43,6 +61,16 @@ export default function ReadersAgreeLandingClient() {
 
   const catalogHref = useMemo(
     () => buildReadersAgreePathWithTracking(READERS_AGREE_CATALOG_PATH, searchParams),
+    [searchParams],
+  );
+
+  const amazonGoHref = useMemo(
+    () => buildReadersAgreePathWithTracking(READERS_AGREE_GO_AMAZON_PATH, searchParams),
+    [searchParams],
+  );
+
+  const bnGoHref = useMemo(
+    () => buildReadersAgreePathWithTracking(READERS_AGREE_GO_BN_PATH, searchParams),
     [searchParams],
   );
 
@@ -75,6 +103,107 @@ export default function ReadersAgreeLandingClient() {
 
   const handleBnClick = () =>
     trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_BN_CLICK, {}, trackOpts);
+
+  const handleRetailerTap = (
+    event: MouseEvent<HTMLAnchorElement>,
+    destinationUrl: string,
+    bridgeHref: string,
+    trackClick: () => void,
+  ) => {
+    event.preventDefault();
+    trackClick();
+    clearBridgeTabDeparted();
+    markReadersAgreeReviewOpened();
+    const opened = window.open(destinationUrl, '_blank', 'noopener,noreferrer');
+    if (!opened) {
+      markRetailerPopupBlocked();
+    } else {
+      window.setTimeout(() => {
+        if (!document.hasFocus()) {
+          markBridgeTabDeparted();
+        }
+      }, 0);
+    }
+    // App Router can drop router.push() after window.open; assign keeps the original tab on /go/*.
+    window.location.assign(bridgeHref);
+  };
+
+  const handleIosBridgeNav = () => {
+    resetBridgeSessionState();
+  };
+
+  const amazonControl =
+    BRIDGE_ENABLED && !mobileTwoTap ? (
+      <a
+        href={READERS_AGREE_AMAZON_ATTRIBUTION_URL}
+        className="ra-bn-cta-secondary"
+        rel="noopener noreferrer"
+        onClick={(event) =>
+          handleRetailerTap(
+            event,
+            READERS_AGREE_AMAZON_ATTRIBUTION_URL,
+            amazonGoHref,
+            handleAmazonClick,
+          )
+        }
+      >
+        Amazon
+      </a>
+    ) : BRIDGE_ENABLED && mobileTwoTap ? (
+      <Link
+        href={amazonGoHref}
+        className="ra-bn-cta-secondary"
+        onClick={() => {
+          handleIosBridgeNav();
+          handleAmazonClick();
+        }}
+      >
+        Amazon
+      </Link>
+    ) : (
+      <a
+        href={READERS_AGREE_AMAZON_ATTRIBUTION_URL}
+        className="ra-bn-cta-secondary"
+        rel="noopener noreferrer"
+        onClick={handleAmazonClick}
+      >
+        Amazon
+      </a>
+    );
+
+  const bnControl =
+    BRIDGE_ENABLED && !mobileTwoTap ? (
+      <a
+        href={BARNES_NOBLE_REVIEWS_URL}
+        className="ra-bn-cta-secondary"
+        rel="noopener noreferrer"
+        onClick={(event) =>
+          handleRetailerTap(event, BARNES_NOBLE_REVIEWS_URL, bnGoHref, handleBnClick)
+        }
+      >
+        Barnes &amp; Noble
+      </a>
+    ) : BRIDGE_ENABLED && mobileTwoTap ? (
+      <Link
+        href={bnGoHref}
+        className="ra-bn-cta-secondary"
+        onClick={() => {
+          handleIosBridgeNav();
+          handleBnClick();
+        }}
+      >
+        Barnes &amp; Noble
+      </Link>
+    ) : (
+      <a
+        href={BARNES_NOBLE_REVIEWS_URL}
+        className="ra-bn-cta-secondary"
+        rel="noopener noreferrer"
+        onClick={handleBnClick}
+      >
+        Barnes &amp; Noble
+      </a>
+    );
 
   return (
     <main
@@ -136,22 +265,8 @@ export default function ReadersAgreeLandingClient() {
               </Link>
 
               <div className="ra-bn-purchase-row" aria-label="Retail purchase options">
-                <a
-                  href={READERS_AGREE_AMAZON_ATTRIBUTION_URL}
-                  className="ra-bn-cta-secondary"
-                  rel="noopener noreferrer"
-                  onClick={handleAmazonClick}
-                >
-                  Amazon
-                </a>
-                <a
-                  href={BARNES_NOBLE_REVIEWS_URL}
-                  className="ra-bn-cta-secondary"
-                  rel="noopener noreferrer"
-                  onClick={handleBnClick}
-                >
-                  Barnes &amp; Noble
-                </a>
+                {amazonControl}
+                {bnControl}
               </div>
 
               <ReadersAgreeEmailCapture searchParams={searchParams} formRef={emailFormRef} />

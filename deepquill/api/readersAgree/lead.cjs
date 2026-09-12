@@ -41,6 +41,10 @@ function buildRedirectPath({ ref, code, utm }) {
   return qs ? `/sample-chapters?${qs}` : '/sample-chapters';
 }
 
+function resolveCaptureSurface(value) {
+  return value === 'bridge' ? 'bridge' : 'landing';
+}
+
 module.exports = async function readersAgreeLeadHandler(req, res) {
   try {
     const body = req.body || {};
@@ -67,7 +71,7 @@ module.exports = async function readersAgreeLeadHandler(req, res) {
       type: FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED,
       userId: user.id,
       meta: {
-        captureSurface: 'landing',
+        captureSurface: resolveCaptureSurface(body.captureSurface),
         destination: 'sample-chapters',
         visitorId: visitorId || null,
         ref: ref || null,
@@ -87,3 +91,4 @@ module.exports = async function readersAgreeLeadHandler(req, res) {
 };
 
 module.exports.buildRedirectPath = buildRedirectPath;
+module.exports.resolveCaptureSurface = resolveCaptureSurface;

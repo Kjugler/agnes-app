@@ -5,12 +5,13 @@ import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { isMobileTouchBrowser } from '@/lib/device';
 import { isReadersAgreeDorothyBridgeEnabled } from '@/lib/funnelConfig';
+import ReadersAgreeEmailCapture from '@/components/readers-agree/ReadersAgreeEmailCapture';
 import {
   buildReadersAgreePathWithTracking,
   READERS_AGREE_CATALOG_PATH,
   READERS_AGREE_PATH,
-  SAMPLE_CHAPTERS_PATH,
 } from '@/lib/readerRecommendationLanding';
+import '../readers-agree-bn.css';
 import {
   clearRetailerPopupBlocked,
   getReadersAgreeMomentumSnapshot,
@@ -75,21 +76,6 @@ const quietLinkStyle = {
   color: 'rgba(245, 245, 245, 0.55)',
   textDecoration: 'underline',
   padding: '4px 0',
-} as const;
-
-const bridgeActionCtaStyle = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: '14px 20px',
-  borderRadius: '8px',
-  fontSize: '15px',
-  fontWeight: 700,
-  border: '1px solid rgba(255, 255, 255, 0.25)',
-  background: 'rgba(255, 255, 255, 0.06)',
-  color: '#fff',
-  textDecoration: 'none',
-  width: '100%',
 } as const;
 
 const retailerBridgeCtaStyle = {
@@ -275,11 +261,6 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
     [searchParams]
   );
 
-  const sampleChaptersHref = useMemo(
-    () => buildReadersAgreePathWithTracking(SAMPLE_CHAPTERS_PATH, searchParams),
-    [searchParams]
-  );
-
   const catalogHref = useMemo(
     () => buildReadersAgreePathWithTracking(READERS_AGREE_CATALOG_PATH, searchParams),
     [searchParams]
@@ -437,18 +418,15 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
     }, 0);
   };
 
-  const handleBuyClick = () => {
-    trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_BUY_CLICK, {}, {
-      source: 'readers-agree-bridge',
-      searchParams,
-    });
-  };
-
-  const handleSampleClick = () => {
-    trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_SAMPLE_CHAPTERS_CLICK, {}, {
-      source: 'readers-agree-bridge',
-      searchParams,
-    });
+  const handleBuyDirectClick = () => {
+    trackFunnelEvent(
+      FUNNEL_EVENT_TYPES.READERS_AGREE_BUY_DIRECT_CLICK,
+      { destination: 'catalog' },
+      {
+        source: 'readers-agree-bridge',
+        searchParams,
+      },
+    );
   };
 
   const actionColumnStyle = {
@@ -483,28 +461,18 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
             </div>
 
             <div style={actionColumnStyle}>
-              <Link href={catalogHref} onClick={handleBuyClick} style={bridgeActionCtaStyle}>
-                Buy the Book
+              <Link href={catalogHref} onClick={handleBuyDirectClick} className="ra-bn-cta-primary">
+                Buy Direct →
               </Link>
 
-              <Link href={sampleChaptersHref} onClick={handleSampleClick} style={bridgeActionCtaStyle}>
-                Read Sample Chapters
-              </Link>
-
-              <a
-                href={destinationUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  ...quietLinkStyle,
-                  display: 'inline',
-                }}
-              >
-                Want another look at {retailerLabel}?
-              </a>
+              <ReadersAgreeEmailCapture
+                searchParams={searchParams}
+                variant="bridge"
+                captureSurface="bridge"
+              />
 
               <Link href={readersAgreeHref} style={quietLinkStyle}>
-                Back
+                No thanks — take me back
               </Link>
             </div>
           </div>

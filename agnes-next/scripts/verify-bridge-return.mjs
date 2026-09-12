@@ -8,17 +8,11 @@ import { chromium } from 'playwright';
 const BASE = process.env.DOROTHY_VERIFY_BASE ?? 'http://localhost:3002';
 const QS =
   'ref=TESTREF&src=meta&utm_source=facebook&utm_medium=cpc&utm_campaign=rrf-test&v=1&origin=messenger&code=ABC123&fbclid=fbclid123';
+const AMAZON_ATTRIBUTION_URL =
+  'https://www.amazon.com/dp/B0GWQBDH66?maas=maas_adg_B1F3C0D9F386C2563E467F32B9954434_afap_abs&ref_=aa_maas&tag=maas';
 
 function landingUrl() {
   return `${BASE}/readers-agree?${QS}`;
-}
-
-function bridgeAmazonUrl() {
-  return `${BASE}/readers-agree/go/amazon?${QS}`;
-}
-
-function bridgeBnUrl() {
-  return `${BASE}/readers-agree/go/bn?${QS}`;
 }
 
 async function getBridgeContinuationSignals(page) {
@@ -26,12 +20,28 @@ async function getBridgeContinuationSignals(page) {
     const heading = document.querySelector('main h1')?.textContent?.trim() ?? '';
     const buy = document.querySelector('a[href*="/catalog"]');
     const sample = document.querySelector('a[href*="/sample-chapters"]');
+    const anotherLook = Array.from(document.querySelectorAll('a')).find((el) =>
+      /another look/i.test(el.textContent || ''),
+    );
+    const noThanks = Array.from(document.querySelectorAll('a')).find((el) =>
+      /No thanks — take me back/i.test(el.textContent || ''),
+    );
+    const emailLead = document.querySelector('.ra-email-capture-lead--bridge');
+    const startReading = document.querySelector('.ra-email-capture-submit');
+    const emailInput = document.querySelector('#ra-email-bridge');
     return {
       heading,
       buyText: buy?.textContent?.trim() ?? '',
       buyHref: buy?.getAttribute('href') ?? '',
+      buyClass: buy?.className ?? '',
       sampleText: sample?.textContent?.trim() ?? '',
       sampleHref: sample?.getAttribute('href') ?? '',
+      anotherLook: anotherLook?.textContent?.trim() ?? '',
+      noThanksText: noThanks?.textContent?.trim() ?? '',
+      noThanksHref: noThanks?.getAttribute('href') ?? '',
+      emailLead: emailLead?.textContent?.trim() ?? '',
+      startReading: startReading?.textContent?.trim() ?? '',
+      hasEmailInput: Boolean(emailInput),
       flags: {
         validated:
           sessionStorage.getItem('rrf_review_validated') ??
@@ -57,20 +67,26 @@ async function openRetailerFromBridge(page, label) {
   return popup;
 }
 
-async function desktopFlow(page, retailerTitle, bridgePattern) {
+async function desktopFlow(page, retailerName, bridgePattern) {
   await page.goto(landingUrl(), { waitUntil: 'domcontentloaded', timeout: 120000 });
+  await page.locator('.ra-bn-purchase-row').getByRole('link', { name: retailerName, exact: true }).waitFor({
+    state: 'visible',
+  });
+  await page.waitForTimeout(400);
   const [popup] = await Promise.all([
     page.waitForEvent('popup'),
-    page.getByRole('heading', { name: retailerTitle }).click(),
+    page.locator('.ra-bn-purchase-row').getByRole('link', { name: retailerName, exact: true }).click(),
   ]);
-  await page.waitForURL(bridgePattern);
+  await page.waitForURL(bridgePattern, { timeout: 30000 });
   await popup.waitForLoadState('domcontentloaded');
+  const popupUrl = popup.url();
   await popup.close();
 
   await page.bringToFront();
   await page.waitForTimeout(2600);
 
-  return getBridgeContinuationSignals(page);
+  const signals = await getBridgeContinuationSignals(page);
+  return { ...signals, popupUrl };
 }
 
 async function mobileFlow(page) {
@@ -78,22 +94,32 @@ async function mobileFlow(page) {
   await page.locator('a[href*="/readers-agree/go/amazon"]').first().click();
   await page.waitForURL(/\/readers-agree\/go\/amazon/);
   const popup = await openRetailerFromBridge(page, 'Amazon');
+  const popupUrl = popup.url();
   await popup.close();
   await page.bringToFront();
   await page.waitForTimeout(2600);
-  return getBridgeContinuationSignals(page);
+  const signals = await getBridgeContinuationSignals(page);
+  return { ...signals, popupUrl };
 }
 
-function passContinuation(signals) {
+function passContinuation(signals, { expectAmazonPopup = false } = {}) {
+  const amazonOk = !expectAmazonPopup || signals.popupUrl.startsWith(AMAZON_ATTRIBUTION_URL);
   return (
     signals.heading === 'Ready to see for yourself?' &&
-    signals.buyText.includes('Buy the Book') &&
-    signals.sampleText.includes('Read Sample Chapters') &&
+    signals.buyText.includes('Buy Direct') &&
+    signals.buyClass.includes('ra-bn-cta-primary') &&
     signals.buyHref.includes('/catalog') &&
-    signals.sampleHref.includes('/sample-chapters') &&
     signals.buyHref.includes('ref=TESTREF') &&
-    signals.sampleHref.includes('fbclid=fbclid123') &&
-    signals.flags.active === '1'
+    signals.emailLead === 'Enter your email address to read free chapters' &&
+    signals.startReading === 'START READING' &&
+    signals.hasEmailInput &&
+    signals.noThanksText === 'No thanks — take me back' &&
+    signals.noThanksHref.includes('/readers-agree') &&
+    signals.noThanksHref.includes('ref=TESTREF') &&
+    !signals.sampleText &&
+    !signals.anotherLook &&
+    signals.flags.active === '1' &&
+    amazonOk
   );
 }
 
@@ -104,15 +130,18 @@ async function run() {
   {
     const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     const page = await context.newPage();
-    const signals = await desktopFlow(page, 'Amazon Readers', /\/readers-agree\/go\/amazon/);
-    results.desktopAmazonReturn = { pass: passContinuation(signals), signals };
+    const signals = await desktopFlow(page, 'Amazon', /\/readers-agree\/go\/amazon/);
+    results.desktopAmazonReturn = {
+      pass: passContinuation(signals, { expectAmazonPopup: true }),
+      signals,
+    };
     await context.close();
   }
 
   {
     const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     const page = await context.newPage();
-    const signals = await desktopFlow(page, 'Barnes & Noble Readers', /\/readers-agree\/go\/bn/);
+    const signals = await desktopFlow(page, 'Barnes & Noble', /\/readers-agree\/go\/bn/);
     results.desktopBnReturn = { pass: passContinuation(signals), signals };
     await context.close();
   }
@@ -126,7 +155,10 @@ async function run() {
     });
     const page = await context.newPage();
     const signals = await mobileFlow(page);
-    results.mobileAmazonReturn = { pass: passContinuation(signals), signals };
+    results.mobileAmazonReturn = {
+      pass: passContinuation(signals, { expectAmazonPopup: true }),
+      signals,
+    };
     await context.close();
   }
 
