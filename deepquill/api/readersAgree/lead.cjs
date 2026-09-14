@@ -45,6 +45,26 @@ function resolveCaptureSurface(value) {
   return value === 'bridge' ? 'bridge' : 'landing';
 }
 
+/**
+ * Access rule: a valid email always resolves to one User.
+ * Create if missing; reuse if present. Identity-update failures must not
+ * block access when the User row already exists.
+ */
+async function resolveLeadUser(email) {
+  try {
+    const user = await ensureAssociateMinimal(email);
+    if (user?.id) return user;
+  } catch (err) {
+    console.warn('[readers-agree/lead] ensureAssociateMinimal failed; trying existing identity', {
+      code: err && err.code,
+      message: err && err.message,
+    });
+  }
+
+  const existing = await prisma.user.findUnique({ where: { email } });
+  return existing?.id ? existing : null;
+}
+
 module.exports = async function readersAgreeLeadHandler(req, res) {
   try {
     const body = req.body || {};
@@ -60,23 +80,39 @@ module.exports = async function readersAgreeLeadHandler(req, res) {
     }
 
     ensureDatabaseUrl();
-    const user = await ensureAssociateMinimal(email);
+    const user = await resolveLeadUser(email);
     if (!user?.id) {
       return res.status(500).json({ ok: false, error: 'user_create_failed' });
     }
 
     const redirectPath = buildRedirectPath({ ref, code, utm });
+    const captureSurface = resolveCaptureSurface(body.captureSurface);
 
-    await recordServerFunnelEvent(prisma, {
-      type: FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED,
-      userId: user.id,
-      meta: {
-        captureSurface: resolveCaptureSurface(body.captureSurface),
-        destination: 'sample-chapters',
-        visitorId: visitorId || null,
-        ref: ref || null,
-      },
-    });
+    // Observability only — raw POST count, not a genuine-visit signal.
+    let priorEmailSubmitCount = 0;
+    try {
+      priorEmailSubmitCount = await prisma.event.count({
+        where: { userId: user.id, type: FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED },
+      });
+    } catch (countErr) {
+      console.warn('[readers-agree/lead] prior submit count failed', countErr && countErr.message);
+    }
+
+    try {
+      await recordServerFunnelEvent(prisma, {
+        type: FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED,
+        userId: user.id,
+        meta: {
+          captureSurface,
+          destination: 'sample-chapters',
+          visitorId: visitorId || null,
+          ref: ref || null,
+          priorEmailSubmitCount,
+        },
+      });
+    } catch (eventErr) {
+      console.warn('[readers-agree/lead] event record failed', eventErr && eventErr.message);
+    }
 
     return res.json({
       ok: true,

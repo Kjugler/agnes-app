@@ -5,7 +5,8 @@ import { rateLimitByIP } from '@/lib/rateLimit';
 export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
-  const rateLimit = rateLimitByIP(req, { maxRequests: 5, windowMs: 60000 });
+  // Access is repeatable. 5/min blocked real retries (landing + bridge + back-button).
+  const rateLimit = rateLimitByIP(req, { maxRequests: 30, windowMs: 60000 });
   if (!rateLimit.allowed) {
     return NextResponse.json({ ok: false, error: 'rate_limited' }, { status: 429 });
   }

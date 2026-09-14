@@ -38,24 +38,27 @@ export default function ReadersAgreeEmailCapture({
     setError(null);
     setSubmitting(true);
 
-    const result = await submitReadersAgreeLead({
-      email,
-      searchParams,
-      captureSurface: captureSurface === 'bridge' ? 'bridge' : 'landing',
-    });
+    try {
+      const result = await submitReadersAgreeLead({
+        email,
+        searchParams,
+        captureSurface: captureSurface === 'bridge' ? 'bridge' : 'landing',
+      });
 
-    if (!result.ok) {
-      setError(
-        result.error === 'invalid_email'
-          ? 'Please enter a valid email address.'
-          : 'Something went wrong. Please try again.',
-      );
+      if (!result.ok) {
+        setError(
+          result.error === 'invalid_email'
+            ? 'Please enter a valid email address.'
+            : 'Something went wrong. Please try again.',
+        );
+        return;
+      }
+
+      writeContestEmail(email.trim().toLowerCase());
+      router.push(result.redirectPath);
+    } finally {
       setSubmitting(false);
-      return;
     }
-
-    writeContestEmail(email.trim().toLowerCase());
-    router.push(result.redirectPath);
   };
 
   return (
