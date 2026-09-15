@@ -9,6 +9,11 @@ const {
   REPORT_TIME_ZONE,
   uniqueVisitorCount,
   isAdAttributedPageView,
+  isBridgeSource,
+  isLandingEmail,
+  isBridgeEmail,
+  isLandingBuyDirect,
+  isBridgeBuyDirect,
 } = require('../lib/funnel/buildFunnelReport.cjs');
 const { FUNNEL_EVENT_TYPES } = require('../lib/funnel/funnelEventTypes.cjs');
 
@@ -51,6 +56,18 @@ assert.strictEqual(uniqueVisitorCount(events, isAdAttributedPageView), 1);
 
 assert.ok(FUNNEL_EVENT_TYPES.CATALOG_PAGE_VIEW === 'CATALOG_PAGE_VIEW');
 assert.ok(FUNNEL_EVENT_TYPES.CATALOG_BUY_CLICK === 'CATALOG_BUY_CLICK');
+assert.strictEqual(FUNNEL_EVENT_TYPES.READERS_AGREE_RETAILER_RETURN, 'READERS_AGREE_RETAILER_RETURN');
+assert.strictEqual(FUNNEL_EVENT_TYPES.READERS_AGREE_BRIDGE_VIEW, 'READERS_AGREE_BRIDGE_VIEW');
+assert.strictEqual(FUNNEL_EVENT_TYPES.READERS_AGREE_NO_THANKS_CLICK, 'READERS_AGREE_NO_THANKS_CLICK');
+
+const landingAmazon = { type: FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK, meta: { source: 'readers-agree' } };
+const bridgeAmazon = { type: FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK, meta: { source: 'readers-agree-bridge' } };
+assert.strictEqual(isBridgeSource(landingAmazon), false);
+assert.strictEqual(isBridgeSource(bridgeAmazon), true);
+assert.ok(isLandingEmail({ type: FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED, meta: { captureSurface: 'landing' } }));
+assert.ok(isBridgeEmail({ type: FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED, meta: { captureSurface: 'bridge' } }));
+assert.ok(isLandingBuyDirect({ type: FUNNEL_EVENT_TYPES.READERS_AGREE_BUY_DIRECT_CLICK, meta: { source: 'readers-agree' } }));
+assert.ok(isBridgeBuyDirect({ type: FUNNEL_EVENT_TYPES.READERS_AGREE_BUY_DIRECT_CLICK, meta: { source: 'readers-agree-bridge' } }));
 
 const currentCtaTypes = new Set([
   FUNNEL_EVENT_TYPES.READERS_AGREE_BUY_DIRECT_CLICK,

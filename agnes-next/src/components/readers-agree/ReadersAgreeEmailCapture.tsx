@@ -6,6 +6,7 @@ import { writeContestEmail } from '@/lib/identity';
 import {
   submitReadersAgreeLead,
   type ReadersAgreeCaptureSurface,
+  type ReadersAgreeRetailerOrigin,
 } from '@/lib/readersAgreeLead';
 import './readers-agree-email.css';
 
@@ -13,6 +14,7 @@ type ReadersAgreeEmailCaptureProps = {
   searchParams: { get: (key: string) => string | null } | null;
   formRef?: RefObject<HTMLFormElement | null>;
   captureSurface?: ReadersAgreeCaptureSurface;
+  retailerOrigin?: ReadersAgreeRetailerOrigin | null;
   variant?: 'landing' | 'bridge';
   inputId?: string;
 };
@@ -21,6 +23,7 @@ export default function ReadersAgreeEmailCapture({
   searchParams,
   formRef,
   captureSurface = 'landing',
+  retailerOrigin = null,
   variant = 'landing',
   inputId,
 }: ReadersAgreeEmailCaptureProps) {
@@ -43,6 +46,7 @@ export default function ReadersAgreeEmailCapture({
         email,
         searchParams,
         captureSurface: captureSurface === 'bridge' ? 'bridge' : 'landing',
+        retailerOrigin,
       });
 
       if (!result.ok) {

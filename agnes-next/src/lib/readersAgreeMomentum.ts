@@ -3,6 +3,7 @@
 const REVIEW_VALIDATED_KEY = 'rrf_review_validated';
 const MOMENTUM_ACTIVE_KEY = 'rrf_momentum_active';
 const BRIDGE_DEPARTED_KEY = 'rrf_bridge_went_hidden';
+const BRIDGE_VIEW_TRACKED_KEY = 'rrf_bridge_view_tracked';
 
 function read(key: string): string | null {
   try {
@@ -33,6 +34,7 @@ function remove(key: string): void {
 export function markReadersAgreeReviewOpened(): void {
   if (typeof window === 'undefined') return;
   remove(MOMENTUM_ACTIVE_KEY);
+  remove(BRIDGE_VIEW_TRACKED_KEY);
   write(REVIEW_VALIDATED_KEY, '1');
 }
 
@@ -89,16 +91,29 @@ export function tryPromoteReadersAgreeContinuation(): boolean {
   return syncReadersAgreeMomentumState();
 }
 
+/** True only when this call newly activates continuation after a retailer departure. */
+export function promoteReadersAgreeContinuationIfReturned(): {
+  promoted: boolean;
+  active: boolean;
+} {
+  if (typeof window === 'undefined') return { promoted: false, active: false };
+  const alreadyActive = isReadersAgreeContinuationActive();
+  const active = tryPromoteReadersAgreeContinuation();
+  return { promoted: Boolean(active && !alreadyActive), active: Boolean(active) };
+}
+
 export function clearReadersAgreeMomentum(): void {
   if (typeof window === 'undefined') return;
   remove(MOMENTUM_ACTIVE_KEY);
   remove(REVIEW_VALIDATED_KEY);
+  remove(BRIDGE_VIEW_TRACKED_KEY);
 }
 
 export const READERS_AGREE_MOMENTUM_STORAGE_KEYS = {
   validated: REVIEW_VALIDATED_KEY,
   active: MOMENTUM_ACTIVE_KEY,
   departed: BRIDGE_DEPARTED_KEY,
+  bridgeViewTracked: BRIDGE_VIEW_TRACKED_KEY,
 } as const;
 
 const POPUP_BLOCKED_KEY = 'rrf_retailer_popup_blocked';
@@ -140,6 +155,15 @@ export function resetBridgeSessionState(): void {
 export function isReadersAgreeContinuationActive(): boolean {
   if (typeof window === 'undefined') return false;
   return read(MOMENTUM_ACTIVE_KEY) === '1';
+}
+
+/** Claim the one-shot continuation-view event for the current retailer-return cycle. */
+export function claimReadersAgreeBridgeViewTracking(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (!isReadersAgreeContinuationActive()) return false;
+  if (read(BRIDGE_VIEW_TRACKED_KEY) === '1') return false;
+  write(BRIDGE_VIEW_TRACKED_KEY, '1');
+  return true;
 }
 
 /** Read current momentum flags from storage (session first, then local mirror). */

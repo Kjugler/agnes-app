@@ -88,6 +88,40 @@ function uniqueVisitorCount(events, predicate) {
   return ids.size;
 }
 
+function isBridgeSource(event) {
+  return event.meta?.source === 'readers-agree-bridge';
+}
+
+function isLandingRetailerClick(event, type) {
+  return event.type === type && !isBridgeSource(event);
+}
+
+function isBridgeRetailerClick(event, type) {
+  return event.type === type && isBridgeSource(event);
+}
+
+function isLandingEmail(event) {
+  return (
+    event.type === FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED &&
+    event.meta?.captureSurface !== 'bridge'
+  );
+}
+
+function isBridgeEmail(event) {
+  return (
+    event.type === FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED &&
+    event.meta?.captureSurface === 'bridge'
+  );
+}
+
+function isLandingBuyDirect(event) {
+  return event.type === FUNNEL_EVENT_TYPES.READERS_AGREE_BUY_DIRECT_CLICK && !isBridgeSource(event);
+}
+
+function isBridgeBuyDirect(event) {
+  return event.type === FUNNEL_EVENT_TYPES.READERS_AGREE_BUY_DIRECT_CLICK && isBridgeSource(event);
+}
+
 function isAdAttributedPageView(event) {
   if (event.type !== FUNNEL_EVENT_TYPES.READERS_AGREE_PAGE_VIEW) return false;
   const m = event.meta || {};
@@ -222,25 +256,87 @@ async function buildFunnelReport(prisma, { start, end }) {
       key: 'readers_agree_amazon',
       label: 'Readers Agree — Amazon Reviews clicked',
       type: FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK,
-      note: 'Raw clicks; landing + mobile bridge can both fire for one person',
+      note: 'Outbound Amazon clicks from landing and waiting page. Not a retailer return.',
     }),
     eventStage(funnelEvents, {
       key: 'readers_agree_bn',
       label: 'Readers Agree — B&N Reviews clicked',
       type: FUNNEL_EVENT_TYPES.READERS_AGREE_BN_CLICK,
-      note: 'Raw clicks; landing + mobile bridge can both fire for one person',
+      note: 'Outbound B&N clicks from landing and waiting page. Not a retailer return.',
     }),
     eventStage(funnelEvents, {
-      key: 'readers_agree_buy_direct',
-      label: 'Readers Agree — Buy Direct clicked',
+      key: 'readers_agree_amazon_landing',
+      label: 'Readers Agree — Amazon outbound (landing)',
+      type: FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK,
+      extraPredicate: (e) => !isBridgeSource(e),
+      note: 'Landing-page Amazon click only',
+    }),
+    eventStage(funnelEvents, {
+      key: 'readers_agree_bn_landing',
+      label: 'Readers Agree — B&N outbound (landing)',
+      type: FUNNEL_EVENT_TYPES.READERS_AGREE_BN_CLICK,
+      extraPredicate: (e) => !isBridgeSource(e),
+      note: 'Landing-page B&N click only',
+    }),
+    eventStage(funnelEvents, {
+      key: 'readers_agree_amazon_bridge_outbound',
+      label: 'Readers Agree — Amazon outbound (waiting page)',
+      type: FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK,
+      extraPredicate: (e) => isBridgeSource(e),
+      note: 'Waiting-page Open Reviews. Not a return.',
+    }),
+    eventStage(funnelEvents, {
+      key: 'readers_agree_bn_bridge_outbound',
+      label: 'Readers Agree — B&N outbound (waiting page)',
+      type: FUNNEL_EVENT_TYPES.READERS_AGREE_BN_CLICK,
+      extraPredicate: (e) => isBridgeSource(e),
+      note: 'Waiting-page Open Reviews. Not a return.',
+    }),
+    eventStage(funnelEvents, {
+      key: 'readers_agree_retailer_return',
+      label: 'Readers Agree — retailer return detected',
+      type: FUNNEL_EVENT_TYPES.READERS_AGREE_RETAILER_RETURN,
+      note: 'Continuation promoted after leaving for reviews and coming back. Not the original outbound click.',
+    }),
+    eventStage(funnelEvents, {
+      key: 'readers_agree_bridge_view',
+      label: 'Readers Agree — continuation viewed',
+      type: FUNNEL_EVENT_TYPES.READERS_AGREE_BRIDGE_VIEW,
+      note: 'Ready-to-see-for-yourself panel shown after a retailer return',
+    }),
+    eventStage(funnelEvents, {
+      key: 'readers_agree_buy_direct_landing',
+      label: 'Readers Agree — Buy Direct clicked (landing)',
       type: FUNNEL_EVENT_TYPES.READERS_AGREE_BUY_DIRECT_CLICK,
-      note: 'Current v2 CTA to /catalog. Does not include legacy Buy the Book clicks.',
+      extraPredicate: (e) => !isBridgeSource(e),
+      note: 'Landing Buy Direct to /catalog',
     }),
     eventStage(funnelEvents, {
-      key: 'readers_agree_email_submitted',
-      label: 'Readers Agree — Email submitted',
+      key: 'readers_agree_buy_direct_bridge',
+      label: 'Readers Agree — Buy Direct clicked (bridge)',
+      type: FUNNEL_EVENT_TYPES.READERS_AGREE_BUY_DIRECT_CLICK,
+      extraPredicate: (e) => isBridgeSource(e),
+      note: 'Continuation Buy Direct to /catalog',
+    }),
+    eventStage(funnelEvents, {
+      key: 'readers_agree_email_landing',
+      label: 'Readers Agree — Email submitted (landing)',
       type: FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED,
-      note: 'Current v2 Start Reading capture (landing). Bridge email is in Event breakdown.',
+      extraPredicate: (e) => e.meta?.captureSurface !== 'bridge',
+      note: 'Start Reading on the landing page',
+    }),
+    eventStage(funnelEvents, {
+      key: 'readers_agree_email_bridge',
+      label: 'Readers Agree — Email submitted (bridge)',
+      type: FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED,
+      extraPredicate: (e) => e.meta?.captureSurface === 'bridge',
+      note: 'Start Reading on the continuation panel',
+    }),
+    eventStage(funnelEvents, {
+      key: 'readers_agree_no_thanks',
+      label: 'Readers Agree — No Thanks clicked',
+      type: FUNNEL_EVENT_TYPES.READERS_AGREE_NO_THANKS_CLICK,
+      note: 'Continuation declined; returned to /readers-agree',
     }),
     eventStage(funnelEvents, {
       key: 'sample_chapters_view',
@@ -388,4 +484,11 @@ module.exports = {
   eventVisitorId,
   uniqueVisitorCount,
   isAdAttributedPageView,
+  isBridgeSource,
+  isLandingRetailerClick,
+  isBridgeRetailerClick,
+  isLandingEmail,
+  isBridgeEmail,
+  isLandingBuyDirect,
+  isBridgeBuyDirect,
 };

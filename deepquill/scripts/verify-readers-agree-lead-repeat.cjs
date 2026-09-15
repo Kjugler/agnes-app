@@ -192,6 +192,11 @@ function check(name, fn) {
     });
     assert.strictEqual(events.length, 1);
     assert.strictEqual(events[0].meta.captureSurface, 'bridge');
+    const profile = await prisma.readerProfile.findUnique({ where: { userId: res.body.userId } });
+    assert.ok(profile);
+    assert.strictEqual(profile.source, 'readers-agree-v2');
+    assert.strictEqual(profile.readerType, 'prospect');
+    assert.strictEqual(profile.prospectNurtureEnrolledAt, null);
   });
 
   await check('same email again on bridge still grants access', async () => {

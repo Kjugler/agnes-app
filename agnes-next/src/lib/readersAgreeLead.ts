@@ -13,11 +13,13 @@ export type SubmitReadersAgreeLeadResult =
 type SearchParamsLike = { get: (key: string) => string | null } | null | undefined;
 
 export type ReadersAgreeCaptureSurface = 'landing' | 'bridge';
+export type ReadersAgreeRetailerOrigin = 'amazon' | 'bn';
 
 export async function submitReadersAgreeLead(input: {
   email: string;
   searchParams?: SearchParamsLike;
   captureSurface?: ReadersAgreeCaptureSurface;
+  retailerOrigin?: ReadersAgreeRetailerOrigin | null;
 }): Promise<SubmitReadersAgreeLeadResult> {
   const email = input.email.trim().toLowerCase();
   if (!email || !email.includes('@')) {
@@ -43,6 +45,10 @@ export async function submitReadersAgreeLead(input: {
         code,
         utm,
         captureSurface: input.captureSurface === 'bridge' ? 'bridge' : 'landing',
+        retailerOrigin:
+          input.retailerOrigin === 'amazon' || input.retailerOrigin === 'bn'
+            ? input.retailerOrigin
+            : null,
       }),
       credentials: 'include',
     });

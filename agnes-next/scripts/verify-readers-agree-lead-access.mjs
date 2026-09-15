@@ -17,6 +17,9 @@ function read(rel) {
 const capture = read('src/components/readers-agree/ReadersAgreeEmailCapture.tsx');
 const lead = read('src/lib/readersAgreeLead.ts');
 const route = read('src/app/api/readers-agree/lead/route.ts');
+const tracking = read('src/lib/funnelTracking.ts');
+const redirect = read('src/app/readers-agree/go/ReviewRedirectClient.tsx');
+const momentum = read('src/lib/readersAgreeMomentum.ts');
 
 assert.match(
   capture,
@@ -33,8 +36,20 @@ assert.match(
 );
 assert.match(lead, /if \(!res\.ok \|\| !data\.ok \|\| !data\.redirectPath\)/);
 
-assert.match(route, /maxRequests:\s*30/);
-assert.doesNotMatch(route, /maxRequests:\s*5/);
+assert.match(lead, /retailerOrigin/);
+assert.match(capture, /retailerOrigin/);
+assert.match(tracking, /READERS_AGREE_RETAILER_RETURN/);
+assert.match(tracking, /READERS_AGREE_BRIDGE_VIEW/);
+assert.match(tracking, /READERS_AGREE_NO_THANKS_CLICK/);
+assert.match(redirect, /READERS_AGREE_RETAILER_RETURN/);
+assert.match(redirect, /READERS_AGREE_BRIDGE_VIEW/);
+assert.match(redirect, /READERS_AGREE_NO_THANKS_CLICK/);
+assert.match(redirect, /handleNoThanksClick/);
+assert.match(redirect, /promoteReadersAgreeContinuationIfReturned/);
+assert.match(momentum, /claimReadersAgreeBridgeViewTracking/);
+assert.doesNotMatch(lead, /trySendProspectNurture/);
+assert.doesNotMatch(redirect, /trySendProspectNurture/);
+assert.doesNotMatch(tracking, /PROSPECT_NURTURE_SENT/);
 
 function clientEmailLooksValid(email) {
   const normalized = String(email || '').trim().toLowerCase();

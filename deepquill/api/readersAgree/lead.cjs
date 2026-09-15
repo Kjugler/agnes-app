@@ -1,11 +1,17 @@
-// POST /api/readers-agree/lead — persist email, record funnel event, return sample-chapters path.
-// No prospect nurture, no welcome email, no ReaderProfile writes.
+// POST /api/readers-agree/lead — persist email, sync ReaderProfile identity, record funnel event, return sample-chapters path.
+// No prospect nurture, no welcome email, no nurture enrollment.
 
 const { ensureDatabaseUrl, prisma } = require('../../server/prisma.cjs');
 const { normalizeEmail } = require('../../src/lib/normalize.cjs');
 const { ensureAssociateMinimal } = require('../contest/login.cjs');
 const { recordServerFunnelEvent } = require('../../lib/funnel/recordServerFunnelEvent.cjs');
 const { FUNNEL_EVENT_TYPES } = require('../../lib/funnel/funnelEventTypes.cjs');
+const {
+  buildLeadAttributionSnapshot,
+  resolveCaptureSurface,
+  resolveRetailerOrigin,
+  syncReadersAgreeLeadProfile,
+} = require('../../lib/readers/readersAgreeLead.cjs');
 
 const REDIRECT_PARAM_KEYS = [
   'ref',
@@ -39,10 +45,6 @@ function buildRedirectPath({ ref, code, utm }) {
   }
   const qs = params.toString();
   return qs ? `/sample-chapters?${qs}` : '/sample-chapters';
-}
-
-function resolveCaptureSurface(value) {
-  return value === 'bridge' ? 'bridge' : 'landing';
 }
 
 /**
@@ -87,6 +89,24 @@ module.exports = async function readersAgreeLeadHandler(req, res) {
 
     const redirectPath = buildRedirectPath({ ref, code, utm });
     const captureSurface = resolveCaptureSurface(body.captureSurface);
+    const retailerOrigin = resolveRetailerOrigin(body.retailerOrigin);
+    const attribution = buildLeadAttributionSnapshot({
+      visitorId,
+      ref,
+      code,
+      utm: utm && typeof utm === 'object' ? utm : {},
+      captureSurface,
+      retailerOrigin,
+    });
+
+    try {
+      await syncReadersAgreeLeadProfile(prisma, user.id, {
+        attribution,
+        consentAccepted: body.consentAccepted === true,
+      });
+    } catch (profileErr) {
+      console.warn('[readers-agree/lead] profile sync failed', profileErr && profileErr.message);
+    }
 
     // Observability only — raw POST count, not a genuine-visit signal.
     let priorEmailSubmitCount = 0;
@@ -104,6 +124,7 @@ module.exports = async function readersAgreeLeadHandler(req, res) {
         userId: user.id,
         meta: {
           captureSurface,
+          retailerOrigin,
           destination: 'sample-chapters',
           visitorId: visitorId || null,
           ref: ref || null,
@@ -128,3 +149,4 @@ module.exports = async function readersAgreeLeadHandler(req, res) {
 
 module.exports.buildRedirectPath = buildRedirectPath;
 module.exports.resolveCaptureSurface = resolveCaptureSurface;
+module.exports.resolveRetailerOrigin = resolveRetailerOrigin;

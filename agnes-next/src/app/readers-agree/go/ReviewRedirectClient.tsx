@@ -14,13 +14,14 @@ import {
 import '../readers-agree-bn.css';
 import {
   clearRetailerPopupBlocked,
+  claimReadersAgreeBridgeViewTracking,
   getReadersAgreeMomentumSnapshot,
   isRetailerPopupBlocked,
   markBridgeDepartedIfCurrentlyHidden,
   markBridgeTabDeparted,
   markReadersAgreeReviewOpened,
+  promoteReadersAgreeContinuationIfReturned,
   READERS_AGREE_MOMENTUM_STORAGE_KEYS,
-  tryPromoteReadersAgreeContinuation,
 } from '@/lib/readersAgreeMomentum';
 import { FUNNEL_EVENT_TYPES, trackFunnelEvent, type FunnelEventType } from '@/lib/funnelTracking';
 
@@ -97,6 +98,10 @@ function retailerClickEventType(label: string): FunnelEventType {
   return label === 'Barnes & Noble'
     ? FUNNEL_EVENT_TYPES.READERS_AGREE_BN_CLICK
     : FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK;
+}
+
+function retailerOriginFromLabel(label: string): 'amazon' | 'bn' {
+  return label === 'Barnes & Noble' ? 'bn' : 'amazon';
 }
 
 function LegacyReviewRedirectClient({ heading, destinationUrl }: ReviewRedirectClientProps) {
@@ -266,13 +271,31 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
     [searchParams]
   );
 
+  const retailerOrigin = useMemo(
+    () => retailerOriginFromLabel(retailerLabel),
+    [retailerLabel],
+  );
+
   const retailerClickType = useMemo(
     () => retailerClickEventType(retailerLabel),
     [retailerLabel]
   );
 
+  const bridgeTrackOpts = useMemo(
+    () => ({ source: 'readers-agree-bridge' as const, searchParams }),
+    [searchParams],
+  );
+
   const applyContinuationIfReady = useCallback(() => {
-    if (tryPromoteReadersAgreeContinuation()) {
+    const { promoted, active } = promoteReadersAgreeContinuationIfReturned();
+    if (promoted) {
+      trackFunnelEvent(
+        FUNNEL_EVENT_TYPES.READERS_AGREE_RETAILER_RETURN,
+        { retailerOrigin },
+        bridgeTrackOpts,
+      );
+    }
+    if (active) {
       setContinuationActive(true);
       clearRetailerPopupBlocked();
       setPopupBlocked(false);
@@ -295,7 +318,7 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
     }
     setReviewValidated(snapshot.validated);
     return false;
-  }, []);
+  }, [bridgeTrackOpts, retailerOrigin]);
 
   const scheduleContinuationFallback = useCallback(() => {
     if (continuationFallbackRef.current) return;
@@ -328,6 +351,16 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
       }
     };
   }, [rehydrateMomentumState, scheduleContinuationFallback]);
+
+  useEffect(() => {
+    if (!continuationActive) return;
+    if (!claimReadersAgreeBridgeViewTracking()) return;
+    trackFunnelEvent(
+      FUNNEL_EVENT_TYPES.READERS_AGREE_BRIDGE_VIEW,
+      { retailerOrigin },
+      bridgeTrackOpts,
+    );
+  }, [bridgeTrackOpts, continuationActive, retailerOrigin]);
 
   useEffect(() => {
     const markDeparted = () => {
@@ -395,7 +428,7 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
     markReadersAgreeReviewOpened();
     setReviewValidated(true);
     scheduleContinuationFallback();
-    trackFunnelEvent(retailerClickType, {}, {
+    trackFunnelEvent(retailerClickType, { retailerOrigin }, {
       source: 'readers-agree-bridge',
       searchParams,
     });
@@ -421,11 +454,16 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
   const handleBuyDirectClick = () => {
     trackFunnelEvent(
       FUNNEL_EVENT_TYPES.READERS_AGREE_BUY_DIRECT_CLICK,
-      { destination: 'catalog' },
-      {
-        source: 'readers-agree-bridge',
-        searchParams,
-      },
+      { destination: 'catalog', retailerOrigin },
+      bridgeTrackOpts,
+    );
+  };
+
+  const handleNoThanksClick = () => {
+    trackFunnelEvent(
+      FUNNEL_EVENT_TYPES.READERS_AGREE_NO_THANKS_CLICK,
+      { destination: 'readers-agree', retailerOrigin },
+      bridgeTrackOpts,
     );
   };
 
@@ -469,9 +507,10 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
                 searchParams={searchParams}
                 variant="bridge"
                 captureSurface="bridge"
+                retailerOrigin={retailerOrigin}
               />
 
-              <Link href={readersAgreeHref} style={quietLinkStyle}>
+              <Link href={readersAgreeHref} style={quietLinkStyle} onClick={handleNoThanksClick}>
                 No thanks — take me back
               </Link>
             </div>
