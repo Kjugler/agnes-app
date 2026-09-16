@@ -17,6 +17,10 @@ import {
 } from '@/lib/jodyConciergeApi';
 import { readContestEmail, writeContestEmail } from '@/lib/identity';
 import {
+  JODY_REMEMBER_DECLINE_ACK_MS,
+  resolveRememberPlaceChoice,
+} from '@/lib/jodyRememberPlaceChoice';
+import {
   dismissRememberOffer,
   isRememberDismissed,
 } from '@/lib/readerJourney';
@@ -160,23 +164,31 @@ export function JodyConcierge({
     onClose?.();
   }, [onClose]);
 
+  useEffect(() => {
+    if (beatId !== 'remember-decline-ack') return;
+    const timer = window.setTimeout(() => handleClose(), JODY_REMEMBER_DECLINE_ACK_MS);
+    return () => window.clearTimeout(timer);
+  }, [beatId, handleClose]);
+
   const handleRememberAccept = () => {
+    const outcome = resolveRememberPlaceChoice('accept');
     trackFunnelEvent(
       FUNNEL_EVENT_TYPES.JODY_REMEMBER_PLACE_ACCEPT,
       { chapterId: effectiveChapterId },
       { source: 'jody-concierge' },
     );
-    setBeatId('email-capture');
+    setBeatId(outcome.nextBeat);
   };
 
   const handleRememberDecline = () => {
+    const outcome = resolveRememberPlaceChoice('decline');
     trackFunnelEvent(
       FUNNEL_EVENT_TYPES.JODY_REMEMBER_PLACE_DECLINE,
       { chapterId: effectiveChapterId },
       { source: 'jody-concierge' },
     );
-    dismissRememberOffer();
-    handleClose();
+    if (outcome.dismissOffer) dismissRememberOffer();
+    setBeatId(outcome.nextBeat);
   };
 
   const handleEmailSubmit = async () => {

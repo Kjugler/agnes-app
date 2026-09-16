@@ -336,10 +336,7 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
           mode="remember-offer"
           chapterId={chapterId}
           readerStatus={readerStatus}
-          onClose={() => {
-            dismissJody();
-            window.location.href = '/sample-chapters';
-          }}
+          onClose={dismissJody}
         />
       )}
 

@@ -6,6 +6,7 @@
 
 export type JodyBeatId =
   | 'remember-offer'
+  | 'remember-decline-ack'
   | 'email-capture'
   | 'email-sent'
   | 'verified-success'
@@ -33,6 +34,10 @@ export const JODY_CONCIERGE_COPY: Record<JodyBeatId, JodyBeatCopy> = {
     ],
     primaryAction: { id: 'remember-accept', label: 'Remember My Place' },
     secondaryAction: { id: 'remember-decline', label: 'Not Now' },
+  },
+  'remember-decline-ack': {
+    id: 'remember-decline-ack',
+    lines: ['No problem. Enjoy the chapter.'],
   },
   'email-capture': {
     id: 'email-capture',
