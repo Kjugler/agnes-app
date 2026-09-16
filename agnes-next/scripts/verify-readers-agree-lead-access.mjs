@@ -29,10 +29,11 @@ assert.match(
 assert.match(capture, /writeContestEmail\(email\.trim\(\)\.toLowerCase\(\)\)/);
 assert.match(capture, /router\.push\(result\.redirectPath\)/);
 
+assert.match(lead, /rememberFunnelUserId/);
 assert.match(lead, /markReadersAgreeLeadSession\(\)/);
 assert.match(
   lead,
-  /markReadersAgreeLeadSession\(\);\s*return \{ ok: true, redirectPath: data\.redirectPath \}/,
+  /rememberFunnelUserId\(data\.userId\);\s*\}\s*markReadersAgreeLeadSession\(\);\s*return \{ ok: true, redirectPath: data\.redirectPath \}/,
 );
 assert.match(lead, /if \(!res\.ok \|\| !data\.ok \|\| !data\.redirectPath\)/);
 
@@ -42,6 +43,25 @@ assert.match(tracking, /READERS_AGREE_RETAILER_RETURN/);
 assert.match(tracking, /READERS_AGREE_BRIDGE_VIEW/);
 assert.match(tracking, /READERS_AGREE_NO_THANKS_CLICK/);
 assert.match(redirect, /READERS_AGREE_RETAILER_RETURN/);
+assert.match(redirect, /claimReadersAgreeRetailerReturnTracking/);
+assert.match(redirect, /trackRetailerReturnIfResumed/);
+assert.match(redirect, /syncReadersAgreeMomentumState/);
+{
+  const applyFn = redirect.match(
+    /const applyContinuationIfReady = useCallback\(\(\) => \{[\s\S]*?\n  \}, \[\]\);/,
+  );
+  assert.ok(applyFn, 'applyContinuationIfReady must exist');
+  assert.doesNotMatch(
+    applyFn[0],
+    /READERS_AGREE_RETAILER_RETURN/,
+    'continuation promotion must not emit RETAILER_RETURN',
+  );
+}
+assert.match(momentum, /shouldEmitRetailerReturnEvent/);
+assert.match(momentum, /claimReadersAgreeRetailerReturnTracking/);
+assert.match(tracking, /rememberFunnelUserId/);
+assert.match(tracking, /getFunnelUserId/);
+assert.match(tracking, /shouldFlushTimeOnPage/);
 assert.match(redirect, /READERS_AGREE_BRIDGE_VIEW/);
 assert.match(redirect, /READERS_AGREE_NO_THANKS_CLICK/);
 assert.match(redirect, /handleNoThanksClick/);

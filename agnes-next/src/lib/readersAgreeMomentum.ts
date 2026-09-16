@@ -4,6 +4,19 @@ const REVIEW_VALIDATED_KEY = 'rrf_review_validated';
 const MOMENTUM_ACTIVE_KEY = 'rrf_momentum_active';
 const BRIDGE_DEPARTED_KEY = 'rrf_bridge_went_hidden';
 const BRIDGE_VIEW_TRACKED_KEY = 'rrf_bridge_view_tracked';
+const RETURN_TRACKED_KEY = 'rrf_retailer_return_tracked';
+
+export type RetailerReturnSignal = 'outbound' | 'fallback' | 'resume';
+
+/** RETURN is only an actual resume after a recorded retailer departure. */
+export function shouldEmitRetailerReturnEvent(
+  signal: RetailerReturnSignal,
+  state: { departed: boolean; alreadyTracked: boolean },
+): boolean {
+  if (state.alreadyTracked) return false;
+  if (signal !== 'resume') return false;
+  return state.departed === true;
+}
 
 function read(key: string): string | null {
   try {
@@ -35,6 +48,7 @@ export function markReadersAgreeReviewOpened(): void {
   if (typeof window === 'undefined') return;
   remove(MOMENTUM_ACTIVE_KEY);
   remove(BRIDGE_VIEW_TRACKED_KEY);
+  remove(RETURN_TRACKED_KEY);
   write(REVIEW_VALIDATED_KEY, '1');
 }
 
@@ -107,6 +121,7 @@ export function clearReadersAgreeMomentum(): void {
   remove(MOMENTUM_ACTIVE_KEY);
   remove(REVIEW_VALIDATED_KEY);
   remove(BRIDGE_VIEW_TRACKED_KEY);
+  remove(RETURN_TRACKED_KEY);
 }
 
 export const READERS_AGREE_MOMENTUM_STORAGE_KEYS = {
@@ -114,7 +129,27 @@ export const READERS_AGREE_MOMENTUM_STORAGE_KEYS = {
   active: MOMENTUM_ACTIVE_KEY,
   departed: BRIDGE_DEPARTED_KEY,
   bridgeViewTracked: BRIDGE_VIEW_TRACKED_KEY,
+  returnTracked: RETURN_TRACKED_KEY,
 } as const;
+
+/** Claim the one-shot actual-return event. Never call on outbound or fallback. */
+export function claimReadersAgreeRetailerReturnTracking(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+    return false;
+  }
+  const alreadyTracked = read(RETURN_TRACKED_KEY) === '1';
+  if (
+    !shouldEmitRetailerReturnEvent('resume', {
+      departed: hasBridgeTabDeparted(),
+      alreadyTracked,
+    })
+  ) {
+    return false;
+  }
+  write(RETURN_TRACKED_KEY, '1');
+  return true;
+}
 
 const POPUP_BLOCKED_KEY = 'rrf_retailer_popup_blocked';
 

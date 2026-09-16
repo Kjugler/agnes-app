@@ -15,6 +15,7 @@ import '../readers-agree-bn.css';
 import {
   clearRetailerPopupBlocked,
   claimReadersAgreeBridgeViewTracking,
+  claimReadersAgreeRetailerReturnTracking,
   getReadersAgreeMomentumSnapshot,
   isRetailerPopupBlocked,
   markBridgeDepartedIfCurrentlyHidden,
@@ -22,6 +23,7 @@ import {
   markReadersAgreeReviewOpened,
   promoteReadersAgreeContinuationIfReturned,
   READERS_AGREE_MOMENTUM_STORAGE_KEYS,
+  syncReadersAgreeMomentumState,
 } from '@/lib/readersAgreeMomentum';
 import { FUNNEL_EVENT_TYPES, trackFunnelEvent, type FunnelEventType } from '@/lib/funnelTracking';
 
@@ -287,14 +289,7 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
   );
 
   const applyContinuationIfReady = useCallback(() => {
-    const { promoted, active } = promoteReadersAgreeContinuationIfReturned();
-    if (promoted) {
-      trackFunnelEvent(
-        FUNNEL_EVENT_TYPES.READERS_AGREE_RETAILER_RETURN,
-        { retailerOrigin },
-        bridgeTrackOpts,
-      );
-    }
+    const { active } = promoteReadersAgreeContinuationIfReturned();
     if (active) {
       setContinuationActive(true);
       clearRetailerPopupBlocked();
@@ -318,6 +313,15 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
     }
     setReviewValidated(snapshot.validated);
     return false;
+  }, []);
+
+  const trackRetailerReturnIfResumed = useCallback(() => {
+    if (!claimReadersAgreeRetailerReturnTracking()) return;
+    trackFunnelEvent(
+      FUNNEL_EVENT_TYPES.READERS_AGREE_RETAILER_RETURN,
+      { retailerOrigin },
+      bridgeTrackOpts,
+    );
   }, [bridgeTrackOpts, retailerOrigin]);
 
   const scheduleContinuationFallback = useCallback(() => {
@@ -327,7 +331,7 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
       const snapshot = getReadersAgreeMomentumSnapshot();
       if (snapshot.active) return;
       if (!snapshot.validated) return;
-      markBridgeTabDeparted();
+      syncReadersAgreeMomentumState();
       applyContinuationIfReady();
     }, REDIRECT_DELAY_MS);
   }, [applyContinuationIfReady]);
@@ -375,6 +379,7 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
         return;
       }
       rehydrateMomentumState();
+      trackRetailerReturnIfResumed();
     };
 
     const onPageHide = () => markBridgeTabDeparted();
@@ -382,6 +387,7 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
     const onPageShow = () => {
       markBridgeDepartedIfCurrentlyHidden();
       rehydrateMomentumState();
+      trackRetailerReturnIfResumed();
     };
 
     const onWindowBlur = () => markDeparted();
@@ -391,10 +397,8 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
         rehydrateMomentumState();
         return;
       }
-      if (getReadersAgreeMomentumSnapshot().validated) {
-        markBridgeTabDeparted();
-      }
       rehydrateMomentumState();
+      trackRetailerReturnIfResumed();
     };
 
     const onStorage = (event: StorageEvent) => {
@@ -422,7 +426,7 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
       window.removeEventListener('focus', onWindowFocus);
       window.removeEventListener('storage', onStorage);
     };
-  }, [rehydrateMomentumState]);
+  }, [rehydrateMomentumState, trackRetailerReturnIfResumed]);
 
   const handleBridgeRetailerClick = () => {
     markReadersAgreeReviewOpened();

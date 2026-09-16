@@ -3,6 +3,7 @@
 import {
   getAttributionFromPage,
   getOrCreateVisitorId,
+  rememberFunnelUserId,
 } from '@/lib/funnelTracking';
 import { markReadersAgreeLeadSession } from '@/lib/readersAgreeLeadSession';
 
@@ -60,12 +61,16 @@ export async function submitReadersAgreeLead(input: {
     ok?: boolean;
     redirectPath?: string;
     error?: string;
+    userId?: string;
   };
 
   if (!res.ok || !data.ok || !data.redirectPath) {
     return { ok: false, error: data.error || 'submit_failed' };
   }
 
+  if (typeof data.userId === 'string' && data.userId) {
+    rememberFunnelUserId(data.userId);
+  }
   markReadersAgreeLeadSession();
   return { ok: true, redirectPath: data.redirectPath };
 }

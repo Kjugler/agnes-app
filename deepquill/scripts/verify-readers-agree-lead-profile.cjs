@@ -358,6 +358,36 @@ function check(name, fn) {
     }
   });
 
+  await check('later BN submit does not erase earlier Amazon email Event', async () => {
+    const email = `amazon-then-bn-${suffix}@example.com`;
+    const amazon = await postLead({
+      email,
+      captureSurface: 'bridge',
+      retailerOrigin: 'amazon',
+      visitorId: 'vid-amazon',
+    });
+    const bn = await postLead({
+      email,
+      captureSurface: 'bridge',
+      retailerOrigin: 'bn',
+      visitorId: 'vid-bn',
+    });
+    assert.strictEqual(amazon.body.userId, bn.body.userId);
+    const events = await prisma.event.findMany({
+      where: { userId: amazon.body.userId, type: 'READERS_AGREE_EMAIL_SUBMITTED' },
+      orderBy: { createdAt: 'asc' },
+    });
+    assert.strictEqual(events.length, 2);
+    assert.strictEqual(events[0].meta.retailerOrigin, 'amazon');
+    assert.strictEqual(events[0].meta.visitorId, 'vid-amazon');
+    assert.strictEqual(events[0].meta.captureSurface, 'bridge');
+    assert.strictEqual(events[1].meta.retailerOrigin, 'bn');
+    assert.strictEqual(events[1].meta.visitorId, 'vid-bn');
+    const profile = await prisma.readerProfile.findUnique({ where: { userId: amazon.body.userId } });
+    assert.strictEqual(profile.leadAttribution.retailerOrigin, 'bn');
+    nurtureUnset(profile);
+  });
+
   console.log(`${passed} passed, ${failed} failed`);
   await prisma.$disconnect();
   try {

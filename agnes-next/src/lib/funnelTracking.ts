@@ -44,6 +44,8 @@ export type FunnelEventType = (typeof FUNNEL_EVENT_TYPES)[keyof typeof FUNNEL_EV
 
 const VISITOR_COOKIE = 'ap_funnel_vid';
 const VISITOR_STORAGE = 'ap_funnel_vid';
+const FUNNEL_USER_COOKIE = 'ap_funnel_uid';
+const FUNNEL_USER_STORAGE = 'ap_funnel_uid';
 
 function randomId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -91,6 +93,49 @@ export function getOrCreateVisitorId(): string {
   return id;
 }
 
+function readStoredValue(storageKey: string, cookieKey: string): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const fromStorage = window.localStorage.getItem(storageKey);
+    if (fromStorage) return fromStorage;
+  } catch {
+    /* ignore */
+  }
+  try {
+    const match = document.cookie.match(new RegExp(`(?:^|; )${cookieKey}=([^;]*)`));
+    if (match?.[1]) return decodeURIComponent(match[1]);
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function persistClientValue(storageKey: string, cookieKey: string, value: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(storageKey, value);
+  } catch {
+    /* ignore */
+  }
+  try {
+    document.cookie = `${cookieKey}=${encodeURIComponent(value)}; path=/; max-age=${60 * 60 * 24 * 365}; SameSite=Lax`;
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Persist User id from Readers Agree email capture so later funnel events join that User. */
+export function rememberFunnelUserId(userId: string): void {
+  const id = String(userId || '').trim().slice(0, 64);
+  if (!id) return;
+  persistClientValue(FUNNEL_USER_STORAGE, FUNNEL_USER_COOKIE, id);
+}
+
+export function getFunnelUserId(): string | null {
+  const id = readStoredValue(FUNNEL_USER_STORAGE, FUNNEL_USER_COOKIE);
+  return id && id.trim() ? id.trim().slice(0, 64) : null;
+}
+
 export function getAttributionFromPage(searchParams?: { get: (key: string) => string | null } | null) {
   if (typeof window === 'undefined') {
     return { ref: null as string | null, utm: {} as Record<string, string> };
@@ -134,12 +179,14 @@ export function trackFunnelEvent(
   if (typeof window === 'undefined') return;
 
   const visitorId = getOrCreateVisitorId();
+  const userId = getFunnelUserId();
   const { ref, utm } = getAttributionFromPage(opts?.searchParams);
   const path = window.location.pathname + window.location.search;
 
   const payload = {
     type,
     visitorId,
+    userId: userId || null,
     ref,
     path,
     source: opts?.source || null,
@@ -165,6 +212,12 @@ export function trackFunnelEvent(
 
 const SCROLL_MILESTONES = [25, 50, 75, 100] as const;
 
+/** One reading interval emits one time-on-page event (pagehide + visibility must not double-write). */
+export function shouldFlushTimeOnPage(state: { flushed: boolean; seconds: number }): boolean {
+  if (state.flushed) return false;
+  return Number.isFinite(state.seconds) && state.seconds >= 1;
+}
+
 export function useFunnelPageEngagement(options: {
   pageViewType: FunnelEventType;
   timeOnPageType?: FunnelEventType;
@@ -184,7 +237,6 @@ export function useFunnelPageEngagement(options: {
     extraEngagementMeta = {},
   } = options;
 
-  const startRef = useRef(Date.now());
   const viewFiredRef = useRef(false);
   const scrollFiredRef = useRef<Set<number>>(new Set());
   const metaKey = JSON.stringify(extraPageViewMeta);
@@ -227,10 +279,13 @@ export function useFunnelPageEngagement(options: {
   useEffect(() => {
     if (!timeOnPageType) return;
     const timeEventType = timeOnPageType;
+    const startedAt = Date.now();
+    let flushed = false;
 
     function flushTime() {
-      const seconds = Math.round((Date.now() - startRef.current) / 1000);
-      if (seconds < 1) return;
+      const seconds = Math.round((Date.now() - startedAt) / 1000);
+      if (!shouldFlushTimeOnPage({ flushed, seconds })) return;
+      flushed = true;
       trackFunnelEvent(
         timeEventType,
         { secondsOnPage: seconds, ...extraEngagementMeta },

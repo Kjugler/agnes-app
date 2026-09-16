@@ -192,6 +192,8 @@ async function syncReadersAgreeLeadProfile(prisma, userId, { attribution, consen
   const snapshot = attribution && typeof attribution === 'object' ? attribution : {};
 
   if (existing) {
+    // Latest snapshot for CRM display. Event history remains authoritative
+    // for prior retailer journeys (do not fold them into this JSON).
     const data = {
       leadAttribution: snapshot,
       ...consentFields(consentAccepted, existing),
