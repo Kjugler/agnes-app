@@ -434,6 +434,67 @@ async function main() {
       }
     });
 
+    await check('C2 prospect list badges stay secondary and prospects-only', () => {
+      const prospect = mod.parseListItem(
+        item({
+          ownership: 'non_purchaser',
+          primaryQueue: 'prospects',
+          nurtureSuppressed: false,
+          prospectEngagement: {
+            engagement: 'sample_engaged',
+            retailerReturn: false,
+            retailerOrigin: 'amazon',
+            sampleEngaged: true,
+            chaptersSampled: ['1'],
+            latestEngagementAt: '2026-09-16T16:40:00.000Z',
+            reasons: ['email_captured', 'dwell_90s'],
+            identityAnchor: 'readers_agree_lead_attribution',
+          },
+        }),
+      );
+      const purchaser = mod.parseListItem(
+        item({
+          ownership: 'purchaser',
+          primaryQueue: 'clear_no_action',
+          prospectEngagement: {
+            engagement: 'sample_engaged',
+            retailerReturn: false,
+            retailerOrigin: null,
+            sampleEngaged: true,
+            chaptersSampled: ['1'],
+            latestEngagementAt: '2026-09-16T16:40:00.000Z',
+            reasons: ['dwell_90s'],
+          },
+        }),
+      );
+      const gifted = mod.parseListItem(
+        item({
+          ownership: 'book_owner_gifted',
+          primaryQueue: 'clear_no_action',
+          prospectEngagement: {
+            engagement: 'retailer_return_engaged',
+            retailerReturn: true,
+            retailerOrigin: 'amazon',
+            sampleEngaged: true,
+            chaptersSampled: ['1'],
+            latestEngagementAt: '2026-09-16T16:40:00.000Z',
+            reasons: ['retailer_return'],
+          },
+        }),
+      );
+      const none = mod.parseListItem(item({ ownership: 'non_purchaser', primaryQueue: 'prospects' }));
+      assert.equal(mod.showProspectEngagementListBadge(prospect), true);
+      assert.equal(mod.engagementListBadgeLabel(prospect.prospectEngagement.engagement), 'Sample');
+      assert.equal(mod.showProspectEngagementListBadge(purchaser), false);
+      assert.equal(mod.showProspectEngagementListBadge(gifted), false);
+      assert.equal(mod.hasDisplayableProspectEngagement(none.prospectEngagement), false);
+      assert.equal(mod.showProspectEngagementListBadge(none), false);
+      const client = fs.readFileSync(FILES.client, 'utf8');
+      assert.match(client, /showProspectEngagementListBadge/);
+      assert.match(client, /engagementListBadgeLabel/);
+      assert.doesNotMatch(client, /Prospect: Sample Engaged/);
+    });
+
     await check('page uses the 3C list proxy only', () => {
       const client = fs.readFileSync(FILES.client, 'utf8');
       const model = fs.readFileSync(FILES.model, 'utf8');

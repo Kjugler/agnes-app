@@ -308,6 +308,18 @@
 .pillGifted { background: #dbeafe; color: #1d4ed8; }
 .pillUnknown { background: #f1f5f9; color: #475569; }
 
+.engagementBadge {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
 .muted {
   color: #64748b;
   font-size: 12px;

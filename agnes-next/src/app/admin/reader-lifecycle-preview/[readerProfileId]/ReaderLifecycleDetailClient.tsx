@@ -5,12 +5,30 @@ import { useCallback, useEffect, useState, type MouseEvent, type ReactNode } fro
 import {
   FULFILLMENT_AUTH_HREF,
   LIST_PREVIEW_PATH,
-  crmStatusLabel,
+  AUTOMATED_PROSPECT_NURTURE_STATUS,
+  ENGAGEMENT_SECTION_NOTE,
+  HISTORICAL_NURTURE_WARNING_BODY,
+  HISTORICAL_NURTURE_WARNING_TITLE,
+  LEAD_CAPTURE_SNAPSHOT_LABEL,
+  LEAD_CAPTURE_SNAPSHOT_NOTE,
+  NO_READERS_AGREE_ENGAGEMENT,
+  OUTREACH_SITUATION_NOTE,
+  captureSurfaceLabel,
   categoryLabel,
+  chaptersSampledLabel,
+  crmStatusLabel,
   detailPreviewPath,
   detailProxyPath,
+  engagementReasonChips,
+  engagementStateLabel,
+  formatOccurredAtDateTime,
+  hasDisplayableProspectEngagement,
+  hasLegacyProspectNurture,
+  identityAnchorLabel,
+  promotionalOutreachSituationLabel,
   purchaseModeLabel,
   queueLabel,
+  retailerOriginLabel,
 } from '../readerLifecyclePreviewModel';
 import listStyles from '../preview.module.css';
 import styles from './detail.module.css';
@@ -262,6 +280,16 @@ export default function ReaderLifecycleDetailClient({
             ) : null}
           </section>
 
+          {hasLegacyProspectNurture(reader.legacyProspectNurture) ? (
+            <p className={styles.nurtureWarning} role="status">
+              <strong>{HISTORICAL_NURTURE_WARNING_TITLE}</strong>
+              {HISTORICAL_NURTURE_WARNING_BODY}
+            </p>
+          ) : null}
+
+          <OutreachSituationSection reader={reader} />
+          <EngagementSection reader={reader} />
+
           <PurchasesSection
             rows={reader.purchases}
             onOpenIdentityReview={
@@ -307,6 +335,116 @@ function BackLink({ readerProfileId }: { readerProfileId: string }) {
 
 function Empty({ children }: { children?: ReactNode }) {
   return <p className={styles.empty}>{children || EMPTY_HISTORY}</p>;
+}
+
+function OutreachSituationSection({ reader }: { reader: ReaderLifecycleDetail }) {
+  return (
+    <section className={styles.secondarySection} aria-labelledby="outreach-heading">
+      <h2 id="outreach-heading" className={styles.secondaryTitle}>
+        Outreach situation
+      </h2>
+      <p className={styles.sectionNote}>{OUTREACH_SITUATION_NOTE}</p>
+      <dl className={styles.summary}>
+        <div>
+          <dt>Ownership</dt>
+          <dd>{listOwnershipLabel(reader)}</dd>
+        </div>
+        <div>
+          <dt>Contactability</dt>
+          <dd>{listContactLabel(reader)}</dd>
+        </div>
+        <div>
+          <dt>Local nurture suppression</dt>
+          <dd>{reader.nurtureSuppressed ? 'Yes — locally suppressed' : 'No — local suppression is off'}</dd>
+        </div>
+        <div>
+          <dt>Promotional outreach (local facts)</dt>
+          <dd>{promotionalOutreachSituationLabel(reader)}</dd>
+        </div>
+        <div>
+          <dt>Automated prospect nurture</dt>
+          <dd>{AUTOMATED_PROSPECT_NURTURE_STATUS}</dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
+
+function EngagementSection({ reader }: { reader: ReaderLifecycleDetail }) {
+  const engagement = reader.prospectEngagement;
+  const display = hasDisplayableProspectEngagement(engagement);
+  const chips = display ? engagementReasonChips(engagement?.reasons) : [];
+  const identity = display ? identityAnchorLabel(engagement?.identityAnchor) : null;
+  const snapshot = reader.leadCaptureSnapshot;
+  return (
+    <section className={styles.secondarySection} aria-labelledby="engagement-heading">
+      <h2 id="engagement-heading" className={styles.secondaryTitle}>
+        Engagement
+      </h2>
+      <p className={styles.sectionNote}>{ENGAGEMENT_SECTION_NOTE}</p>
+      {!display ? (
+        <p className={styles.empty}>{NO_READERS_AGREE_ENGAGEMENT}</p>
+      ) : (
+        <dl className={styles.summary}>
+          <div>
+            <dt>Engagement state</dt>
+            <dd>{engagementStateLabel(engagement?.engagement)}</dd>
+          </div>
+          <div>
+            <dt>Retailer return</dt>
+            <dd>{engagement?.retailerReturn ? 'Yes' : 'No'}</dd>
+          </div>
+          <div>
+            <dt>Retailer origin</dt>
+            <dd>{retailerOriginLabel(engagement?.retailerOrigin)}</dd>
+          </div>
+          <div>
+            <dt>Sample chapters opened/sampled</dt>
+            <dd>{chaptersSampledLabel(engagement?.chaptersSampled)}</dd>
+          </div>
+          <div>
+            <dt>Latest engagement</dt>
+            <dd>{formatOccurredAtDateTime(engagement?.latestEngagementAt)}</dd>
+          </div>
+          {identity ? (
+            <div>
+              <dt>Identity anchor</dt>
+              <dd>{identity}</dd>
+            </div>
+          ) : null}
+        </dl>
+      )}
+      {display && chips.length ? (
+        <ul className={styles.chipRow} aria-label="Engagement reasons">
+          {chips.map((chip) => (
+            <li key={chip} className={styles.chip}>
+              {chip}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {snapshot ? (
+        <div className={styles.snapshot}>
+          <h3 className={styles.snapshotTitle}>{LEAD_CAPTURE_SNAPSHOT_LABEL}</h3>
+          <p className={styles.muted}>{LEAD_CAPTURE_SNAPSHOT_NOTE}</p>
+          <dl className={styles.summary}>
+            <div>
+              <dt>Captured</dt>
+              <dd>{formatOccurredAtDateTime(snapshot.capturedAt)}</dd>
+            </div>
+            <div>
+              <dt>Capture surface</dt>
+              <dd>{captureSurfaceLabel(snapshot.captureSurface)}</dd>
+            </div>
+            <div>
+              <dt>Retailer origin</dt>
+              <dd>{retailerOriginLabel(snapshot.retailerOrigin)}</dd>
+            </div>
+          </dl>
+        </div>
+      ) : null}
+    </section>
+  );
 }
 
 function PurchasesSection({

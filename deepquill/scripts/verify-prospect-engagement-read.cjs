@@ -480,6 +480,10 @@ async function main() {
     assert.strictEqual(detail.prospectEngagement.sampleEngaged, false);
     assert.ok(detail.prospectEngagement.reasons.includes(REASON.EMAIL_CAPTURED));
     assert.doesNotMatch(JSON.stringify(detail.prospectEngagement), /visitorId|secondsOnPage|ap_funnel_uid/);
+    assert.ok(detail.leadCaptureSnapshot);
+    assert.strictEqual(detail.leadCaptureSnapshot.captureSurface, 'landing');
+    assert.doesNotMatch(JSON.stringify(detail.leadCaptureSnapshot), /visitorId|ap_funnel_uid/);
+    assert.strictEqual(detail.legacyProspectNurture, null);
   });
 
   await check('chapter open only stays identified on the read model', async () => {
@@ -560,6 +564,8 @@ async function main() {
     assert.ok(item);
     assert.strictEqual(item.primaryQueue, 'prospects');
     assert.strictEqual(item.prospectEngagement.engagement, ENGAGEMENT.IDENTIFIED);
+    assert.strictEqual(item.leadCaptureSnapshot, undefined);
+    assert.strictEqual(item.legacyProspectNurture, undefined);
   });
 
   await check('four legacy readers-agree-v2 nurture rows remain untouched', async () => {
@@ -579,6 +585,9 @@ async function main() {
       assert.ok(detail.prospectEngagement);
       assert.strictEqual(detail.prospectEngagement.engagement, null);
       assert.strictEqual(detail.nurtureSuppressed, false);
+      assert.ok(detail.legacyProspectNurture);
+      assert.strictEqual(new Date(detail.legacyProspectNurture.enrolledAt).toISOString(), enrolledAt.toISOString());
+      assert.strictEqual(detail.leadCaptureSnapshot, null);
     }
   });
 

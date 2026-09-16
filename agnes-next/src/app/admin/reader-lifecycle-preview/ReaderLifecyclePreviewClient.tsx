@@ -25,6 +25,7 @@ import {
   crmStatusLabel,
   emailDisplay,
   emptyQueueCounts,
+  engagementListBadgeLabel,
   goNextPage,
   goPreviousPage,
   initialCursorHistory,
@@ -38,6 +39,7 @@ import {
   resetCursorHistory,
   reviewLabel,
   showingRangeText,
+  showProspectEngagementListBadge,
   sourceLabel,
   sourcesLabel,
   type AccentTone,
@@ -575,6 +577,11 @@ function ReaderRow({ item }: { item: ReaderLifecycleListItem }) {
         <div className={styles.muted} style={{ marginTop: 6 }}>
           {queueLabel(item.primaryQueue)}
         </div>
+        {showProspectEngagementListBadge(item) ? (
+          <span className={styles.engagementBadge}>
+            {engagementListBadgeLabel(item.prospectEngagement?.engagement)}
+          </span>
+        ) : null}
       </td>
       <td>
         <div>{review.primary}</div>
@@ -603,6 +610,11 @@ function ReaderCard({ item }: { item: ReaderLifecycleListItem }) {
       <span className={`${styles.pill} ${PILL_CLASS[tone]}`} style={{ marginTop: 8 }}>
         {listOwnershipLabel(item)}
       </span>
+      {showProspectEngagementListBadge(item) ? (
+        <span className={styles.engagementBadge} style={{ marginTop: 6 }}>
+          {engagementListBadgeLabel(item.prospectEngagement?.engagement)}
+        </span>
+      ) : null}
       <dl className={styles.cardRow}>
         <dt>Queue</dt>
         <dd style={{ margin: 0 }}>{queueLabel(item.primaryQueue)}</dd>

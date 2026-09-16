@@ -281,6 +281,83 @@ async function main() {
         '/admin/reader-lifecycle-preview/rp_web%2F..%2Fx',
       );
     });
+
+    await check('C2 engagement, outreach, and legacy nurture stay display-only', () => {
+      const client = scanSource(FILES.detailClient);
+      const css = scanSource(FILES.detailCss);
+      assert.match(client, /EngagementSection/);
+      assert.match(client, /OutreachSituationSection/);
+      assert.match(client, /HISTORICAL_NURTURE_WARNING_TITLE/);
+      assert.match(client, /AUTOMATED_PROSPECT_NURTURE_STATUS/);
+      assert.match(client, /LEAD_CAPTURE_SNAPSHOT_LABEL/);
+      assert.match(client, /NO_READERS_AGREE_ENGAGEMENT/);
+      assert.doesNotMatch(client, /Enable nurture|Send nurture|Enroll/);
+      assert.doesNotMatch(client, /visitorId|ap_funnel_uid/);
+      assert.match(css, /\.secondarySection/);
+      assert.match(css, /\.nurtureWarning/);
+      const identified = detail.parseDetailResponse({
+        ok: true,
+        reader: {
+          readerProfileId: 'rp_id',
+          userId: 'user_id',
+          name: 'Identified Prospect',
+          email: 'identified@example.test',
+          hasRealEmail: true,
+          ownership: 'non_purchaser',
+          sources: [],
+          confidence: 'unknown',
+          contactability: 'contactable',
+          review: 'clear',
+          nurtureSuppressed: false,
+          reasons: [],
+          primaryQueue: 'prospects',
+          prospectEngagement: {
+            engagement: 'identified',
+            retailerReturn: false,
+            retailerOrigin: 'amazon',
+            sampleEngaged: false,
+            chaptersSampled: [],
+            latestEngagementAt: '2026-09-16T16:40:00.000Z',
+            reasons: ['email_captured'],
+            identityAnchor: 'readers_agree_lead_attribution',
+            visitorId: 'must-not-parse',
+          },
+          leadCaptureSnapshot: {
+            capturedAt: '2026-09-16T16:00:00.000Z',
+            captureSurface: 'bridge',
+            retailerOrigin: 'amazon',
+            visitorId: 'must-not-parse',
+          },
+          legacy: { source: 'website', readerType: 'interested', status: 'active' },
+        },
+      });
+      assert.equal(list.hasDisplayableProspectEngagement(identified.prospectEngagement), true);
+      assert.equal(list.engagementStateLabel(identified.prospectEngagement.engagement), 'Identified');
+      assert.equal(list.identityAnchorLabel(identified.prospectEngagement.identityAnchor), 'Readers Agree lead');
+      assert.equal(identified.leadCaptureSnapshot.captureSurface, 'bridge');
+      assert.equal(JSON.stringify(identified).includes('must-not-parse'), false);
+      assert.equal(JSON.stringify(identified.leadCaptureSnapshot).includes('visitorId'), false);
+      const empty = detail.parseDetailResponse(getDetailPayload('rp_web').body);
+      assert.equal(list.hasDisplayableProspectEngagement(empty.prospectEngagement), false);
+      assert.equal(empty.legacyProspectNurture, null);
+      const legacy = detail.parseDetailResponse({
+        ok: true,
+        reader: {
+          ...getDetailPayload('rp_non').body.reader,
+          prospectEngagement: { engagement: null, retailerReturn: false, sampleEngaged: false, chaptersSampled: [], reasons: [] },
+          legacyProspectNurture: {
+            enrolledAt: '2026-03-01T00:00:00.000Z',
+            step: 1,
+            lastSentAt: '2026-03-02T00:00:00.000Z',
+            suppressedAt: null,
+            suppressedReason: null,
+          },
+        },
+      });
+      assert.equal(list.hasLegacyProspectNurture(legacy.legacyProspectNurture), true);
+      assert.equal(list.hasDisplayableProspectEngagement(legacy.prospectEngagement), false);
+      assert.equal(list.AUTOMATED_PROSPECT_NURTURE_STATUS, 'Not armed');
+    });
   } finally {
     fs.rmSync(outDir, { recursive: true, force: true });
   }

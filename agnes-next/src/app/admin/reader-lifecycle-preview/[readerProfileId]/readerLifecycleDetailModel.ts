@@ -14,9 +14,13 @@ import {
   listContactLabel,
   listOwnershipLabel,
   listReviewSummary,
+  parseLeadCaptureSnapshot,
+  parseLegacyProspectNurture,
   parseListItem,
   sourceLabel,
   sourcesLabel,
+  type LeadCaptureSnapshot,
+  type LegacyProspectNurture,
   type PreviewErrorKind,
   type ReaderLifecycleListItem,
 } from '../readerLifecyclePreviewModel';
@@ -276,6 +280,8 @@ export type ReaderLifecycleDetail = ReaderLifecycleListItem & {
   contactDecisions: LifecycleContactDecision[];
   identityReviews: LifecycleIdentityReview[];
   historicalCrmConflict: HistoricalCrmConflict | null;
+  leadCaptureSnapshot: LeadCaptureSnapshot | null;
+  legacyProspectNurture: LegacyProspectNurture | null;
   distinctions: {
     purchasesAreAccountingTruth: boolean;
     evidenceIsLifecycleHistory: boolean;
@@ -594,6 +600,8 @@ export function parseDetailResponse(raw: unknown): ReaderLifecycleDetail | null 
           .filter((item): item is LifecycleIdentityReview => item !== null)
       : [],
     historicalCrmConflict: parseHistoricalConflict(row.historicalCrmConflict),
+    leadCaptureSnapshot: parseLeadCaptureSnapshot(row.leadCaptureSnapshot),
+    legacyProspectNurture: parseLegacyProspectNurture(row.legacyProspectNurture),
     distinctions: {
       purchasesAreAccountingTruth: distinctionsRaw.purchasesAreAccountingTruth !== false,
       evidenceIsLifecycleHistory: distinctionsRaw.evidenceIsLifecycleHistory !== false,

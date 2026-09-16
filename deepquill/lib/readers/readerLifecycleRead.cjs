@@ -170,6 +170,49 @@ function iso(value) {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
+function serializeLeadCaptureSnapshot(leadAttribution) {
+  if (!leadAttribution || typeof leadAttribution !== 'object' || Array.isArray(leadAttribution)) {
+    return null;
+  }
+  const capturedAt = iso(leadAttribution.capturedAt);
+  const captureSurface =
+    typeof leadAttribution.captureSurface === 'string' ? leadAttribution.captureSurface.trim() : '';
+  if (!capturedAt || (captureSurface !== 'landing' && captureSurface !== 'bridge')) return null;
+  const originRaw =
+    typeof leadAttribution.retailerOrigin === 'string' ? leadAttribution.retailerOrigin.trim().toLowerCase() : '';
+  let retailerOrigin = null;
+  if (originRaw === 'amazon') retailerOrigin = 'amazon';
+  else if (originRaw === 'bn' || originRaw === 'barnes_noble' || originRaw === 'barnes noble') retailerOrigin = 'bn';
+  return {
+    capturedAt,
+    captureSurface,
+    retailerOrigin,
+  };
+}
+
+function serializeLegacyProspectNurture(profile) {
+  if (!profile || typeof profile !== 'object') return null;
+  const enrolledAt = iso(profile.prospectNurtureEnrolledAt);
+  const lastSentAt = iso(profile.prospectNurtureLastSentAt);
+  const suppressedAt = iso(profile.prospectNurtureSuppressedAt);
+  const suppressedReason =
+    typeof profile.prospectNurtureSuppressedReason === 'string' && profile.prospectNurtureSuppressedReason.trim()
+      ? profile.prospectNurtureSuppressedReason.trim()
+      : null;
+  const step =
+    typeof profile.prospectNurtureStep === 'number' && Number.isFinite(profile.prospectNurtureStep)
+      ? Math.trunc(profile.prospectNurtureStep)
+      : null;
+  if (!enrolledAt && !lastSentAt && !suppressedAt && !suppressedReason && step == null) return null;
+  return {
+    enrolledAt,
+    step,
+    lastSentAt,
+    suppressedAt,
+    suppressedReason,
+  };
+}
+
 function manualDoNotContact(decisions) {
   return independentDncActive(decisions);
 }
@@ -700,6 +743,8 @@ async function getReaderLifecycleDetail(prisma, options = {}) {
     notes: profile.notes || '',
     phone: (profile.user.phone || '').trim(),
     smsConsentGranted: Boolean(profile.smsConsentGranted),
+    leadCaptureSnapshot: serializeLeadCaptureSnapshot(profile.leadAttribution),
+    legacyProspectNurture: serializeLegacyProspectNurture(profile),
     evidenceHistory: evidence.map(serializeEvidence),
     purchases: purchases.map(serializePurchase),
     communications: communications.map((row) => ({

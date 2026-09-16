@@ -81,6 +81,20 @@ export type ProspectEngagementContext = {
   identityAnchor?: string | null;
 };
 
+export type LeadCaptureSnapshot = {
+  capturedAt: string | null;
+  captureSurface: string | null;
+  retailerOrigin: string | null;
+};
+
+export type LegacyProspectNurture = {
+  enrolledAt: string | null;
+  step: number | null;
+  lastSentAt: string | null;
+  suppressedAt: string | null;
+  suppressedReason: string | null;
+};
+
 export type LegacyCrm = {
   source: string | null;
   readerType: string | null;
@@ -433,6 +447,19 @@ export function formatOccurredAt(iso: string | null | undefined): string {
   });
 }
 
+export function formatOccurredAtDateTime(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
 export function accentTone(item: ReaderLifecycleListItem): AccentTone {
   if (item.review === 'conflicting' || item.review === 'identity_review_required') return 'review';
   if (item.contactability === 'suppressed_do_not_contact') return 'dnc';
@@ -557,6 +584,156 @@ export function parseProspectEngagement(raw: unknown): ProspectEngagementContext
     analyticsOnly: row.analyticsOnly === true,
     identityAnchor: asStringOrNull(row.identityAnchor),
   };
+}
+
+const ENGAGEMENT_STATE_LABELS: Record<string, string> = {
+  identified: 'Identified',
+  sample_engaged: 'Sample Engaged',
+  retailer_return_engaged: 'Retailer Return Engaged',
+};
+
+const ENGAGEMENT_LIST_BADGE_LABELS: Record<string, string> = {
+  identified: 'Identified',
+  sample_engaged: 'Sample',
+  retailer_return_engaged: 'Retailer Return',
+};
+
+const ENGAGEMENT_REASON_LABELS: Record<string, string> = {
+  email_captured: 'Readers Agree email captured',
+  chapter_opened: 'Sample chapter opened',
+  dwell_90s: 'Meaningful sample engagement',
+  dwell_90s_sum: 'Meaningful sample engagement',
+  jody_90s: 'Meaningful sample engagement',
+  remembered_place: 'Remembered reading place',
+  retailer_return: 'Retailer return',
+};
+
+const CAPTURE_SURFACE_LABELS: Record<string, string> = {
+  landing: 'Landing',
+  bridge: 'Bridge',
+};
+
+export const AUTOMATED_PROSPECT_NURTURE_STATUS = 'Not armed';
+export const NO_READERS_AGREE_ENGAGEMENT = 'No Readers Agree engagement history.';
+export const HISTORICAL_NURTURE_WARNING_TITLE = 'Historical nurture enrollment — inactive';
+export const HISTORICAL_NURTURE_WARNING_BODY =
+  'These are leftover Phase D fields. They are not a live sequence and do not authorize sending.';
+export const LEAD_CAPTURE_SNAPSHOT_LABEL = 'Latest Readers Agree capture snapshot';
+export const LEAD_CAPTURE_SNAPSHOT_NOTE =
+  'This is the latest capture snapshot, not complete journey history.';
+export const ENGAGEMENT_SECTION_NOTE =
+  'Behavioral context only. Ownership, review, and contactability remain primary. This is not send authorization.';
+export const OUTREACH_SITUATION_NOTE =
+  'Informational only. Automated prospect nurture is not armed. No enable, send, or enrollment control is available here.';
+
+export function hasDisplayableProspectEngagement(
+  engagement: ProspectEngagementContext | null | undefined,
+): boolean {
+  if (!engagement || engagement.engagement == null) return false;
+  return String(engagement.engagement).trim().length > 0;
+}
+
+export function showProspectEngagementListBadge(
+  item: Pick<ReaderLifecycleListItem, 'primaryQueue' | 'ownership' | 'prospectEngagement'>,
+): boolean {
+  if (item.primaryQueue !== 'prospects') return false;
+  if (item.ownership === 'purchaser' || item.ownership === 'book_owner_gifted') return false;
+  return hasDisplayableProspectEngagement(item.prospectEngagement);
+}
+
+export function engagementStateLabel(value: unknown): string {
+  return humanizeCode(value, ENGAGEMENT_STATE_LABELS);
+}
+
+export function engagementListBadgeLabel(value: unknown): string {
+  return humanizeCode(value, ENGAGEMENT_LIST_BADGE_LABELS);
+}
+
+export function retailerOriginLabel(value: unknown): string {
+  if (value == null || value === '') return '—';
+  const code = String(value).toLowerCase();
+  if (code === 'amazon') return 'Amazon';
+  if (code === 'bn' || code === 'barnes_noble' || code === 'barnes noble') return 'Barnes & Noble';
+  return humanizeCode(value, SOURCE_LABELS);
+}
+
+export function identityAnchorLabel(value: unknown): string | null {
+  if (value == null || String(value).trim() === '') return null;
+  if (String(value) === 'readers_agree_lead_attribution') return 'Readers Agree lead';
+  return null;
+}
+
+export function engagementReasonChips(reasons: unknown): string[] {
+  const codes = Array.isArray(reasons) ? reasons.map((code) => String(code)) : [];
+  const seen = new Set<string>();
+  const chips: string[] = [];
+  for (const code of codes) {
+    const label = ENGAGEMENT_REASON_LABELS[code] || humanizeCode(code, {});
+    if (!label || seen.has(label)) continue;
+    seen.add(label);
+    chips.push(label);
+  }
+  return chips;
+}
+
+export function chaptersSampledLabel(chapters: unknown): string {
+  if (!Array.isArray(chapters) || chapters.length === 0) return '—';
+  const ids = chapters.map((id) => String(id).trim()).filter(Boolean);
+  return ids.length ? ids.join(', ') : '—';
+}
+
+export function captureSurfaceLabel(value: unknown): string {
+  return humanizeCode(value, CAPTURE_SURFACE_LABELS);
+}
+
+export function parseLeadCaptureSnapshot(raw: unknown): LeadCaptureSnapshot | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const row = raw as Record<string, unknown>;
+  const capturedAt = asStringOrNull(row.capturedAt);
+  const captureSurface = asStringOrNull(row.captureSurface);
+  if (!capturedAt || (captureSurface !== 'landing' && captureSurface !== 'bridge')) return null;
+  return {
+    capturedAt,
+    captureSurface,
+    retailerOrigin: asStringOrNull(row.retailerOrigin),
+  };
+}
+
+export function parseLegacyProspectNurture(raw: unknown): LegacyProspectNurture | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const row = raw as Record<string, unknown>;
+  const enrolledAt = asStringOrNull(row.enrolledAt);
+  const lastSentAt = asStringOrNull(row.lastSentAt);
+  const suppressedAt = asStringOrNull(row.suppressedAt);
+  const suppressedReason = asStringOrNull(row.suppressedReason);
+  const step =
+    typeof row.step === 'number' && Number.isFinite(row.step) ? Math.trunc(row.step) : null;
+  if (!enrolledAt && !lastSentAt && !suppressedAt && !suppressedReason && step == null) return null;
+  return { enrolledAt, step, lastSentAt, suppressedAt, suppressedReason };
+}
+
+export function hasLegacyProspectNurture(
+  row: LegacyProspectNurture | null | undefined,
+): boolean {
+  return Boolean(row);
+}
+
+export function promotionalOutreachSituationLabel(
+  item: Pick<ReaderLifecycleListItem, 'ownership' | 'contactability' | 'review' | 'nurtureSuppressed'> & {
+    legacy?: { status?: string | null } | null;
+  },
+): string {
+  if (item.legacy?.status === 'archived') return 'Ineligible — archived';
+  if (item.contactability === 'suppressed_do_not_contact') return 'Ineligible — manual DNC';
+  if (item.contactability === 'no_mailable_email') return 'Ineligible — no mailable email';
+  if (item.review === 'conflicting' || item.review === 'identity_review_required') {
+    return 'Paused until this record is resolved';
+  }
+  if (item.ownership === 'purchaser' || item.ownership === 'book_owner_gifted') {
+    return 'Owner — prospect nurture does not apply';
+  }
+  if (item.nurtureSuppressed) return 'Locally suppressed';
+  return 'Locally unsuppressed — automated prospect nurture is still not armed';
 }
 
 export function parseLatestCommunication(raw: unknown): LatestCommunication | null {
