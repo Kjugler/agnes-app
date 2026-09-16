@@ -66,19 +66,17 @@ const IDENTITY_ANCHOR = 'readers_agree_lead_attribution';
  * Inclusive Instant after which READERS_AGREE_RETAILER_RETURN may establish
  * a true retailer return. Named constant — do not scatter this timestamp.
  *
- * Established from production:
- * - Stage B2 commit 1a18f4c (true-resume RETURN only).
- * - Vercel production deploy dpl_A1yq7o3HUUy9JMgKuAQhn8Ke7hmW created
- *   2026-09-16T16:16:03.641Z.
- * - Event rows at 16:18:35–16:20:31Z still show the pre-B2
- *   duplicate/fallback RETURN shape.
- * - First confirmed B2 true-resume RETURN: 2026-09-16T16:31:02.891Z
- *   (visitor 434098fd-1428-43c4-94f1-d98e46d51fb5).
- *
- * Cutoff is that first confirmed live true-resume Instant (inclusive).
+ * This is the earliest production RETURN personally verified to have B2
+ * true-resume semantics (visitor 434098fd-1428-43c4-94f1-d98e46d51fb5).
+ * It is intentionally conservative and is not the Vercel
+ * deployment-created timestamp (dpl_A1yq7o3HUUy9JMgKuAQhn8Ke7hmW at
+ * 2026-09-16T16:16:03.641Z). Earlier 16:18–16:20 RETURN rows still
+ * exhibited pre-B2 behavior because already-loaded clients could retain
+ * old JavaScript. Pre-cutoff RETURN Events therefore cannot establish
+ * retailerReturn.
  */
-const B2_TRUE_RESUME_DEPLOYED_AT_ISO = '2026-09-16T16:31:02.891Z';
-const B2_TRUE_RESUME_DEPLOYED_AT = new Date(B2_TRUE_RESUME_DEPLOYED_AT_ISO);
+const B2_TRUE_RESUME_VERIFIED_AT_ISO = '2026-09-16T16:31:02.891Z';
+const B2_TRUE_RESUME_VERIFIED_AT = new Date(B2_TRUE_RESUME_VERIFIED_AT_ISO);
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
@@ -164,7 +162,7 @@ function isTrustworthyRetailerReturn(event) {
   if (!event || event.type !== FUNNEL_EVENT_TYPES.READERS_AGREE_RETAILER_RETURN) return false;
   const at = eventTime(event);
   if (!at) return false;
-  return at.getTime() >= B2_TRUE_RESUME_DEPLOYED_AT.getTime();
+  return at.getTime() >= B2_TRUE_RESUME_VERIFIED_AT.getTime();
 }
 
 function originFromEvent(event) {
@@ -335,8 +333,8 @@ module.exports = {
   RETAILER_ORIGIN,
   REASON,
   MEANINGFUL_DWELL_SECONDS,
-  B2_TRUE_RESUME_DEPLOYED_AT,
-  B2_TRUE_RESUME_DEPLOYED_AT_ISO,
+  B2_TRUE_RESUME_VERIFIED_AT,
+  B2_TRUE_RESUME_VERIFIED_AT_ISO,
   IDENTITY_ANCHOR,
   isQualifyingJody,
 };

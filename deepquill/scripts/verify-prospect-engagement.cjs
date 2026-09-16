@@ -13,7 +13,7 @@ const {
   RETAILER_ORIGIN,
   REASON,
   MEANINGFUL_DWELL_SECONDS,
-  B2_TRUE_RESUME_DEPLOYED_AT_ISO,
+  B2_TRUE_RESUME_VERIFIED_AT_ISO,
   isReadersAgreeLeadAttribution,
   IDENTITY_ANCHOR,
 } = require('../lib/readers/classifyProspectEngagement.cjs');
@@ -27,7 +27,7 @@ const {
 let failed = 0;
 let passed = 0;
 
-const POST_B2 = B2_TRUE_RESUME_DEPLOYED_AT_ISO;
+const POST_B2 = B2_TRUE_RESUME_VERIFIED_AT_ISO;
 const PRE_B2 = '2026-09-16T16:20:31.692Z';
 
 function snapshot(value) {
@@ -589,7 +589,7 @@ check('C1 modules do not write, send, enroll, or change jobs', () => {
   assert.match(readSrc, /leadAttribution/);
   assert.doesNotMatch(readSrc, /prospectNurtureEnrolledAt\s*:/);
   assert.doesNotMatch(vercel, /prospect-nurture/);
-  assert.match(classifySrc, /B2_TRUE_RESUME_DEPLOYED_AT/);
+  assert.match(classifySrc, /B2_TRUE_RESUME_VERIFIED_AT/);
   assert.doesNotMatch(classifySrc, /email_known/);
 });
 

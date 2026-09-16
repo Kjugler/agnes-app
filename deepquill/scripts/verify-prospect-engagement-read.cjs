@@ -69,9 +69,9 @@ const { FUNNEL_EVENT_TYPES } = require('../lib/funnel/funnelEventTypes.cjs');
 const {
   ENGAGEMENT,
   REASON,
-  B2_TRUE_RESUME_DEPLOYED_AT_ISO,
+  B2_TRUE_RESUME_VERIFIED_AT_ISO,
 } = require('../lib/readers/classifyProspectEngagement.cjs');
-const POST_B2 = new Date(B2_TRUE_RESUME_DEPLOYED_AT_ISO);
+const POST_B2 = new Date(B2_TRUE_RESUME_VERIFIED_AT_ISO);
 const PRE_B2 = new Date('2026-09-16T16:20:31.692Z');
 
 const prisma = new PrismaClient({
