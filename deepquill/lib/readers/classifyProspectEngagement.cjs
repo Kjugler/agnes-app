@@ -1,0 +1,269 @@
+/**
+ * Pure prospect-engagement classifier (Stage C1).
+ *
+ * Side-effect free: no Prisma, filesystem, env, logging, or email.
+ * Does not mutate its input. Same input → same output.
+ *
+ * Ownership, contactability, archive/DNC, review, and promotional
+ * eligibility are a separate axis (`classifyReader` / outreach helpers).
+ * This module only derives behavioral context from assembled Events plus
+ * the server remembered-place fact. It never writes ReaderProfile,
+ * ReaderEvidence, leadAttribution, or prospectNurture* columns.
+ *
+ * @typedef {object} ProspectEngagementEvent
+ * @property {string|null} [type]
+ * @property {string|null} [userId]
+ * @property {object|null} [meta]
+ * @property {string|Date|null} [createdAt]
+ *
+ * @typedef {object} ClassifyProspectEngagementInput
+ * @property {ProspectEngagementEvent[]} [events]
+ * @property {string|null} [lastCompletedChapterId]
+ * @property {string|Date|null} [lastCompletedAt]
+ */
+
+const { FUNNEL_EVENT_TYPES, isSampleChapterId } = require('../funnel/funnelEventTypes.cjs');
+
+const ENGAGEMENT = Object.freeze({
+  IDENTIFIED: 'identified',
+  SAMPLE_ENGAGED: 'sample_engaged',
+  RETAILER_RETURN_ENGAGED: 'retailer_return_engaged',
+});
+
+const RETAILER_ORIGIN = Object.freeze({
+  AMAZON: 'amazon',
+  BN: 'bn',
+});
+
+const REASON = Object.freeze({
+  EMAIL_KNOWN: 'email_known',
+  EMAIL_CAPTURED: 'email_captured',
+  CHAPTER_OPENED: 'chapter_opened',
+  DWELL_90S: 'dwell_90s',
+  DWELL_90S_SUM: 'dwell_90s_sum',
+  JODY_90S: 'jody_90s',
+  REMEMBERED_PLACE: 'remembered_place',
+  RETAILER_RETURN: 'retailer_return',
+});
+
+const MEANINGFUL_DWELL_SECONDS = 90;
+const CHAPTER_ORDER = Object.freeze(['1', '2', '9', '45']);
+const SERVER_EVENT_SOURCE = 'server';
+const JODY_REMEMBER_OFFER = 'remember-offer';
+
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function asTrimmedString(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function metaOf(event) {
+  const meta = event && event.meta;
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return {};
+  return meta;
+}
+
+function addReason(reasons, code) {
+  if (code && !reasons.includes(code)) reasons.push(code);
+}
+
+function normalizeRetailerOrigin(raw) {
+  const s = asTrimmedString(raw).toLowerCase();
+  if (s === RETAILER_ORIGIN.AMAZON) return RETAILER_ORIGIN.AMAZON;
+  if (s === RETAILER_ORIGIN.BN || s === 'b&n' || s === 'barnes_noble' || s === 'barnes noble') {
+    return RETAILER_ORIGIN.BN;
+  }
+  return null;
+}
+
+function eventTime(event) {
+  if (!event || event.createdAt == null) return null;
+  const d = event.createdAt instanceof Date ? event.createdAt : new Date(event.createdAt);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function isoFrom(value) {
+  if (value == null) return null;
+  const d = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+function chapterIdOf(event) {
+  const id = metaOf(event).chapterId;
+  if (id == null || id === '') return '';
+  const chapterId = String(id);
+  return isSampleChapterId(chapterId) ? chapterId : '';
+}
+
+function secondsOnPage(event) {
+  const seconds = Number(metaOf(event).secondsOnPage);
+  if (!Number.isFinite(seconds) || seconds < 0) return 0;
+  return seconds;
+}
+
+function isServerEmailSubmitted(event) {
+  if (!event || event.type !== FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED) return false;
+  return metaOf(event).source === SERVER_EVENT_SOURCE;
+}
+
+function isQualifyingJody(event) {
+  if (!event) return false;
+  if (event.type === FUNNEL_EVENT_TYPES.JODY_CHAPTER_COMPLETED) return true;
+  if (event.type !== FUNNEL_EVENT_TYPES.JODY_APPEAR) return false;
+  const meta = metaOf(event);
+  return meta.mode === JODY_REMEMBER_OFFER || meta.beatId === JODY_REMEMBER_OFFER;
+}
+
+function originFromEvent(event) {
+  if (!event) return null;
+  const fromMeta = normalizeRetailerOrigin(metaOf(event).retailerOrigin);
+  if (fromMeta) return fromMeta;
+  if (event.type === FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK) return RETAILER_ORIGIN.AMAZON;
+  if (event.type === FUNNEL_EVENT_TYPES.READERS_AGREE_BN_CLICK) return RETAILER_ORIGIN.BN;
+  return null;
+}
+
+function laterEvent(left, right) {
+  const leftTime = eventTime(left);
+  const rightTime = eventTime(right);
+  if (!rightTime) return left;
+  if (!leftTime) return right;
+  return rightTime >= leftTime ? right : left;
+}
+
+function orderedChapters(set) {
+  return CHAPTER_ORDER.filter((id) => set.has(id));
+}
+
+function latestIso(dates) {
+  let latest = null;
+  for (const value of dates) {
+    const iso = isoFrom(value);
+    if (!iso) continue;
+    if (!latest || iso > latest) latest = iso;
+  }
+  return latest;
+}
+
+/**
+ * @param {ClassifyProspectEngagementInput|null|undefined} input
+ */
+function classifyProspectEngagement(input) {
+  const src = input && typeof input === 'object' ? input : {};
+  const events = asArray(src.events);
+  const reasons = [];
+  const chapters = new Set();
+  const dwellByChapter = new Map();
+  const latestCandidates = [];
+
+  let hasServerEmail = false;
+  let hasChapterOpen = false;
+  let hasSingleDwell90 = false;
+  let hasReturn = false;
+  let hasQualifyingJody = false;
+  let latestEmail = null;
+  let latestReturn = null;
+  let latestClick = null;
+
+  addReason(reasons, REASON.EMAIL_KNOWN);
+
+  for (const event of events) {
+    if (!event || typeof event !== 'object') continue;
+    const type = asTrimmedString(event.type);
+    const chapterId = chapterIdOf(event);
+    const at = eventTime(event);
+
+    if (isServerEmailSubmitted(event)) {
+      hasServerEmail = true;
+      latestEmail = laterEvent(latestEmail, event);
+      if (at) latestCandidates.push(at);
+    }
+
+    if (type === FUNNEL_EVENT_TYPES.READERS_AGREE_RETAILER_RETURN) {
+      hasReturn = true;
+      latestReturn = laterEvent(latestReturn, event);
+      if (at) latestCandidates.push(at);
+    }
+
+    if (
+      type === FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK ||
+      type === FUNNEL_EVENT_TYPES.READERS_AGREE_BN_CLICK
+    ) {
+      latestClick = laterEvent(latestClick, event);
+    }
+
+    if (type === FUNNEL_EVENT_TYPES.SAMPLE_CHAPTER_OPEN && chapterId) {
+      hasChapterOpen = true;
+      chapters.add(chapterId);
+      if (at) latestCandidates.push(at);
+    }
+
+    if (type === FUNNEL_EVENT_TYPES.SAMPLE_CHAPTER_TIME_ON_PAGE && chapterId) {
+      chapters.add(chapterId);
+      const seconds = secondsOnPage(event);
+      dwellByChapter.set(chapterId, (dwellByChapter.get(chapterId) || 0) + seconds);
+      if (seconds >= MEANINGFUL_DWELL_SECONDS) hasSingleDwell90 = true;
+      if (at) latestCandidates.push(at);
+    }
+
+    if (isQualifyingJody(event)) {
+      hasQualifyingJody = true;
+      if (chapterId) chapters.add(chapterId);
+      if (at) latestCandidates.push(at);
+    }
+  }
+
+  const rememberedChapter = asTrimmedString(src.lastCompletedChapterId);
+  const rememberedPlace = Boolean(rememberedChapter && isSampleChapterId(rememberedChapter));
+  if (rememberedPlace) {
+    chapters.add(rememberedChapter);
+    if (src.lastCompletedAt) latestCandidates.push(src.lastCompletedAt);
+  }
+
+  let hasDwellSum90 = false;
+  for (const total of dwellByChapter.values()) {
+    if (total >= MEANINGFUL_DWELL_SECONDS) {
+      hasDwellSum90 = true;
+      break;
+    }
+  }
+
+  if (hasServerEmail) addReason(reasons, REASON.EMAIL_CAPTURED);
+  if (hasChapterOpen) addReason(reasons, REASON.CHAPTER_OPENED);
+  if (hasSingleDwell90) addReason(reasons, REASON.DWELL_90S);
+  else if (hasDwellSum90) addReason(reasons, REASON.DWELL_90S_SUM);
+  if (hasQualifyingJody) addReason(reasons, REASON.JODY_90S);
+  if (rememberedPlace) addReason(reasons, REASON.REMEMBERED_PLACE);
+  if (hasReturn) addReason(reasons, REASON.RETAILER_RETURN);
+
+  const sampleEngaged = hasSingleDwell90 || hasDwellSum90 || hasQualifyingJody || rememberedPlace;
+  const retailerOrigin =
+    originFromEvent(latestEmail) || originFromEvent(latestReturn) || originFromEvent(latestClick);
+
+  let engagement = ENGAGEMENT.IDENTIFIED;
+  if (hasReturn && sampleEngaged) engagement = ENGAGEMENT.RETAILER_RETURN_ENGAGED;
+  else if (sampleEngaged) engagement = ENGAGEMENT.SAMPLE_ENGAGED;
+
+  return {
+    engagement,
+    retailerReturn: hasReturn,
+    retailerOrigin,
+    sampleEngaged,
+    chaptersSampled: orderedChapters(chapters),
+    latestEngagementAt: latestIso(latestCandidates),
+    reasons,
+  };
+}
+
+module.exports = {
+  classifyProspectEngagement,
+  ENGAGEMENT,
+  RETAILER_ORIGIN,
+  REASON,
+  MEANINGFUL_DWELL_SECONDS,
+  SERVER_EVENT_SOURCE,
+  isServerEmailSubmitted,
+  isQualifyingJody,
+};

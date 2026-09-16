@@ -11,6 +11,8 @@
  * Provider unsubscribe/reject/complaint is NOT integrated; not safe to send.
  */
 const { classifyReader } = require('./classifyReader.cjs');
+const { classifyProspectEngagement } = require('./classifyProspectEngagement.cjs');
+const { loadProspectEngagementEvents } = require('./prospectEngagementEvents.cjs');
 const { displayName } = require('./readerUser.cjs');
 const { displayReaderEmail } = require('./readerSyntheticEmail.cjs');
 const { independentDncActive } = require('./readerContactSuppression.cjs');
@@ -327,15 +329,17 @@ async function loadRelated(db, userIds) {
       reviewsByUser: new Map(),
       decisionsByUser: new Map(),
       purchaseBySession: new Map(),
+      eventsByUser: new Map(),
     };
   }
-  const [purchases, evidence, comms, reviewsPrimary, reviewsOther, decisions] = await Promise.all([
+  const [purchases, evidence, comms, reviewsPrimary, reviewsOther, decisions, eventsByUser] = await Promise.all([
     db.purchase.findMany({ where: { userId: { in: userIds } }, select: PURCHASE_SELECT }),
     db.readerEvidence.findMany({ where: { userId: { in: userIds } } }),
     db.readerCommunication.findMany({ where: { userId: { in: userIds } } }),
     db.readerIdentityReview.findMany({ where: { primaryUserId: { in: userIds } } }),
     db.readerIdentityReview.findMany({ where: { otherUserId: { in: userIds } } }),
     db.readerContactDecision.findMany({ where: { userId: { in: userIds } } }),
+    loadProspectEngagementEvents(db, userIds),
   ]);
 
   const sessionIds = [...new Set(evidence.map((row) => row.stripeSessionId).filter(Boolean))];
@@ -369,6 +373,7 @@ async function loadRelated(db, userIds) {
     reviewsByUser,
     decisionsByUser: groupBy(decisions, 'userId'),
     purchaseBySession,
+    eventsByUser,
   };
 }
 
@@ -442,6 +447,11 @@ function toListItem(profile, user, related, classification) {
     nurtureSuppressed: classification.nurtureSuppressed,
     reasons: classification.reasons,
     conflicts: classification.conflicts,
+    prospectEngagement: classifyProspectEngagement({
+      events: (related.eventsByUser && related.eventsByUser.get(user.id)) || [],
+      lastCompletedChapterId: profile.lastCompletedChapterId || null,
+      lastCompletedAt: profile.lastCompletedAt || null,
+    }),
     latestCommunication: honestCommunicationSummary(comms[0]),
     openReview: hasOpenIdentityReview(related.reviewsByUser.get(user.id) || [], user.id),
     contactabilityScope: CONTACTABILITY_SCOPE,

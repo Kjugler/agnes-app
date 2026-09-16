@@ -61,6 +61,24 @@ export type LatestCommunication = {
   deliveryNote: string | null;
 };
 
+export const PROSPECT_ENGAGEMENT_VALUES = [
+  'identified',
+  'sample_engaged',
+  'retailer_return_engaged',
+] as const;
+
+export type ProspectEngagementState = (typeof PROSPECT_ENGAGEMENT_VALUES)[number];
+
+export type ProspectEngagementContext = {
+  engagement: ProspectEngagementState | string;
+  retailerReturn: boolean;
+  retailerOrigin: 'amazon' | 'bn' | string | null;
+  sampleEngaged: boolean;
+  chaptersSampled: string[];
+  latestEngagementAt: string | null;
+  reasons: string[];
+};
+
 export type LegacyCrm = {
   source: string | null;
   readerType: string | null;
@@ -85,6 +103,7 @@ export type ReaderLifecycleListItem = {
   review: string;
   nurtureSuppressed: boolean;
   reasons: string[];
+  prospectEngagement?: ProspectEngagementContext | null;
   latestCommunication: LatestCommunication | null;
   createdAt: string | null;
   primaryQueue: string;
@@ -504,6 +523,25 @@ function asBool(value: unknown): boolean {
   return value === true;
 }
 
+export function parseProspectEngagement(raw: unknown): ProspectEngagementContext | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const row = raw as Record<string, unknown>;
+  const engagement = asString(row.engagement);
+  if (!engagement) return null;
+  const origin = asStringOrNull(row.retailerOrigin);
+  return {
+    engagement,
+    retailerReturn: asBool(row.retailerReturn),
+    retailerOrigin: origin,
+    sampleEngaged: asBool(row.sampleEngaged),
+    chaptersSampled: Array.isArray(row.chaptersSampled)
+      ? row.chaptersSampled.map((id) => String(id)).filter(Boolean)
+      : [],
+    latestEngagementAt: asStringOrNull(row.latestEngagementAt),
+    reasons: Array.isArray(row.reasons) ? row.reasons.map((code) => String(code)) : [],
+  };
+}
+
 export function parseLatestCommunication(raw: unknown): LatestCommunication | null {
   if (!raw || typeof raw !== 'object') return null;
   const row = raw as Record<string, unknown>;
@@ -548,6 +586,7 @@ export function parseListItem(raw: unknown): ReaderLifecycleListItem | null {
     review: asString(row.review) || 'unknown',
     nurtureSuppressed: asBool(row.nurtureSuppressed),
     reasons,
+    prospectEngagement: parseProspectEngagement(row.prospectEngagement),
     latestCommunication: parseLatestCommunication(row.latestCommunication),
     createdAt: asStringOrNull(row.createdAt),
     primaryQueue: asString(row.primaryQueue) || 'needs_review',
