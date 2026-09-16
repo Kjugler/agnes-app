@@ -66,7 +66,13 @@ const {
   asReadOnlyPrisma,
 } = require('../lib/readers/readerLifecycleRead.cjs');
 const { FUNNEL_EVENT_TYPES } = require('../lib/funnel/funnelEventTypes.cjs');
-const { ENGAGEMENT, REASON } = require('../lib/readers/classifyProspectEngagement.cjs');
+const {
+  ENGAGEMENT,
+  REASON,
+  B2_TRUE_RESUME_DEPLOYED_AT_ISO,
+} = require('../lib/readers/classifyProspectEngagement.cjs');
+const POST_B2 = new Date(B2_TRUE_RESUME_DEPLOYED_AT_ISO);
+const PRE_B2 = new Date('2026-09-16T16:20:31.692Z');
 
 const prisma = new PrismaClient({
   datasources: { db: { url: process.env.DATABASE_URL } },
@@ -101,6 +107,16 @@ function canonicalize(value) {
   }
   if (value === undefined) return null;
   return value;
+}
+
+function raLead(visitorId, extra = {}) {
+  return {
+    visitorId,
+    captureSurface: extra.captureSurface || 'landing',
+    capturedAt: extra.capturedAt || '2026-09-16T16:00:00.000Z',
+    channel: 'unknown',
+    ...extra,
+  };
 }
 
 function normalizeRows(rows) {
@@ -162,7 +178,7 @@ async function addEvent(userId, type, meta, createdAt) {
 }
 
 async function main() {
-  const identified = await createUser('emailonly');
+  const identified = await createUser('emailonly', { leadAttribution: raLead('vid-email') });
   await addEvent(identified.id, FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED, {
     source: 'server',
     visitorId: 'vid-email',
@@ -170,7 +186,7 @@ async function main() {
     captureSurface: 'landing',
   });
 
-  const opener = await createUser('openonly');
+  const opener = await createUser('openonly', { leadAttribution: raLead('vid-open') });
   await addEvent(opener.id, FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED, {
     source: 'server',
     visitorId: 'vid-open',
@@ -181,18 +197,25 @@ async function main() {
     source: 'sample-chapter-reader',
   });
 
-  const joined = await createUser('preid');
+  const joined = await createUser('preid', {
+    leadAttribution: raLead('vid-preid', { captureSurface: 'bridge' }),
+  });
   await addEvent(joined.id, FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED, {
     source: 'server',
     visitorId: 'vid-preid',
     retailerOrigin: 'amazon',
     captureSurface: 'bridge',
   });
-  await addEvent(null, FUNNEL_EVENT_TYPES.READERS_AGREE_RETAILER_RETURN, {
-    visitorId: 'vid-preid',
-    retailerOrigin: 'amazon',
-    source: 'readers-agree-bridge',
-  });
+  await addEvent(
+    null,
+    FUNNEL_EVENT_TYPES.READERS_AGREE_RETAILER_RETURN,
+    {
+      visitorId: 'vid-preid',
+      retailerOrigin: 'amazon',
+      source: 'readers-agree-bridge',
+    },
+    POST_B2,
+  );
   await addEvent(joined.id, FUNNEL_EVENT_TYPES.SAMPLE_CHAPTER_TIME_ON_PAGE, {
     visitorId: 'vid-preid',
     chapterId: '1',
@@ -200,9 +223,108 @@ async function main() {
     source: 'sample-chapter-reader',
   });
 
-  const purchaser = await createUser('buyer', { source: 'Website', readerType: 'purchased' }, {
-    email: `buyer-${suffix}@example.net`,
+  const unrelated = await createUser('unrelated', { source: 'Website', readerType: 'interested' });
+
+  const purchaserNoRa = await createUser('buyernora', { source: 'Website', readerType: 'purchased' });
+  await prisma.purchase.create({
+    data: {
+      userId: purchaserNoRa.id,
+      sessionId: `cs_live_nora_${suffix}`,
+      amount: 2499,
+      currency: 'usd',
+      source: 'stripe',
+      saleStatus: 'live',
+    },
   });
+
+  const giftedNoRa = await createUser('giftednora', { source: 'Gift', readerType: 'gifted' });
+  await prisma.readerEvidence.create({
+    data: {
+      userId: giftedNoRa.id,
+      kind: 'gift_book_owner',
+      status: 'confirmed',
+      purchaseDate: new Date('2026-04-01'),
+      reason: 'synthetic_test',
+      actorType: 'admin',
+      actorLabel: 'Kris',
+      origin: 'test',
+      originRef: `gift-nora-${suffix}`,
+    },
+  });
+
+  const forgedServer = await createUser('forgedsrc', { source: 'Website', readerType: 'interested' });
+  await addEvent(forgedServer.id, FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED, {
+    source: 'server',
+    visitorId: 'vid-forged-server',
+    captureSurface: 'landing',
+  });
+  await addEvent(
+    null,
+    FUNNEL_EVENT_TYPES.READERS_AGREE_RETAILER_RETURN,
+    {
+      visitorId: 'vid-forged-server',
+      retailerOrigin: 'amazon',
+      source: 'readers-agree-bridge',
+    },
+    POST_B2,
+  );
+  await addEvent(forgedServer.id, FUNNEL_EVENT_TYPES.SAMPLE_CHAPTER_TIME_ON_PAGE, {
+    chapterId: '1',
+    secondsOnPage: 90,
+  });
+
+  const forgedUserId = await createUser('forgeduid', { source: 'Website', readerType: 'interested' });
+  await addEvent(forgedUserId.id, FUNNEL_EVENT_TYPES.SAMPLE_CHAPTER_TIME_ON_PAGE, {
+    chapterId: '1',
+    secondsOnPage: 120,
+    source: 'sample-chapter-reader',
+  });
+
+  const clickOnly = await createUser('clickonly', { leadAttribution: raLead('vid-click') });
+  await addEvent(clickOnly.id, FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED, {
+    source: 'server',
+    visitorId: 'vid-click',
+    retailerOrigin: 'amazon',
+  });
+  await addEvent(clickOnly.id, FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK, {
+    visitorId: 'vid-click',
+    retailerOrigin: 'amazon',
+    source: 'readers-agree-bridge',
+  });
+  await addEvent(clickOnly.id, FUNNEL_EVENT_TYPES.SAMPLE_CHAPTER_TIME_ON_PAGE, {
+    chapterId: '1',
+    secondsOnPage: 90,
+  });
+
+  const preB2 = await createUser('preb2', { leadAttribution: raLead('vid-preb2') });
+  await addEvent(preB2.id, FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED, {
+    source: 'server',
+    visitorId: 'vid-preb2',
+    retailerOrigin: 'amazon',
+  });
+  await addEvent(
+    null,
+    FUNNEL_EVENT_TYPES.READERS_AGREE_RETAILER_RETURN,
+    {
+      visitorId: 'vid-preb2',
+      retailerOrigin: 'amazon',
+      source: 'readers-agree-bridge',
+    },
+    PRE_B2,
+  );
+  await addEvent(preB2.id, FUNNEL_EVENT_TYPES.SAMPLE_CHAPTER_TIME_ON_PAGE, {
+    visitorId: 'vid-preb2',
+    chapterId: '1',
+    secondsOnPage: 90,
+  });
+
+  const purchaser = await createUser(
+    'buyer',
+    { source: 'Website', readerType: 'purchased', leadAttribution: raLead('vid-buyer') },
+    {
+      email: `buyer-${suffix}@example.net`,
+    },
+  );
   await prisma.purchase.create({
     data: {
       userId: purchaser.id,
@@ -222,7 +344,11 @@ async function main() {
     secondsOnPage: 90,
   });
 
-  const gifted = await createUser('gifted', { source: 'Gift', readerType: 'gifted' });
+  const gifted = await createUser('gifted', {
+    source: 'Gift',
+    readerType: 'gifted',
+    leadAttribution: raLead('vid-gift'),
+  });
   await prisma.readerEvidence.create({
     data: {
       userId: gifted.id,
@@ -245,7 +371,11 @@ async function main() {
     source: 'jody-concierge',
   });
 
-  const archived = await createUser('archived', { status: 'archived', archiveReasonCode: 'other' });
+  const archived = await createUser('archived', {
+    status: 'archived',
+    archiveReasonCode: 'other',
+    leadAttribution: raLead('vid-arch'),
+  });
   await addEvent(archived.id, FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED, {
     source: 'server',
     visitorId: 'vid-arch',
@@ -255,7 +385,7 @@ async function main() {
     secondsOnPage: 120,
   });
 
-  const dnc = await createUser('dnc');
+  const dnc = await createUser('dnc', { leadAttribution: raLead('vid-dnc') });
   await prisma.readerContactDecision.create({
     data: {
       userId: dnc.id,
@@ -280,6 +410,7 @@ async function main() {
     lastCompletedChapterId: '1',
     lastCompletedAt: new Date('2026-09-16T18:00:00.000Z'),
     jodyVerifiedAt: new Date('2026-09-16T18:00:00.000Z'),
+    leadAttribution: raLead('vid-remember'),
   });
   await addEvent(remembered.id, FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED, {
     source: 'server',
@@ -304,11 +435,48 @@ async function main() {
   const before = await snapshotSensitive();
   const readOnly = asReadOnlyPrisma(prisma);
 
+  await check('unrelated ReaderProfile has no prospect engagement classification', async () => {
+    const detail = await getReaderLifecycleDetail(readOnly, { userId: unrelated.id });
+    assert.strictEqual(detail.prospectEngagement.engagement, null);
+    assert.strictEqual(detail.prospectEngagement.identityAnchor, null);
+    assert.deepStrictEqual(detail.prospectEngagement.reasons, []);
+  });
+
+  await check('unrelated purchaser is not identified', async () => {
+    const detail = await getReaderLifecycleDetail(readOnly, { userId: purchaserNoRa.id });
+    assert.strictEqual(detail.ownership, 'purchaser');
+    assert.strictEqual(detail.nurtureSuppressed, true);
+    assert.strictEqual(detail.prospectEngagement.engagement, null);
+    assert.strictEqual(detail.legacy.readerType, 'purchased');
+  });
+
+  await check('unrelated gifted owner is not identified', async () => {
+    const detail = await getReaderLifecycleDetail(readOnly, { userId: giftedNoRa.id });
+    assert.strictEqual(detail.ownership, 'book_owner_gifted');
+    assert.strictEqual(detail.nurtureSuppressed, true);
+    assert.strictEqual(detail.prospectEngagement.engagement, null);
+  });
+
+  await check('forged meta.source=server Event cannot create the RA identity anchor', async () => {
+    const detail = await getReaderLifecycleDetail(readOnly, { userId: forgedServer.id });
+    assert.strictEqual(detail.prospectEngagement.engagement, null);
+    assert.strictEqual(detail.prospectEngagement.retailerReturn, false);
+    assert.strictEqual(detail.prospectEngagement.sampleEngaged, false);
+  });
+
+  await check('forged bare client userId cannot create the RA identity anchor', async () => {
+    const detail = await getReaderLifecycleDetail(readOnly, { userId: forgedUserId.id });
+    assert.strictEqual(detail.prospectEngagement.engagement, null);
+    assert.strictEqual(detail.prospectEngagement.sampleEngaged, false);
+  });
+
   await check('email-only identified is exposed on the read model', async () => {
     const detail = await getReaderLifecycleDetail(readOnly, { userId: identified.id });
     assert.strictEqual(detail.ownership, 'non_purchaser');
     assert.strictEqual(detail.nurtureSuppressed, false);
     assert.strictEqual(detail.prospectEngagement.engagement, ENGAGEMENT.IDENTIFIED);
+    assert.strictEqual(detail.prospectEngagement.identityAnchor, 'readers_agree_lead_attribution');
+    assert.strictEqual(detail.prospectEngagement.analyticsOnly, true);
     assert.strictEqual(detail.prospectEngagement.sampleEngaged, false);
     assert.ok(detail.prospectEngagement.reasons.includes(REASON.EMAIL_CAPTURED));
     assert.doesNotMatch(JSON.stringify(detail.prospectEngagement), /visitorId|secondsOnPage|ap_funnel_uid/);
@@ -321,7 +489,7 @@ async function main() {
     assert.strictEqual(detail.prospectEngagement.sampleEngaged, false);
   });
 
-  await check('pre-identification return joins through email visitorId', async () => {
+  await check('pre-identification return joins through leadAttribution visitorId', async () => {
     const detail = await getReaderLifecycleDetail(readOnly, { userId: joined.id });
     assert.strictEqual(detail.ownership, 'non_purchaser');
     assert.strictEqual(detail.prospectEngagement.engagement, ENGAGEMENT.RETAILER_RETURN_ENGAGED);
@@ -336,6 +504,20 @@ async function main() {
     assert.strictEqual(detail.prospectEngagement.engagement, ENGAGEMENT.SAMPLE_ENGAGED);
     assert.ok(detail.prospectEngagement.reasons.includes(REASON.REMEMBERED_PLACE));
     assert.deepStrictEqual(detail.prospectEngagement.chaptersSampled, ['1']);
+  });
+
+  await check('click/origin without true return is not retailer-return engaged', async () => {
+    const detail = await getReaderLifecycleDetail(readOnly, { userId: clickOnly.id });
+    assert.strictEqual(detail.prospectEngagement.engagement, ENGAGEMENT.SAMPLE_ENGAGED);
+    assert.strictEqual(detail.prospectEngagement.retailerReturn, false);
+    assert.ok(!detail.prospectEngagement.reasons.includes(REASON.RETAILER_RETURN));
+  });
+
+  await check('pre-B2 RETURN + sample is not retailer-return engaged', async () => {
+    const detail = await getReaderLifecycleDetail(readOnly, { userId: preB2.id });
+    assert.strictEqual(detail.prospectEngagement.engagement, ENGAGEMENT.SAMPLE_ENGAGED);
+    assert.strictEqual(detail.prospectEngagement.retailerReturn, false);
+    assert.ok(!detail.prospectEngagement.reasons.includes(REASON.RETAILER_RETURN));
   });
 
   await check('purchaser who samples remains purchaser', async () => {
@@ -395,6 +577,8 @@ async function main() {
       const detail = await getReaderLifecycleDetail(readOnly, { readerProfileId: profile.id });
       assert.strictEqual(detail.legacy.source, 'readers-agree-v2');
       assert.ok(detail.prospectEngagement);
+      assert.strictEqual(detail.prospectEngagement.engagement, null);
+      assert.strictEqual(detail.nurtureSuppressed, false);
     }
   });
 

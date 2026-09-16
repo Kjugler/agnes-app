@@ -12,7 +12,10 @@
  */
 const { classifyReader } = require('./classifyReader.cjs');
 const { classifyProspectEngagement } = require('./classifyProspectEngagement.cjs');
-const { loadProspectEngagementEvents } = require('./prospectEngagementEvents.cjs');
+const {
+  loadProspectEngagementEvents,
+  visitorIdsByUserFromProfiles,
+} = require('./prospectEngagementEvents.cjs');
 const { displayName } = require('./readerUser.cjs');
 const { displayReaderEmail } = require('./readerSyntheticEmail.cjs');
 const { independentDncActive } = require('./readerContactSuppression.cjs');
@@ -320,7 +323,9 @@ function serializeEvidence(row) {
   };
 }
 
-async function loadRelated(db, userIds) {
+async function loadRelated(db, profiles) {
+  const list = Array.isArray(profiles) ? profiles : [];
+  const userIds = [...new Set(list.map((row) => row && row.userId).filter(Boolean))];
   if (!userIds.length) {
     return {
       purchasesByUser: new Map(),
@@ -332,6 +337,7 @@ async function loadRelated(db, userIds) {
       eventsByUser: new Map(),
     };
   }
+  const visitorIdsByUser = visitorIdsByUserFromProfiles(list);
   const [purchases, evidence, comms, reviewsPrimary, reviewsOther, decisions, eventsByUser] = await Promise.all([
     db.purchase.findMany({ where: { userId: { in: userIds } }, select: PURCHASE_SELECT }),
     db.readerEvidence.findMany({ where: { userId: { in: userIds } } }),
@@ -339,7 +345,7 @@ async function loadRelated(db, userIds) {
     db.readerIdentityReview.findMany({ where: { primaryUserId: { in: userIds } } }),
     db.readerIdentityReview.findMany({ where: { otherUserId: { in: userIds } } }),
     db.readerContactDecision.findMany({ where: { userId: { in: userIds } } }),
-    loadProspectEngagementEvents(db, userIds),
+    loadProspectEngagementEvents(db, userIds, visitorIdsByUser),
   ]);
 
   const sessionIds = [...new Set(evidence.map((row) => row.stripeSessionId).filter(Boolean))];
@@ -448,6 +454,7 @@ function toListItem(profile, user, related, classification) {
     reasons: classification.reasons,
     conflicts: classification.conflicts,
     prospectEngagement: classifyProspectEngagement({
+      leadAttribution: profile.leadAttribution || null,
       events: (related.eventsByUser && related.eventsByUser.get(user.id)) || [],
       lastCompletedChapterId: profile.lastCompletedChapterId || null,
       lastCompletedAt: profile.lastCompletedAt || null,
@@ -605,10 +612,7 @@ async function listReaderLifecycle(prisma, options = {}) {
   const pageSize = clampPageSize(options.pageSize);
   const cursor = decodeCursor(options.cursor);
   const { profiles, partial } = await loadScopedProfiles(db, options);
-  const related = await loadRelated(
-    db,
-    profiles.map((row) => row.userId),
-  );
+  const related = await loadRelated(db, profiles);
   const { items: population } = inventoryWorkbench(profiles, related);
   const queueCounts = tallyPrimaryQueues(population);
   const matched = population.filter(
@@ -659,10 +663,7 @@ async function getReaderLifecycleDetail(prisma, options = {}) {
       return String(b.id).localeCompare(String(a.id));
     });
   }
-  const related = await loadRelated(
-    db,
-    profiles.map((row) => row.userId),
-  );
+  const related = await loadRelated(db, profiles);
   const { clusterByProfile, peerById } = inventoryWorkbench(profiles, related);
   const classified = classifyProfile(profile, related);
   const listItem = attachWorkbench(profile, classified, related, clusterByProfile, peerById, {

@@ -1,16 +1,19 @@
 /**
  * Read-only Event assembly for Stage C1 prospect engagement.
  *
- * Identity starts from the known ReaderProfile userId. VisitorIds used to
- * join pre-identification Events come only from server-recorded
- * READERS_AGREE_EMAIL_SUBMITTED rows for that User. A bare client-provided
- * Event.userId is never used to discover who the reader is.
+ * Identity is never taken from Event rows. VisitorIds used to join
+ * anonymous pre-identification Events come only from
+ * ReaderProfile.leadAttribution.visitorId written by Stage A
+ * POST /api/readers-agree/lead. A bare client Event.userId, ap_funnel_uid,
+ * or Event.meta.source === 'server' cannot discover who the reader is.
  *
- * Performs findMany only. No writes, email, jobs, or schema changes.
+ * Assembled Events are behavioral analytics for a profile that already
+ * has that leadAttribution anchor. Performs findMany only. No writes,
+ * email, jobs, or schema changes.
  */
 
 const { FUNNEL_EVENT_TYPES } = require('../funnel/funnelEventTypes.cjs');
-const { isServerEmailSubmitted } = require('./classifyProspectEngagement.cjs');
+const { isReadersAgreeLeadAttribution, leadAttributionVisitorId } = require('./classifyProspectEngagement.cjs');
 
 const PROSPECT_ENGAGEMENT_EVENT_TYPES = Object.freeze([
   FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED,
@@ -51,36 +54,39 @@ function isRelevantType(type) {
   return PROSPECT_ENGAGEMENT_EVENT_TYPES.includes(asTrimmed(type));
 }
 
-/**
- * VisitorIds that may join anonymous pre-identification Events.
- * Only server EMAIL_SUBMITTED for this userId counts.
- * @param {Array} events
- * @param {string} userId
- * @returns {Set<string>}
- */
-function visitorIdsFromServerEmail(events, userId) {
+function visitorIdsFromLeadAttribution(leadAttribution) {
   const ids = new Set();
-  const expected = asTrimmed(userId);
-  if (!expected) return ids;
-  for (const event of Array.isArray(events) ? events : []) {
-    if (!isServerEmailSubmitted(event)) continue;
-    if (asTrimmed(event.userId) !== expected) continue;
-    const visitorId = visitorIdOf(event);
-    if (visitorId) ids.add(visitorId);
-  }
+  const visitorId = leadAttributionVisitorId(leadAttribution);
+  if (visitorId) ids.add(visitorId);
   return ids;
+}
+
+function visitorIdsByUserFromProfiles(profiles) {
+  const map = new Map();
+  for (const profile of Array.isArray(profiles) ? profiles : []) {
+    const userId = asTrimmed(profile && profile.userId);
+    if (!userId) continue;
+    if (!isReadersAgreeLeadAttribution(profile.leadAttribution)) continue;
+    const visitors = visitorIdsFromLeadAttribution(profile.leadAttribution);
+    if (visitors.size) map.set(userId, visitors);
+  }
+  return map;
 }
 
 /**
  * Keep Events that belong to this User or share a visitorId from that
- * User's server email capture. Events owned by a different userId are
+ * User's Stage A leadAttribution. Events owned by a different userId are
  * never pulled in, even when the visitorId matches.
+ *
+ * Anonymous joins require an explicit visitorIds set from leadAttribution.
+ * Event.meta.source === 'server' is never used to discover visitorIds.
+ *
  * @param {Array} events
  * @param {{ userId: string, visitorIds?: Set<string> }} opts
  */
 function selectProspectEngagementEvents(events, { userId, visitorIds } = {}) {
   const expected = asTrimmed(userId);
-  const visitors = visitorIds instanceof Set ? visitorIds : visitorIdsFromServerEmail(events, expected);
+  const visitors = visitorIds instanceof Set ? visitorIds : new Set();
   const selected = [];
   if (!expected) return selected;
 
@@ -102,21 +108,20 @@ function selectProspectEngagementEvents(events, { userId, visitorIds } = {}) {
 /**
  * @param {Array} events
  * @param {string[]} userIds
+ * @param {Map<string, Set<string>>} [visitorIdsByUser]
  * @returns {Map<string, Array>}
  */
-function groupProspectEngagementEvents(events, userIds) {
+function groupProspectEngagementEvents(events, userIds, visitorIdsByUser) {
   const map = new Map();
   const ids = Array.isArray(userIds) ? userIds.map(asTrimmed).filter(Boolean) : [];
   for (const userId of ids) map.set(userId, []);
   if (!ids.length) return map;
 
-  const visitorsByUser = new Map();
-  for (const userId of ids) {
-    visitorsByUser.set(userId, visitorIdsFromServerEmail(events, userId));
-  }
-
+  const visitorsByUser = visitorIdsByUser instanceof Map ? visitorIdsByUser : new Map();
   const usersByVisitor = new Map();
-  for (const [userId, visitors] of visitorsByUser.entries()) {
+  for (const userId of ids) {
+    const visitors = visitorsByUser.get(userId);
+    if (!(visitors instanceof Set)) continue;
     for (const visitorId of visitors) {
       if (!usersByVisitor.has(visitorId)) usersByVisitor.set(visitorId, []);
       usersByVisitor.get(visitorId).push(userId);
@@ -143,12 +148,13 @@ function groupProspectEngagementEvents(events, userIds) {
 /**
  * @param {object} prisma read-capable client (findMany only)
  * @param {string[]} userIds
+ * @param {Map<string, Set<string>>} [visitorIdsByUser]
  */
-async function loadProspectEngagementEvents(prisma, userIds) {
+async function loadProspectEngagementEvents(prisma, userIds, visitorIdsByUser) {
   const ids = Array.isArray(userIds) ? [...new Set(userIds.map(asTrimmed).filter(Boolean))] : [];
   if (!ids.length) return new Map();
   if (!prisma || !prisma.event || typeof prisma.event.findMany !== 'function') {
-    return groupProspectEngagementEvents([], ids);
+    return groupProspectEngagementEvents([], ids, visitorIdsByUser);
   }
 
   const rows = await prisma.event.findMany({
@@ -158,14 +164,15 @@ async function loadProspectEngagementEvents(prisma, userIds) {
     },
     select: EVENT_SELECT,
   });
-  return groupProspectEngagementEvents(Array.isArray(rows) ? rows : [], ids);
+  return groupProspectEngagementEvents(Array.isArray(rows) ? rows : [], ids, visitorIdsByUser);
 }
 
 module.exports = {
   PROSPECT_ENGAGEMENT_EVENT_TYPES,
   EVENT_SELECT,
   visitorIdOf,
-  visitorIdsFromServerEmail,
+  visitorIdsFromLeadAttribution,
+  visitorIdsByUserFromProfiles,
   selectProspectEngagementEvents,
   groupProspectEngagementEvents,
   loadProspectEngagementEvents,

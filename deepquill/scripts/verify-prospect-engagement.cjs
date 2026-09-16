@@ -13,16 +13,22 @@ const {
   RETAILER_ORIGIN,
   REASON,
   MEANINGFUL_DWELL_SECONDS,
+  B2_TRUE_RESUME_DEPLOYED_AT_ISO,
+  isReadersAgreeLeadAttribution,
+  IDENTITY_ANCHOR,
 } = require('../lib/readers/classifyProspectEngagement.cjs');
 const { classifyReader, OWNERSHIP, REVIEW } = require('../lib/readers/classifyReader.cjs');
 const { FUNNEL_EVENT_TYPES } = require('../lib/funnel/funnelEventTypes.cjs');
 const {
   selectProspectEngagementEvents,
-  visitorIdsFromServerEmail,
+  visitorIdsFromLeadAttribution,
 } = require('../lib/readers/prospectEngagementEvents.cjs');
 
 let failed = 0;
 let passed = 0;
+
+const POST_B2 = B2_TRUE_RESUME_DEPLOYED_AT_ISO;
+const PRE_B2 = '2026-09-16T16:20:31.692Z';
 
 function snapshot(value) {
   return JSON.stringify(value);
@@ -38,6 +44,15 @@ function check(name, fn) {
     console.error(`FAIL ${name}`);
     console.error(`    ${err.message}`);
   }
+}
+
+function stageALead(extra = {}) {
+  return {
+    capturedAt: extra.capturedAt || '2026-09-16T16:00:00.000Z',
+    captureSurface: extra.captureSurface || 'landing',
+    visitorId: extra.visitorId === undefined ? 'vid-1' : extra.visitorId,
+    channel: extra.channel || 'unknown',
+  };
 }
 
 function ev(type, extra = {}) {
@@ -78,22 +93,70 @@ function assertSafeContext(ctx) {
   assert.doesNotMatch(json, /ap_funnel_uid/);
   assert.doesNotMatch(json, /secondsOnPage/);
   assert.doesNotMatch(json, /depthPercent/);
+  assert.strictEqual(ctx.analyticsOnly, true);
 }
 
 function classify(input) {
-  const before = snapshot(input);
-  const first = classifyProspectEngagement(input);
-  assert.strictEqual(snapshot(input), before, 'input was mutated');
-  assert.deepStrictEqual(classifyProspectEngagement(input), first, 'repeated calls differed');
+  const src = { leadAttribution: stageALead(), ...(input || {}) };
+  const before = snapshot(src);
+  const first = classifyProspectEngagement(src);
+  assert.strictEqual(snapshot(src), before, 'input was mutated');
+  assert.deepStrictEqual(classifyProspectEngagement(src), first, 'repeated calls differed');
   assertSafeContext(first);
   return first;
 }
 
-check('email-only identified reader', () => {
+check('unrelated ReaderProfile is not classified', () => {
+  const result = classify({ leadAttribution: null, events: [] });
+  assert.strictEqual(result.engagement, null);
+  assert.strictEqual(result.identityAnchor, null);
+  assert.strictEqual(result.sampleEngaged, false);
+  assert.deepStrictEqual(result.reasons, []);
+});
+
+check('unrelated purchaser is not identified', () => {
+  const result = classify({
+    leadAttribution: null,
+    events: [
+      ev(FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED, { source: 'server', userId: 'buyer' }),
+      ev(FUNNEL_EVENT_TYPES.SAMPLE_CHAPTER_TIME_ON_PAGE, {
+        userId: 'buyer',
+        chapterId: '1',
+        secondsOnPage: 90,
+      }),
+    ],
+  });
+  assert.strictEqual(result.engagement, null);
+  assert.ok(!result.reasons.includes(REASON.EMAIL_CAPTURED));
+});
+
+check('unrelated gifted owner is not identified', () => {
+  const result = classify({
+    leadAttribution: { visitorId: 'gift-vid', captureSurface: 'landing' },
+    events: [ev(FUNNEL_EVENT_TYPES.JODY_CHAPTER_COMPLETED, { chapterId: '1' })],
+  });
+  assert.strictEqual(isReadersAgreeLeadAttribution({ visitorId: 'gift-vid', captureSurface: 'landing' }), false);
+  assert.strictEqual(result.engagement, null);
+});
+
+check('Phase D enrolledAt snapshot is not a Stage A identity anchor', () => {
+  const result = classify({
+    leadAttribution: {
+      visitorId: 'legacy-vid',
+      captureSurface: 'landing',
+      enrolledAt: '2026-08-19T18:00:00.000Z',
+    },
+    events: [],
+  });
+  assert.strictEqual(result.engagement, null);
+});
+
+check('Readers Agree lead is identified', () => {
   const result = classify({
     events: [serverEmail({ retailerOrigin: 'amazon', createdAt: '2026-09-16T12:00:00.000Z' })],
   });
   assert.strictEqual(result.engagement, ENGAGEMENT.IDENTIFIED);
+  assert.strictEqual(result.identityAnchor, IDENTITY_ANCHOR);
   assert.strictEqual(result.sampleEngaged, false);
   assert.strictEqual(result.retailerReturn, false);
   assert.strictEqual(result.retailerOrigin, RETAILER_ORIGIN.AMAZON);
@@ -101,6 +164,12 @@ check('email-only identified reader', () => {
   assert.strictEqual(result.latestEngagementAt, '2026-09-16T12:00:00.000Z');
   assert.ok(result.reasons.includes(REASON.EMAIL_CAPTURED));
   assert.ok(!result.reasons.includes(REASON.DWELL_90S));
+});
+
+check('RA lead without Event rows is still identified', () => {
+  const result = classify({ events: [] });
+  assert.strictEqual(result.engagement, ENGAGEMENT.IDENTIFIED);
+  assert.ok(result.reasons.includes(REASON.EMAIL_CAPTURED));
 });
 
 check('chapter open only does not qualify', () => {
@@ -131,7 +200,7 @@ check('short dwell does not qualify', () => {
   assert.ok(!result.reasons.includes(REASON.DWELL_90S_SUM));
 });
 
-check('90-second dwell qualifies', () => {
+check('RA lead + 90-second sample is sample_engaged', () => {
   const result = classify({
     events: [
       serverEmail(),
@@ -223,13 +292,14 @@ check('remembered-place qualification', () => {
   assert.strictEqual(result.latestEngagementAt, '2026-09-16T17:00:00.000Z');
 });
 
-check('genuine retailer return + sample engagement', () => {
+check('RA lead + post-B2 return + sample is retailer_return_engaged', () => {
   const result = classify({
     events: [
       serverEmail({ retailerOrigin: 'amazon' }),
       ev(FUNNEL_EVENT_TYPES.READERS_AGREE_RETAILER_RETURN, {
         userId: null,
         retailerOrigin: 'amazon',
+        createdAt: POST_B2,
       }),
       ev(FUNNEL_EVENT_TYPES.SAMPLE_CHAPTER_TIME_ON_PAGE, { chapterId: '1', secondsOnPage: 90 }),
     ],
@@ -242,6 +312,37 @@ check('genuine retailer return + sample engagement', () => {
   assert.ok(result.reasons.includes(REASON.DWELL_90S));
 });
 
+check('pre-B2 RETURN + sample is not retailer-return engaged', () => {
+  const result = classify({
+    events: [
+      serverEmail({ retailerOrigin: 'amazon' }),
+      ev(FUNNEL_EVENT_TYPES.READERS_AGREE_RETAILER_RETURN, {
+        userId: null,
+        retailerOrigin: 'amazon',
+        createdAt: PRE_B2,
+      }),
+      ev(FUNNEL_EVENT_TYPES.SAMPLE_CHAPTER_TIME_ON_PAGE, { chapterId: '1', secondsOnPage: 90 }),
+    ],
+  });
+  assert.strictEqual(result.engagement, ENGAGEMENT.SAMPLE_ENGAGED);
+  assert.strictEqual(result.retailerReturn, false);
+  assert.ok(!result.reasons.includes(REASON.RETAILER_RETURN));
+});
+
+check('click/origin without true return is not retailer-return engaged', () => {
+  const result = classify({
+    events: [
+      serverEmail({ retailerOrigin: 'amazon' }),
+      ev(FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK, { retailerOrigin: 'amazon' }),
+      ev(FUNNEL_EVENT_TYPES.SAMPLE_CHAPTER_TIME_ON_PAGE, { chapterId: '1', secondsOnPage: 90 }),
+    ],
+  });
+  assert.strictEqual(result.engagement, ENGAGEMENT.SAMPLE_ENGAGED);
+  assert.strictEqual(result.retailerReturn, false);
+  assert.strictEqual(result.retailerOrigin, RETAILER_ORIGIN.AMAZON);
+  assert.ok(!result.reasons.includes(REASON.RETAILER_RETURN));
+});
+
 check('retailer return without sample engagement stays identified', () => {
   const result = classify({
     events: [
@@ -249,6 +350,7 @@ check('retailer return without sample engagement stays identified', () => {
       ev(FUNNEL_EVENT_TYPES.READERS_AGREE_RETAILER_RETURN, {
         userId: null,
         retailerOrigin: 'bn',
+        createdAt: POST_B2,
       }),
       ev(FUNNEL_EVENT_TYPES.SAMPLE_CHAPTER_OPEN, { chapterId: '1' }),
     ],
@@ -270,38 +372,71 @@ check('Amazon vs B&N origin', () => {
   assert.strictEqual(bn.retailerOrigin, RETAILER_ORIGIN.BN);
 });
 
-check('pre-identification return joined through email visitorId', () => {
+check('pre-identification return joins through leadAttribution visitorId', () => {
+  const lead = stageALead({ visitorId: 'vid-join' });
   const events = [
     serverEmail({ visitorId: 'vid-join', retailerOrigin: 'amazon' }),
     ev(FUNNEL_EVENT_TYPES.READERS_AGREE_RETAILER_RETURN, {
       userId: null,
       visitorId: 'vid-join',
       retailerOrigin: 'amazon',
-      createdAt: '2026-09-16T15:00:00.000Z',
+      createdAt: POST_B2,
     }),
     ev(FUNNEL_EVENT_TYPES.READERS_AGREE_RETAILER_RETURN, {
       userId: null,
       visitorId: 'someone-else',
       retailerOrigin: 'bn',
+      createdAt: POST_B2,
     }),
     ev(FUNNEL_EVENT_TYPES.SAMPLE_CHAPTER_TIME_ON_PAGE, {
       chapterId: '1',
       secondsOnPage: 90,
     }),
   ];
-  const visitors = visitorIdsFromServerEmail(events, 'u1');
+  const visitors = visitorIdsFromLeadAttribution(lead);
   assert.deepStrictEqual([...visitors], ['vid-join']);
   const selected = selectProspectEngagementEvents(events, { userId: 'u1', visitorIds: visitors });
   assert.strictEqual(
     selected.filter((row) => row.type === FUNNEL_EVENT_TYPES.READERS_AGREE_RETAILER_RETURN).length,
     1,
   );
-  const result = classify({ events: selected });
+  const result = classify({ leadAttribution: lead, events: selected });
   assert.strictEqual(result.engagement, ENGAGEMENT.RETAILER_RETURN_ENGAGED);
   assert.strictEqual(result.retailerOrigin, RETAILER_ORIGIN.AMAZON);
 });
 
-check('bare client-provided funnel userId is not identity proof', () => {
+check('forged meta.source=server funnel Event cannot create the RA identity anchor', () => {
+  const spoofed = [
+    ev(FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED, {
+      userId: 'u1',
+      source: 'server',
+      visitorId: 'vid-spoof',
+    }),
+    ev(FUNNEL_EVENT_TYPES.READERS_AGREE_RETAILER_RETURN, {
+      userId: null,
+      visitorId: 'vid-spoof',
+      createdAt: POST_B2,
+    }),
+    ev(FUNNEL_EVENT_TYPES.SAMPLE_CHAPTER_TIME_ON_PAGE, {
+      userId: 'u1',
+      chapterId: '1',
+      secondsOnPage: 90,
+    }),
+  ];
+  const selected = selectProspectEngagementEvents(spoofed, { userId: 'u1' });
+  assert.ok(selected.every((row) => row.userId === 'u1'));
+  assert.ok(!selected.some((row) => row.type === FUNNEL_EVENT_TYPES.READERS_AGREE_RETAILER_RETURN));
+  const withoutLead = classify({ leadAttribution: null, events: selected });
+  assert.strictEqual(withoutLead.engagement, null);
+  const withUnrelatedLead = classify({
+    leadAttribution: stageALead({ visitorId: 'other-vid' }),
+    events: selected,
+  });
+  assert.strictEqual(withUnrelatedLead.engagement, ENGAGEMENT.SAMPLE_ENGAGED);
+  assert.strictEqual(withUnrelatedLead.retailerReturn, false);
+});
+
+check('forged bare client userId cannot create the RA identity anchor', () => {
   const spoofed = [
     ev(FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED, {
       userId: 'stranger',
@@ -311,6 +446,7 @@ check('bare client-provided funnel userId is not identity proof', () => {
     ev(FUNNEL_EVENT_TYPES.READERS_AGREE_RETAILER_RETURN, {
       userId: null,
       visitorId: 'vid-spoof',
+      createdAt: POST_B2,
     }),
     ev(FUNNEL_EVENT_TYPES.SAMPLE_CHAPTER_TIME_ON_PAGE, {
       userId: 'stranger',
@@ -320,13 +456,14 @@ check('bare client-provided funnel userId is not identity proof', () => {
   ];
   const selected = selectProspectEngagementEvents(spoofed, { userId: 'u1' });
   assert.strictEqual(selected.length, 0);
-  const result = classify({ events: selected });
-  assert.strictEqual(result.engagement, ENGAGEMENT.IDENTIFIED);
+  const result = classify({ leadAttribution: null, events: selected });
+  assert.strictEqual(result.engagement, null);
   assert.strictEqual(result.sampleEngaged, false);
   assert.strictEqual(result.retailerReturn, false);
 });
 
 check('events owned by another user are not joined even with the same visitorId', () => {
+  const lead = stageALead({ visitorId: 'vid-shared' });
   const events = [
     serverEmail({ visitorId: 'vid-shared' }),
     ev(FUNNEL_EVENT_TYPES.SAMPLE_CHAPTER_TIME_ON_PAGE, {
@@ -336,9 +473,12 @@ check('events owned by another user are not joined even with the same visitorId'
       secondsOnPage: 90,
     }),
   ];
-  const selected = selectProspectEngagementEvents(events, { userId: 'u1' });
+  const selected = selectProspectEngagementEvents(events, {
+    userId: 'u1',
+    visitorIds: visitorIdsFromLeadAttribution(lead),
+  });
   assert.ok(selected.every((row) => row.userId === 'u1' || row.userId == null));
-  const result = classify({ events: selected });
+  const result = classify({ leadAttribution: lead, events: selected });
   assert.strictEqual(result.sampleEngaged, false);
 });
 
@@ -415,7 +555,7 @@ check('archived/DNC classification remains suppressed independently of engagemen
   const engagement = classify({
     events: [
       serverEmail(),
-      ev(FUNNEL_EVENT_TYPES.READERS_AGREE_RETAILER_RETURN, { userId: null }),
+      ev(FUNNEL_EVENT_TYPES.READERS_AGREE_RETAILER_RETURN, { userId: null, createdAt: POST_B2 }),
       ev(FUNNEL_EVENT_TYPES.SAMPLE_CHAPTER_TIME_ON_PAGE, { chapterId: '1', secondsOnPage: 120 }),
     ],
   });
@@ -446,8 +586,11 @@ check('C1 modules do not write, send, enroll, or change jobs', () => {
   assert.match(eventsSrc, /findMany only/);
   assert.match(readSrc, /asReadOnlyPrisma/);
   assert.match(readSrc, /classifyProspectEngagement/);
+  assert.match(readSrc, /leadAttribution/);
   assert.doesNotMatch(readSrc, /prospectNurtureEnrolledAt\s*:/);
   assert.doesNotMatch(vercel, /prospect-nurture/);
+  assert.match(classifySrc, /B2_TRUE_RESUME_DEPLOYED_AT/);
+  assert.doesNotMatch(classifySrc, /email_known/);
 });
 
 if (failed) {

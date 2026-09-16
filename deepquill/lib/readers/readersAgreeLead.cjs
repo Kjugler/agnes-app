@@ -195,6 +195,7 @@ async function syncReadersAgreeLeadProfile(prisma, userId, { attribution, consen
     // Latest snapshot for CRM display. Event history remains authoritative
     // for prior retailer journeys (do not fold them into this JSON).
     const data = {
+      // Durable Stage A identity anchor for C1. Event.meta.source is not equivalent.
       leadAttribution: snapshot,
       ...consentFields(consentAccepted, existing),
     };
@@ -230,6 +231,7 @@ async function syncReadersAgreeLeadProfile(prisma, userId, { attribution, consen
     data: {
       userId,
       ...labels,
+      // Durable Stage A identity anchor for C1. Event.meta.source is not equivalent.
       leadAttribution: snapshot,
       ...consentFields(consentAccepted, null),
     },

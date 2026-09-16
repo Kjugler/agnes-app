@@ -4,11 +4,22 @@
  * Side-effect free: no Prisma, filesystem, env, logging, or email.
  * Does not mutate its input. Same input → same output.
  *
+ * Identity is NOT derived from Event rows. The only authoritative
+ * Readers Agree identity anchor is ReaderProfile.leadAttribution written
+ * by syncReadersAgreeLeadProfile from POST /api/readers-agree/lead
+ * (capturedAt + captureSurface). Event.meta.source === 'server' is not
+ * identity: POST /api/funnel/event lets the client set that metadata.
+ *
+ * Once that leadAttribution anchor exists, assembled Events and the
+ * server remembered-place fact are behavioral analytics only — not send
+ * authorization. Stage D must independently require this identity plus
+ * ownership/contactability; it must never send solely because an
+ * Event-derived engagement state exists.
+ *
  * Ownership, contactability, archive/DNC, review, and promotional
- * eligibility are a separate axis (`classifyReader` / outreach helpers).
- * This module only derives behavioral context from assembled Events plus
- * the server remembered-place fact. It never writes ReaderProfile,
- * ReaderEvidence, leadAttribution, or prospectNurture* columns.
+ * eligibility remain a separate axis (`classifyReader` / outreach helpers).
+ * This module never writes ReaderProfile, ReaderEvidence, leadAttribution,
+ * or prospectNurture* columns.
  *
  * @typedef {object} ProspectEngagementEvent
  * @property {string|null} [type]
@@ -17,6 +28,7 @@
  * @property {string|Date|null} [createdAt]
  *
  * @typedef {object} ClassifyProspectEngagementInput
+ * @property {object|null} [leadAttribution]
  * @property {ProspectEngagementEvent[]} [events]
  * @property {string|null} [lastCompletedChapterId]
  * @property {string|Date|null} [lastCompletedAt]
@@ -36,7 +48,6 @@ const RETAILER_ORIGIN = Object.freeze({
 });
 
 const REASON = Object.freeze({
-  EMAIL_KNOWN: 'email_known',
   EMAIL_CAPTURED: 'email_captured',
   CHAPTER_OPENED: 'chapter_opened',
   DWELL_90S: 'dwell_90s',
@@ -48,8 +59,26 @@ const REASON = Object.freeze({
 
 const MEANINGFUL_DWELL_SECONDS = 90;
 const CHAPTER_ORDER = Object.freeze(['1', '2', '9', '45']);
-const SERVER_EVENT_SOURCE = 'server';
 const JODY_REMEMBER_OFFER = 'remember-offer';
+const IDENTITY_ANCHOR = 'readers_agree_lead_attribution';
+
+/**
+ * Inclusive Instant after which READERS_AGREE_RETAILER_RETURN may establish
+ * a true retailer return. Named constant — do not scatter this timestamp.
+ *
+ * Established from production:
+ * - Stage B2 commit 1a18f4c (true-resume RETURN only).
+ * - Vercel production deploy dpl_A1yq7o3HUUy9JMgKuAQhn8Ke7hmW created
+ *   2026-09-16T16:16:03.641Z.
+ * - Event rows at 16:18:35–16:20:31Z still show the pre-B2
+ *   duplicate/fallback RETURN shape.
+ * - First confirmed B2 true-resume RETURN: 2026-09-16T16:31:02.891Z
+ *   (visitor 434098fd-1428-43c4-94f1-d98e46d51fb5).
+ *
+ * Cutoff is that first confirmed live true-resume Instant (inclusive).
+ */
+const B2_TRUE_RESUME_DEPLOYED_AT_ISO = '2026-09-16T16:31:02.891Z';
+const B2_TRUE_RESUME_DEPLOYED_AT = new Date(B2_TRUE_RESUME_DEPLOYED_AT_ISO);
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
@@ -103,9 +132,24 @@ function secondsOnPage(event) {
   return seconds;
 }
 
-function isServerEmailSubmitted(event) {
-  if (!event || event.type !== FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED) return false;
-  return metaOf(event).source === SERVER_EVENT_SOURCE;
+/**
+ * Stage A lead snapshot written only by syncReadersAgreeLeadProfile.
+ * Phase D historical rows have enrolledAt without capturedAt and must not
+ * count. Public /api/funnel/event cannot write ReaderProfile.
+ */
+function isReadersAgreeLeadAttribution(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const capturedAt = asTrimmedString(value.capturedAt);
+  if (!capturedAt) return false;
+  if (Number.isNaN(new Date(capturedAt).getTime())) return false;
+  const surface = asTrimmedString(value.captureSurface);
+  return surface === 'landing' || surface === 'bridge';
+}
+
+function leadAttributionVisitorId(value) {
+  if (!isReadersAgreeLeadAttribution(value)) return '';
+  const id = asTrimmedString(value.visitorId);
+  return id ? id.slice(0, 64) : '';
 }
 
 function isQualifyingJody(event) {
@@ -114,6 +158,13 @@ function isQualifyingJody(event) {
   if (event.type !== FUNNEL_EVENT_TYPES.JODY_APPEAR) return false;
   const meta = metaOf(event);
   return meta.mode === JODY_REMEMBER_OFFER || meta.beatId === JODY_REMEMBER_OFFER;
+}
+
+function isTrustworthyRetailerReturn(event) {
+  if (!event || event.type !== FUNNEL_EVENT_TYPES.READERS_AGREE_RETAILER_RETURN) return false;
+  const at = eventTime(event);
+  if (!at) return false;
+  return at.getTime() >= B2_TRUE_RESUME_DEPLOYED_AT.getTime();
 }
 
 function originFromEvent(event) {
@@ -147,18 +198,35 @@ function latestIso(dates) {
   return latest;
 }
 
+function emptyProspectEngagement() {
+  return {
+    engagement: null,
+    retailerReturn: false,
+    retailerOrigin: null,
+    sampleEngaged: false,
+    chaptersSampled: [],
+    latestEngagementAt: null,
+    reasons: [],
+    analyticsOnly: true,
+    identityAnchor: null,
+  };
+}
+
 /**
  * @param {ClassifyProspectEngagementInput|null|undefined} input
  */
 function classifyProspectEngagement(input) {
   const src = input && typeof input === 'object' ? input : {};
+  if (!isReadersAgreeLeadAttribution(src.leadAttribution)) {
+    return emptyProspectEngagement();
+  }
+
   const events = asArray(src.events);
   const reasons = [];
   const chapters = new Set();
   const dwellByChapter = new Map();
   const latestCandidates = [];
 
-  let hasServerEmail = false;
   let hasChapterOpen = false;
   let hasSingleDwell90 = false;
   let hasReturn = false;
@@ -167,7 +235,7 @@ function classifyProspectEngagement(input) {
   let latestReturn = null;
   let latestClick = null;
 
-  addReason(reasons, REASON.EMAIL_KNOWN);
+  addReason(reasons, REASON.EMAIL_CAPTURED);
 
   for (const event of events) {
     if (!event || typeof event !== 'object') continue;
@@ -175,13 +243,12 @@ function classifyProspectEngagement(input) {
     const chapterId = chapterIdOf(event);
     const at = eventTime(event);
 
-    if (isServerEmailSubmitted(event)) {
-      hasServerEmail = true;
+    if (type === FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED) {
       latestEmail = laterEvent(latestEmail, event);
       if (at) latestCandidates.push(at);
     }
 
-    if (type === FUNNEL_EVENT_TYPES.READERS_AGREE_RETAILER_RETURN) {
+    if (isTrustworthyRetailerReturn(event)) {
       hasReturn = true;
       latestReturn = laterEvent(latestReturn, event);
       if (at) latestCandidates.push(at);
@@ -230,7 +297,6 @@ function classifyProspectEngagement(input) {
     }
   }
 
-  if (hasServerEmail) addReason(reasons, REASON.EMAIL_CAPTURED);
   if (hasChapterOpen) addReason(reasons, REASON.CHAPTER_OPENED);
   if (hasSingleDwell90) addReason(reasons, REASON.DWELL_90S);
   else if (hasDwellSum90) addReason(reasons, REASON.DWELL_90S_SUM);
@@ -254,16 +320,23 @@ function classifyProspectEngagement(input) {
     chaptersSampled: orderedChapters(chapters),
     latestEngagementAt: latestIso(latestCandidates),
     reasons,
+    analyticsOnly: true,
+    identityAnchor: IDENTITY_ANCHOR,
   };
 }
 
 module.exports = {
   classifyProspectEngagement,
+  emptyProspectEngagement,
+  isReadersAgreeLeadAttribution,
+  leadAttributionVisitorId,
+  isTrustworthyRetailerReturn,
   ENGAGEMENT,
   RETAILER_ORIGIN,
   REASON,
   MEANINGFUL_DWELL_SECONDS,
-  SERVER_EVENT_SOURCE,
-  isServerEmailSubmitted,
+  B2_TRUE_RESUME_DEPLOYED_AT,
+  B2_TRUE_RESUME_DEPLOYED_AT_ISO,
+  IDENTITY_ANCHOR,
   isQualifyingJody,
 };

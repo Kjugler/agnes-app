@@ -70,13 +70,15 @@ export const PROSPECT_ENGAGEMENT_VALUES = [
 export type ProspectEngagementState = (typeof PROSPECT_ENGAGEMENT_VALUES)[number];
 
 export type ProspectEngagementContext = {
-  engagement: ProspectEngagementState | string;
+  engagement: ProspectEngagementState | string | null;
   retailerReturn: boolean;
   retailerOrigin: 'amazon' | 'bn' | string | null;
   sampleEngaged: boolean;
   chaptersSampled: string[];
   latestEngagementAt: string | null;
   reasons: string[];
+  analyticsOnly?: boolean;
+  identityAnchor?: string | null;
 };
 
 export type LegacyCrm = {
@@ -526,6 +528,19 @@ function asBool(value: unknown): boolean {
 export function parseProspectEngagement(raw: unknown): ProspectEngagementContext | null {
   if (!raw || typeof raw !== 'object') return null;
   const row = raw as Record<string, unknown>;
+  if (row.engagement == null) {
+    return {
+      engagement: null,
+      retailerReturn: false,
+      retailerOrigin: null,
+      sampleEngaged: false,
+      chaptersSampled: [],
+      latestEngagementAt: null,
+      reasons: [],
+      analyticsOnly: true,
+      identityAnchor: null,
+    };
+  }
   const engagement = asString(row.engagement);
   if (!engagement) return null;
   const origin = asStringOrNull(row.retailerOrigin);
@@ -539,6 +554,8 @@ export function parseProspectEngagement(raw: unknown): ProspectEngagementContext
       : [],
     latestEngagementAt: asStringOrNull(row.latestEngagementAt),
     reasons: Array.isArray(row.reasons) ? row.reasons.map((code) => String(code)) : [],
+    analyticsOnly: row.analyticsOnly === true,
+    identityAnchor: asStringOrNull(row.identityAnchor),
   };
 }
 
