@@ -12,6 +12,7 @@ import { isJodyConciergeEnabled } from '@/lib/funnelConfig';
 import {
   fetchJodyReaderState,
   requestRememberPlaceEmail,
+  saveRememberedPlace,
   submitJodyUpdatesConsent,
   type JodyReaderState,
 } from '@/lib/jodyConciergeApi';
@@ -23,6 +24,7 @@ import {
 import {
   dismissRememberOffer,
   isRememberDismissed,
+  clearPendingJodyBeat,
 } from '@/lib/readerJourney';
 import type { ReaderStatus } from '@/config/readerStatus';
 import { FUNNEL_EVENT_TYPES, trackFunnelEvent } from '@/lib/funnelTracking';
@@ -165,18 +167,29 @@ export function JodyConcierge({
   }, [onClose]);
 
   useEffect(() => {
-    if (beatId !== 'remember-decline-ack') return;
+    if (beatId !== 'remember-decline-ack' && beatId !== 'remember-accept-ack') return;
     const timer = window.setTimeout(() => handleClose(), JODY_REMEMBER_DECLINE_ACK_MS);
     return () => window.clearTimeout(timer);
   }, [beatId, handleClose]);
 
-  const handleRememberAccept = () => {
-    const outcome = resolveRememberPlaceChoice('accept');
+  const handleRememberAccept = async () => {
+    if (submitting) return;
+    clearPendingJodyBeat();
     trackFunnelEvent(
       FUNNEL_EVENT_TYPES.JODY_REMEMBER_PLACE_ACCEPT,
       { chapterId: effectiveChapterId },
       { source: 'jody-concierge' },
     );
+    setSubmitting(true);
+    const saved = await saveRememberedPlace(effectiveChapterId);
+    setSubmitting(false);
+    if (saved.ok) {
+      const outcome = resolveRememberPlaceChoice('accept', { knownReader: true });
+      if (outcome.dismissOffer) dismissRememberOffer();
+      setBeatId(outcome.nextBeat);
+      return;
+    }
+    const outcome = resolveRememberPlaceChoice('accept');
     setBeatId(outcome.nextBeat);
   };
 
@@ -187,6 +200,7 @@ export function JodyConcierge({
       { chapterId: effectiveChapterId },
       { source: 'jody-concierge' },
     );
+    clearPendingJodyBeat();
     if (outcome.dismissOffer) dismissRememberOffer();
     setBeatId(outcome.nextBeat);
   };
@@ -233,7 +247,13 @@ export function JodyConcierge({
       const { id, label } = beat.primaryAction;
       if (id === 'remember-accept') {
         actions.push(
-          <button key={id} type="button" style={primaryBtn} onClick={handleRememberAccept}>
+          <button
+            key={id}
+            type="button"
+            style={{ ...primaryBtn, opacity: submitting ? 0.7 : 1 }}
+            onClick={handleRememberAccept}
+            disabled={submitting}
+          >
             {label}
           </button>,
         );

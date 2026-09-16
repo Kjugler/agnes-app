@@ -35,6 +35,10 @@ assert.match(
   lead,
   /rememberFunnelUserId\(data\.userId\);\s*\}\s*markReadersAgreeLeadSession\(\);\s*return \{ ok: true, redirectPath: data\.redirectPath \}/,
 );
+assert.match(route, /READERS_AGREE_LEAD_UID_COOKIE/);
+assert.match(route, /cookies\.set/);
+assert.doesNotMatch(route, /contest_user_id/);
+assert.doesNotMatch(route, /ap_funnel_uid/);
 assert.match(lead, /if \(!res\.ok \|\| !data\.ok \|\| !data\.redirectPath\)/);
 
 assert.match(lead, /retailerOrigin/);

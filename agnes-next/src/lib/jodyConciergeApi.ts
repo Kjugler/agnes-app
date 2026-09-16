@@ -23,6 +23,23 @@ export async function fetchJodyReaderState(): Promise<JodyReaderState | null> {
   }
 }
 
+export async function saveRememberedPlace(
+  chapterId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch('/api/jody/remember/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chapterId }),
+      credentials: 'include',
+    });
+    const data = await res.json().catch(() => ({}));
+    return { ok: Boolean(res.ok && data?.ok), error: data?.error };
+  } catch {
+    return { ok: false, error: 'network_error' };
+  }
+}
+
 export async function requestRememberPlaceEmail(
   email: string,
   chapterId: string,

@@ -266,6 +266,10 @@ const jodyRememberVerifyHandler = require('../api/jody/rememberVerify.cjs');
 app.get('/api/jody/remember/verify', jodyRememberVerifyHandler);
 console.log('✅ Mounted GET /api/jody/remember/verify');
 
+const jodyRememberSaveHandler = require('../api/jody/rememberSave.cjs');
+app.post('/api/jody/remember/save', jodyRememberSaveHandler);
+console.log('✅ Mounted POST /api/jody/remember/save');
+
 const jodyStateHandler = require('../api/jody/state.cjs');
 app.get('/api/jody/state', jodyStateHandler);
 console.log('✅ Mounted GET /api/jody/state');

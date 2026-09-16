@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { proxyJson } from '@/lib/deepquillProxy';
 import { rateLimitByIP } from '@/lib/rateLimit';
+import {
+  READERS_AGREE_LEAD_UID_COOKIE,
+  normalizeIdentityUserId,
+  readersAgreeLeadIdentityCookieOptions,
+} from '@/lib/jodyRememberIdentity';
 
 export const runtime = 'nodejs';
 
@@ -17,7 +22,18 @@ export async function POST(req: NextRequest) {
       method: 'POST',
       body,
     });
-    return NextResponse.json(data, { status });
+    const response = NextResponse.json(data, { status });
+    const leadUserId =
+      status === 200 && data?.ok ? normalizeIdentityUserId(data.userId) : null;
+    if (leadUserId) {
+      const isHttps = req.nextUrl.protocol === 'https:';
+      response.cookies.set(
+        READERS_AGREE_LEAD_UID_COOKIE,
+        leadUserId,
+        readersAgreeLeadIdentityCookieOptions(isHttps),
+      );
+    }
+    return response;
   } catch (err: unknown) {
     console.error('[readers-agree/lead] proxy error', err);
     return NextResponse.json(

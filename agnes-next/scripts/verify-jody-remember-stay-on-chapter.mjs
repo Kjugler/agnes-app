@@ -101,10 +101,27 @@ assert.match(copy, /remember-decline-ack/);
 assert.match(copy, /No problem\. Enjoy the chapter\./);
 
 assert.match(concierge, /resolveRememberPlaceChoice\('accept'\)/);
+assert.match(concierge, /resolveRememberPlaceChoice\('accept', \{ knownReader: true \}\)/);
 assert.match(concierge, /resolveRememberPlaceChoice\('decline'\)/);
 assert.match(concierge, /setBeatId\(outcome\.nextBeat\)/);
 assert.match(concierge, /remember-decline-ack/);
+assert.match(concierge, /remember-accept-ack/);
 assert.match(concierge, /JODY_REMEMBER_DECLINE_ACK_MS/);
+assert.match(concierge, /saveRememberedPlace\(effectiveChapterId\)/);
+assert.match(concierge, /clearPendingJodyBeat\(\)/);
+
+const acceptFn = concierge.match(
+  /const handleRememberAccept = async \(\) => \{[\s\S]*?\n  \};/,
+);
+assert.ok(acceptFn, 'handleRememberAccept must exist');
+assert.match(acceptFn[0], /saveRememberedPlace/);
+assert.match(acceptFn[0], /clearPendingJodyBeat/);
+assert.doesNotMatch(
+  acceptFn[0],
+  /requestRememberPlaceEmail/,
+  'known-reader YES must not send verification email',
+);
+assert.doesNotMatch(acceptFn[0], /handleClose\(\)/);
 
 const declineFn = concierge.match(
   /const handleRememberDecline = \(\) => \{[\s\S]*?\n  \};/,
