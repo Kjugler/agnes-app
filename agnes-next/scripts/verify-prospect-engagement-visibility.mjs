@@ -264,7 +264,7 @@ function printProductionShapedTable(list) {
       'origin',
       'sampleEngaged',
       'chapters',
-      'outreach',
+      'nurtureSuppressed',
       'legacyWarning',
     ].join(' | '),
   );
@@ -283,7 +283,7 @@ function printProductionShapedTable(list) {
         list.retailerOriginLabel(pe.retailerOrigin),
         pe.sampleEngaged ? 'Yes' : 'No',
         list.chaptersSampledLabel(pe.chaptersSampled),
-        list.promotionalOutreachSituationLabel(reader),
+        reader.nurtureSuppressed ? 'yes' : 'no',
         list.hasLegacyProspectNurture(reader.legacyProspectNurture) ? 'inactive warning' : '—',
       ].join(' | '),
     );
@@ -307,6 +307,26 @@ async function main() {
       }
       assert.match(scan(FILES.listClient), /method: 'GET'/);
       assert.match(scan(FILES.detailClient), /method: 'GET'/);
+    });
+
+    await check('contact context wording does not claim promotional eligibility', () => {
+      const client = scan(FILES.detailClient);
+      const model = scan(FILES.listModel);
+      assert.match(client, /Contact & suppression context/);
+      assert.match(client, />Ownership</);
+      assert.match(client, />Contactability</);
+      assert.match(client, />Local nurture suppression</);
+      assert.match(client, />Automated prospect nurture</);
+      assert.match(client, /AUTOMATED_PROSPECT_NURTURE_STATUS/);
+      assert.match(client, /CONTACT_SUPPRESSION_NOTE/);
+      assert.doesNotMatch(client, /Outreach situation/);
+      assert.doesNotMatch(client, /Promotional outreach \(local facts\)/);
+      assert.doesNotMatch(client, /promotionalOutreachSituationLabel/);
+      assert.doesNotMatch(client, /promotionalOutreachEligibility/);
+      assert.doesNotMatch(model, /promotionalOutreachSituationLabel/);
+      assert.doesNotMatch(model, /promotionalOutreachEligibility/);
+      assert.match(model, /CONTACT_SUPPRESSION_NOTE/);
+      assert.match(model, /No enable, send, or enrollment control is available here/);
     });
 
     await check('read path still does not assign prospectNurture enrollment', () => {
@@ -370,6 +390,8 @@ async function main() {
       assert.equal(JSON.stringify(snapshot).includes('visitorId'), false);
       assert.equal(JSON.stringify(snapshot).includes('secret'), false);
       assert.equal(list.AUTOMATED_PROSPECT_NURTURE_STATUS, 'Not armed');
+      assert.match(list.CONTACT_SUPPRESSION_NOTE, /No enable, send, or enrollment control/);
+      assert.equal(typeof list.promotionalOutreachSituationLabel, 'undefined');
       assert.equal(list.HISTORICAL_NURTURE_WARNING_TITLE, 'Historical nurture enrollment — inactive');
       assert.equal(list.LEAD_CAPTURE_SNAPSHOT_LABEL, 'Latest Readers Agree capture snapshot');
     });

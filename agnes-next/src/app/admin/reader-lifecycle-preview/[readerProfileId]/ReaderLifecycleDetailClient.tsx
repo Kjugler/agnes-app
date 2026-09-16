@@ -12,7 +12,7 @@ import {
   LEAD_CAPTURE_SNAPSHOT_LABEL,
   LEAD_CAPTURE_SNAPSHOT_NOTE,
   NO_READERS_AGREE_ENGAGEMENT,
-  OUTREACH_SITUATION_NOTE,
+  CONTACT_SUPPRESSION_NOTE,
   captureSurfaceLabel,
   categoryLabel,
   chaptersSampledLabel,
@@ -25,7 +25,6 @@ import {
   hasDisplayableProspectEngagement,
   hasLegacyProspectNurture,
   identityAnchorLabel,
-  promotionalOutreachSituationLabel,
   purchaseModeLabel,
   queueLabel,
   retailerOriginLabel,
@@ -287,7 +286,7 @@ export default function ReaderLifecycleDetailClient({
             </p>
           ) : null}
 
-          <OutreachSituationSection reader={reader} />
+          <ContactSuppressionSection reader={reader} />
           <EngagementSection reader={reader} />
 
           <PurchasesSection
@@ -337,13 +336,13 @@ function Empty({ children }: { children?: ReactNode }) {
   return <p className={styles.empty}>{children || EMPTY_HISTORY}</p>;
 }
 
-function OutreachSituationSection({ reader }: { reader: ReaderLifecycleDetail }) {
+function ContactSuppressionSection({ reader }: { reader: ReaderLifecycleDetail }) {
   return (
-    <section className={styles.secondarySection} aria-labelledby="outreach-heading">
-      <h2 id="outreach-heading" className={styles.secondaryTitle}>
-        Outreach situation
+    <section className={styles.secondarySection} aria-labelledby="contact-suppression-heading">
+      <h2 id="contact-suppression-heading" className={styles.secondaryTitle}>
+        Contact & suppression context
       </h2>
-      <p className={styles.sectionNote}>{OUTREACH_SITUATION_NOTE}</p>
+      <p className={styles.sectionNote}>{CONTACT_SUPPRESSION_NOTE}</p>
       <dl className={styles.summary}>
         <div>
           <dt>Ownership</dt>
@@ -356,10 +355,6 @@ function OutreachSituationSection({ reader }: { reader: ReaderLifecycleDetail })
         <div>
           <dt>Local nurture suppression</dt>
           <dd>{reader.nurtureSuppressed ? 'Yes — locally suppressed' : 'No — local suppression is off'}</dd>
-        </div>
-        <div>
-          <dt>Promotional outreach (local facts)</dt>
-          <dd>{promotionalOutreachSituationLabel(reader)}</dd>
         </div>
         <div>
           <dt>Automated prospect nurture</dt>

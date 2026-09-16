@@ -282,15 +282,25 @@ async function main() {
       );
     });
 
-    await check('C2 engagement, outreach, and legacy nurture stay display-only', () => {
+    await check('C2 engagement, contact context, and legacy nurture stay display-only', () => {
       const client = scanSource(FILES.detailClient);
       const css = scanSource(FILES.detailCss);
       assert.match(client, /EngagementSection/);
-      assert.match(client, /OutreachSituationSection/);
-      assert.match(client, /HISTORICAL_NURTURE_WARNING_TITLE/);
+      assert.match(client, /ContactSuppressionSection/);
+      assert.match(client, /Contact & suppression context/);
+      assert.match(client, /CONTACT_SUPPRESSION_NOTE/);
+      assert.match(client, />Ownership</);
+      assert.match(client, />Contactability</);
+      assert.match(client, />Local nurture suppression</);
+      assert.match(client, />Automated prospect nurture</);
       assert.match(client, /AUTOMATED_PROSPECT_NURTURE_STATUS/);
+      assert.match(client, /HISTORICAL_NURTURE_WARNING_TITLE/);
       assert.match(client, /LEAD_CAPTURE_SNAPSHOT_LABEL/);
       assert.match(client, /NO_READERS_AGREE_ENGAGEMENT/);
+      assert.doesNotMatch(client, /Outreach situation/);
+      assert.doesNotMatch(client, /Promotional outreach \(local facts\)/);
+      assert.doesNotMatch(client, /promotionalOutreachSituationLabel/);
+      assert.doesNotMatch(client, /promotionalOutreachEligibility/);
       assert.doesNotMatch(client, /Enable nurture|Send nurture|Enroll/);
       assert.doesNotMatch(client, /visitorId|ap_funnel_uid/);
       assert.match(css, /\.secondarySection/);
@@ -357,6 +367,8 @@ async function main() {
       assert.equal(list.hasLegacyProspectNurture(legacy.legacyProspectNurture), true);
       assert.equal(list.hasDisplayableProspectEngagement(legacy.prospectEngagement), false);
       assert.equal(list.AUTOMATED_PROSPECT_NURTURE_STATUS, 'Not armed');
+      assert.match(list.CONTACT_SUPPRESSION_NOTE, /No enable, send, or enrollment control/);
+      assert.equal(typeof list.promotionalOutreachSituationLabel, 'undefined');
     });
   } finally {
     fs.rmSync(outDir, { recursive: true, force: true });

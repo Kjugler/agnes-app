@@ -623,7 +623,7 @@ export const LEAD_CAPTURE_SNAPSHOT_NOTE =
   'This is the latest capture snapshot, not complete journey history.';
 export const ENGAGEMENT_SECTION_NOTE =
   'Behavioral context only. Ownership, review, and contactability remain primary. This is not send authorization.';
-export const OUTREACH_SITUATION_NOTE =
+export const CONTACT_SUPPRESSION_NOTE =
   'Informational only. Automated prospect nurture is not armed. No enable, send, or enrollment control is available here.';
 
 export function hasDisplayableProspectEngagement(
@@ -716,24 +716,6 @@ export function hasLegacyProspectNurture(
   row: LegacyProspectNurture | null | undefined,
 ): boolean {
   return Boolean(row);
-}
-
-export function promotionalOutreachSituationLabel(
-  item: Pick<ReaderLifecycleListItem, 'ownership' | 'contactability' | 'review' | 'nurtureSuppressed'> & {
-    legacy?: { status?: string | null } | null;
-  },
-): string {
-  if (item.legacy?.status === 'archived') return 'Ineligible — archived';
-  if (item.contactability === 'suppressed_do_not_contact') return 'Ineligible — manual DNC';
-  if (item.contactability === 'no_mailable_email') return 'Ineligible — no mailable email';
-  if (item.review === 'conflicting' || item.review === 'identity_review_required') {
-    return 'Paused until this record is resolved';
-  }
-  if (item.ownership === 'purchaser' || item.ownership === 'book_owner_gifted') {
-    return 'Owner — prospect nurture does not apply';
-  }
-  if (item.nurtureSuppressed) return 'Locally suppressed';
-  return 'Locally unsuppressed — automated prospect nurture is still not armed';
 }
 
 export function parseLatestCommunication(raw: unknown): LatestCommunication | null {
