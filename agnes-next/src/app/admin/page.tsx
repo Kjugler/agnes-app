@@ -89,6 +89,13 @@ export default function AdminHubPage() {
         CRM for readers from bookstores, gifts, events, ads, and referrals. Add readers, track source,
         and copy sharing links.
       </p>
+      <Link href="/admin/reader-lifecycle-preview" style={linkStyle}>
+        Reader Lifecycle
+      </Link>
+      <p style={descStyle}>
+        Operational workbench for classified readers. Ownership, contactability, and Readers Agree
+        engagement context. Does not send email.
+      </p>
 
       <h2 style={sectionTitle}>Fulfillment</h2>
       <Link href="/admin/fulfillment/labels" style={linkStyle}>
