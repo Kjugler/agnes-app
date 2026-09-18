@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { trackTikTok } from '@/lib/tiktokPixel';
 import { trackMeta } from '@/lib/metaPixel';
 import { trackGoogleAdsPurchase } from '@/lib/googleAds';
+import { pushGtmPurchaseEvent } from '@/lib/googleTagManager';
 import { FUNNEL_EVENT_TYPES, trackFunnelEvent } from '@/lib/funnelTracking';
 import { HUB_THEME } from '@/lib/hubTheme';
 
@@ -168,6 +169,13 @@ export default function OrderConfirmationClient({ sessionId }: OrderConfirmation
             amount_total: data.amountTotal || 0,
             currency: data.currency || 'usd',
           }, { source: 'checkout-success' });
+
+          pushGtmPurchaseEvent({
+            transactionId: currentSessionId,
+            amountTotalCents: data.amountTotal,
+            currency: data.currency,
+            productType: data.productType,
+          });
 
           if (!purchaseTrackedRef.current) {
             purchaseTrackedRef.current = true;
