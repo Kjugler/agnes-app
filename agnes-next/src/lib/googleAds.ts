@@ -2,7 +2,7 @@
 
 export const DEFAULT_GOOGLE_ADS_ID = 'AW-18340602294';
 /** Website Purchase (manual/code) — from Google Ads conversion action tag setup. */
-export const DEFAULT_GOOGLE_ADS_PURCHASE_CONVERSION_LABEL = '3uBuCLqiqtQcELbDva1E';
+export const DEFAULT_GOOGLE_ADS_PURCHASE_CONVERSION_LABEL = '3uBuCLqiqtQcELbDvalE';
 
 declare global {
   interface Window {

@@ -312,7 +312,7 @@ mod.clearGtmPurchaseInMemoryDedup();
     /window\.gtag\?\.\('event', 'conversion', \{\s*send_to: sendTo,\s*value: props\.value,\s*currency: props\.currency,\s*transaction_id: props\.transactionId,\s*\}\);/,
   );
   assert.match(ads, /DEFAULT_GOOGLE_ADS_ID = 'AW-18340602294'/);
-  assert.match(ads, /DEFAULT_GOOGLE_ADS_PURCHASE_CONVERSION_LABEL = '3uBuCLqiqtQcELbDva1E'/);
+  assert.match(ads, /DEFAULT_GOOGLE_ADS_PURCHASE_CONVERSION_LABEL = '3uBuCLqiqtQcELbDvalE'/);
   assert.doesNotMatch(ads, /pushGtmPurchaseEvent/);
   assert.doesNotMatch(ads, /event: 'purchase'/);
 
