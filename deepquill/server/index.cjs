@@ -88,6 +88,7 @@ if (envConfig.DEBUG && envConfig.STRIPE_MODE === 'test') {
   const { stripe } = require('../src/lib/stripe.cjs');
   const pricesToCheck = [
     { name: 'paperback', id: envConfig.STRIPE_PRICE_PAPERBACK },
+    { name: 'paperback_2195', id: envConfig.STRIPE_PRICE_PAPERBACK_2195 },
     { name: 'ebook', id: envConfig.STRIPE_PRICE_EBOOK },
     { name: 'audio_preorder', id: envConfig.STRIPE_PRICE_AUDIO_PREORDER },
   ];
@@ -395,6 +396,8 @@ if (envConfig.DEBUG) {
       stripeKeyLast6: envConfig.STRIPE_KEY_FINGERPRINT,
       nodeEnv: envConfig.NODE_ENV,
       hasPaperbackPrice: !!envConfig.STRIPE_PRICE_PAPERBACK,
+      hasPaperbackPrice2195: !!envConfig.STRIPE_PRICE_PAPERBACK_2195,
+      hasPaperbackFreeShippingRate: !!envConfig.STRIPE_PAPERBACK_FREE_SHIPPING_RATE_ID,
       hasEbookPrice: !!envConfig.STRIPE_PRICE_EBOOK,
       hasAudioPreorderPrice: !!envConfig.STRIPE_PRICE_AUDIO_PREORDER,
       hasAssociateCoupon: !!envConfig.STRIPE_ASSOCIATE_15_COUPON_ID,

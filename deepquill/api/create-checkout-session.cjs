@@ -19,6 +19,10 @@ const { stripe } = require('../src/lib/stripe.cjs');
 const { prisma, ensureDatabaseUrl } = require('../server/prisma.cjs');
 const { normalizeEmail, normalizeReferralCode } = require('../src/lib/normalize.cjs');
 const { isSelfOwnedCode, normalizeIdentityEmail } = require('../src/lib/selfReferralGuards.cjs');
+const {
+  resolvePaperbackPriceId,
+  resolvePaperbackShippingRateId,
+} = require('../lib/paperbackOffer.cjs');
 
 // Part B1: Referral attribution window (30 days)
 const REFERRAL_ATTRIBUTION_WINDOW_DAYS = 30;
@@ -199,7 +203,17 @@ module.exports = async function handler(req, res) {
     }
 
     // Resolve and validate priceId (no fallback to STRIPE_PRICE_ID)
-    const priceId = PRICE_BY_PRODUCT[product];
+    let priceId = PRICE_BY_PRODUCT[product];
+    if (product === 'paperback') {
+      const resolvedPrice = resolvePaperbackPriceId(envConfig);
+      if (!resolvedPrice.ok) {
+        return res.status(resolvedPrice.status).json({
+          error: resolvedPrice.error,
+          detail: resolvedPrice.detail,
+        });
+      }
+      priceId = resolvedPrice.priceId;
+    }
     if (!priceId || !priceId.startsWith('price_')) {
       return res.status(500).json({ 
         error: `Missing Stripe price env for product=${product}. Check STRIPE_PRICE_${product.toUpperCase()}` 
@@ -810,15 +824,14 @@ module.exports = async function handler(req, res) {
       };
       sessionParams.phone_number_collection = { enabled: true };
 
-      const shippingRateId = envConfig.STRIPE_PAPERBACK_SHIPPING_RATE_ID;
-      if (!shippingRateId || !String(shippingRateId).startsWith('shr_')) {
-        return res.status(500).json({
-          error: 'Paperback shipping is not configured',
-          detail:
-            'Set STRIPE_PAPERBACK_SHIPPING_RATE_ID to a Stripe Shipping Rate ID (shr_...)',
+      const resolvedShipping = resolvePaperbackShippingRateId(envConfig);
+      if (!resolvedShipping.ok) {
+        return res.status(resolvedShipping.status).json({
+          error: resolvedShipping.error,
+          detail: resolvedShipping.detail,
         });
       }
-      sessionParams.shipping_options = [{ shipping_rate: shippingRateId }];
+      sessionParams.shipping_options = [{ shipping_rate: resolvedShipping.shippingRateId }];
     } else {
       sessionParams.phone_number_collection = { enabled: false };
       // Let Stripe collect billing details only when needed (e.g. AVS); avoids full address step when possible.

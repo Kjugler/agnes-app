@@ -19,12 +19,15 @@ exports.STRIPE_KEY_FINGERPRINT = STRIPE_SECRET_KEY_RAW.slice(-6);
 
 // Product price IDs
 exports.STRIPE_PRICE_PAPERBACK = process.env.STRIPE_PRICE_PAPERBACK || null;
+exports.STRIPE_PRICE_PAPERBACK_2195 = process.env.STRIPE_PRICE_PAPERBACK_2195 || null;
 exports.STRIPE_PRICE_EBOOK = process.env.STRIPE_PRICE_EBOOK || null;
 exports.STRIPE_PRICE_AUDIO_PREORDER = process.env.STRIPE_PRICE_AUDIO_PREORDER || null;
 
 // Paperback flat shipping (Stripe Shipping Rate ID, shr_...)
 exports.STRIPE_PAPERBACK_SHIPPING_RATE_ID =
   process.env.STRIPE_PAPERBACK_SHIPPING_RATE_ID || null;
+exports.STRIPE_PAPERBACK_FREE_SHIPPING_RATE_ID =
+  process.env.STRIPE_PAPERBACK_FREE_SHIPPING_RATE_ID || null;
 
 // Associate coupon
 exports.STRIPE_ASSOCIATE_15_COUPON_ID = process.env.STRIPE_ASSOCIATE_15_COUPON_ID || null;

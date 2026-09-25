@@ -1,5 +1,6 @@
 import { getProduct, type ProductId } from './products';
-import { PAPERBACK_SHIPPING_CENTS, trackTikTok } from './tiktokPixel';
+import { paperbackShippingCents } from './paperbackOffer';
+import { trackTikTok } from './tiktokPixel';
 import { trackMeta } from './metaPixel';
 import { FUNNEL_EVENT_TYPES, trackFunnelEvent } from './funnelTracking';
 
@@ -117,7 +118,7 @@ export async function startCheckout(opts: StartCheckoutOpts = {}) {
     const productInfo = getProduct(product as ProductId);
     let checkoutValueCents = productInfo?.priceCents ?? 0;
     if (product === 'paperback') {
-      checkoutValueCents += PAPERBACK_SHIPPING_CENTS;
+      checkoutValueCents += paperbackShippingCents();
     }
 
     trackTikTok('InitiateCheckout', {

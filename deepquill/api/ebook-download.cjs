@@ -8,6 +8,7 @@ const { Readable } = require('stream');
 const { verifyToken } = require('../src/lib/fulfillmentToken.cjs');
 const envConfig = require('../src/config/env.cjs');
 const { stripe } = require('../src/lib/stripe.cjs');
+const { isPaperbackPriceId } = require('../lib/paperbackOffer.cjs');
 
 const router = express.Router();
 
@@ -56,7 +57,7 @@ async function resolveProductTypeFromStripeSession(sessionId) {
     }
     const priceId = lineItems?.data?.[0]?.price?.id;
     if (priceId) {
-      if (priceId === envConfig.STRIPE_PRICE_PAPERBACK) productType = 'paperback';
+      if (isPaperbackPriceId(envConfig, priceId)) productType = 'paperback';
       else if (priceId === envConfig.STRIPE_PRICE_EBOOK) productType = 'ebook';
       else if (priceId === envConfig.STRIPE_PRICE_AUDIO_PREORDER) productType = 'audio_preorder';
     }

@@ -2,6 +2,8 @@
 // Prices are in USD cents (Stripe format)
 // Display prices are formatted as strings
 
+import { getPaperbackOffer } from '@/lib/paperbackOffer';
+
 export type ProductId = 'paperback' | 'ebook' | 'audio_preorder';
 
 export interface Product {
@@ -13,12 +15,13 @@ export interface Product {
 }
 
 // Product pricing - single source of truth
+// Paperback cents/display are pre-sale defaults; use getProduct() for the live offer.
 export const PRODUCTS: Product[] = [
   {
     id: 'paperback',
     title: 'Paperback',
     description: 'Paperback includes FREE eBook',
-    priceCents: 2600, // $26.00
+    priceCents: 2600, // $26.00 pre-sale default
     displayPrice: '$26.00',
   },
   {
@@ -37,9 +40,17 @@ export const PRODUCTS: Product[] = [
   },
 ];
 
-// Helper to get product by ID
-export function getProduct(id: ProductId): Product | undefined {
-  return PRODUCTS.find(p => p.id === id);
+// Helper to get product by ID (paperback price is date-gated)
+export function getProduct(id: ProductId, now: Date = new Date()): Product | undefined {
+  const base = PRODUCTS.find(p => p.id === id);
+  if (!base) return undefined;
+  if (id !== 'paperback') return base;
+  const offer = getPaperbackOffer(now);
+  return {
+    ...base,
+    priceCents: offer.priceCents,
+    displayPrice: offer.displayPrice,
+  };
 }
 
 // Helper to format price from cents

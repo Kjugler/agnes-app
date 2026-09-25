@@ -51,7 +51,20 @@ function transpileToTemp() {
   const ts = require('typescript');
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agnes-gtm-purchase-'));
 
-  const products = ts.transpileModule(read(PRODUCTS_TS), {
+  const offer = ts.transpileModule(read(path.join(AGNES_NEXT_ROOT, 'src/lib/paperbackOffer.ts')), {
+    compilerOptions: {
+      module: ts.ModuleKind.ESNext,
+      target: ts.ScriptTarget.ES2022,
+    },
+    fileName: 'paperbackOffer.ts',
+  });
+  fs.writeFileSync(path.join(outDir, 'paperbackOffer.mjs'), offer.outputText);
+
+  const productsSource = read(PRODUCTS_TS).replace(
+    "from '@/lib/paperbackOffer'",
+    "from './paperbackOffer.mjs'",
+  );
+  const products = ts.transpileModule(productsSource, {
     compilerOptions: {
       module: ts.ModuleKind.ESNext,
       target: ts.ScriptTarget.ES2022,

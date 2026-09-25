@@ -134,7 +134,8 @@ async function handleVerifySession(req, res) {
       if (priceId) {
         // Map price IDs to product types (from create-checkout-session.cjs)
         const envConfig = require('../../src/config/env.cjs');
-        if (priceId === envConfig.STRIPE_PRICE_PAPERBACK) productType = 'paperback';
+        const { isPaperbackPriceId } = require('../../lib/paperbackOffer.cjs');
+        if (isPaperbackPriceId(envConfig, priceId)) productType = 'paperback';
         else if (priceId === envConfig.STRIPE_PRICE_EBOOK) productType = 'ebook';
         else if (priceId === envConfig.STRIPE_PRICE_AUDIO_PREORDER) productType = 'audio_preorder';
       }

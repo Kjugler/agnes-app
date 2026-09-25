@@ -16,6 +16,7 @@ const { signReaderClaimToken } = require('../../src/lib/readerClaimToken.cjs');
 const { normalizeEmailDeliveryOutcome } = require('./mandrillDeliveryOutcome.cjs');
 const { applyGlobalEmailBanner } = require('../../src/lib/emailBanner.cjs');
 const { guardMailableEmail } = require('./guardMailableEmail.cjs');
+const { isPaperbackPriceId } = require('../paperbackOffer.cjs');
 
 function getMailchimpClient() {
   const apiKey = process.env.MAILCHIMP_TRANSACTIONAL_KEY;
@@ -35,7 +36,7 @@ async function resolveProductFromSession(session) {
         expand: ['data.price'],
       });
       const priceId = lineItems?.data?.[0]?.price?.id;
-      if (priceId === envConfig.STRIPE_PRICE_PAPERBACK) product = 'paperback';
+      if (isPaperbackPriceId(envConfig, priceId)) product = 'paperback';
       else if (priceId === envConfig.STRIPE_PRICE_EBOOK) product = 'ebook';
       else if (priceId === envConfig.STRIPE_PRICE_AUDIO_PREORDER) product = 'audio_preorder';
     } catch {

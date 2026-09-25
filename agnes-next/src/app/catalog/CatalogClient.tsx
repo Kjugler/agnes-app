@@ -3,7 +3,12 @@
 import Image from 'next/image';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useMemo, useEffect, useState, useRef, useSyncExternalStore, type CSSProperties } from 'react';
-import { PRODUCTS, formatPrice, type ProductId } from '@/lib/products';
+import { PRODUCTS, getProduct, formatPrice, type ProductId } from '@/lib/products';
+import {
+  getPaperbackCatalogPhase,
+  PAPERBACK_PROMO_COPY,
+  type PaperbackCatalogPhase,
+} from '@/lib/paperbackOffer';
 import { trackTikTok } from '@/lib/tiktokPixel';
 import { trackMeta } from '@/lib/metaPixel';
 import SiteFooter from '@/components/SiteFooter';
@@ -149,6 +154,90 @@ function PriceStack({
   );
 }
 
+function PaperbackOfferBlock({
+  phase,
+  priceCents,
+  discount,
+}: {
+  phase: PaperbackCatalogPhase;
+  priceCents: number;
+  discount: DiscountState;
+}) {
+  if (phase === 'pre_sale') {
+    return (
+      <>
+        <PriceStack priceCents={priceCents} discount={discount} />
+        <p style={{ margin: '0 0 20px 0', fontSize: '13px', color: '#999999' }}>
+          {PAPERBACK_PROMO_COPY.standardShipping}
+        </p>
+      </>
+    );
+  }
+
+  return (
+    <div style={{ margin: '8px 0 20px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      <p
+        style={{
+          margin: 0,
+          fontSize: '15px',
+          color: '#999999',
+          textDecoration: 'line-through',
+        }}
+      >
+        {PAPERBACK_PROMO_COPY.was}
+      </p>
+      <p
+        style={{
+          margin: 0,
+          fontSize: '2rem',
+          fontWeight: 700,
+          color: HUB_THEME.primaryGreen,
+          lineHeight: 1.1,
+        }}
+      >
+        {PAPERBACK_PROMO_COPY.now}
+      </p>
+      {phase === 'free_shipping' ? (
+        <>
+          <p
+            style={{
+              margin: '6px 0 0',
+              fontSize: '15px',
+              fontWeight: 600,
+              color: HUB_THEME.text,
+            }}
+          >
+            {PAPERBACK_PROMO_COPY.freeShipping}
+          </p>
+          <p style={{ margin: 0, fontSize: '13px', color: '#999999' }}>
+            {PAPERBACK_PROMO_COPY.afterNote}
+          </p>
+        </>
+      ) : (
+        <p style={{ margin: '6px 0 0', fontSize: '13px', color: '#999999' }}>
+          {PAPERBACK_PROMO_COPY.standardShipping}
+        </p>
+      )}
+      <p
+        style={{
+          margin: '12px 0 0',
+          fontSize: '13px',
+          fontWeight: 700,
+          letterSpacing: '0.12em',
+          textTransform: 'uppercase',
+          color: HUB_THEME.text,
+        }}
+      >
+        {PAPERBACK_PROMO_COPY.title}
+      </p>
+      <p style={{ margin: 0, fontSize: '15px', color: HUB_THEME.textMuted }}>
+        {PAPERBACK_PROMO_COPY.author}
+      </p>
+      {discount.active ? <PriceStack priceCents={priceCents} discount={discount} /> : null}
+    </div>
+  );
+}
+
 export default function CatalogClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -158,9 +247,10 @@ export default function CatalogClient() {
   const [discountLoading, setDiscountLoading] = useState(true);
   const [whyBuyOpen, setWhyBuyOpen] = useState(false);
 
-  const paperback = PRODUCTS.find((p) => p.id === 'paperback')!;
+  const paperback = getProduct('paperback')!;
   const ebook = PRODUCTS.find((p) => p.id === 'ebook')!;
   const audio = PRODUCTS.find((p) => p.id === 'audio_preorder')!;
+  const paperbackPhase = getPaperbackCatalogPhase();
 
   const refQueryKey = searchParams.toString();
 
@@ -411,11 +501,11 @@ export default function CatalogClient() {
               </p>
             </div>
 
-            <PriceStack priceCents={paperback.priceCents} discount={discount} />
-
-            <p style={{ margin: '0 0 20px 0', fontSize: '13px', color: '#999999' }}>
-              + shipping at checkout
-            </p>
+            <PaperbackOfferBlock
+              phase={paperbackPhase}
+              priceCents={paperback.priceCents}
+              discount={discount}
+            />
 
             <button
               type="button"
