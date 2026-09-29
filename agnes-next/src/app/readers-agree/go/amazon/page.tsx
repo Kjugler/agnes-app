@@ -1,6 +1,9 @@
 import { Suspense } from 'react';
 import ReviewRedirectClient from '../ReviewRedirectClient';
-import { READERS_AGREE_AMAZON_ATTRIBUTION_URL } from '@/lib/readerRecommendationLanding';
+import { getReadersAgreeAmazonAttributionUrl } from '@/lib/readerRecommendationLanding';
+
+/** Date-gated Amazon Attribution URL must be chosen at request time, not build time. */
+export const dynamic = 'force-dynamic';
 
 function LoadingFallback() {
   return (
@@ -24,7 +27,7 @@ export default function AmazonReviewRedirectPage() {
     <Suspense fallback={<LoadingFallback />}>
       <ReviewRedirectClient
         heading="Opening Amazon Reviews…"
-        destinationUrl={READERS_AGREE_AMAZON_ATTRIBUTION_URL}
+        destinationUrl={getReadersAgreeAmazonAttributionUrl()}
         retailerLabel="Amazon"
       />
     </Suspense>

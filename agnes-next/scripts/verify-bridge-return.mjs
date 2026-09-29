@@ -8,8 +8,23 @@ import { chromium } from 'playwright';
 const BASE = process.env.DOROTHY_VERIFY_BASE ?? 'http://localhost:3002';
 const QS =
   'ref=TESTREF&src=meta&utm_source=facebook&utm_medium=cpc&utm_campaign=rrf-test&v=1&origin=messenger&code=ABC123&fbclid=fbclid123';
-const AMAZON_ATTRIBUTION_URL =
+const AMAZON_ATTRIBUTION_URL_CLEAN =
   'https://www.amazon.com/dp/B0GWQBDH66?maas=maas_adg_B1F3C0D9F386C2563E467F32B9954434_afap_abs&ref_=aa_maas&tag=maas';
+const AMAZON_ATTRIBUTION_URL_OCT2 =
+  'https://www.amazon.com/dp/B0GWQBDH66?maas=maas_adg_77A82354D25FFFE4B0719EBAF99C4EC1_afap_abs&ref_=aa_maas&tag=maas';
+const AMAZON_ATTRIBUTION_OCT2_START_YMD = '2026-10-02';
+
+function expectedAmazonAttributionUrl(now = new Date()) {
+  const ymd = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Denver',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
+  return ymd >= AMAZON_ATTRIBUTION_OCT2_START_YMD
+    ? AMAZON_ATTRIBUTION_URL_OCT2
+    : AMAZON_ATTRIBUTION_URL_CLEAN;
+}
 
 function landingUrl() {
   return `${BASE}/readers-agree?${QS}`;
@@ -103,7 +118,8 @@ async function mobileFlow(page) {
 }
 
 function passContinuation(signals, { expectAmazonPopup = false } = {}) {
-  const amazonOk = !expectAmazonPopup || signals.popupUrl.startsWith(AMAZON_ATTRIBUTION_URL);
+  const amazonOk =
+    !expectAmazonPopup || signals.popupUrl.startsWith(expectedAmazonAttributionUrl());
   return (
     signals.heading === 'Ready to see for yourself?' &&
     signals.buyText.includes('Buy Direct') &&

@@ -18,7 +18,7 @@ import { trackMeta } from '@/lib/metaPixel';
 import { trackTikTok } from '@/lib/tiktokPixel';
 import {
   BARNES_NOBLE_REVIEWS_URL,
-  READERS_AGREE_AMAZON_ATTRIBUTION_URL,
+  getReadersAgreeAmazonAttributionUrl,
   buildReadersAgreePathWithTracking,
   READERS_AGREE_CATALOG_PATH,
   READERS_AGREE_GO_AMAZON_PATH,
@@ -132,16 +132,18 @@ export default function ReadersAgreeLandingClient() {
     resetBridgeSessionState();
   };
 
+  const amazonAttributionUrl = getReadersAgreeAmazonAttributionUrl();
+
   const amazonControl =
     BRIDGE_ENABLED && !mobileTwoTap ? (
       <a
-        href={READERS_AGREE_AMAZON_ATTRIBUTION_URL}
+        href={amazonAttributionUrl}
         className="ra-bn-cta-secondary"
         rel="noopener noreferrer"
         onClick={(event) =>
           handleRetailerTap(
             event,
-            READERS_AGREE_AMAZON_ATTRIBUTION_URL,
+            amazonAttributionUrl,
             amazonGoHref,
             handleAmazonClick,
           )
@@ -162,7 +164,7 @@ export default function ReadersAgreeLandingClient() {
       </Link>
     ) : (
       <a
-        href={READERS_AGREE_AMAZON_ATTRIBUTION_URL}
+        href={amazonAttributionUrl}
         className="ra-bn-cta-secondary"
         rel="noopener noreferrer"
         onClick={handleAmazonClick}
