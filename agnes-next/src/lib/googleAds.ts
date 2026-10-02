@@ -1,7 +1,7 @@
-/** Google Ads (gtag) — global site tag + purchase conversion. Not GTM. */
+/** Google Ads (gtag) — global site tag. Purchase conversion is fired by GTM from the purchase dataLayer event. */
 
 export const DEFAULT_GOOGLE_ADS_ID = 'AW-18340602294';
-/** Website Purchase (manual/code) — from Google Ads conversion action tag setup. */
+/** Website Purchase conversion label — used by GTM, not by application gtag conversion events. */
 export const DEFAULT_GOOGLE_ADS_PURCHASE_CONVERSION_LABEL = '3uBuCLqiqtQcELbDvalE';
 
 declare global {
@@ -16,26 +16,8 @@ export function getGoogleAdsId(): string | null {
   return id || null;
 }
 
-/** Full `send_to` value, e.g. AW-18340602294/AbCdEfGhIjKlMnOpQr */
-export function getGoogleAdsPurchaseSendTo(): string | null {
-  const explicit = process.env.NEXT_PUBLIC_GOOGLE_ADS_PURCHASE_SEND_TO?.trim();
-  if (explicit) return explicit;
-
-  const id = getGoogleAdsId();
-  const label =
-    process.env.NEXT_PUBLIC_GOOGLE_ADS_PURCHASE_CONVERSION_LABEL?.trim() ||
-    DEFAULT_GOOGLE_ADS_PURCHASE_CONVERSION_LABEL;
-  if (id && label) return `${id}/${label}`;
-
-  return null;
-}
-
 export function isGoogleAdsEnabled(): boolean {
   return Boolean(getGoogleAdsId());
-}
-
-export function isGoogleAdsPurchaseConversionEnabled(): boolean {
-  return Boolean(getGoogleAdsPurchaseSendTo());
 }
 
 /** SPA route change page path (initial config handled by GoogleAds base tag). */
@@ -49,29 +31,6 @@ export function pageGoogleAds(pagePath?: string): void {
     } else {
       window.gtag?.('config', id);
     }
-  } catch {
-    /* swallow */
-  }
-}
-
-export type GoogleAdsPurchaseProps = {
-  transactionId: string;
-  value: number;
-  currency: string;
-};
-
-export function trackGoogleAdsPurchase(props: GoogleAdsPurchaseProps): void {
-  if (typeof window === 'undefined' || !isGoogleAdsPurchaseConversionEnabled()) return;
-  try {
-    const sendTo = getGoogleAdsPurchaseSendTo();
-    if (!sendTo) return;
-
-    window.gtag?.('event', 'conversion', {
-      send_to: sendTo,
-      value: props.value,
-      currency: props.currency,
-      transaction_id: props.transactionId,
-    });
   } catch {
     /* swallow */
   }

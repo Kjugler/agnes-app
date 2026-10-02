@@ -316,14 +316,9 @@ mod.clearGtmPurchaseInMemoryDedup();
 
 {
   const ads = read(GOOGLE_ADS_TS);
-  assert.match(
-    ads,
-    /export function trackGoogleAdsPurchase\(props: GoogleAdsPurchaseProps\): void \{/,
-  );
-  assert.match(
-    ads,
-    /window\.gtag\?\.\('event', 'conversion', \{\s*send_to: sendTo,\s*value: props\.value,\s*currency: props\.currency,\s*transaction_id: props\.transactionId,\s*\}\);/,
-  );
+  assert.doesNotMatch(ads, /trackGoogleAdsPurchase/);
+  assert.doesNotMatch(ads, /event', 'conversion'/);
+  assert.doesNotMatch(ads, /send_to:/);
   assert.match(ads, /DEFAULT_GOOGLE_ADS_ID = 'AW-18340602294'/);
   assert.match(ads, /DEFAULT_GOOGLE_ADS_PURCHASE_CONVERSION_LABEL = '3uBuCLqiqtQcELbDvalE'/);
   assert.doesNotMatch(ads, /pushGtmPurchaseEvent/);
@@ -333,15 +328,8 @@ mod.clearGtmPurchaseInMemoryDedup();
   const paidBlock = success.match(/if \(data\.ok && data\.paid\) \{([\s\S]*?)\n        \} else \{/);
   assert.ok(paidBlock, 'paid verification branch must exist');
   assert.match(paidBlock[1], /pushGtmPurchaseEvent\(\{/);
-  assert.match(
-    success,
-    /if \(data\.ok && data\.paid\) \{[\s\S]*pushGtmPurchaseEvent\(\{[\s\S]*trackGoogleAdsPurchase\(\{/,
-  );
-  assert.match(
-    success,
-    /trackGoogleAdsPurchase\(\{\s*transactionId: currentSessionId,\s*value: \(data\.amountTotal \|\| 0\) \/ 100,\s*currency: \(data\.currency \|\| 'usd'\)\.toUpperCase\(\),\s*\}\);/,
-  );
-  console.log('ok  existing direct Google Ads conversion remains unchanged');
+  assert.doesNotMatch(success, /trackGoogleAdsPurchase/);
+  console.log('ok  GTM purchase event remains; application Google Ads conversion push is removed');
 }
 
 {
