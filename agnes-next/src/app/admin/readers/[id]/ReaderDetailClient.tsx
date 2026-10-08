@@ -4,11 +4,11 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  READER_SOURCES,
   SMS_CONSENT_SOURCES,
   formatReaderEmailDisplay,
   formatReaderPhoneDisplay,
   formatSmsConsentSummary,
+  readerSourceSelectOptions,
   type ReaderDetail,
 } from '@/config/readerSources';
 import { hasMeaningfulReaderIdentifier, validateReaderEmail } from '@/lib/readerValidation';
@@ -358,26 +358,40 @@ export default function ReaderDetailClient({
       )}
 
       {reader && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-          {editing ? (
-            <>
-              <button
-                type="button"
-                style={btnPrimary}
-                disabled={saving}
-                onClick={handleSave}
-              >
-                {saving ? 'Saving…' : 'Save'}
-              </button>
-              <button type="button" style={btnSecondary} disabled={saving} onClick={cancelEdit}>
-                Cancel
-              </button>
-            </>
-          ) : (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {editing ? (
+              <>
+                <button
+                  type="button"
+                  style={btnPrimary}
+                  disabled={saving}
+                  onClick={handleSave}
+                >
+                  {saving ? 'Saving…' : 'Save'}
+                </button>
+                <button type="button" style={btnSecondary} disabled={saving} onClick={cancelEdit}>
+                  Cancel
+                </button>
+              </>
+            ) : (
               <button type="button" style={btnPrimary} onClick={beginEdit}>
                 Edit
               </button>
-          )}
+            )}
+          </div>
+          {editing && saveMessage ? (
+            <p
+              role="alert"
+              style={{
+                margin: '8px 0 0',
+                fontSize: 14,
+                color: '#b91c1c',
+              }}
+            >
+              {saveMessage}
+            </p>
+          ) : null}
         </div>
       )}
 
@@ -453,7 +467,7 @@ export default function ReaderDetailClient({
                   style={{ ...inputStyle, marginTop: 4 }}
                 >
                   <option value="">Select source…</option>
-                  {READER_SOURCES.map((s) => (
+                  {readerSourceSelectOptions(form.source).map((s) => (
                     <option key={s} value={s}>
                       {s}
                     </option>
@@ -579,10 +593,6 @@ export default function ReaderDetailClient({
                   </div>
                 )}
               </div>
-
-              {saveMessage && (
-                <p style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>{saveMessage}</p>
-              )}
             </div>
           </section>
         </form>

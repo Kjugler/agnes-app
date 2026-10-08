@@ -47,6 +47,15 @@ export const SMS_CONSENT_SOURCES = [
 
 export type ReaderSource = (typeof READER_SOURCES)[number];
 
+/** Edit-form options: keep the allowlist, plus the current stored source if it is historical/system. */
+export function readerSourceSelectOptions(currentSource?: string | null): string[] {
+  const current = (currentSource || '').trim();
+  if (current && !(READER_SOURCES as readonly string[]).includes(current)) {
+    return [current, ...READER_SOURCES];
+  }
+  return [...READER_SOURCES];
+}
+
 export type ReaderRow = {
   id: string;
   userId: string;

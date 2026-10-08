@@ -9,6 +9,7 @@ const {
   READER_STATUS_LABELS,
   SMS_CONSENT_SOURCES,
   isValidReaderSource,
+  isAcceptedPatchReaderSource,
   isValidReaderType,
   isValidReaderStatus,
   isValidSmsConsentSource,
@@ -586,7 +587,7 @@ router.patch('/:id', async (req, res) => {
       });
     }
 
-    if (source !== undefined && source && !isValidReaderSource(source)) {
+    if (source !== undefined && source && !isAcceptedPatchReaderSource(source, profile.source)) {
       return res.status(400).json({ ok: false, error: 'Invalid reader source' });
     }
 
