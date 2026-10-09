@@ -88,6 +88,18 @@
   color: #ef4444;
 }
 
+.ra-email-capture-privacy {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(245, 245, 245, 0.62);
+}
+
+.ra-email-capture-privacy a {
+  color: inherit;
+  text-decoration: underline;
+}
+
 .ra-email-capture--bridge {
   margin-top: 4px;
   padding-top: 4px;

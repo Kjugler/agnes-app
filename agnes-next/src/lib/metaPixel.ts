@@ -1,3 +1,5 @@
+import { mayUseAdvertisingMeasurement } from '@/lib/privacy/advertisingConsentClient';
+
 export type MetaStandardEvent =
   | 'PageView'
   | 'ViewContent'
@@ -96,6 +98,7 @@ function recordMetaPixelDebugInternal(event: string, props?: Record<string, unkn
 
 export function pageMeta(pathname?: string): void {
   if (typeof window === 'undefined' || !isMetaPixelEnabled()) return;
+  if (!mayUseAdvertisingMeasurement()) return;
   try {
     window.fbq?.('track', 'PageView');
     recordMetaPixelDebugInternal(
@@ -113,6 +116,7 @@ export function trackMeta(
   options?: { eventID?: string },
 ): void {
   if (typeof window === 'undefined' || !isMetaPixelEnabled()) return;
+  if (!mayUseAdvertisingMeasurement()) return;
   if (event === 'PageView') {
     pageMeta();
     return;

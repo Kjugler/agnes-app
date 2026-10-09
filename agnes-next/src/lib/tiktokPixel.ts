@@ -1,3 +1,5 @@
+import { mayUseAdvertisingMeasurement } from '@/lib/privacy/advertisingConsentClient';
+
 /** Flat paperback shipping (cents) — matches Stripe checkout shipping rate. */
 export const PAPERBACK_SHIPPING_CENTS = 495;
 
@@ -31,6 +33,7 @@ export function isTikTokEnabled(): boolean {
 
 export function pageTikTok(): void {
   if (typeof window === 'undefined' || !isTikTokEnabled()) return;
+  if (!mayUseAdvertisingMeasurement()) return;
   try {
     window.ttq?.page();
   } catch {
@@ -40,6 +43,7 @@ export function pageTikTok(): void {
 
 export function trackTikTok(event: TikTokEventName, props?: TikTokEventProps): void {
   if (typeof window === 'undefined' || !isTikTokEnabled()) return;
+  if (!mayUseAdvertisingMeasurement()) return;
   try {
     const payload = props
       ? Object.fromEntries(

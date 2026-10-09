@@ -1,3 +1,5 @@
+import { mayUseAdvertisingMeasurement } from '@/lib/privacy/advertisingConsentClient';
+
 declare global {
   interface Window {
     uetq?: unknown[] | { push: (...args: unknown[]) => void };
@@ -33,6 +35,7 @@ function pushUetq(...args: unknown[]): void {
 /** SPA route change page view (initial pageLoad is handled by MicrosoftUET base tag). */
 export function pageMicrosoftUet(pagePath?: string): void {
   if (typeof window === 'undefined' || !isMicrosoftUetEnabled()) return;
+  if (!mayUseAdvertisingMeasurement()) return;
   try {
     const payload = pagePath ? { page_path: pagePath } : {};
     pushUetq('event', 'page_view', payload);

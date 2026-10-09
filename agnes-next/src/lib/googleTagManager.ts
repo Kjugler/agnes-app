@@ -1,3 +1,5 @@
+import { mayUseAdvertisingMeasurement } from '@/lib/privacy/advertisingConsentClient';
+
 /** Google Tag Manager container loader + post-purchase dataLayer event. Isolated from Google Ads gtag conversion. */
 
 import { getProduct, type ProductId } from '@/lib/products';
@@ -100,6 +102,7 @@ export function clearGtmPurchaseInMemoryDedup(): void {
 export function pushGtmPurchaseEvent(input: GtmPurchaseInput): boolean {
   const win = getBrowserWindow();
   if (!win) return false;
+  if (!mayUseAdvertisingMeasurement()) return false;
 
   const ecommerce = buildGtmPurchaseEcommerce(input);
   if (!ecommerce) return false;

@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { detectDevice, isBot } from '@/lib/device';
+import {
+  applyAdvertisingPrivacyHeaders,
+  applyAdvertisingPrivacyToResponse,
+  computeAdvertisingPrivacyState,
+} from '@/lib/privacy/applyAdvertisingPrivacy';
 
 /**
  * Get the public origin for redirects (critical for ngrok).
@@ -89,7 +94,17 @@ function redirectPreservingQuery(request: NextRequest, targetPathname: string): 
   const response = NextResponse.redirect(destinationUrl);
   applyReferralCookiesFromRequest(request, response);
   maybeSetTextafriendDiscountCookie(request, response);
-  return response;
+  return applyAdvertisingPrivacyToResponse(request, response);
+}
+
+function nextWithPrivacy(request: NextRequest): NextResponse {
+  const state = computeAdvertisingPrivacyState(request);
+  const requestHeaders = new Headers(request.headers);
+  applyAdvertisingPrivacyHeaders(request, requestHeaders, state);
+  const response = NextResponse.next({
+    request: { headers: requestHeaders },
+  });
+  return applyAdvertisingPrivacyToResponse(request, response);
 }
 
 /** Retired legacy public routes → book entry; active hub at /contest is not redirected. */
@@ -121,7 +136,7 @@ export function middleware(request: NextRequest) {
     pathname === '/terminal-proxy/' ||
     pathname.startsWith('/terminal-proxy/')
   ) {
-    return NextResponse.next();
+    return nextWithPrivacy(request);
   }
 
   // Fulfillment: protect /admin/fulfillment/* except /admin/fulfillment/auth
@@ -176,7 +191,7 @@ export function middleware(request: NextRequest) {
   const isShareRoute = pathname.startsWith('/share/') || pathname.startsWith('/api/share/');
   const isOgPreviewRoute = pathname.startsWith('/p/fb/');
   if (isShareRoute && !isOgPreviewRoute) {
-    const response = NextResponse.next();
+    const response = nextWithPrivacy(request);
     if (isBot(request)) {
       return response;
     }
@@ -220,7 +235,7 @@ export function middleware(request: NextRequest) {
     return response;
   }
 
-  const response = NextResponse.next();
+  const response = nextWithPrivacy(request);
 
   maybeSetTextafriendDiscountCookie(request, response);
 

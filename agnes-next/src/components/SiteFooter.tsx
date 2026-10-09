@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { HUB_THEME } from '@/lib/hubTheme';
+import PrivacyChoicesTrigger from '@/components/privacy/PrivacyChoicesTrigger';
 
 type SiteFooterProps = {
   /** `green` = legacy terminal sample-chapters; `muted` = dark pages; `light` = light hub pages */
@@ -42,6 +43,13 @@ export default function SiteFooter({ variant = 'muted' }: SiteFooterProps) {
         <Link href="/catalog" style={{ color: linkColor, textDecoration: 'underline' }}>
           Catalog
         </Link>
+      </p>
+      <p style={{ margin: '0 0 12px 0' }}>
+        <Link href="/privacy" style={{ color: linkColor, textDecoration: 'underline' }}>
+          Privacy Policy
+        </Link>
+        {' · '}
+        <PrivacyChoicesTrigger color={linkColor} />
       </p>
       <p style={{ margin: '0 0 8px 0' }}>© 2025 DeepQuill LLC – All Rights Reserved</p>
       <p style={{ margin: '0 0 8px 0' }}>

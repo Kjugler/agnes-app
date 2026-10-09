@@ -5,16 +5,10 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import CheckoutWiring from "./contest/CheckoutWiring";
 import StressTestChrome from "@/components/StressTestChrome";
-import TikTokPixel from "@/components/analytics/TikTokPixel";
-import TikTokPageView from "@/components/analytics/TikTokPageView";
-import MetaPixel from "@/components/analytics/MetaPixel";
-import MetaPageView from "@/components/analytics/MetaPageView";
 import MetaPixelDebugPanel from "@/components/analytics/MetaPixelDebugPanel";
-import MicrosoftUET from "@/components/analytics/MicrosoftUET";
-import MicrosoftUETPageView from "@/components/analytics/MicrosoftUETPageView";
-import GoogleAds from "@/components/analytics/GoogleAds";
-import GoogleAdsPageView from "@/components/analytics/GoogleAdsPageView";
-import GoogleTagManager from "@/components/analytics/GoogleTagManager";
+import AdvertisingTags from "@/components/privacy/AdvertisingTags";
+import PrivacyConsentRoot from "@/components/privacy/PrivacyConsentRoot";
+import { getServerAdvertisingConsentSnapshot } from "@/lib/privacy/advertisingConsentServer";
 
 const SITE_URL = "https://www.theagnesprotocol.com";
 /** Absolute URL for crawlers (og:image, Twitter cards). */
@@ -45,11 +39,13 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const advertisingConsent = await getServerAdvertisingConsentSnapshot();
+
   return (
     <html lang="en" className="dark">
       <head>
@@ -58,21 +54,15 @@ export default function RootLayout({
         <link rel="preload" as="image" href="/images/score-bg.jpg" />
       </head>
       <body suppressHydrationWarning={true}>
-        <GoogleTagManager />
-        <TikTokPixel />
-        <MetaPixel />
-        <MicrosoftUET />
-        <GoogleAds />
-        <StressTestChrome>{children}</StressTestChrome>
-        {/* Global, invisible, zero animation/layout impact */}
-        <Suspense fallback={null}>
-          <CheckoutWiring />
-          <TikTokPageView />
-          <MetaPageView />
-          <MicrosoftUETPageView />
-          <GoogleAdsPageView />
-          <MetaPixelDebugPanel />
-        </Suspense>
+        <PrivacyConsentRoot initialSnapshot={advertisingConsent}>
+          <AdvertisingTags />
+          <StressTestChrome>{children}</StressTestChrome>
+          {/* Global, invisible, zero animation/layout impact */}
+          <Suspense fallback={null}>
+            <CheckoutWiring />
+            <MetaPixelDebugPanel />
+          </Suspense>
+        </PrivacyConsentRoot>
       </body>
     </html>
   );

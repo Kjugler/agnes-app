@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useState, type FormEvent, type RefObject } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { writeContestEmail } from '@/lib/identity';
 import {
@@ -108,6 +109,10 @@ export default function ReadersAgreeEmailCapture({
           </button>
         </div>
         {error ? <p className="ra-email-capture-error">{error}</p> : null}
+        <p className="ra-email-capture-privacy">
+          By continuing, you&apos;ll receive access to the sample chapters.{' '}
+          <Link href="/privacy">Privacy Policy</Link>
+        </p>
       </form>
     </div>
   );

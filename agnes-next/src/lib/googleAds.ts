@@ -1,3 +1,5 @@
+import { mayUseAdvertisingMeasurement } from '@/lib/privacy/advertisingConsentClient';
+
 /** Google Ads (gtag) — global site tag. Purchase conversion is fired by GTM from the purchase dataLayer event. */
 
 export const DEFAULT_GOOGLE_ADS_ID = 'AW-18340602294';
@@ -23,6 +25,7 @@ export function isGoogleAdsEnabled(): boolean {
 /** SPA route change page path (initial config handled by GoogleAds base tag). */
 export function pageGoogleAds(pagePath?: string): void {
   if (typeof window === 'undefined' || !isGoogleAdsEnabled()) return;
+  if (!mayUseAdvertisingMeasurement()) return;
   try {
     const id = getGoogleAdsId();
     if (!id) return;
