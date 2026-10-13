@@ -3,12 +3,14 @@ import "../styles/terminal.css";
 
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import Script from "next/script";
 import CheckoutWiring from "./contest/CheckoutWiring";
 import StressTestChrome from "@/components/StressTestChrome";
 import MetaPixelDebugPanel from "@/components/analytics/MetaPixelDebugPanel";
 import AdvertisingTags from "@/components/privacy/AdvertisingTags";
 import PrivacyConsentRoot from "@/components/privacy/PrivacyConsentRoot";
 import { getServerAdvertisingConsentSnapshot } from "@/lib/privacy/advertisingConsentServer";
+import { buildGoogleConsentDefaultScript } from "@/lib/privacy/googleConsentMode";
 
 const SITE_URL = "https://www.theagnesprotocol.com";
 /** Absolute URL for crawlers (og:image, Twitter cards). */
@@ -52,6 +54,13 @@ export default async function RootLayout({
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         {/* Preload the cruise background to avoid any flash */}
         <link rel="preload" as="image" href="/images/score-bg.jpg" />
+        <Script
+          id="google-consent-mode"
+          strategy="beforeInteractive"
+          dangerouslySetInnerHTML={{
+            __html: buildGoogleConsentDefaultScript(advertisingConsent.allowed),
+          }}
+        />
       </head>
       <body suppressHydrationWarning={true}>
         <PrivacyConsentRoot initialSnapshot={advertisingConsent}>

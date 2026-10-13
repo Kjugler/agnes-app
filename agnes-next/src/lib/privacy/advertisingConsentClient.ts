@@ -14,6 +14,7 @@ import {
   type AdvertisingConsentSnapshot,
   type PrivacyRegion,
 } from './advertisingConsent';
+import { applyGoogleConsentUpdate } from './googleConsentModeClient';
 
 type ConsentListener = (snapshot: AdvertisingConsentSnapshot) => void;
 
@@ -112,7 +113,7 @@ function disableLoadedAdvertisingTags(): void {
     /* swallow */
   }
   try {
-    window.gtag?.('consent', 'update', { ad_storage: 'denied', analytics_storage: 'denied' });
+    applyGoogleConsentUpdate(false);
   } catch {
     /* swallow */
   }
@@ -129,6 +130,11 @@ export function persistAdvertisingChoice(choice: AdChoice): AdvertisingConsentSn
     writeCookie(AD_CHOICE_COOKIE, choice);
   }
   const snapshot = getAdvertisingConsentSnapshot();
+  try {
+    applyGoogleConsentUpdate(snapshot.allowed);
+  } catch {
+    /* swallow */
+  }
   if (!snapshot.allowed) {
     clearAdvertisingCookies();
     disableLoadedAdvertisingTags();

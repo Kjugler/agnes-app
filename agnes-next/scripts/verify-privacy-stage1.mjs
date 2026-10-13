@@ -12,6 +12,8 @@ function read(rel) {
 const layout = read('src/app/layout.tsx');
 assert.match(layout, /PrivacyConsentRoot/);
 assert.match(layout, /AdvertisingTags/);
+assert.match(layout, /buildGoogleConsentDefaultScript/);
+assert.match(layout, /strategy="beforeInteractive"/);
 assert.doesNotMatch(layout, /<MetaPixel[\s>/]/);
 assert.doesNotMatch(layout, /<TikTokPixel[\s>/]/);
 assert.doesNotMatch(layout, /<MicrosoftUET[\s>/]/);
@@ -20,6 +22,7 @@ assert.doesNotMatch(layout, /<GoogleTagManager[\s>/]/);
 
 const tags = read('src/components/privacy/AdvertisingTags.tsx');
 assert.match(tags, /if \(!snapshot\.allowed\) return null/);
+assert.match(tags, /applyGoogleConsentUpdate\(snapshot\.allowed\)/);
 assert.match(tags, /<MetaPixel/);
 assert.match(tags, /<TikTokPixel/);
 assert.match(tags, /<MicrosoftUET/);
@@ -44,6 +47,12 @@ assert.doesNotMatch(funnel, /mayUseAdvertisingMeasurement/);
 const helper = read('src/lib/privacy/advertisingConsentClient.ts');
 assert.match(helper, /export function mayUseAdvertisingMeasurement/);
 assert.match(helper, /readGpc/);
+assert.match(helper, /applyGoogleConsentUpdate/);
+
+const consentMode = read('src/lib/privacy/googleConsentMode.ts');
+assert.match(consentMode, /ad_user_data/);
+assert.match(consentMode, /ad_personalization/);
+assert.doesNotMatch(consentMode, /googletagmanager\.com\/gtm\.js/);
 
 const middleware = read('src/middleware.ts');
 assert.match(middleware, /nextWithPrivacy/);
@@ -62,6 +71,12 @@ assert.doesNotMatch(policy, /Conversions API is currently active/i);
 assert.match(policy, /do not currently send purchase events through Meta Conversions API/i);
 assert.match(policy, /Amazon/);
 assert.match(policy, /Barnes/);
+
+const gtm = read('src/components/analytics/GoogleTagManager.tsx');
+assert.match(gtm, /strategy="afterInteractive"/);
+const ads = read('src/components/analytics/GoogleAds.tsx');
+assert.match(ads, /strategy="afterInteractive"/);
+assert.doesNotMatch(ads, /consent','default'/);
 
 const uet = read('src/components/analytics/MicrosoftUET.tsx');
 assert.match(uet, /ad_storage: 'denied'/);

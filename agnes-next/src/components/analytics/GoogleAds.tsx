@@ -20,9 +20,9 @@ export default function GoogleAds() {
         dangerouslySetInnerHTML={{
           __html: `
 window.dataLayer = window.dataLayer || [];
-function gtag(){dataLayer.push(arguments);}
-gtag('js', new Date());
-gtag('config', '${adsId}');
+window.gtag = window.gtag || function gtag(){window.dataLayer.push(arguments);};
+window.gtag('js', new Date());
+window.gtag('config', '${adsId}');
           `.trim(),
         }}
       />
