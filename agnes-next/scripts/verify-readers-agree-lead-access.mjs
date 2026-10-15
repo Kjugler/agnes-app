@@ -29,7 +29,7 @@ assert.match(
   'success must re-enable the form so a later submit can run',
 );
 assert.match(capture, /writeContestEmail\(email\.trim\(\)\.toLowerCase\(\)\)/);
-assert.match(capture, /router\.push\(result\.redirectPath\)/);
+assert.match(capture, /sampleChaptersDestination\(result\.redirectPath\)/);
 assert.match(capture, /fetchReadersAgreeRecognition/);
 assert.match(capture, /Not you\?/);
 assert.match(capture, /buildReadersAgreeContinuePath/);

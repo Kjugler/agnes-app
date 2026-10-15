@@ -25,6 +25,7 @@ import {
 import { JodyConcierge } from '@/components/jody/JodyConcierge';
 import { useJodyHubEntry } from '@/hooks/useJodyConcierge';
 import { isJodyConciergeEnabled } from '@/lib/funnelConfig';
+import { sampleChapterReadHref } from '@/lib/sampleChapterNav';
 
 declare global {
   interface Window {
@@ -94,41 +95,36 @@ export default function SampleChaptersClient() {
     }
   }, [searchParams]);
 
-  const buttons = [
+  const chapters = [
     {
       id: 'btn1',
       label: 'Read Chapter 1',
       text: 'Starts off running.',
-      link: '/sample-chapters/read/1',
+      link: sampleChapterReadHref('1', searchParams),
     },
     {
       id: 'btn2',
       label: 'Read Chapter 2',
       text: 'Fred enters the scene – Agnes already doesn’t like him.',
-      link: '/sample-chapters/read/2',
+      link: sampleChapterReadHref('2', searchParams),
     },
     {
       id: 'btn3',
       label: 'Read Chapter 9',
       text: 'Meet Matt and Reese – straight from the orphanage.',
-      link: '/sample-chapters/read/9',
+      link: sampleChapterReadHref('9', searchParams),
     },
     {
       id: 'btn4',
       label: 'Read Chapter 45',
       text: 'Fred and Jody – always two steps ahead.',
-      link: '/sample-chapters/read/45',
-    },
-    {
-      id: 'btn5',
-      label: 'Buy the Book',
-      text: 'Enjoy the adventure – you’re already living the reality.',
+      link: sampleChapterReadHref('45', searchParams),
     },
   ];
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setCurrent((prev) => (prev + 1) % buttons.length);
+      setCurrent((prev) => (prev + 1) % chapters.length);
     }, 5000);
     return () => clearInterval(interval);
   }, []);
@@ -412,6 +408,35 @@ export default function SampleChaptersClient() {
           >
             Read four chapters free. Decide for yourself.
           </p>
+          <div
+            style={{
+              marginTop: 28,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 10,
+            }}
+          >
+            <BuyBookButton
+              source="sample-chapters"
+              funnelEventType={FUNNEL_EVENT_TYPES.SAMPLE_CHAPTERS_BUY_CLICK}
+              successPath="/checkout/success"
+              cancelPath="/sample-chapters"
+              style={{
+                ...hubPrimaryButtonStyle(true),
+                minHeight: 52,
+                minWidth: 220,
+                width: 'min(100%, 320px)',
+                fontSize: 17,
+                textTransform: 'none',
+              }}
+            >
+              Buy the Book
+            </BuyBookButton>
+            <p style={{ margin: 0, fontSize: 14, color: HUB_THEME.textMuted }}>
+              The complete novel is in the catalog.
+            </p>
+          </div>
         </header>
 
         {/* VIDEOS */}
@@ -462,7 +487,7 @@ export default function SampleChaptersClient() {
             margin: '0 auto',
           }}
         >
-          {buttons.slice(0, 4).map((btn, index) => {
+          {chapters.map((btn, index) => {
             const isActive = current === index;
             return (
               <div
@@ -498,20 +523,18 @@ export default function SampleChaptersClient() {
                       </span>
                     )}
                   </Link>
-                  {isActive && (
-                    <p
-                      style={{
-                        margin: 0,
-                        flex: '1 1 200px',
-                        fontSize: '15px',
-                        lineHeight: 1.5,
-                        color: HUB_THEME.textMuted,
-                        textAlign: 'left',
-                      }}
-                    >
-                      {btn.text}
-                    </p>
-                  )}
+                  <p
+                    style={{
+                      margin: 0,
+                      flex: '1 1 200px',
+                      fontSize: '15px',
+                      lineHeight: 1.5,
+                      color: HUB_THEME.textMuted,
+                      textAlign: 'left',
+                    }}
+                  >
+                    {btn.text}
+                  </p>
                 </div>
               </div>
             );
@@ -534,17 +557,12 @@ export default function SampleChaptersClient() {
             successPath="/checkout/success"
             cancelPath="/sample-chapters"
             style={{
-              ...hubPrimaryButtonStyle(current === 4),
+              ...hubPrimaryButtonStyle(true),
               minHeight: 48,
               textTransform: 'none',
             }}
           >
-            {buttons[4].label}
-            {current === 4 && (
-              <span style={{ marginLeft: '10px' }} aria-hidden>
-                →
-              </span>
-            )}
+            Buy the Book
           </BuyBookButton>
           <Link href="/author" style={hubSecondaryButtonStyle()}>
             About the Author

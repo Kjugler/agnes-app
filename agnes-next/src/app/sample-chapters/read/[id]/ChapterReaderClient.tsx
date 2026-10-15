@@ -18,16 +18,34 @@ import {
   clearReadersAgreeRecognition,
   fetchReadersAgreeRecognition,
 } from '@/lib/readersAgreeSession';
+import { ChapterOneReader } from '@/components/sample-chapters/ChapterOneReader';
+import { BuyBookButton } from '@/components/BuyBookButton';
+import { sampleChaptersHubHref } from '@/lib/sampleChapterNav';
+import { useSearchParams } from 'next/navigation';
 
 function subscribeNoop() {
   return () => {};
 }
+
+const chapterBuyStyle = {
+  background: 'none',
+  border: 'none',
+  color: '#00ffe5',
+  fontSize: 14,
+  fontFamily: 'inherit',
+  textDecoration: 'underline',
+  cursor: 'pointer',
+  padding: 0,
+  textAlign: 'left' as const,
+};
 
 interface ChapterReaderClientProps {
   chapterId: string;
 }
 
 export default function ChapterReaderClient({ chapterId }: ChapterReaderClientProps) {
+  const searchParams = useSearchParams();
+  const hubHref = sampleChaptersHubHref(searchParams);
   const chapter = getChapter(chapterId);
   const viewContentFiredRef = useRef(false);
   const { showJody, tryShowOnExit, dismissJody, readerStatus } = useJodyChapterExit(chapterId);
@@ -143,9 +161,29 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
 
     e.preventDefault();
     tryShowOnExit(() => {
-      window.location.href = '/sample-chapters';
+      window.location.href = sampleChaptersHubHref(searchParams);
     });
   };
+
+  if (chapterId === '1') {
+    return (
+      <>
+        <ChapterOneReader
+          title={title}
+          onBackClick={handleBackNavigation}
+          onTextThisScene={handleTextThisScene}
+        />
+        {showJody ? (
+          <JodyConcierge
+            mode="remember-offer"
+            chapterId={chapterId}
+            readerStatus={readerStatus}
+            onClose={dismissJody}
+          />
+        ) : null}
+      </>
+    );
+  }
 
   return (
     <>
@@ -188,7 +226,7 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
       >
         <div className="chapterReaderNavMobile">
           <Link
-            href="/sample-chapters"
+            href={hubHref}
             onClick={handleBackNavigation}
             style={{
               color: '#00ffe5',
@@ -199,13 +237,22 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
           >
             ← Back to Sample Chapters
           </Link>
+          <BuyBookButton
+            source="sample-chapter-reader"
+            funnelEventType={FUNNEL_EVENT_TYPES.SAMPLE_CHAPTERS_BUY_CLICK}
+            successPath="/checkout/success"
+            cancelPath={hubHref}
+            style={chapterBuyStyle}
+          >
+            Buy the Book
+          </BuyBookButton>
         </div>
         <div
           className="chapterReaderNavDesktop"
           style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-start' }}
         >
           <Link
-            href="/sample-chapters"
+            href={hubHref}
             onClick={handleBackNavigation}
             style={{
               color: '#00ffe5',
@@ -216,17 +263,15 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
           >
             ← Back to Sample Chapters
           </Link>
-          <Link
-            href="/catalog"
-            style={{
-              color: '#00ffe5',
-              fontSize: 14,
-              fontFamily: 'inherit',
-              textDecoration: 'none',
-            }}
+          <BuyBookButton
+            source="sample-chapter-reader"
+            funnelEventType={FUNNEL_EVENT_TYPES.SAMPLE_CHAPTERS_BUY_CLICK}
+            successPath="/checkout/success"
+            cancelPath={hubHref}
+            style={chapterBuyStyle}
           >
-            ← Browse catalog
-          </Link>
+            Buy the Book
+          </BuyBookButton>
         </div>
         
         <span

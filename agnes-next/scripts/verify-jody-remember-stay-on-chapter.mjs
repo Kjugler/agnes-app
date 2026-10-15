@@ -160,12 +160,13 @@ const iframeBeforeJody = reader.indexOf('<iframe');
 const showJodyAt = reader.indexOf('{showJody &&');
 assert.ok(iframeBeforeJody > -1 && showJodyAt > iframeBeforeJody, 'iframe stays mounted independently of Jody');
 
-const hrefHits = [...reader.matchAll(/location\.href\s*=\s*['"]\/sample-chapters['"]/g)];
-assert.equal(hrefHits.length, 1, 'only the Back-link intercept may still go to the hub');
+const hrefHits = [...reader.matchAll(/location\.href\s*=/g)];
+assert.equal(hrefHits.length, 1, 'only the Back-link intercept may still leave the chapter');
 assert.match(
   reader,
-  /handleBackNavigation[\s\S]*location\.href\s*=\s*['"]\/sample-chapters['"]/,
+  /handleBackNavigation[\s\S]*location\.href\s*=\s*sampleChaptersHubHref\(searchParams\)/,
 );
+assert.doesNotMatch(reader, /location\.href\s*=\s*['"]\/sample-chapters\/read/);
 
 assert.match(trigger, /minDwellSecondsBeforeOffer/);
 assert.match(trigger, /tryShowRememberOfferOnChapter/);

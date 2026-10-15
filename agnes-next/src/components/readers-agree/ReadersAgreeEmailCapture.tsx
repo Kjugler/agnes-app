@@ -10,6 +10,7 @@ import {
   type ReadersAgreeCaptureSurface,
   type ReadersAgreeRetailerOrigin,
 } from '@/lib/readersAgreeLead';
+import { sampleChaptersDestination } from '@/lib/sampleChapterNav';
 import {
   clearReadersAgreeRecognition,
   fetchReadersAgreeRecognition,
@@ -88,7 +89,7 @@ export default function ReadersAgreeEmailCapture({
       }
 
       writeContestEmail(email.trim().toLowerCase());
-      router.push(result.redirectPath);
+      router.push(sampleChaptersDestination(result.redirectPath));
     } finally {
       setSubmitting(false);
     }

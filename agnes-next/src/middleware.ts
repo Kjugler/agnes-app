@@ -130,6 +130,21 @@ const SALES_SITE_REDIRECTS: Record<string, string> = {
 export function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
+  // Chapter 1 is drawn in the app. The public file must not open in a new tab.
+  if (pathname === '/chapters/chapter1.pdf') {
+    return applyAdvertisingPrivacyToResponse(
+      request,
+      new NextResponse('This chapter opens in the reader.', {
+        status: 404,
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Cache-Control': 'no-store',
+          'X-Content-Type-Options': 'nosniff',
+        },
+      }),
+    );
+  }
+
   // Exclude ALL terminal-proxy routes from splitter logic (pass through)
   if (
     pathname === '/terminal-proxy' ||
