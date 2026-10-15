@@ -16,7 +16,10 @@ const { signReadersAgreeSession } = require('../../src/lib/readersAgreeSessionTo
 const {
   normalizeVisitorId,
   readAllowanceToken,
+  emailAcceptanceFact,
+  serverGateFact,
 } = require('../../src/lib/readingAllowance.cjs');
+const { recordReadingAllowanceFact } = require('../../lib/readers/recordReadingAllowanceFact.cjs');
 
 const REDIRECT_PARAM_KEYS = [
   'ref',
@@ -162,6 +165,22 @@ module.exports = async function readersAgreeLeadHandler(req, res) {
       claimedVisitorId &&
       allowance.state.visitorId === claimedVisitorId
     ) {
+      const gate = serverGateFact(allowance.state);
+      if (gate) {
+        try {
+          await recordReadingAllowanceFact(prisma, gate, user.id);
+        } catch (gateErr) {
+          console.warn('[readers-agree/lead] gate record failed', gateErr && gateErr.message);
+        }
+      }
+      const acceptance = emailAcceptanceFact(allowance.state);
+      if (acceptance) {
+        try {
+          await recordReadingAllowanceFact(prisma, acceptance, user.id);
+        } catch (acceptErr) {
+          console.warn('[readers-agree/lead] gate acceptance record failed', acceptErr && acceptErr.message);
+        }
+      }
       try {
         await attachAnonymousVisitorEvents(user.id, claimedVisitorId);
       } catch (attachErr) {

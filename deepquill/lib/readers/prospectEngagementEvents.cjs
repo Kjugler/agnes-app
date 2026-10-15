@@ -14,6 +14,7 @@
 
 const { FUNNEL_EVENT_TYPES } = require('../funnel/funnelEventTypes.cjs');
 const { isReadersAgreeLeadAttribution, leadAttributionVisitorId } = require('./classifyProspectEngagement.cjs');
+const { ALLOWANCE_ENGAGEMENT_EVENT_TYPES } = require('./readingAllowanceEngagement.cjs');
 
 const PROSPECT_ENGAGEMENT_EVENT_TYPES = Object.freeze([
   FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED,
@@ -24,6 +25,7 @@ const PROSPECT_ENGAGEMENT_EVENT_TYPES = Object.freeze([
   FUNNEL_EVENT_TYPES.SAMPLE_CHAPTER_TIME_ON_PAGE,
   FUNNEL_EVENT_TYPES.JODY_APPEAR,
   FUNNEL_EVENT_TYPES.JODY_CHAPTER_COMPLETED,
+  ...ALLOWANCE_ENGAGEMENT_EVENT_TYPES,
 ]);
 
 const EVENT_SELECT = Object.freeze({

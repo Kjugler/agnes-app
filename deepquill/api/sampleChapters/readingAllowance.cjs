@@ -13,11 +13,32 @@ const {
   readAllowanceToken,
   signAllowanceState,
   currentLimitMs,
+  planAllowanceRecord,
+  markAllowanceRecorded,
+  serverGateFact,
 } = require('../../src/lib/readingAllowance.cjs');
+const { recordReadingAllowanceFact } = require('../../lib/readers/recordReadingAllowanceFact.cjs');
 
 function tokenFromRequest(req) {
   const header = req.headers['x-reading-allowance'];
   return typeof header === 'string' ? header.trim() : '';
+}
+
+async function persistPlan(plan) {
+  let lastError = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const { prisma, ensureDatabaseUrl } = require('../../server/prisma.cjs');
+      ensureDatabaseUrl();
+      if (!prisma) return false;
+      const result = await recordReadingAllowanceFact(prisma, plan);
+      return result.ok === true;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  console.warn('[reading-allowance] engagement record failed', lastError && lastError.message);
+  return false;
 }
 
 function respond(res, state, limit) {
@@ -61,6 +82,7 @@ module.exports = async function readingAllowanceHandler(req, res) {
     const chapterId = normalizeChapterId(body.chapterId) || state.chapterId;
     const page = normalizePage(body.page) || state.page;
     const visitorId = normalizeVisitorId(body.visitorId);
+    const previous = state;
     state = applyReadingTick(state, {
       now,
       limitMs: limit,
@@ -70,6 +92,17 @@ module.exports = async function readingAllowanceHandler(req, res) {
       page,
       visitorId,
     });
+    const plans = [];
+    if (body.decline === true && previous.exhausted && !previous.gatePersisted) {
+      const gate = serverGateFact(previous);
+      if (gate) plans.push(gate);
+    }
+    const plan = planAllowanceRecord(previous, state, { decline: body.decline === true });
+    if (plan) plans.push(plan);
+    for (const fact of plans) {
+      const saved = await persistPlan(fact);
+      if (saved) state = markAllowanceRecorded(state, fact.outcome);
+    }
     return respond(res, state, limit);
   } catch (err) {
     console.error('[reading-allowance]', err && err.message);

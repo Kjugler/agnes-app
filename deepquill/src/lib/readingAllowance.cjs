@@ -47,6 +47,20 @@ function signaturesMatch(provided, expected) {
   return crypto.timingSafeEqual(sigBuf, expectedBuf);
 }
 
+function emptyChapterMs() {
+  return { 1: 0, 2: 0, 9: 0, 45: 0 };
+}
+
+function normalizeChapterMs(raw) {
+  const out = emptyChapterMs();
+  if (!raw || typeof raw !== 'object') return out;
+  for (const id of SAMPLE_CHAPTER_IDS) {
+    const n = Number(raw[id]);
+    if (Number.isFinite(n) && n > 0) out[id] = Math.min(LIMIT_MS, Math.floor(n));
+  }
+  return out;
+}
+
 function freshAllowanceState(nowMs) {
   const now = Number.isFinite(nowMs) ? nowMs : Date.now();
   return {
@@ -57,6 +71,10 @@ function freshAllowanceState(nowMs) {
     page: 1,
     visitorId: null,
     exp: Math.floor(now / 1000) + TTL_SECONDS,
+    chapterMs: emptyChapterMs(),
+    persistedQualifyingMs: 0,
+    gatePersisted: false,
+    notNowPersisted: false,
   };
 }
 
@@ -77,6 +95,7 @@ function normalizeVisitorId(value) {
 }
 
 function signAllowanceState(state) {
+  const chapters = normalizeChapterMs(state.chapterMs);
   const payloadStr = JSON.stringify({
     typ: ALLOWANCE_TYP,
     acc: state.accumulatedMs,
@@ -86,6 +105,13 @@ function signAllowanceState(state) {
     pg: state.page,
     vid: state.visitorId,
     exp: state.exp,
+    c1: chapters['1'],
+    c2: chapters['2'],
+    c9: chapters['9'],
+    c45: chapters['45'],
+    pst: Math.max(0, Math.floor(Number(state.persistedQualifyingMs) || 0)),
+    gp: state.gatePersisted ? 1 : 0,
+    np: state.notNowPersisted ? 1 : 0,
   });
   const hmac = crypto.createHmac('sha256', getSecret());
   hmac.update(payloadStr);
@@ -146,14 +172,24 @@ function readAllowanceToken(token, nowMs) {
       page: Number.isInteger(page) && page >= 1 && page <= 500 ? page : 1,
       visitorId: normalizeVisitorId(payload.vid),
       exp,
+      chapterMs: normalizeChapterMs({
+        1: payload.c1,
+        2: payload.c2,
+        9: payload.c9,
+        45: payload.c45,
+      }),
+      persistedQualifyingMs:
+        Number.isFinite(Number(payload.pst)) && Number(payload.pst) > 0
+          ? Math.min(LIMIT_MS, Math.floor(Number(payload.pst)))
+          : 0,
+      gatePersisted: payload.gp === 1,
+      notNowPersisted: payload.np === 1,
     },
   };
 }
 
-function applyReadingTick(state, input) {
-  const now = Number.isFinite(input.now) ? input.now : Date.now();
-  const limit = Number.isFinite(input.limitMs) ? input.limitMs : currentLimitMs();
-  const next = {
+function carryAllowance(state, now, input) {
+  return {
     accumulatedMs: state.accumulatedMs,
     exhausted: state.exhausted,
     lastTickAt: now,
@@ -161,7 +197,17 @@ function applyReadingTick(state, input) {
     page: input.page || state.page,
     visitorId: state.visitorId || input.visitorId || null,
     exp: state.exp,
+    chapterMs: normalizeChapterMs(state.chapterMs),
+    persistedQualifyingMs: Math.max(0, Math.floor(Number(state.persistedQualifyingMs) || 0)),
+    gatePersisted: state.gatePersisted === true,
+    notNowPersisted: state.notNowPersisted === true,
   };
+}
+
+function applyReadingTick(state, input) {
+  const now = Number.isFinite(input.now) ? input.now : Date.now();
+  const limit = Number.isFinite(input.limitMs) ? input.limitMs : currentLimitMs();
+  const next = carryAllowance(state, now, input);
 
   if (input.decline === true) {
     next.exhausted = true;
@@ -177,8 +223,107 @@ function applyReadingTick(state, input) {
     credit = Math.min(elapsed, MAX_CREDIT_MS);
   }
   next.accumulatedMs = Math.min(limit, state.accumulatedMs + credit);
+  if (credit > 0 && next.chapterId) {
+    next.chapterMs[next.chapterId] = Math.min(limit, next.chapterMs[next.chapterId] + credit);
+  }
   if (next.accumulatedMs >= limit) next.exhausted = true;
   return next;
+}
+
+const SNAPSHOT_GAP_MS = 15_000;
+
+/**
+ * A durable fact derived from the server clock. Decline does not turn the
+ * forced end of the allowance into reading time. Returns null when there is
+ * nothing new to store.
+ */
+function planAllowanceRecord(previous, next, input) {
+  const decline = input && input.decline === true;
+  const visitorId = next && next.visitorId;
+  if (!visitorId) return null;
+  const sourceState = decline ? previous : next;
+  const qualifyingMs = Math.max(0, Math.floor(Number(sourceState.accumulatedMs) || 0));
+  const fact = {
+    visitorId,
+    qualifyingMs,
+    chapterMs: normalizeChapterMs(sourceState.chapterMs),
+    chapterId: (next && next.chapterId) || null,
+    page: (next && next.page) || 1,
+  };
+
+  if (decline) {
+    if (previous && previous.notNowPersisted) return null;
+    return { ...fact, outcome: 'not_now' };
+  }
+
+  const gateReached = previous && !previous.exhausted && next.exhausted;
+  if (gateReached && !previous.gatePersisted) {
+    return { ...fact, outcome: 'gate_reached' };
+  }
+
+  const persisted = Math.max(0, Math.floor(Number(previous && previous.persistedQualifyingMs) || 0));
+  const chapterChanged = Boolean(
+    previous &&
+      previous.chapterId &&
+      next.chapterId &&
+      previous.chapterId !== next.chapterId,
+  );
+  if (qualifyingMs > persisted && (qualifyingMs - persisted >= SNAPSHOT_GAP_MS || chapterChanged)) {
+    return { ...fact, outcome: 'snapshot' };
+  }
+  return null;
+}
+
+function markAllowanceRecorded(state, outcome) {
+  const next = carryAllowance(state, state.lastTickAt, state);
+  next.accumulatedMs = state.accumulatedMs;
+  next.exhausted = state.exhausted;
+  if (outcome === 'not_now') {
+    next.notNowPersisted = true;
+    next.persistedQualifyingMs = Math.max(
+      next.persistedQualifyingMs,
+      Object.values(normalizeChapterMs(state.chapterMs)).reduce((sum, ms) => sum + ms, 0),
+    );
+    return next;
+  }
+  next.persistedQualifyingMs = Math.max(next.persistedQualifyingMs, Math.floor(state.accumulatedMs || 0));
+  if (outcome === 'gate_reached') next.gatePersisted = true;
+  return next;
+}
+
+function creditedChapterMs(state) {
+  const chapterMs = normalizeChapterMs(state && state.chapterMs);
+  const credited = Object.values(chapterMs).reduce((sum, ms) => sum + ms, 0);
+  return { chapterMs, credited };
+}
+
+function emailAcceptanceFact(state) {
+  if (!state || !state.visitorId) return null;
+  const { chapterMs, credited } = creditedChapterMs(state);
+  if (credited <= 0) return null;
+  return {
+    outcome: 'email_accepted',
+    visitorId: state.visitorId,
+    qualifyingMs: credited,
+    chapterMs,
+    chapterId: state.chapterId || null,
+    page: state.page || 1,
+  };
+}
+
+/** Real server credit that reached the allowance. A decline bump does not qualify. */
+function serverGateFact(state) {
+  if (!state || !state.visitorId || state.exhausted !== true) return null;
+  const { chapterMs, credited } = creditedChapterMs(state);
+  if (credited < LIMIT_MS) return null;
+  return {
+    outcome: 'gate_reached',
+    visitorId: state.visitorId,
+    qualifyingMs: credited,
+    chapterMs,
+    chapterId: state.chapterId || null,
+    page: state.page || 1,
+  };
 }
 
 function publicAllowance(state, limitMs) {
@@ -211,4 +356,9 @@ module.exports = {
   readAllowanceToken,
   applyReadingTick,
   publicAllowance,
+  planAllowanceRecord,
+  markAllowanceRecorded,
+  emailAcceptanceFact,
+  serverGateFact,
+  SNAPSHOT_GAP_MS,
 };

@@ -218,6 +218,130 @@ check('RA lead + 90-second sample is sample_engaged', () => {
   assert.strictEqual(result.latestEngagementAt, '2026-09-16T16:10:00.000Z');
 });
 
+check('client time split across chapters does not qualify', () => {
+  const result = classify({
+    events: [
+      serverEmail(),
+      ev(FUNNEL_EVENT_TYPES.SAMPLE_CHAPTER_TIME_ON_PAGE, { chapterId: '1', secondsOnPage: 40 }),
+      ev(FUNNEL_EVENT_TYPES.SAMPLE_CHAPTER_TIME_ON_PAGE, { chapterId: '2', secondsOnPage: 50 }),
+    ],
+  });
+  assert.strictEqual(result.sampleEngaged, false);
+  assert.strictEqual(result.engagement, ENGAGEMENT.IDENTIFIED);
+  assert.ok(!result.reasons.includes(REASON.QUALIFYING_CUMULATIVE));
+  assert.strictEqual(result.activity.measuredSessionCount, null);
+  assert.strictEqual(result.activity.inferredReturnCount, 0);
+});
+
+check('server cumulative reading across chapters qualifies', () => {
+  const early = '2026-10-15T15:00:00.000Z';
+  const later = '2026-10-15T22:30:00.000Z';
+  const result = classify({
+    events: [
+      serverEmail({ createdAt: early }),
+      ev('READING_ALLOWANCE_RECORDED', {
+        createdAt: early,
+        meta: {
+          allowanceSource: 'server_allowance',
+          outcome: 'snapshot',
+          qualifyingMs: 40_000,
+          chapterMs1: 40_000,
+          chapterMs2: 0,
+          chapterMs9: 0,
+          chapterMs45: 0,
+          chapterId: '1',
+        },
+      }),
+      ev('READING_GATE_REACHED', {
+        createdAt: later,
+        meta: {
+          allowanceSource: 'server_allowance',
+          outcome: 'gate_reached',
+          qualifyingMs: 90_000,
+          chapterMs1: 40_000,
+          chapterMs2: 30_000,
+          chapterMs9: 20_000,
+          chapterMs45: 0,
+          chapterId: '9',
+        },
+      }),
+      ev('READING_GATE_EMAIL_ACCEPTED', {
+        createdAt: later,
+        meta: {
+          allowanceSource: 'server_allowance',
+          outcome: 'email_accepted',
+          qualifyingMs: 90_000,
+          chapterMs1: 40_000,
+          chapterMs2: 30_000,
+          chapterMs9: 20_000,
+          chapterMs45: 0,
+          chapterId: '9',
+        },
+      }),
+    ],
+  });
+  assert.strictEqual(result.sampleEngaged, true);
+  assert.strictEqual(result.engagement, ENGAGEMENT.SAMPLE_ENGAGED);
+  assert.strictEqual(result.qualifyingMs, 90_000);
+  assert.deepStrictEqual(result.qualifyingByChapter, { 1: 40_000, 2: 30_000, 9: 20_000, 45: 0 });
+  assert.deepStrictEqual(result.chaptersSampled, ['1', '2', '9']);
+  assert.strictEqual(result.gateReached, true);
+  assert.strictEqual(result.gateEmailAccepted, true);
+  assert.strictEqual(result.notNow, false);
+  assert.ok(result.reasons.includes(REASON.QUALIFYING_CUMULATIVE));
+  assert.ok(result.reasons.includes(REASON.GATE_REACHED));
+  assert.ok(result.reasons.includes(REASON.GATE_EMAIL_ACCEPTED));
+  assert.strictEqual(result.activity.measuredSessionCount, null);
+  assert.strictEqual(result.activity.sessionMeasurement, 'unavailable_no_session_id');
+  assert.strictEqual(result.activity.inferredReturnCount, 1);
+  assert.strictEqual(result.activity.firstActivityAt, early);
+  assert.strictEqual(result.activity.latestActivityAt, later);
+});
+
+check('Not Now without credited reading does not qualify', () => {
+  const result = classify({
+    events: [
+      serverEmail(),
+      ev('READING_GATE_NOT_NOW', {
+        meta: {
+          allowanceSource: 'server_allowance',
+          outcome: 'not_now',
+          qualifyingMs: 0,
+          chapterMs1: 0,
+          chapterMs2: 0,
+          chapterMs9: 0,
+          chapterMs45: 0,
+        },
+      }),
+    ],
+  });
+  assert.strictEqual(result.sampleEngaged, false);
+  assert.strictEqual(result.notNow, true);
+  assert.strictEqual(result.qualifyingMs, 0);
+  assert.ok(result.reasons.includes(REASON.GATE_NOT_NOW));
+  assert.ok(!result.reasons.includes(REASON.QUALIFYING_CUMULATIVE));
+});
+
+check('a browser cannot forge the server allowance source', () => {
+  const result = classify({
+    events: [
+      serverEmail(),
+      ev('READING_GATE_REACHED', {
+        source: 'server',
+        meta: {
+          allowanceSource: 'client',
+          outcome: 'gate_reached',
+          qualifyingMs: 90_000,
+          chapterMs1: 90_000,
+        },
+      }),
+    ],
+  });
+  assert.strictEqual(result.sampleEngaged, false);
+  assert.strictEqual(result.gateReached, false);
+  assert.strictEqual(result.qualifyingMs, 0);
+});
+
 check('same-chapter accumulated dwell reaching 90 seconds', () => {
   const result = classify({
     events: [

@@ -35,6 +35,11 @@
  */
 
 const { FUNNEL_EVENT_TYPES, isSampleChapterId } = require('../funnel/funnelEventTypes.cjs');
+const {
+  QUALIFYING_MS,
+  readAllowanceEngagementEvent,
+  deriveReaderActivity,
+} = require('./readingAllowanceEngagement.cjs');
 
 const ENGAGEMENT = Object.freeze({
   IDENTIFIED: 'identified',
@@ -55,6 +60,10 @@ const REASON = Object.freeze({
   JODY_90S: 'jody_90s',
   REMEMBERED_PLACE: 'remembered_place',
   RETAILER_RETURN: 'retailer_return',
+  QUALIFYING_CUMULATIVE: 'qualifying_cumulative',
+  GATE_REACHED: 'gate_reached',
+  GATE_EMAIL_ACCEPTED: 'gate_email_accepted',
+  GATE_NOT_NOW: 'gate_not_now',
 });
 
 const MEANINGFUL_DWELL_SECONDS = 90;
@@ -229,6 +238,11 @@ function classifyProspectEngagement(input) {
   let hasSingleDwell90 = false;
   let hasReturn = false;
   let hasQualifyingJody = false;
+  let serverQualifyingMs = 0;
+  let gateReached = false;
+  let gateEmailAccepted = false;
+  let gateNotNow = false;
+  const serverChapterMs = { 1: 0, 2: 0, 9: 0, 45: 0 };
   let latestEmail = null;
   let latestReturn = null;
   let latestClick = null;
@@ -278,6 +292,21 @@ function classifyProspectEngagement(input) {
       if (chapterId) chapters.add(chapterId);
       if (at) latestCandidates.push(at);
     }
+
+    const allowance = readAllowanceEngagementEvent(event);
+    if (allowance) {
+      serverQualifyingMs = Math.max(serverQualifyingMs, allowance.qualifyingMs);
+      for (const id of CHAPTER_ORDER) {
+        const ms = allowance.chapterMs[id] || 0;
+        if (ms > serverChapterMs[id]) serverChapterMs[id] = ms;
+        if (ms > 0) chapters.add(id);
+      }
+      if (allowance.chapterId) chapters.add(allowance.chapterId);
+      if (allowance.outcome === 'gate_reached') gateReached = true;
+      if (allowance.outcome === 'email_accepted') gateEmailAccepted = true;
+      if (allowance.outcome === 'not_now') gateNotNow = true;
+      if (at) latestCandidates.push(at);
+    }
   }
 
   const rememberedChapter = asTrimmedString(src.lastCompletedChapterId);
@@ -295,14 +324,23 @@ function classifyProspectEngagement(input) {
     }
   }
 
+  const serverChapterTotal = CHAPTER_ORDER.reduce((sum, id) => sum + serverChapterMs[id], 0);
+  const cumulativeQualifyingMs = Math.max(serverQualifyingMs, serverChapterTotal);
+  const cumulativeQualified = cumulativeQualifyingMs >= QUALIFYING_MS;
+
   if (hasChapterOpen) addReason(reasons, REASON.CHAPTER_OPENED);
   if (hasSingleDwell90) addReason(reasons, REASON.DWELL_90S);
   else if (hasDwellSum90) addReason(reasons, REASON.DWELL_90S_SUM);
+  if (cumulativeQualified) addReason(reasons, REASON.QUALIFYING_CUMULATIVE);
+  if (gateReached) addReason(reasons, REASON.GATE_REACHED);
+  if (gateEmailAccepted) addReason(reasons, REASON.GATE_EMAIL_ACCEPTED);
+  if (gateNotNow) addReason(reasons, REASON.GATE_NOT_NOW);
   if (hasQualifyingJody) addReason(reasons, REASON.JODY_90S);
   if (rememberedPlace) addReason(reasons, REASON.REMEMBERED_PLACE);
   if (hasReturn) addReason(reasons, REASON.RETAILER_RETURN);
 
-  const sampleEngaged = hasSingleDwell90 || hasDwellSum90 || hasQualifyingJody || rememberedPlace;
+  const sampleEngaged =
+    hasSingleDwell90 || hasDwellSum90 || hasQualifyingJody || rememberedPlace || cumulativeQualified;
   const retailerOrigin =
     originFromEvent(latestEmail) || originFromEvent(latestReturn) || originFromEvent(latestClick);
 
@@ -317,6 +355,17 @@ function classifyProspectEngagement(input) {
     sampleEngaged,
     chaptersSampled: orderedChapters(chapters),
     latestEngagementAt: latestIso(latestCandidates),
+    qualifyingMs: cumulativeQualifyingMs,
+    qualifyingByChapter: {
+      1: serverChapterMs['1'],
+      2: serverChapterMs['2'],
+      9: serverChapterMs['9'],
+      45: serverChapterMs['45'],
+    },
+    gateReached,
+    gateEmailAccepted,
+    notNow: gateNotNow,
+    activity: deriveReaderActivity(events),
     reasons,
     analyticsOnly: true,
     identityAnchor: IDENTITY_ANCHOR,
