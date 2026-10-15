@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useEffect, useRef, type MouseEvent } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { getChapter, isValidChapterId } from '../../chapters';
 import { readAssociate } from '@/lib/identity';
 import { buildTextThisSceneSmsBody, openSmsWithPrefilledBody } from '@/lib/textThisScene';
@@ -9,35 +10,12 @@ import { trackTikTok } from '@/lib/tiktokPixel';
 import { trackMeta } from '@/lib/metaPixel';
 import { FUNNEL_EVENT_TYPES, useFunnelPageEngagement } from '@/lib/funnelTracking';
 import { JodyConcierge } from '@/components/jody/JodyConcierge';
-import { MobileChapterLanding } from '@/components/jody/MobileChapterLanding';
-import { isJodyConciergeEnabled, isJodyMobileDeliveryEnabled } from '@/lib/funnelConfig';
+import { isJodyConciergeEnabled } from '@/lib/funnelConfig';
 import { useJodyChapterExit } from '@/hooks/useJodyConcierge';
 import { JODY_CONCIERGE_CONFIG } from '@/config/jodyConcierge';
 import { isReadingSessionDwellMet } from '@/lib/readerJourney';
-import {
-  clearReadersAgreeRecognition,
-  fetchReadersAgreeRecognition,
-} from '@/lib/readersAgreeSession';
-import { ChapterOneReader } from '@/components/sample-chapters/ChapterOneReader';
-import { BuyBookButton } from '@/components/BuyBookButton';
+import { SampleChapterReader } from '@/components/sample-chapters/SampleChapterReader';
 import { sampleChaptersHubHref } from '@/lib/sampleChapterNav';
-import { useSearchParams } from 'next/navigation';
-
-function subscribeNoop() {
-  return () => {};
-}
-
-const chapterBuyStyle = {
-  background: 'none',
-  border: 'none',
-  color: '#00ffe5',
-  fontSize: 14,
-  fontFamily: 'inherit',
-  textDecoration: 'underline',
-  cursor: 'pointer',
-  padding: 0,
-  textAlign: 'left' as const,
-};
 
 interface ChapterReaderClientProps {
   chapterId: string;
@@ -49,31 +27,6 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
   const chapter = getChapter(chapterId);
   const viewContentFiredRef = useRef(false);
   const { showJody, tryShowOnExit, dismissJody, readerStatus } = useJodyChapterExit(chapterId);
-  const isClient = useSyncExternalStore(subscribeNoop, () => true, () => false);
-  const mobileDeliveryEnabled = isJodyMobileDeliveryEnabled();
-  const [mobileAccess, setMobileAccess] = useState<'pending' | 'recognized' | 'anonymous'>(
-    mobileDeliveryEnabled ? 'pending' : 'anonymous',
-  );
-  const [recognizedHint, setRecognizedHint] = useState<string | null>(null);
-  const [switchingReader, setSwitchingReader] = useState(false);
-
-  useEffect(() => {
-    if (!mobileDeliveryEnabled) return;
-    let cancelled = false;
-    fetchReadersAgreeRecognition().then((result) => {
-      if (cancelled) return;
-      if (result.recognized) {
-        setRecognizedHint(result.emailHint);
-        setMobileAccess('recognized');
-      } else {
-        setRecognizedHint(null);
-        setMobileAccess('anonymous');
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [mobileDeliveryEnabled]);
 
   useFunnelPageEngagement({
     pageViewType: FUNNEL_EVENT_TYPES.SAMPLE_CHAPTER_OPEN,
@@ -100,6 +53,27 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
     });
   }, [chapterId, chapter]);
 
+  const handleTextThisScene = () => {
+    const ref = readAssociate()?.code ?? null;
+    const body = buildTextThisSceneSmsBody(ref);
+    openSmsWithPrefilledBody(body);
+  };
+
+  const handleBackNavigation = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (
+      !isJodyConciergeEnabled() ||
+      chapterId !== JODY_CONCIERGE_CONFIG.firstAppearAfterChapter
+    ) {
+      return;
+    }
+    if (!isReadingSessionDwellMet(chapterId)) return;
+
+    event.preventDefault();
+    tryShowOnExit(() => {
+      window.location.href = sampleChaptersHubHref(searchParams);
+    });
+  };
+
   if (!chapter || !isValidChapterId(chapterId)) {
     return (
       <div
@@ -112,331 +86,26 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
           backgroundColor: '#000',
           color: '#00ffe5',
           fontFamily: '"Courier New", Courier, monospace',
-          padding: 'env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)',
+          padding:
+            'env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)',
         }}
       >
         <p>Chapter not found.</p>
-        <Link
-          href="/sample-chapters"
-          style={{
-            marginTop: 16,
-            color: '#00ff00',
-            textDecoration: 'underline',
-          }}
-        >
+        <Link href={hubHref} style={{ marginTop: 16, color: '#00ff00', textDecoration: 'underline' }}>
           ← Back to Sample Chapters
         </Link>
       </div>
     );
   }
 
-  const { title, pdfUrl } = chapter;
-  const showMobileAccessShell = isClient && mobileDeliveryEnabled && mobileAccess !== 'recognized';
-  const showMobileJodyGate = showMobileAccessShell && mobileAccess === 'anonymous';
-
-  const handleNotYou = async () => {
-    if (switchingReader) return;
-    setSwitchingReader(true);
-    const cleared = await clearReadersAgreeRecognition();
-    setSwitchingReader(false);
-    if (!cleared) return;
-    setRecognizedHint(null);
-    setMobileAccess('anonymous');
-  };
-
-  const handleTextThisScene = () => {
-    const ref = readAssociate()?.code ?? null;
-    const body = buildTextThisSceneSmsBody(ref);
-    openSmsWithPrefilledBody(body);
-  };
-
-  const handleBackNavigation = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    if (
-      !isJodyConciergeEnabled() ||
-      chapterId !== JODY_CONCIERGE_CONFIG.firstAppearAfterChapter
-    ) {
-      return;
-    }
-    if (!isReadingSessionDwellMet(chapterId)) return;
-
-    e.preventDefault();
-    tryShowOnExit(() => {
-      window.location.href = sampleChaptersHubHref(searchParams);
-    });
-  };
-
-  if (chapterId === '1') {
-    return (
-      <>
-        <ChapterOneReader
-          title={title}
-          onBackClick={handleBackNavigation}
-          onTextThisScene={handleTextThisScene}
-        />
-        {showJody ? (
-          <JodyConcierge
-            mode="remember-offer"
-            chapterId={chapterId}
-            readerStatus={readerStatus}
-            onClose={dismissJody}
-          />
-        ) : null}
-      </>
-    );
-  }
-
   return (
     <>
-      {showMobileAccessShell && (
-        <div className="chapter-mobile-jody-delivery">
-          {showMobileJodyGate ? (
-            <MobileChapterLanding chapterId={chapterId} title={title} pdfUrl={pdfUrl} />
-          ) : (
-            <p style={{ color: '#00ffe5', fontSize: 15, padding: 24 }}>One moment…</p>
-          )}
-        </div>
-      )}
-
-      <div className={showMobileAccessShell ? 'chapter-desktop-reader' : undefined}>
-    <div
-      style={{
-        minHeight: '100svh',
-        height: '100svh',
-        display: 'flex',
-        flexDirection: 'column',
-        backgroundColor: '#000',
-        color: '#00ffe5',
-        fontFamily: '"Courier New", Courier, monospace',
-        overflow: 'hidden',
-      }}
-    >
-      {/* Top bar with Back + Download - subtle, respects safe area */}
-      <header
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          paddingTop: 'max(12px, env(safe-area-inset-top))',
-          paddingRight: 'max(12px, env(safe-area-inset-right))',
-          paddingBottom: 12,
-          paddingLeft: 'max(12px, env(safe-area-inset-left))',
-          flexShrink: 0,
-          borderBottom: '1px solid rgba(0, 255, 229, 0.2)',
-        }}
-      >
-        <div className="chapterReaderNavMobile">
-          <Link
-            href={hubHref}
-            onClick={handleBackNavigation}
-            style={{
-              color: '#00ffe5',
-              fontSize: 14,
-              fontFamily: 'inherit',
-              textDecoration: 'underline',
-            }}
-          >
-            ← Back to Sample Chapters
-          </Link>
-          <BuyBookButton
-            source="sample-chapter-reader"
-            funnelEventType={FUNNEL_EVENT_TYPES.SAMPLE_CHAPTERS_BUY_CLICK}
-            successPath="/checkout/success"
-            cancelPath={hubHref}
-            style={chapterBuyStyle}
-          >
-            Buy the Book
-          </BuyBookButton>
-        </div>
-        <div
-          className="chapterReaderNavDesktop"
-          style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-start' }}
-        >
-          <Link
-            href={hubHref}
-            onClick={handleBackNavigation}
-            style={{
-              color: '#00ffe5',
-              fontSize: 14,
-              fontFamily: 'inherit',
-              textDecoration: 'none',
-            }}
-          >
-            ← Back to Sample Chapters
-          </Link>
-          <BuyBookButton
-            source="sample-chapter-reader"
-            funnelEventType={FUNNEL_EVENT_TYPES.SAMPLE_CHAPTERS_BUY_CLICK}
-            successPath="/checkout/success"
-            cancelPath={hubHref}
-            style={chapterBuyStyle}
-          >
-            Buy the Book
-          </BuyBookButton>
-        </div>
-        
-        <span
-          style={{
-            fontSize: 14,
-            fontWeight: 600,
-            flex: 1,
-            textAlign: 'center',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            margin: '0 8px',
-          }}
-        >
-          {title}
-        </span>
-
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
-          <button
-            type="button"
-            onClick={handleTextThisScene}
-            style={{
-              background: 'rgba(0, 255, 229, 0.12)',
-              border: '1px solid rgba(0, 255, 229, 0.6)',
-              color: '#00ffe5',
-              padding: '8px 16px',
-              fontSize: 14,
-              fontFamily: 'inherit',
-              borderRadius: 6,
-              fontWeight: 600,
-              cursor: 'pointer',
-            }}
-          >
-            Text This Scene
-          </button>
-          <a
-            href={pdfUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              background: 'rgba(0, 255, 229, 0.12)',
-              border: '1px solid rgba(0, 255, 229, 0.6)',
-              color: '#00ffe5',
-              padding: '8px 16px',
-              fontSize: 14,
-              fontFamily: 'inherit',
-              textDecoration: 'none',
-              borderRadius: 6,
-              fontWeight: 600,
-            }}
-          >
-            Open full chapter
-          </a>
-          <a
-            href={pdfUrl}
-            download
-            target="_blank"
-            rel="noreferrer noopener"
-            style={{
-              background: 'transparent',
-              border: '1px solid rgba(0, 255, 229, 0.5)',
-              color: '#00ffe5',
-              padding: '8px 16px',
-              fontSize: 14,
-              fontFamily: 'inherit',
-              textDecoration: 'none',
-              borderRadius: 6,
-            }}
-          >
-            Download
-          </a>
-        </div>
-      </header>
-
-      {/* Mobile: embedded PDFs often only show page 1 — use Open full chapter / Download. Desktop: inline iframe. */}
-      <div className="chapter-reader-mobile-panel">
-        {recognizedHint ? (
-          <p style={{ fontSize: 13, lineHeight: 1.5, color: 'rgba(0, 255, 229, 0.8)' }}>
-            Continuing as {recognizedHint}.{' '}
-            <button
-              type="button"
-              onClick={handleNotYou}
-              disabled={switchingReader}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#00ffe5',
-                textDecoration: 'underline',
-                cursor: switchingReader ? 'wait' : 'pointer',
-                font: 'inherit',
-                padding: 0,
-              }}
-            >
-              {switchingReader ? '…' : 'Not you?'}
-            </button>
-          </p>
-        ) : null}
-        <p
-          style={{
-            fontSize: 15,
-            lineHeight: 1.55,
-            maxWidth: 420,
-            color: 'rgba(0, 255, 229, 0.88)',
-          }}
-        >
-          On phones and tablets, use <strong style={{ color: '#00ffe5' }}>Open full chapter</strong> so your
-          browser can show every page—scroll, search, zoom, and print from the viewer.
-        </p>
-        <a
-          href={pdfUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            background: 'rgba(0, 255, 229, 0.15)',
-            border: '2px solid #00ffe5',
-            color: '#00ffe5',
-            padding: '14px 24px',
-            fontSize: 16,
-            fontFamily: 'inherit',
-            textDecoration: 'none',
-            borderRadius: 8,
-            fontWeight: 700,
-          }}
-        >
-          Open full chapter
-        </a>
-        <a
-          href={pdfUrl}
-          download
-          target="_blank"
-          rel="noreferrer noopener"
-          style={{
-            background: 'transparent',
-            border: '1px solid rgba(0, 255, 229, 0.5)',
-            color: '#00ffe5',
-            padding: '10px 20px',
-            fontSize: 14,
-            fontFamily: 'inherit',
-            textDecoration: 'none',
-            borderRadius: 6,
-          }}
-        >
-          Download PDF
-        </a>
-      </div>
-
-      <div
-        className="chapter-reader-embed-host"
-        style={{
-          padding: '0 max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left))',
-          paddingBottom: 'max(12px, env(safe-area-inset-bottom))',
-        }}
-      >
-        <iframe
-          src={pdfUrl}
-          title={title}
-          style={{
-            width: '100%',
-            height: '100%',
-            border: 'none',
-            backgroundColor: '#fff',
-          }}
-        />
-      </div>
-
+      <SampleChapterReader
+        chapterId={chapterId}
+        title={chapter.title}
+        onBackClick={handleBackNavigation}
+        onTextThisScene={handleTextThisScene}
+      />
       {showJody && (
         <JodyConcierge
           mode="remember-offer"
@@ -445,44 +114,6 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
           onClose={dismissJody}
         />
       )}
-
-      <style jsx global>{`
-        .chapterReaderNavMobile {
-          display: none;
-        }
-        .chapterReaderNavDesktop {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-          align-items: flex-start;
-        }
-        @media (max-width: 767px) {
-          .chapterReaderNavMobile {
-            display: block !important;
-          }
-          .chapterReaderNavDesktop {
-            display: none !important;
-          }
-        }
-        @media (max-width: 1023px) {
-          .chapter-mobile-jody-delivery {
-            display: block !important;
-          }
-          .chapter-desktop-reader {
-            display: none !important;
-          }
-        }
-        @media (min-width: 1024px) {
-          .chapter-mobile-jody-delivery {
-            display: none !important;
-          }
-          .chapter-desktop-reader {
-            display: block !important;
-          }
-        }
-      `}</style>
-    </div>
-      </div>
     </>
   );
 }

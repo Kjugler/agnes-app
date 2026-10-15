@@ -18,8 +18,8 @@ import {
   syncActiveReadingClock,
 } from '../src/lib/activeReadingClock.ts';
 import {
-  canAdvanceToPage,
   chapterOneDocumentAccess,
+  sampleChapterReadable,
 } from '../src/lib/chapterOneGate.ts';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -70,13 +70,9 @@ assert.equal(resolveReaderGateThresholdMs('development', '4000'), 4000);
 assert.equal(resolveReaderGateThresholdMs('development', '500'), 90_000);
 assert.equal(resolveReaderGateThresholdMs('development', undefined), 90_000);
 
-assert.equal(canAdvanceToPage({ targetPage: 4, pageCount: 8, accessEstablished: false, gatePage: null }), true);
-assert.equal(canAdvanceToPage({ targetPage: 4, pageCount: 8, accessEstablished: false, gatePage: 3 }), false);
-assert.equal(canAdvanceToPage({ targetPage: 3, pageCount: 8, accessEstablished: false, gatePage: 3 }), true);
-assert.equal(canAdvanceToPage({ targetPage: 2, pageCount: 8, accessEstablished: false, gatePage: 3 }), true);
-assert.equal(canAdvanceToPage({ targetPage: 8, pageCount: 8, accessEstablished: true, gatePage: 3 }), true);
-assert.equal(canAdvanceToPage({ targetPage: 0, pageCount: 8, accessEstablished: true, gatePage: null }), false);
-assert.equal(canAdvanceToPage({ targetPage: 9, pageCount: 8, accessEstablished: true, gatePage: null }), false);
+assert.equal(sampleChapterReadable({ recognized: false, exhausted: false }), true);
+assert.equal(sampleChapterReadable({ recognized: false, exhausted: true }), false);
+assert.equal(sampleChapterReadable({ recognized: true, exhausted: true }), true);
 
 assert.equal(
   chapterOneDocumentAccess({
@@ -85,7 +81,7 @@ assert.equal(
     secFetchDest: 'empty',
     wantsAttachment: false,
   }),
-  'allow',
+  'allowance-or-recognized',
 );
 assert.equal(
   chapterOneDocumentAccess({
@@ -94,7 +90,7 @@ assert.equal(
     secFetchDest: 'document',
     wantsAttachment: false,
   }),
-  'allow-if-recognized',
+  'recognized-only',
 );
 assert.equal(
   chapterOneDocumentAccess({
@@ -103,7 +99,7 @@ assert.equal(
     secFetchDest: 'empty',
     wantsAttachment: true,
   }),
-  'allow-if-recognized',
+  'recognized-only',
 );
 assert.equal(
   chapterOneDocumentAccess({
@@ -130,39 +126,52 @@ assert.equal(
     secFetchDest: 'iframe',
     wantsAttachment: false,
   }),
-  'allow-if-recognized',
+  'recognized-only',
 );
 
 const reader = read('src/app/sample-chapters/read/[id]/ChapterReaderClient.tsx');
 const invitation = read('src/components/sample-chapters/JodyReaderInvitation.tsx');
-const one = read('src/components/sample-chapters/ChapterOneReader.tsx');
-const route = read('src/app/api/sample-chapters/chapter-1/document/route.ts');
+const shared = read('src/components/sample-chapters/SampleChapterReader.tsx');
+const route = read('src/lib/serveSampleChapterDocument.ts');
 const middleware = read('src/middleware.ts');
 const lead = read('src/lib/readersAgreeLead.ts');
+const capture = read('src/components/readers-agree/ReadersAgreeEmailCapture.tsx');
 
-assert.match(reader, /chapterId === '1'/);
-assert.match(reader, /<iframe/);
+assert.match(reader, /SampleChapterReader/);
+assert.doesNotMatch(reader, /<iframe/);
 assert.match(reader, /\{showJody && \(/);
-assert.ok(reader.indexOf('<iframe') < reader.indexOf('{showJody && ('));
-assert.match(reader, /Open full chapter/);
-assert.doesNotMatch(one, /<iframe/);
-assert.doesNotMatch(one, /\/chapters\/chapter1\.pdf/);
-assert.doesNotMatch(one, /consentAccepted/);
+assert.ok(reader.indexOf('<SampleChapterReader') < reader.indexOf('{showJody && ('));
+assert.doesNotMatch(shared, /Open full chapter/);
+assert.doesNotMatch(shared, /chapter-one-download/);
+assert.match(shared, /Back to Sample Chapters/);
+assert.match(shared, /Buy the Book/);
+assert.doesNotMatch(shared, /<iframe/);
+assert.doesNotMatch(shared, /\/chapters\/chapter1\.pdf/);
+assert.doesNotMatch(shared, /consentAccepted/);
+assert.doesNotMatch(shared, /durationMs/);
 assert.doesNotMatch(invitation, /consentAccepted/);
 assert.doesNotMatch(invitation, /prospectNurture/);
 assert.doesNotMatch(invitation, /type="checkbox"/);
 assert.doesNotMatch(invitation, /router\.push/);
 assert.match(invitation, /submitReadersAgreeLead/);
-assert.match(invitation, /Not now/);
-assert.match(invitation, /not a mailing list/);
-assert.match(one, /fetchReadersAgreeRecognition/);
-assert.match(one, /Not you\?/);
-assert.match(one, /CHAPTER_ONE_DOCUMENT_PATH/);
-assert.match(one, /access === 'recognized'/);
+assert.match(invitation, /Continue Reading — Enter Email/);
+assert.match(invitation, /Not Now — Back to Website/);
+assert.match(invitation, /Your email unlocks all four sample chapters/);
+assert.match(shared, /fetchReadersAgreeRecognition/);
+assert.match(shared, /Not you\?/);
+assert.match(shared, /sampleChapterDocumentPath/);
+assert.match(shared, /access === 'recognized'/);
+assert.match(shared, /decline: true/);
 assert.doesNotMatch(route, /consentAccepted/);
 assert.match(route, /chapter1\.pdf/);
-assert.match(route, /allow-if-recognized/);
+assert.match(route, /chapter2\.pdf/);
+assert.match(route, /chapter9\.pdf/);
+assert.match(route, /chapter45\.pdf/);
+assert.match(route, /recognized-only/);
 assert.match(middleware, /pathname === '\/chapters\/chapter1\.pdf'/);
+assert.match(middleware, /pathname === '\/chapters\/chapter45\.pdf'/);
 assert.doesNotMatch(lead, /consentAccepted:\s*true/);
+assert.match(capture, /buildReadersAgreeContinuePath/);
+assert.doesNotMatch(capture, /type="email"/);
 
 console.log(JSON.stringify({ pass: true, gateMs: JODY_READER_GATE_MS, cases: 'clock, page-lock, document-access, source' }));

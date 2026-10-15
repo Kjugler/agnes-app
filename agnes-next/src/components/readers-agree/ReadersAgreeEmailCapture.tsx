@@ -1,16 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState, type FormEvent, type Ref, type RefObject } from 'react';
+import { useEffect, useRef, useState, type Ref, type RefObject } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { writeContestEmail } from '@/lib/identity';
-import {
-  buildReadersAgreeContinuePath,
-  submitReadersAgreeLead,
-  type ReadersAgreeCaptureSurface,
-  type ReadersAgreeRetailerOrigin,
-} from '@/lib/readersAgreeLead';
-import { sampleChaptersDestination } from '@/lib/sampleChapterNav';
+import { buildReadersAgreeContinuePath, type ReadersAgreeCaptureSurface, type ReadersAgreeRetailerOrigin } from '@/lib/readersAgreeLead';
 import {
   clearReadersAgreeRecognition,
   fetchReadersAgreeRecognition,
@@ -37,16 +30,12 @@ export default function ReadersAgreeEmailCapture({
   captureSurface = 'landing',
   retailerOrigin = null,
   variant = 'landing',
-  inputId,
 }: ReadersAgreeEmailCaptureProps) {
   const router = useRouter();
   const internalRef = useRef<HTMLDivElement>(null);
-  const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [recognition, setRecognition] = useState<RecognitionState>({ status: 'checking' });
-  const fieldId = inputId ?? (variant === 'bridge' ? 'ra-email-bridge' : 'ra-email-landing');
   const isBridge = variant === 'bridge';
   const boxRef = (formRef ?? internalRef) as Ref<HTMLDivElement>;
 
@@ -65,38 +54,14 @@ export default function ReadersAgreeEmailCapture({
     };
   }, []);
 
-  const handleSubmit = async (event: FormEvent) => {
-    event.preventDefault();
-    if (submitting) return;
-    setError(null);
-    setSubmitting(true);
-
-    try {
-      const result = await submitReadersAgreeLead({
-        email,
-        searchParams,
-        captureSurface: captureSurface === 'bridge' ? 'bridge' : 'landing',
-        retailerOrigin,
-      });
-
-      if (!result.ok) {
-        setError(
-          result.error === 'invalid_email'
-            ? 'Please enter a valid email address.'
-            : 'Something went wrong. Please try again.',
-        );
-        return;
-      }
-
-      writeContestEmail(email.trim().toLowerCase());
-      router.push(sampleChaptersDestination(result.redirectPath));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   const handleContinue = () => {
-    router.push(buildReadersAgreeContinuePath(searchParams));
+    const path = buildReadersAgreeContinuePath(searchParams);
+    const url = new URL(path, 'http://local.invalid');
+    if (retailerOrigin && !url.searchParams.get('origin')) {
+      url.searchParams.set('origin', retailerOrigin);
+    }
+    if (captureSurface === 'bridge') url.searchParams.set('ra_surface', 'bridge');
+    router.push(`${url.pathname}${url.search}`);
   };
 
   const handleNotYou = async () => {
@@ -109,7 +74,6 @@ export default function ReadersAgreeEmailCapture({
       setError('Something went wrong. Please try again.');
       return;
     }
-    setEmail('');
     setRecognition({ status: 'anonymous' });
   };
 
@@ -146,49 +110,21 @@ export default function ReadersAgreeEmailCapture({
     <div ref={boxRef} className={isBridge ? 'ra-email-capture ra-email-capture--bridge' : 'ra-email-capture'}>
       {isBridge ? (
         <p className="ra-email-capture-lead ra-email-capture-lead--bridge">
-          Enter your email address to read free chapters
+          Read the free chapters, then decide.
         </p>
       ) : (
         <>
           <p className="ra-email-capture-kicker">Not ready to buy? Start reading.</p>
-          <p className="ra-email-capture-lead">
-            Enter your email to read the sample chapters.
-          </p>
+          <p className="ra-email-capture-lead">Choose a chapter first. No email needed to begin.</p>
         </>
       )}
-
-      <form
-        className="ra-email-capture-form"
-        onSubmit={handleSubmit}
-        noValidate
-      >
-        <label className="ra-email-capture-label" htmlFor={fieldId}>
-          Email address
-        </label>
-        <div className="ra-email-capture-row">
-          <input
-            id={fieldId}
-            type="email"
-            name="email"
-            autoComplete="email"
-            inputMode="email"
-            placeholder="you@example.com"
-            className="ra-email-capture-input"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            disabled={submitting}
-          />
-          <button type="submit" className="ra-email-capture-submit" disabled={submitting}>
-            {submitting ? '…' : isBridge ? 'START READING' : 'Start Reading →'}
-          </button>
-        </div>
-        {error ? <p className="ra-email-capture-error">{error}</p> : null}
-        <p className="ra-email-capture-privacy">
-          By continuing, you&apos;ll receive access to the sample chapters.{' '}
-          <Link href="/privacy">Privacy Policy</Link>
-        </p>
-      </form>
+      <button type="button" className="ra-email-capture-submit" onClick={handleContinue}>
+        {isBridge ? 'START READING' : 'Start Reading →'}
+      </button>
+      {error ? <p className="ra-email-capture-error">{error}</p> : null}
+      <p className="ra-email-capture-privacy">
+        <Link href="/privacy">Privacy Policy</Link>
+      </p>
     </div>
   );
 }

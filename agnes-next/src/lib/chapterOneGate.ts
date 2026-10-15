@@ -1,22 +1,20 @@
 /**
- * Chapter 1 reader gate.
- * Page locking is a viewer rule. The PDF bytes still have to reach PDF.js;
- * see chapterOneDocumentAccess for what the server will and will not serve.
+ * Who may fetch a sample-chapter file.
+ * Address-bar, iframe, and download requests require a recognized reader.
+ * The in-app viewer may fetch while the server allowance is still open.
  */
 
-export const CHAPTER_ONE_DOCUMENT_PATH = '/api/sample-chapters/chapter-1/document';
+export const CHAPTER_ONE_DOCUMENT_PATH = '/api/sample-chapters/1/document';
 export const CHAPTER_ONE_PUBLIC_PDF_PATH = '/chapters/chapter1.pdf';
-export const CHAPTER_ONE_ACTIVE_MS_KEY = 'ap_ch1_active_ms';
-export const CHAPTER_ONE_GATE_PAGE_KEY = 'ap_ch1_gate_page';
 
-export type ChapterOneDocumentDecision = 'allow' | 'deny' | 'allow-if-recognized';
+export type SampleChapterDocumentDecision = 'deny' | 'recognized-only' | 'allowance-or-recognized';
 
-export function chapterOneDocumentAccess(input: {
+export function sampleChapterDocumentAccess(input: {
   secFetchSite: string | null;
   secFetchMode: string | null;
   secFetchDest: string | null;
   wantsAttachment: boolean;
-}): ChapterOneDocumentDecision {
+}): SampleChapterDocumentDecision {
   const mode = (input.secFetchMode || '').toLowerCase();
   const dest = (input.secFetchDest || '').toLowerCase();
   const site = (input.secFetchSite || '').toLowerCase();
@@ -26,11 +24,22 @@ export function chapterOneDocumentAccess(input: {
     dest === 'iframe' ||
     dest === 'embed' ||
     dest === 'object';
-  if (input.wantsAttachment || navigation) return 'allow-if-recognized';
+  if (input.wantsAttachment || navigation) return 'recognized-only';
   const fetchModeOk = mode === 'cors' || mode === 'same-origin' || mode === 'no-cors';
   const fetchDestOk = dest === 'empty';
-  if (site === 'same-origin' && fetchModeOk && fetchDestOk) return 'allow';
+  if (site === 'same-origin' && fetchModeOk && fetchDestOk) return 'allowance-or-recognized';
   return 'deny';
+}
+
+export function chapterOneDocumentAccess(
+  input: Parameters<typeof sampleChapterDocumentAccess>[0],
+): SampleChapterDocumentDecision {
+  return sampleChapterDocumentAccess(input);
+}
+
+/** A recognized reader can continue. An exhausted anonymous allowance cannot. */
+export function sampleChapterReadable(input: { recognized: boolean; exhausted: boolean }): boolean {
+  return input.recognized === true || input.exhausted !== true;
 }
 
 export function canAdvanceToPage(input: {

@@ -156,9 +156,9 @@ assert.doesNotMatch(
   'chapter Jody onClose must not navigate to /sample-chapters',
 );
 
-const iframeBeforeJody = reader.indexOf('<iframe');
+const readerBeforeJody = reader.indexOf('<SampleChapterReader');
 const showJodyAt = reader.indexOf('{showJody &&');
-assert.ok(iframeBeforeJody > -1 && showJodyAt > iframeBeforeJody, 'iframe stays mounted independently of Jody');
+assert.ok(readerBeforeJody > -1 && showJodyAt > readerBeforeJody, 'chapter reader stays mounted independently of Jody');
 
 const hrefHits = [...reader.matchAll(/location\.href\s*=/g)];
 assert.equal(hrefHits.length, 1, 'only the Back-link intercept may still leave the chapter');

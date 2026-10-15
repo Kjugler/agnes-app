@@ -291,6 +291,11 @@ const readersAgreeSessionHandler = require('../api/readersAgree/session.cjs');
 app.get('/api/readers-agree/session', readersAgreeSessionHandler);
 console.log('✅ Mounted GET /api/readers-agree/session');
 
+const readingAllowanceHandler = require('../api/sampleChapters/readingAllowance.cjs');
+app.get('/api/sample-chapters/reading-allowance', readingAllowanceHandler);
+app.post('/api/sample-chapters/reading-allowance', readingAllowanceHandler);
+console.log('✅ Mounted GET/POST /api/sample-chapters/reading-allowance');
+
 const jodyChapterDownloadHandler = require('../api/jody/chapterDownload.cjs');
 app.get('/api/jody/chapter/download', jodyChapterDownloadHandler);
 console.log('✅ Mounted GET /api/jody/chapter/download');

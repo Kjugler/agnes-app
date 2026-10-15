@@ -19,20 +19,15 @@ const lead = read('src/lib/readersAgreeLead.ts');
 const route = read('src/app/api/readers-agree/lead/route.ts');
 const tracking = read('src/lib/funnelTracking.ts');
 const redirect = read('src/app/readers-agree/go/ReviewRedirectClient.tsx');
-const reader = read('src/app/sample-chapters/read/[id]/ChapterReaderClient.tsx');
+const reader = read('src/components/sample-chapters/SampleChapterReader.tsx');
 const sessionClient = read('src/lib/readersAgreeSession.ts');
 const momentum = read('src/lib/readersAgreeMomentum.ts');
 
-assert.match(
-  capture,
-  /finally\s*\{[\s\S]*setSubmitting\(false\)/,
-  'success must re-enable the form so a later submit can run',
-);
-assert.match(capture, /writeContestEmail\(email\.trim\(\)\.toLowerCase\(\)\)/);
-assert.match(capture, /sampleChaptersDestination\(result\.redirectPath\)/);
 assert.match(capture, /fetchReadersAgreeRecognition/);
 assert.match(capture, /Not you\?/);
 assert.match(capture, /buildReadersAgreeContinuePath/);
+assert.doesNotMatch(capture, /type="email"/);
+assert.match(read('src/components/sample-chapters/JodyReaderInvitation.tsx'), /writeContestEmail/);
 assert.doesNotMatch(capture, /readContestEmail/);
 assert.doesNotMatch(capture, /localStorage/);
 assert.match(sessionClient, /clearReadersAgreeLeadSession/);
@@ -52,7 +47,7 @@ assert.match(route, /cookies\.set/);
 assert.match(route, /looksLikeReadersAgreeSessionToken/);
 assert.match(route, /delete payload\.sessionToken/);
 assert.match(route, /x-readers-agree-issue-session/);
-assert.match(route, /omitForwardHeaders:\s*\['x-readers-agree-issue-session'\]/);
+assert.match(route, /omitForwardHeaders:\s*\['x-readers-agree-issue-session', READING_ALLOWANCE_HEADER\]/);
 assert.doesNotMatch(route, /contest_user_id/);
 assert.doesNotMatch(route, /ap_funnel_uid/);
 assert.doesNotMatch(route, /normalizeIdentityUserId\(data\.userId\)/);

@@ -13,6 +13,10 @@ const {
   syncReadersAgreeLeadProfile,
 } = require('../../lib/readers/readersAgreeLead.cjs');
 const { signReadersAgreeSession } = require('../../src/lib/readersAgreeSessionToken.cjs');
+const {
+  normalizeVisitorId,
+  readAllowanceToken,
+} = require('../../src/lib/readingAllowance.cjs');
 
 const REDIRECT_PARAM_KEYS = [
   'ref',
@@ -66,6 +70,17 @@ async function resolveLeadUser(email) {
 
   const existing = await prisma.user.findUnique({ where: { email } });
   return existing?.id ? existing : null;
+}
+
+async function attachAnonymousVisitorEvents(userId, visitorId) {
+  const vid = normalizeVisitorId(visitorId);
+  if (!vid || !userId) return;
+  await prisma.$executeRaw`
+    UPDATE "Event"
+    SET "userId" = ${userId}
+    WHERE "userId" IS NULL
+      AND json_extract("meta", '$.visitorId') = ${vid}
+  `;
 }
 
 module.exports = async function readersAgreeLeadHandler(req, res) {
@@ -134,6 +149,24 @@ module.exports = async function readersAgreeLeadHandler(req, res) {
       });
     } catch (eventErr) {
       console.warn('[readers-agree/lead] event record failed', eventErr && eventErr.message);
+    }
+
+    const allowanceHeader = req.headers['x-reading-allowance'];
+    const allowanceToken = typeof allowanceHeader === 'string' ? allowanceHeader.trim() : '';
+    const allowance = allowanceToken ? readAllowanceToken(allowanceToken, Date.now()) : null;
+    const claimedVisitorId = normalizeVisitorId(visitorId);
+    if (
+      allowance &&
+      allowance.ok &&
+      allowance.state.visitorId &&
+      claimedVisitorId &&
+      allowance.state.visitorId === claimedVisitorId
+    ) {
+      try {
+        await attachAnonymousVisitorEvents(user.id, claimedVisitorId);
+      } catch (attachErr) {
+        console.warn('[readers-agree/lead] visitor event attach failed', attachErr && attachErr.message);
+      }
     }
 
     // Only the current Next proxy sends this header. The previous proxy returned

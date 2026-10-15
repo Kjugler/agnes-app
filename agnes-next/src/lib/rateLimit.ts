@@ -10,6 +10,7 @@ const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
 interface RateLimitConfig {
   maxRequests: number;
   windowMs: number;
+  bucket?: string;
 }
 
 const DEFAULT_CONFIG: RateLimitConfig = {
@@ -29,7 +30,7 @@ export function rateLimitByIP(
   const ip = getClientIP(req);
   const now = Date.now();
   
-  const key = `rate_limit:${ip}`;
+  const key = `rate_limit:${finalConfig.bucket || 'default'}:${ip}`;
   const record = rateLimitStore.get(key);
   
   // Clean up expired records periodically

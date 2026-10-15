@@ -1,15 +1,21 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { CHAPTER_ONE_DOCUMENT_PATH } from '@/lib/chapterOneGate';
 import { loadPdfJs, type PdfJsDocument, type PdfJsModule } from '@/lib/loadPdfJs';
 
 type ChapterPdfJsViewerProps = {
+  documentPath: string;
+  title: string;
   pageNumber: number;
   onDocumentLoaded: (pageCount: number) => void;
 };
 
-export function ChapterPdfJsViewer({ pageNumber, onDocumentLoaded }: ChapterPdfJsViewerProps) {
+export function ChapterPdfJsViewer({
+  documentPath,
+  title,
+  pageNumber,
+  onDocumentLoaded,
+}: ChapterPdfJsViewerProps) {
   const frameRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pdfRef = useRef<PdfJsDocument | null>(null);
@@ -27,7 +33,7 @@ export function ChapterPdfJsViewer({ pageNumber, onDocumentLoaded }: ChapterPdfJ
         const pdfjs = await loadPdfJs();
         if (cancelled) return;
         loadingTask = pdfjs.getDocument({
-          url: CHAPTER_ONE_DOCUMENT_PATH,
+          url: documentPath,
           withCredentials: true,
           disableRange: true,
           disableStream: true,
@@ -54,7 +60,7 @@ export function ChapterPdfJsViewer({ pageNumber, onDocumentLoaded }: ChapterPdfJ
       pdfRef.current = null;
       if (pdf) void pdf.destroy();
     };
-  }, []);
+  }, [documentPath]);
 
   useEffect(() => {
     if (status !== 'ready') return;
@@ -125,7 +131,7 @@ export function ChapterPdfJsViewer({ pageNumber, onDocumentLoaded }: ChapterPdfJ
       <canvas
         ref={canvasRef}
         data-testid="chapter-pdf-canvas"
-        aria-label={pageCount ? `Chapter 1, page ${pageNumber} of ${pageCount}` : 'Chapter 1'}
+        aria-label={pageCount ? `${title}, page ${pageNumber} of ${pageCount}` : title}
         hidden={status !== 'ready'}
       />
     </div>

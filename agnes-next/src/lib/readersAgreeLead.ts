@@ -26,6 +26,7 @@ const CONTINUE_PARAM_KEYS = [
   'utm_medium',
   'utm_campaign',
   'fbclid',
+  'ra_surface',
 ] as const;
 
 /** Sample-chapters path with the same attribution params the lead endpoint preserves. */

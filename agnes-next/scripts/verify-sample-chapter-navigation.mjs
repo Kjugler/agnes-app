@@ -43,11 +43,11 @@ assert.equal(catalogHref(params).startsWith('/catalog?'), true);
 const capture = read('src/components/readers-agree/ReadersAgreeEmailCapture.tsx');
 const hub = read('src/app/sample-chapters/SampleChaptersClient.tsx');
 const reader = read('src/app/sample-chapters/read/[id]/ChapterReaderClient.tsx');
-const chapterOne = read('src/components/sample-chapters/ChapterOneReader.tsx');
+const chapterReader = read('src/components/sample-chapters/SampleChapterReader.tsx');
 const lead = read('../deepquill/api/readersAgree/lead.cjs');
 
-assert.match(capture, /sampleChaptersDestination\(result\.redirectPath\)/);
 assert.match(capture, /buildReadersAgreeContinuePath/);
+assert.doesNotMatch(capture, /type="email"/);
 assert.doesNotMatch(capture, /\/sample-chapters\/read\/1/);
 assert.match(lead, /return qs \? `\/sample-chapters\?\$\{qs\}` : '\/sample-chapters'/);
 
@@ -62,11 +62,12 @@ assert.doesNotMatch(hub, /useActiveReadingClock|readerGateThresholdMs/);
 
 assert.match(reader, /SAMPLE_CHAPTER_OPEN/);
 assert.match(reader, /SAMPLE_CHAPTER_TIME_ON_PAGE/);
-assert.match(reader, /Buy the Book/);
+assert.match(reader, /SampleChapterReader/);
 assert.match(reader, /sampleChaptersHubHref/);
-assert.match(chapterOne, /activeReadingClock/);
-assert.match(chapterOne, /Buy the Book/);
-assert.match(chapterOne, /sampleChaptersHubHref/);
+assert.match(chapterReader, /isActivelyReading/);
+assert.match(chapterReader, /Buy the Book/);
+assert.match(chapterReader, /sampleChaptersHubHref/);
 assert.doesNotMatch(hub, /ChapterOneReader/);
+assert.doesNotMatch(hub, /SampleChapterReader/);
 
 console.log(JSON.stringify({ pass: true, hub: '/sample-chapters', chapters: [1, 2, 9, 45] }));

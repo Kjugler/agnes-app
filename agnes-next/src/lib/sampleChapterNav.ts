@@ -13,6 +13,7 @@ const READER_PARAM_KEYS = [
   'utm_medium',
   'utm_campaign',
   'fbclid',
+  'ra_surface',
 ] as const;
 
 type SearchParamsLike = { get: (key: string) => string | null } | null | undefined;

@@ -130,8 +130,13 @@ const SALES_SITE_REDIRECTS: Record<string, string> = {
 export function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
-  // Chapter 1 is drawn in the app. The public file must not open in a new tab.
-  if (pathname === '/chapters/chapter1.pdf') {
+  // Sample chapters are drawn in the app. The public files must not open in a new tab.
+  if (
+    pathname === '/chapters/chapter1.pdf' ||
+    pathname === '/chapters/chapter2.pdf' ||
+    pathname === '/chapters/chapter9.pdf' ||
+    pathname === '/chapters/chapter45.pdf'
+  ) {
     return applyAdvertisingPrivacyToResponse(
       request,
       new NextResponse('This chapter opens in the reader.', {
