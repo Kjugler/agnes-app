@@ -70,6 +70,7 @@ done.accumulatedMs = 89_000;
 done.lastTickAt = 0;
 done = tick(done, 2_000, { active: true, chapterId: '1', page: 6 });
 assert.equal(done.accumulatedMs, 90_000);
+assert.equal(done.chapterMs['1'], 1_000, 'the crossing tick records only the remaining allowance');
 assert.equal(done.exhausted, true);
 assert.equal(publicAllowance(done, limit).remainingMs, 0);
 

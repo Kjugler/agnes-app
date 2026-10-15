@@ -222,9 +222,11 @@ function applyReadingTick(state, input) {
   if (input.active === true && Number.isFinite(elapsed) && elapsed > 0) {
     credit = Math.min(elapsed, MAX_CREDIT_MS);
   }
-  next.accumulatedMs = Math.min(limit, state.accumulatedMs + credit);
-  if (credit > 0 && next.chapterId) {
-    next.chapterMs[next.chapterId] = Math.min(limit, next.chapterMs[next.chapterId] + credit);
+  const room = Math.max(0, limit - state.accumulatedMs);
+  const applied = Math.min(room, credit);
+  next.accumulatedMs = state.accumulatedMs + applied;
+  if (applied > 0 && next.chapterId) {
+    next.chapterMs[next.chapterId] = Math.min(limit, next.chapterMs[next.chapterId] + applied);
   }
   if (next.accumulatedMs >= limit) next.exhausted = true;
   return next;
