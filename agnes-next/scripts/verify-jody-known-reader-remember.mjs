@@ -24,11 +24,8 @@ function normalizeIdentityUserId(raw) {
 
 function resolveJodyRememberUserId(input) {
   void input.funnelUserId;
-  return (
-    normalizeIdentityUserId(input.contestUserId) ||
-    normalizeIdentityUserId(input.readersAgreeLeadUserId) ||
-    null
-  );
+  void input.readersAgreeLeadUserId;
+  return normalizeIdentityUserId(input.contestUserId);
 }
 
 function resolveRememberPlaceChoice(choice, opts) {
@@ -87,7 +84,8 @@ assert.equal(
     readersAgreeLeadUserId: leadId,
     funnelUserId: 'forged-funnel-uid',
   }),
-  leadId,
+  null,
+  'a raw Readers Agree user id must not authorize remember-place',
 );
 assert.equal(
   resolveJodyRememberUserId({
@@ -143,6 +141,9 @@ assert.match(saveRoute, /resolveJodyRememberUserId/);
 assert.match(saveRoute, /ap_funnel_uid/);
 assert.match(saveRoute, /funnelUserId: cookieStore\.get\('ap_funnel_uid'\)/);
 assert.match(saveRoute, /JODY_IDENTITY_HEADER/);
+assert.match(saveRoute, /READERS_AGREE_SESSION_HEADER/);
+assert.match(identity, /x-readers-agree-session/);
+assert.doesNotMatch(saveRoute, /readersAgreeLeadUserId:\s*cookieStore\.get\(READERS_AGREE_LEAD_UID_COOKIE\)/);
 assert.doesNotMatch(saveRoute, /body\.userId/);
 
 assert.match(saveHandler, /x-jody-identity-user-id/);

@@ -3,7 +3,7 @@ import { proxyJson } from '@/lib/deepquillProxy';
 import { rateLimitByIP } from '@/lib/rateLimit';
 import {
   READERS_AGREE_LEAD_UID_COOKIE,
-  normalizeIdentityUserId,
+  looksLikeReadersAgreeSessionToken,
   readersAgreeLeadIdentityCookieOptions,
 } from '@/lib/jodyRememberIdentity';
 
@@ -21,17 +21,28 @@ export async function POST(req: NextRequest) {
     const { data, status } = await proxyJson('/api/readers-agree/lead', req, {
       method: 'POST',
       body,
+      headers: { 'x-readers-agree-issue-session': '1' },
+      omitForwardHeaders: ['x-readers-agree-issue-session'],
     });
-    const response = NextResponse.json(data, { status });
-    const leadUserId =
-      status === 200 && data?.ok ? normalizeIdentityUserId(data.userId) : null;
-    if (leadUserId) {
-      const isHttps = req.nextUrl.protocol === 'https:';
-      response.cookies.set(
-        READERS_AGREE_LEAD_UID_COOKIE,
-        leadUserId,
-        readersAgreeLeadIdentityCookieOptions(isHttps),
-      );
+    const payload =
+      data && typeof data === 'object' ? { ...(data as Record<string, unknown>) } : data;
+    const sessionToken =
+      payload && typeof payload === 'object' && typeof payload.sessionToken === 'string'
+        ? payload.sessionToken
+        : '';
+    if (payload && typeof payload === 'object') {
+      delete payload.sessionToken;
+    }
+    const response = NextResponse.json(payload, { status });
+    if (status === 200 && payload && typeof payload === 'object' && payload.ok === true) {
+      if (looksLikeReadersAgreeSessionToken(sessionToken)) {
+        const isHttps = req.nextUrl.protocol === 'https:';
+        response.cookies.set(
+          READERS_AGREE_LEAD_UID_COOKIE,
+          sessionToken.trim(),
+          readersAgreeLeadIdentityCookieOptions(isHttps),
+        );
+      }
     }
     return response;
   } catch (err: unknown) {

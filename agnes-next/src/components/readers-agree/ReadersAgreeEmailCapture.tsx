@@ -1,24 +1,34 @@
 'use client';
 
-import { useRef, useState, type FormEvent, type RefObject } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type Ref, type RefObject } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { writeContestEmail } from '@/lib/identity';
 import {
+  buildReadersAgreeContinuePath,
   submitReadersAgreeLead,
   type ReadersAgreeCaptureSurface,
   type ReadersAgreeRetailerOrigin,
 } from '@/lib/readersAgreeLead';
+import {
+  clearReadersAgreeRecognition,
+  fetchReadersAgreeRecognition,
+} from '@/lib/readersAgreeSession';
 import './readers-agree-email.css';
 
 type ReadersAgreeEmailCaptureProps = {
   searchParams: { get: (key: string) => string | null } | null;
-  formRef?: RefObject<HTMLFormElement | null>;
+  formRef?: RefObject<HTMLElement | null>;
   captureSurface?: ReadersAgreeCaptureSurface;
   retailerOrigin?: ReadersAgreeRetailerOrigin | null;
   variant?: 'landing' | 'bridge';
   inputId?: string;
 };
+
+type RecognitionState =
+  | { status: 'checking' }
+  | { status: 'anonymous' }
+  | { status: 'recognized'; emailHint: string };
 
 export default function ReadersAgreeEmailCapture({
   searchParams,
@@ -29,12 +39,30 @@ export default function ReadersAgreeEmailCapture({
   inputId,
 }: ReadersAgreeEmailCaptureProps) {
   const router = useRouter();
-  const internalRef = useRef<HTMLFormElement>(null);
+  const internalRef = useRef<HTMLDivElement>(null);
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [switching, setSwitching] = useState(false);
+  const [recognition, setRecognition] = useState<RecognitionState>({ status: 'checking' });
   const fieldId = inputId ?? (variant === 'bridge' ? 'ra-email-bridge' : 'ra-email-landing');
   const isBridge = variant === 'bridge';
+  const boxRef = (formRef ?? internalRef) as Ref<HTMLDivElement>;
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchReadersAgreeRecognition().then((result) => {
+      if (cancelled) return;
+      setRecognition(
+        result.recognized
+          ? { status: 'recognized', emailHint: result.emailHint }
+          : { status: 'anonymous' },
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -66,8 +94,55 @@ export default function ReadersAgreeEmailCapture({
     }
   };
 
+  const handleContinue = () => {
+    router.push(buildReadersAgreeContinuePath(searchParams));
+  };
+
+  const handleNotYou = async () => {
+    if (switching) return;
+    setSwitching(true);
+    setError(null);
+    const cleared = await clearReadersAgreeRecognition();
+    setSwitching(false);
+    if (!cleared) {
+      setError('Something went wrong. Please try again.');
+      return;
+    }
+    setEmail('');
+    setRecognition({ status: 'anonymous' });
+  };
+
+  if (recognition.status === 'checking') {
+    return (
+      <div ref={boxRef} className={isBridge ? 'ra-email-capture ra-email-capture--bridge' : 'ra-email-capture'}>
+        <p className="ra-email-capture-lead">Checking this browser…</p>
+      </div>
+    );
+  }
+
+  if (recognition.status === 'recognized') {
+    return (
+      <div ref={boxRef} className={isBridge ? 'ra-email-capture ra-email-capture--bridge' : 'ra-email-capture'}>
+        <p className="ra-email-capture-kicker">Welcome back.</p>
+        <p className="ra-email-capture-hint">Continuing as {recognition.emailHint}</p>
+        <button type="button" className="ra-email-capture-submit" onClick={handleContinue}>
+          {isBridge ? 'START READING' : 'Continue reading →'}
+        </button>
+        <button
+          type="button"
+          className="ra-email-capture-not-you"
+          onClick={handleNotYou}
+          disabled={switching}
+        >
+          {switching ? '…' : 'Not you?'}
+        </button>
+        {error ? <p className="ra-email-capture-error">{error}</p> : null}
+      </div>
+    );
+  }
+
   return (
-    <div className={isBridge ? 'ra-email-capture ra-email-capture--bridge' : 'ra-email-capture'}>
+    <div ref={boxRef} className={isBridge ? 'ra-email-capture ra-email-capture--bridge' : 'ra-email-capture'}>
       {isBridge ? (
         <p className="ra-email-capture-lead ra-email-capture-lead--bridge">
           Enter your email address to read free chapters
@@ -82,7 +157,6 @@ export default function ReadersAgreeEmailCapture({
       )}
 
       <form
-        ref={formRef ?? internalRef}
         className="ra-email-capture-form"
         onSubmit={handleSubmit}
         noValidate

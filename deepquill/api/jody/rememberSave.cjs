@@ -1,6 +1,6 @@
 // POST /api/jody/remember/save
-// Header: x-jody-identity-user-id (from Next httpOnly contest or Readers Agree lead cookie)
-// Body: { chapterId } — never trust body.userId or analytics UID
+// Header: x-jody-identity-user-id (contest cookie) or x-readers-agree-session (signed).
+// Body: { chapterId } — never trust body.userId, a raw Readers Agree user id, or analytics UID.
 
 const { ensureDatabaseUrl } = require('../../server/prisma.cjs');
 const { prisma } = require('../../server/prisma.cjs');
@@ -8,12 +8,22 @@ const {
   saveJodyReadingProgress,
   isValidChapterId,
 } = require('../../lib/readers/jodyReaderState.cjs');
+const { verifyReadersAgreeSession } = require('../../src/lib/readersAgreeSessionToken.cjs');
 
 module.exports = async function jodyRememberSaveHandler(req, res) {
   try {
-    const headerUserId = req.headers['x-jody-identity-user-id'];
-    const userId =
-      typeof headerUserId === 'string' ? headerUserId.trim().slice(0, 64) : '';
+    const sessionHeader = req.headers['x-readers-agree-session'];
+    let userId = '';
+    if (typeof sessionHeader === 'string' && sessionHeader.trim()) {
+      const verified = verifyReadersAgreeSession(sessionHeader.trim());
+      if (!verified) {
+        return res.status(401).json({ ok: false, error: 'unauthorized' });
+      }
+      userId = verified.userId;
+    } else {
+      const headerUserId = req.headers['x-jody-identity-user-id'];
+      userId = typeof headerUserId === 'string' ? headerUserId.trim().slice(0, 64) : '';
+    }
     if (!userId) {
       return res.status(401).json({ ok: false, error: 'unauthorized' });
     }

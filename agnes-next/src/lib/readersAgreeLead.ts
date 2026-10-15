@@ -16,6 +16,29 @@ type SearchParamsLike = { get: (key: string) => string | null } | null | undefin
 export type ReadersAgreeCaptureSurface = 'landing' | 'bridge';
 export type ReadersAgreeRetailerOrigin = 'amazon' | 'bn';
 
+const CONTINUE_PARAM_KEYS = [
+  'ref',
+  'code',
+  'src',
+  'v',
+  'origin',
+  'utm_source',
+  'utm_medium',
+  'utm_campaign',
+  'fbclid',
+] as const;
+
+/** Sample-chapters path with the same attribution params the lead endpoint preserves. */
+export function buildReadersAgreeContinuePath(searchParams: SearchParamsLike): string {
+  const params = new URLSearchParams();
+  for (const key of CONTINUE_PARAM_KEYS) {
+    const value = searchParams?.get(key);
+    if (value) params.set(key, value);
+  }
+  const qs = params.toString();
+  return qs ? `/sample-chapters?${qs}` : '/sample-chapters';
+}
+
 export async function submitReadersAgreeLead(input: {
   email: string;
   searchParams?: SearchParamsLike;

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useSyncExternalStore } from 'react';
+import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { getChapter, isValidChapterId } from '../../chapters';
 import { readAssociate } from '@/lib/identity';
@@ -14,7 +14,10 @@ import { isJodyConciergeEnabled, isJodyMobileDeliveryEnabled } from '@/lib/funne
 import { useJodyChapterExit } from '@/hooks/useJodyConcierge';
 import { JODY_CONCIERGE_CONFIG } from '@/config/jodyConcierge';
 import { isReadingSessionDwellMet } from '@/lib/readerJourney';
-import { isReadersAgreeLeadSessionActive } from '@/lib/readersAgreeLeadSession';
+import {
+  clearReadersAgreeRecognition,
+  fetchReadersAgreeRecognition,
+} from '@/lib/readersAgreeSession';
 
 function subscribeNoop() {
   return () => {};
@@ -29,7 +32,30 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
   const viewContentFiredRef = useRef(false);
   const { showJody, tryShowOnExit, dismissJody, readerStatus } = useJodyChapterExit(chapterId);
   const isClient = useSyncExternalStore(subscribeNoop, () => true, () => false);
-  const skipJodyMobileGate = isClient && isReadersAgreeLeadSessionActive();
+  const mobileDeliveryEnabled = isJodyMobileDeliveryEnabled();
+  const [mobileAccess, setMobileAccess] = useState<'pending' | 'recognized' | 'anonymous'>(
+    mobileDeliveryEnabled ? 'pending' : 'anonymous',
+  );
+  const [recognizedHint, setRecognizedHint] = useState<string | null>(null);
+  const [switchingReader, setSwitchingReader] = useState(false);
+
+  useEffect(() => {
+    if (!mobileDeliveryEnabled) return;
+    let cancelled = false;
+    fetchReadersAgreeRecognition().then((result) => {
+      if (cancelled) return;
+      if (result.recognized) {
+        setRecognizedHint(result.emailHint);
+        setMobileAccess('recognized');
+      } else {
+        setRecognizedHint(null);
+        setMobileAccess('anonymous');
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [mobileDeliveryEnabled]);
 
   useFunnelPageEngagement({
     pageViewType: FUNNEL_EVENT_TYPES.SAMPLE_CHAPTER_OPEN,
@@ -87,8 +113,18 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
   }
 
   const { title, pdfUrl } = chapter;
-  const mobileDeliveryEnabled = isJodyMobileDeliveryEnabled();
-  const showMobileJodyGate = isClient && mobileDeliveryEnabled && !skipJodyMobileGate;
+  const showMobileAccessShell = isClient && mobileDeliveryEnabled && mobileAccess !== 'recognized';
+  const showMobileJodyGate = showMobileAccessShell && mobileAccess === 'anonymous';
+
+  const handleNotYou = async () => {
+    if (switchingReader) return;
+    setSwitchingReader(true);
+    const cleared = await clearReadersAgreeRecognition();
+    setSwitchingReader(false);
+    if (!cleared) return;
+    setRecognizedHint(null);
+    setMobileAccess('anonymous');
+  };
 
   const handleTextThisScene = () => {
     const ref = readAssociate()?.code ?? null;
@@ -113,13 +149,17 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
 
   return (
     <>
-      {showMobileJodyGate && (
+      {showMobileAccessShell && (
         <div className="chapter-mobile-jody-delivery">
-          <MobileChapterLanding chapterId={chapterId} title={title} pdfUrl={pdfUrl} />
+          {showMobileJodyGate ? (
+            <MobileChapterLanding chapterId={chapterId} title={title} pdfUrl={pdfUrl} />
+          ) : (
+            <p style={{ color: '#00ffe5', fontSize: 15, padding: 24 }}>One moment…</p>
+          )}
         </div>
       )}
 
-      <div className={showMobileJodyGate ? 'chapter-desktop-reader' : undefined}>
+      <div className={showMobileAccessShell ? 'chapter-desktop-reader' : undefined}>
     <div
       style={{
         minHeight: '100svh',
@@ -263,6 +303,27 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
 
       {/* Mobile: embedded PDFs often only show page 1 — use Open full chapter / Download. Desktop: inline iframe. */}
       <div className="chapter-reader-mobile-panel">
+        {recognizedHint ? (
+          <p style={{ fontSize: 13, lineHeight: 1.5, color: 'rgba(0, 255, 229, 0.8)' }}>
+            Continuing as {recognizedHint}.{' '}
+            <button
+              type="button"
+              onClick={handleNotYou}
+              disabled={switchingReader}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#00ffe5',
+                textDecoration: 'underline',
+                cursor: switchingReader ? 'wait' : 'pointer',
+                font: 'inherit',
+                padding: 0,
+              }}
+            >
+              {switchingReader ? '…' : 'Not you?'}
+            </button>
+          </p>
+        ) : null}
         <p
           style={{
             fontSize: 15,

@@ -1,6 +1,6 @@
 /**
- * Readers Agree lead-session marker — suppresses Jody MobileChapterLanding
- * for this browser tab after a successful /readers-agree email submit.
+ * Same-tab marker after a Readers Agree submit.
+ * Not authentication. Chapter access uses the signed HttpOnly session.
  */
 
 const SESSION_KEY = 'ap_ra_v2_lead_active';

@@ -12,6 +12,7 @@ const {
   resolveRetailerOrigin,
   syncReadersAgreeLeadProfile,
 } = require('../../lib/readers/readersAgreeLead.cjs');
+const { signReadersAgreeSession } = require('../../src/lib/readersAgreeSessionToken.cjs');
 
 const REDIRECT_PARAM_KEYS = [
   'ref',
@@ -135,12 +136,27 @@ module.exports = async function readersAgreeLeadHandler(req, res) {
       console.warn('[readers-agree/lead] event record failed', eventErr && eventErr.message);
     }
 
-    return res.json({
+    // Only the current Next proxy sends this header. The previous proxy returned
+    // the JSON body unchanged, so a token must not be present unless it was requested.
+    const issueHeader = req.headers['x-readers-agree-issue-session'];
+    const issueSession = issueHeader === '1';
+    let sessionToken = null;
+    if (issueSession) {
+      try {
+        sessionToken = signReadersAgreeSession(user.id);
+      } catch (tokenErr) {
+        console.warn('[readers-agree/lead] session token not issued', tokenErr && tokenErr.message);
+      }
+    }
+
+    const responseBody = {
       ok: true,
       email,
       userId: user.id,
       redirectPath,
-    });
+    };
+    if (sessionToken) responseBody.sessionToken = sessionToken;
+    return res.json(responseBody);
   } catch (err) {
     console.error('[readers-agree/lead]', err);
     return res.status(500).json({ ok: false, error: 'server_error' });

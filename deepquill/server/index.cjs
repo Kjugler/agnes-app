@@ -287,6 +287,10 @@ const readersAgreeLeadHandler = require('../api/readersAgree/lead.cjs');
 app.post('/api/readers-agree/lead', readersAgreeLeadHandler);
 console.log('✅ Mounted POST /api/readers-agree/lead');
 
+const readersAgreeSessionHandler = require('../api/readersAgree/session.cjs');
+app.get('/api/readers-agree/session', readersAgreeSessionHandler);
+console.log('✅ Mounted GET /api/readers-agree/session');
+
 const jodyChapterDownloadHandler = require('../api/jody/chapterDownload.cjs');
 app.get('/api/jody/chapter/download', jodyChapterDownloadHandler);
 console.log('✅ Mounted GET /api/jody/chapter/download');

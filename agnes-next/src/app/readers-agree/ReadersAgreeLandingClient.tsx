@@ -48,7 +48,7 @@ function subscribeNoop() {
 export default function ReadersAgreeLandingClient() {
   const searchParams = useSearchParams();
   const viewFiredRef = useRef(false);
-  const emailFormRef = useRef<HTMLFormElement>(null);
+  const emailFormRef = useRef<HTMLElement>(null);
   const mobileTwoTap = useSyncExternalStore(subscribeNoop, isMobileTouchBrowser, () => false);
 
   useFunnelPageEngagement({

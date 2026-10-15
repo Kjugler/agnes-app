@@ -11,6 +11,8 @@ const requestSrc = fs.readFileSync(path.join(__dirname, '..', 'api', 'jody', 're
 const indexSrc = fs.readFileSync(path.join(__dirname, '..', 'server', 'index.cjs'), 'utf8');
 
 assert.match(saveSrc, /x-jody-identity-user-id/);
+assert.match(saveSrc, /verifyReadersAgreeSession/);
+assert.match(saveSrc, /x-readers-agree-session/);
 assert.match(saveSrc, /user_id_not_accepted/);
 assert.match(saveSrc, /saveJodyReadingProgress/);
 assert.doesNotMatch(saveSrc, /sendEmail/);
