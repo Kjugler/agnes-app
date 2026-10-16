@@ -30,6 +30,7 @@
   "exclude": [
     "node_modules",
     "src/lib/privacy/advertisingConsent.test.ts",
-    "src/lib/privacy/googleConsentMode.test.ts"
+    "src/lib/privacy/googleConsentMode.test.ts",
+    "src/lib/departureBridge.test.ts"
   ]
 }

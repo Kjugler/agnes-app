@@ -1,3 +1,4 @@
+const { backfillUserCodes } = require('../readers/readerUser.cjs');
 const { customAlphabet } = require('nanoid');
 const { normalizeEmail, extractNameFromEmail } = require('../../src/lib/normalize.cjs');
 
@@ -38,14 +39,7 @@ async function findOrCreateGuestUserForStripePurchase(prismaClient, emailRaw, na
 
   if (user) {
     if (!user.code || !user.referralCode) {
-      const code = await generateUniqueGuestUserCode(prismaClient, user.id);
-      user = await prismaClient.user.update({
-        where: { id: user.id },
-        data: {
-          code: user.code || code,
-          referralCode: user.referralCode || code,
-        },
-      });
+      user = await backfillUserCodes(prismaClient, user);
     }
     return { user, resolution: 'email_existing_user', created: false };
   }

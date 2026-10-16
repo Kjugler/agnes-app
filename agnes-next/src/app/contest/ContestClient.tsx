@@ -19,6 +19,7 @@ import {
 import RequestAccessModal from '@/components/auth/RequestAccessModal';
 import SiteRibbonTicker from '@/components/SiteRibbonTicker';
 import SiteFooter from '@/components/SiteFooter';
+import DepartureBridge from '@/components/departure/DepartureBridge';
 import { isContestEntryUxArchived } from '@/lib/funnelConfig';
 import {
   HUB_THEME,
@@ -1242,6 +1243,7 @@ export default function ContestClient() {
         }}
         redirectTo="/contest"
       />
+      <DepartureBridge />
     </div>
   );
 }

@@ -3,6 +3,7 @@
 
 const { prisma } = require('../../server/prisma.cjs');
 const { normalizeEmail } = require('../../src/lib/normalize.cjs');
+const { backfillUserCodes } = require('../../lib/readers/readerUser.cjs');
 const { customAlphabet } = require('nanoid');
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -53,14 +54,7 @@ async function ensureAssociateMinimal(email) {
   }
 
   if (!user.code || !user.referralCode) {
-    const code = await generateUniqueCode(user.id);
-    user = await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        code: user.code || code,
-        referralCode: user.referralCode || code,
-      },
-    });
+    user = await backfillUserCodes(prisma, user);
   }
 
   if (!user.rabbitTarget || !user.rabbitSeq) {

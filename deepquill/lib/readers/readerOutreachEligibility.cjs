@@ -4,8 +4,10 @@
  * would otherwise qualify them. Independent manual DNC is a separate lane from
  * archive-created suppression.
  *
- * Prospect nurture has schema columns but no runner; future nurture jobs
- * must call promotionalOutreachEligibility before sending.
+ * Prospect nurture has schema columns but no runner. Existing outreach jobs
+ * keep calling promotionalOutreachEligibility. A nurturing sender must call
+ * authorizePromotionalNurture instead. This helper does not check promotional
+ * consent or Mailchimp Transactional rejects.
  *
  * Do not use this helper for purchase receipts, fulfillment, refunds,
  * shipping, claim-profile, or other directly requested transactional mail.

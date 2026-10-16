@@ -70,7 +70,6 @@ function consentFields(consentAccepted, existing) {
   const now = new Date();
   const data = { emailUpdatesConsent: true };
   if (!existing?.emailUpdatesConsentAt) data.emailUpdatesConsentAt = now;
-  if (!existing?.emailMarketingConsentAt) data.emailMarketingConsentAt = now;
   return data;
 }
 

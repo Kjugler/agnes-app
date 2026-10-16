@@ -26,6 +26,7 @@ import { JodyConcierge } from '@/components/jody/JodyConcierge';
 import { useJodyHubEntry } from '@/hooks/useJodyConcierge';
 import { isJodyConciergeEnabled } from '@/lib/funnelConfig';
 import { sampleChapterReadHref } from '@/lib/sampleChapterNav';
+import DepartureBridge from '@/components/departure/DepartureBridge';
 
 declare global {
   interface Window {
@@ -573,6 +574,7 @@ export default function SampleChaptersClient() {
       </div>
 
       <HelpButton />
+      <DepartureBridge jodyActive={Boolean(showPendingRemember || showReturnWelcome)} />
 
       {isJodyConciergeEnabled() && showPendingRemember && (
         <JodyConcierge

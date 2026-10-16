@@ -49,6 +49,10 @@ export default function SiteFooter({ variant = 'muted' }: SiteFooterProps) {
           Privacy Policy
         </Link>
         {' · '}
+        <Link href="/preferences" style={{ color: linkColor, textDecoration: 'underline' }}>
+          Email preferences
+        </Link>
+        {' · '}
         <PrivacyChoicesTrigger color={linkColor} />
       </p>
       <p style={{ margin: '0 0 8px 0' }}>© 2025 DeepQuill LLC – All Rights Reserved</p>

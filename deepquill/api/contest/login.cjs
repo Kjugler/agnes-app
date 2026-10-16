@@ -8,6 +8,7 @@ const { normalizeReferralCode } = require('../../src/lib/normalize.cjs');
 const { isSelfReferral, normalizeIdentityEmail } = require('../../src/lib/selfReferralGuards.cjs');
 const { recordLedgerEntry } = require('../../lib/ledger/recordLedger.cjs');
 const { ensureDatabaseUrl } = require('../../server/prisma.cjs');
+const { backfillUserCodes } = require('../../lib/readers/readerUser.cjs');
 const { customAlphabet } = require('nanoid');
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -67,14 +68,7 @@ async function ensureAssociateMinimal(email) {
 
   // Ensure user has code and referralCode
   if (!user.code || !user.referralCode) {
-    const code = await generateUniqueCode(user.id);
-    user = await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        code: user.code || code,
-        referralCode: user.referralCode || code,
-      },
-    });
+    user = await backfillUserCodes(prisma, user);
   }
 
   // Ensure rabbit fields are set

@@ -28,17 +28,43 @@ async function generateUniqueCode(prisma, excludeUserId) {
   throw new Error('Unable to generate unique referral code');
 }
 
+async function personalCodeIsFree(prisma, code, userId) {
+  const match = await prisma.user.findFirst({
+    where: {
+      AND: [
+        userId ? { id: { not: userId } } : {},
+        { OR: [{ code }, { referralCode: code }] },
+      ],
+    },
+    select: { id: true },
+  });
+  return !match;
+}
+
+/**
+ * Fill a blank personal code without touching referral ancestry or accounting.
+ * One existing field is copied into the blank field after a uniqueness check.
+ * Both blank fields receive one newly generated code. A collision leaves the row unchanged.
+ */
 async function backfillUserCodes(prisma, user) {
   const existingCode = (user.code || '').trim();
   const existingReferral = (user.referralCode || '').trim();
   if (existingCode && existingReferral) return user;
 
-  const code = await generateUniqueCode(prisma, user.id);
+  const known = existingCode || existingReferral;
+  let fill = known;
+  if (known) {
+    const free = await personalCodeIsFree(prisma, known, user.id);
+    if (!free) return user;
+  } else {
+    fill = await generateUniqueCode(prisma, user.id);
+  }
+
   return prisma.user.update({
     where: { id: user.id },
     data: {
-      code: existingCode || code,
-      referralCode: existingReferral || code,
+      code: existingCode || fill,
+      referralCode: existingReferral || fill,
     },
   });
 }

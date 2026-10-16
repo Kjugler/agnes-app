@@ -279,6 +279,20 @@ const jodyUpdatesConsentHandler = require('../api/jody/updatesConsent.cjs');
 app.post('/api/jody/updates-consent', jodyUpdatesConsentHandler);
 console.log('✅ Mounted POST /api/jody/updates-consent');
 
+const promotionalConsentHandler = require('../api/promotionalEmail/consent.cjs');
+app.get('/api/promotional-email/consent', promotionalConsentHandler);
+app.post('/api/promotional-email/consent', promotionalConsentHandler);
+console.log('✅ Mounted /api/promotional-email/consent');
+
+const promotionalUnsubscribeHandler = require('../api/promotionalEmail/unsubscribe.cjs');
+app.post('/api/promotional-email/unsubscribe', promotionalUnsubscribeHandler);
+console.log('✅ Mounted POST /api/promotional-email/unsubscribe');
+
+const promotionalDepartureHandler = require('../api/promotionalEmail/departure.cjs');
+app.get('/api/promotional-email/departure', promotionalDepartureHandler);
+app.post('/api/promotional-email/departure', promotionalDepartureHandler);
+console.log('✅ Mounted /api/promotional-email/departure');
+
 const jodyChapterDeliverHandler = require('../api/jody/chapterDeliver.cjs');
 app.post('/api/jody/chapter/deliver', jodyChapterDeliverHandler);
 console.log('✅ Mounted POST /api/jody/chapter/deliver');

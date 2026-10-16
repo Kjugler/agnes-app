@@ -113,6 +113,11 @@ model ReaderProfile {
   emailUpdatesConsent    Boolean   @default(false)
   emailUpdatesConsentAt  DateTime?
   emailMarketingConsentAt DateTime?
+  /// Set only by an explicit promotional opt-in. Reading access does not write this.
+  emailMarketingConsentSource String?
+  /// Latest promotional opt-out. A later explicit opt-in records a newer consent time.
+  emailMarketingOptOutAt DateTime?
+  emailMarketingOptOutSource String?
   jodyVerifiedAt         DateTime?
   leadAttribution        Json?
   prospectNurtureEnrolledAt DateTime?
