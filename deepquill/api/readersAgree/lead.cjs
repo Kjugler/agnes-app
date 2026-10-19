@@ -20,6 +20,9 @@ const {
   serverGateFact,
 } = require('../../src/lib/readingAllowance.cjs');
 const { recordReadingAllowanceFact } = require('../../lib/readers/recordReadingAllowanceFact.cjs');
+const { applyPromotionalPreference } = require('../../lib/readers/promotionalConsent.cjs');
+const { planJodyReadingAccessOptIn } = require('../../lib/readers/jodyReadingAccessOptIn.cjs');
+const { independentDncActive } = require('../../lib/readers/readerContactSuppression.cjs');
 
 const REDIRECT_PARAM_KEYS = [
   'ref',
@@ -73,6 +76,34 @@ async function resolveLeadUser(email) {
 
   const existing = await prisma.user.findUnique({ where: { email } });
   return existing?.id ? existing : null;
+}
+
+async function recordJodyPromotionalOptIn(userId) {
+  const [profile, decisions] = await Promise.all([
+    prisma.readerProfile.findUnique({ where: { userId } }),
+    prisma.readerContactDecision.findMany({
+      where: { userId },
+      select: { id: true, decision: true, origin: true, createdAt: true },
+    }),
+  ]);
+  const plan = planJodyReadingAccessOptIn({
+    profile,
+    doNotContact: independentDncActive(decisions),
+    archived: Boolean(profile && profile.status === 'archived'),
+    explicit: true,
+    accept: true,
+  });
+  if (!plan.write) {
+    return plan.error === 'already_active' ? 'unchanged' : 'not_recorded';
+  }
+  const result = await applyPromotionalPreference(prisma, {
+    userId,
+    action: plan.action,
+    source: plan.source,
+    explicit: true,
+  });
+  if (!result.ok) return 'not_recorded';
+  return result.changed ? 'recorded' : 'unchanged';
 }
 
 async function attachAnonymousVisitorEvents(userId, visitorId) {
@@ -201,11 +232,22 @@ module.exports = async function readersAgreeLeadHandler(req, res) {
       }
     }
 
+    let promotionalConsent = 'not_requested';
+    if (body.promotionalOptIn === true) {
+      try {
+        promotionalConsent = await recordJodyPromotionalOptIn(user.id);
+      } catch (consentErr) {
+        console.warn('[readers-agree/lead] promotional consent not saved', consentErr && consentErr.message);
+        promotionalConsent = 'not_recorded';
+      }
+    }
+
     const responseBody = {
       ok: true,
       email,
       userId: user.id,
       redirectPath,
+      promotionalConsent,
     };
     if (sessionToken) responseBody.sessionToken = sessionToken;
     return res.json(responseBody);

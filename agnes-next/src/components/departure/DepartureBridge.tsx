@@ -5,8 +5,12 @@ import { usePathname } from 'next/navigation';
 import { HUB_THEME } from '@/lib/hubTheme';
 import {
   DEPARTURE_MEMORY_KEY,
+  DEPARTURE_SESSION_KEY,
+  JODY_ACCESS_SETTLED_KEY,
+  MOBILE_INVITE_SEEN_KEY,
+  SAMPLE_READING_ENGAGED_KEY,
   isTopEdgeExit,
-  readDepartureMemory,
+  readStoredDepartureMemory,
   shouldOfferDeparture,
 } from '@/lib/departureBridge';
 
@@ -19,10 +23,14 @@ type Audience = {
 export default function DepartureBridge({ jodyActive = false }: { jodyActive?: boolean }) {
   const pathname = usePathname() || '';
   const [audience, setAudience] = useState<Audience>({ known: false, emailHint: null, decided: false });
+  const [audienceChecked, setAudienceChecked] = useState(false);
   const [desktop, setDesktop] = useState(false);
   const [engaged, setEngaged] = useState({ scrolled: false, interacted: false, elapsedMs: 0 });
   const [exitIntent, setExitIntent] = useState(false);
-  const [memory, setMemory] = useState(readDepartureMemory(null));
+  const [memory, setMemory] = useState(readStoredDepartureMemory(null, null));
+  const [subsequentToJody, setSubsequentToJody] = useState(true);
+  const [readingEngaged, setReadingEngaged] = useState(false);
+  const [mobileInviteSeen, setMobileInviteSeen] = useState(false);
   const [open, setOpen] = useState(false);
   const [checked, setChecked] = useState(false);
   const [email, setEmail] = useState('');
@@ -30,7 +38,15 @@ export default function DepartureBridge({ jodyActive = false }: { jodyActive?: b
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    setMemory(readDepartureMemory(window.localStorage.getItem(DEPARTURE_MEMORY_KEY)));
+    setMemory(
+      readStoredDepartureMemory(
+        window.localStorage.getItem(DEPARTURE_MEMORY_KEY),
+        window.sessionStorage.getItem(DEPARTURE_SESSION_KEY),
+      ),
+    );
+    if (window.sessionStorage.getItem(JODY_ACCESS_SETTLED_KEY) === '1') setSubsequentToJody(false);
+    setReadingEngaged(window.sessionStorage.getItem(SAMPLE_READING_ENGAGED_KEY) === '1');
+    setMobileInviteSeen(window.sessionStorage.getItem(MOBILE_INVITE_SEEN_KEY) === '1');
     const media = window.matchMedia('(hover: hover) and (pointer: fine)');
     const apply = () => setDesktop(media.matches);
     apply();
@@ -43,14 +59,24 @@ export default function DepartureBridge({ jodyActive = false }: { jodyActive?: b
     fetch('/api/promotional-email/departure', { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
-        if (cancelled || !data?.ok) return;
+        if (cancelled) return;
+        if (!data?.ok) {
+          setAudience({ known: false, emailHint: null, decided: true });
+          setAudienceChecked(true);
+          return;
+        }
         setAudience({
           known: data.audience === 'known',
           emailHint: typeof data.emailHint === 'string' ? data.emailHint : null,
           decided: data.decided === true,
         });
+        setAudienceChecked(true);
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (cancelled) return;
+        setAudience({ known: false, emailHint: null, decided: true });
+        setAudienceChecked(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -58,13 +84,25 @@ export default function DepartureBridge({ jodyActive = false }: { jodyActive?: b
 
   useEffect(() => {
     const started = Date.now();
+    const noteSubsequent = () => {
+      setSubsequentToJody(true);
+      window.sessionStorage.removeItem(JODY_ACCESS_SETTLED_KEY);
+    };
     const tick = window.setInterval(() => {
-      setEngaged((current) => ({ ...current, elapsedMs: Date.now() - started }));
+      const elapsedMs = Date.now() - started;
+      if (elapsedMs >= 15_000) noteSubsequent();
+      setEngaged((current) => ({ ...current, elapsedMs }));
     }, 1000);
     const onScroll = () => {
-      if (window.scrollY > 80) setEngaged((current) => ({ ...current, scrolled: true }));
+      if (window.scrollY > 80) {
+        noteSubsequent();
+        setEngaged((current) => ({ ...current, scrolled: true }));
+      }
     };
-    const onClick = () => setEngaged((current) => ({ ...current, interacted: true }));
+    const onClick = () => {
+      noteSubsequent();
+      setEngaged((current) => ({ ...current, interacted: true }));
+    };
     const onMouseOut = (event: MouseEvent) => {
       if (isTopEdgeExit({ clientY: event.clientY, relatedTarget: event.relatedTarget })) {
         setExitIntent(true);
@@ -91,14 +129,29 @@ export default function DepartureBridge({ jodyActive = false }: { jodyActive?: b
     memory,
     decided: audience.decided,
     jodyActive,
+    audienceChecked,
+    subsequentToJody,
+    readingEngaged,
+    mobileInviteSeen,
   });
 
   useEffect(() => {
     if (decision.offer) setOpen(true);
   }, [decision.offer]);
 
+  useEffect(() => {
+    if (!decision.offer || decision.presentation !== 'inline') return;
+    const markSeen = window.setTimeout(() => {
+      window.sessionStorage.setItem(MOBILE_INVITE_SEEN_KEY, '1');
+    }, 0);
+    return () => window.clearTimeout(markSeen);
+  }, [decision.offer, decision.presentation]);
+
   function remember(value: 'dismissed' | 'accepted') {
-    window.localStorage.setItem(DEPARTURE_MEMORY_KEY, value);
+    if (value === 'accepted') {
+      window.localStorage.setItem(DEPARTURE_MEMORY_KEY, value);
+    }
+    window.sessionStorage.setItem(DEPARTURE_SESSION_KEY, value);
     setMemory(value);
     setOpen(false);
     setExitIntent(false);
@@ -123,21 +176,24 @@ export default function DepartureBridge({ jodyActive = false }: { jodyActive?: b
       return;
     }
     window.localStorage.setItem(DEPARTURE_MEMORY_KEY, 'accepted');
+    window.sessionStorage.setItem(DEPARTURE_SESSION_KEY, 'accepted');
     setSaved(true);
     setMessage('You are signed up for occasional notes. Reading access is unchanged.');
   }
 
   if (!open || jodyActive || memory || audience.decided) return null;
+  const inline = decision.presentation === 'inline';
 
   return (
     <aside
       aria-label="Before you go"
       style={{
-        position: 'fixed',
-        top: 16,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        width: 'min(440px, calc(100% - 32px))',
+        position: inline ? 'relative' : 'fixed',
+        top: inline ? undefined : 16,
+        left: inline ? undefined : '50%',
+        transform: inline ? undefined : 'translateX(-50%)',
+        width: inline ? 'min(440px, 100%)' : 'min(440px, calc(100% - 32px))',
+        margin: inline ? '28px auto 0' : undefined,
         background: HUB_THEME.surface,
         color: HUB_THEME.text,
         border: `1px solid ${HUB_THEME.border}`,

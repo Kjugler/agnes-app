@@ -570,11 +570,11 @@ export default function SampleChaptersClient() {
           </Link>
         </div>
 
+        <DepartureBridge jodyActive={Boolean(showPendingRemember || showReturnWelcome)} />
         <SiteFooter variant="light" />
       </div>
 
       <HelpButton />
-      <DepartureBridge jodyActive={Boolean(showPendingRemember || showReturnWelcome)} />
 
       {isJodyConciergeEnabled() && showPendingRemember && (
         <JodyConcierge

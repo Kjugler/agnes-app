@@ -6,6 +6,7 @@ import {
   isProtectedDeparturePath,
   isTopEdgeExit,
   readDepartureMemory,
+  readStoredDepartureMemory,
   shouldOfferDeparture,
 } from './departureBridge.ts';
 
@@ -19,11 +20,19 @@ const ready = {
   memory: null as const,
   decided: false,
   jodyActive: false,
+  audienceChecked: true,
+  subsequentToJody: true,
+  readingEngaged: false,
+  mobileInviteSeen: false,
 };
 
 describe('departure bridge', () => {
   it('offers after engagement and a top-edge exit on the sample hub', () => {
-    assert.deepEqual(shouldOfferDeparture(ready), { offer: true, reason: 'exit_intent' });
+    assert.deepEqual(shouldOfferDeparture(ready), {
+      offer: true,
+      reason: 'exit_intent',
+      presentation: 'overlay',
+    });
   });
 
   it('does not offer immediately or without engagement', () => {
@@ -38,22 +47,48 @@ describe('departure bridge', () => {
     assert.equal(isTopEdgeExit({ clientY: 0, relatedTarget: {} }), false);
   });
 
-  it('uses the footer on mobile and stays off checkout, chapter reading, and retailer links', () => {
-    assert.equal(shouldOfferDeparture({ ...ready, desktop: false }).reason, 'mobile_footer_fallback');
+  it('uses one inline invitation on the mobile hub and stays off checkout and chapter reading', () => {
+    assert.equal(shouldOfferDeparture({ ...ready, desktop: false }).reason, 'mobile_invitation');
+    assert.equal(shouldOfferDeparture({ ...ready, desktop: false }).presentation, 'inline');
+    assert.equal(
+      shouldOfferDeparture({
+        ...ready,
+        desktop: false,
+        elapsedMs: 1000,
+        scrolled: false,
+        interacted: false,
+        readingEngaged: false,
+      }).reason,
+      'mobile_footer_fallback',
+    );
+    assert.equal(
+      shouldOfferDeparture({ ...ready, desktop: false, elapsedMs: 1000, readingEngaged: true }).reason,
+      'mobile_invitation',
+    );
+    assert.equal(shouldOfferDeparture({ ...ready, desktop: false, mobileInviteSeen: true }).reason, 'already_offered');
+    assert.equal(shouldOfferDeparture({ ...ready, desktop: false, pathname: '/contest' }).reason, 'mobile_footer_fallback');
     assert.equal(isProtectedDeparturePath('/checkout'), true);
+    assert.equal(isProtectedDeparturePath('/checkout/success'), true);
     assert.equal(isProtectedDeparturePath('/sample-chapters/read/1'), true);
     assert.equal(isProtectedDeparturePath('/readers-agree/go'), true);
     assert.equal(shouldOfferDeparture({ ...ready, pathname: '/checkout' }).reason, 'excluded_path');
+    assert.equal(shouldOfferDeparture({ ...ready, pathname: '/checkout/success' }).reason, 'excluded_path');
     assert.equal(shouldOfferDeparture({ ...ready, pathname: '/sample-chapters/read/2' }).reason, 'excluded_path');
     assert.equal(isDeparturePage('/contest'), true);
     assert.equal(shouldOfferDeparture({ ...ready, pathname: '/contest' }).offer, true);
   });
 
-  it('stays quiet for Jody, a prior decision, and a stored dismissal', () => {
+  it('stays quiet for consent, opt-out, Jody, a fresh form, and a stored refusal', () => {
+    assert.equal(shouldOfferDeparture({ ...ready, audienceChecked: false }).reason, 'audience_pending');
     assert.equal(shouldOfferDeparture({ ...ready, jodyActive: true }).reason, 'jody_active');
     assert.equal(shouldOfferDeparture({ ...ready, decided: true }).reason, 'already_decided');
+    assert.equal(shouldOfferDeparture({ ...ready, subsequentToJody: false }).reason, 'awaiting_subsequent');
     assert.equal(shouldOfferDeparture({ ...ready, memory: 'dismissed' }).reason, 'already_seen');
+    assert.equal(shouldOfferDeparture({ ...ready, memory: 'accepted' }).reason, 'already_seen');
     assert.equal(readDepartureMemory('accepted'), 'accepted');
     assert.equal(readDepartureMemory('nope'), null);
+    assert.equal(readStoredDepartureMemory('dismissed', null), 'dismissed');
+    assert.equal(readStoredDepartureMemory(null, 'dismissed'), 'dismissed');
+    assert.equal(readStoredDepartureMemory('accepted', 'dismissed'), 'accepted');
   });
 });

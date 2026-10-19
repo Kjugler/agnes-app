@@ -8,7 +8,11 @@ import {
 import { markReadersAgreeLeadSession } from '@/lib/readersAgreeLeadSession';
 
 export type SubmitReadersAgreeLeadResult =
-  | { ok: true; redirectPath: string }
+  | {
+      ok: true;
+      redirectPath: string;
+      promotionalConsent: 'recorded' | 'unchanged' | 'not_requested' | 'not_recorded';
+    }
   | { ok: false; error: string };
 
 type SearchParamsLike = { get: (key: string) => string | null } | null | undefined;
@@ -45,6 +49,7 @@ export async function submitReadersAgreeLead(input: {
   searchParams?: SearchParamsLike;
   captureSurface?: ReadersAgreeCaptureSurface;
   retailerOrigin?: ReadersAgreeRetailerOrigin | null;
+  promotionalOptIn?: boolean;
 }): Promise<SubmitReadersAgreeLeadResult> {
   const email = input.email.trim().toLowerCase();
   if (!email || !email.includes('@')) {
@@ -58,23 +63,26 @@ export async function submitReadersAgreeLead(input: {
   const code = params?.get('code') || null;
   const visitorId = getOrCreateVisitorId();
 
+  const payload: Record<string, unknown> = {
+    email,
+    visitorId,
+    ref,
+    code,
+    utm,
+    captureSurface: input.captureSurface === 'bridge' ? 'bridge' : 'landing',
+    retailerOrigin:
+      input.retailerOrigin === 'amazon' || input.retailerOrigin === 'bn'
+        ? input.retailerOrigin
+        : null,
+  };
+  if (input.promotionalOptIn === true) payload.promotionalOptIn = true;
+
   let res: Response;
   try {
     res = await fetch('/api/readers-agree/lead', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email,
-        visitorId,
-        ref,
-        code,
-        utm,
-        captureSurface: input.captureSurface === 'bridge' ? 'bridge' : 'landing',
-        retailerOrigin:
-          input.retailerOrigin === 'amazon' || input.retailerOrigin === 'bn'
-            ? input.retailerOrigin
-            : null,
-      }),
+      body: JSON.stringify(payload),
       credentials: 'include',
     });
   } catch {
@@ -86,6 +94,7 @@ export async function submitReadersAgreeLead(input: {
     redirectPath?: string;
     error?: string;
     userId?: string;
+    promotionalConsent?: string;
   };
 
   if (!res.ok || !data.ok || !data.redirectPath) {
@@ -96,5 +105,11 @@ export async function submitReadersAgreeLead(input: {
     rememberFunnelUserId(data.userId);
   }
   markReadersAgreeLeadSession();
-  return { ok: true, redirectPath: data.redirectPath };
+  const promotionalConsent =
+    data.promotionalConsent === 'recorded' ||
+    data.promotionalConsent === 'unchanged' ||
+    data.promotionalConsent === 'not_recorded'
+      ? data.promotionalConsent
+      : 'not_requested';
+  return { ok: true, redirectPath: data.redirectPath, promotionalConsent };
 }

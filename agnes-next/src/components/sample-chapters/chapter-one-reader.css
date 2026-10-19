@@ -235,6 +235,22 @@
   font-size: 16px;
 }
 
+.chapter-one-invite-consent {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.chapter-one-invite-consent input {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  padding: 0;
+  flex: 0 0 auto;
+}
+
 .chapter-one-invite-actions {
   display: flex;
   flex-wrap: wrap;

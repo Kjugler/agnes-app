@@ -16,6 +16,7 @@ import {
   fetchReadersAgreeRecognition,
 } from '@/lib/readersAgreeSession';
 import { sampleChaptersHubHref } from '@/lib/sampleChapterNav';
+import { markSampleReadingEngaged } from '@/lib/departureBridge';
 import { BuyBookButton } from '@/components/BuyBookButton';
 import './chapter-one-reader.css';
 
@@ -90,6 +91,7 @@ export function SampleChapterReader({
     let stopped = false;
 
     const send = async (active: boolean) => {
+      if (active) markSampleReadingEngaged();
       const snapshot = await fetchReadingAllowance({
         method: 'POST',
         body: {

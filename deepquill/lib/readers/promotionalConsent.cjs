@@ -4,7 +4,13 @@
  * A revisit or a background sync cannot clear an opt-out.
  */
 
-const SOURCES = new Set(['reader_preferences', 'unsubscribe_link', 'departure_bridge']);
+const SOURCES = new Set([
+  'reader_preferences',
+  'unsubscribe_link',
+  'departure_bridge',
+  'jody-reading-access',
+]);
+const CANNOT_REVIVE_OPT_OUT = new Set(['departure_bridge', 'jody-reading-access']);
 const CONSENT_FIELDS = [
   'emailMarketingConsentAt',
   'emailMarketingConsentSource',
@@ -46,6 +52,9 @@ function planPromotionalPreference(profile, { action, source, explicit, now } = 
   const at = now instanceof Date ? now : new Date();
   if (action === 'opt_in') {
     if (current.active) return { write: false, state: current };
+    if (CANNOT_REVIVE_OPT_OUT.has(source) && current.optOutAt) {
+      return { write: false, error: 'opt_out_preserved', state: current };
+    }
     return {
       write: true,
       data: {

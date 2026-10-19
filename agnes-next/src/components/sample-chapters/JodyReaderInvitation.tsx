@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from 'react';
 import { writeContestEmail } from '@/lib/identity';
 import { submitReadersAgreeLead } from '@/lib/readersAgreeLead';
+import { markJodyAccessSettled } from '@/lib/departureBridge';
 import { jodyEm2PortraitCropStyle } from '@/config/jodyPortraitStyle';
 
 const JODY_ICON = '/jody-icons/jody-em2.png';
@@ -19,6 +20,7 @@ export function JodyReaderInvitation({
   onDecline,
 }: JodyReaderInvitationProps) {
   const [email, setEmail] = useState('');
+  const [promotionalOptIn, setPromotionalOptIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [declining, setDeclining] = useState(false);
@@ -40,6 +42,7 @@ export function JodyReaderInvitation({
         searchParams,
         captureSurface: searchParams?.get('ra_surface') === 'bridge' ? 'bridge' : 'landing',
         retailerOrigin: origin === 'amazon' || origin === 'bn' ? origin : null,
+        promotionalOptIn,
       });
       if (!result.ok) {
         setError(
@@ -50,6 +53,7 @@ export function JodyReaderInvitation({
         return;
       }
       writeContestEmail(trimmed);
+      markJodyAccessSettled();
       onAccessEstablished();
     } finally {
       setSubmitting(false);
@@ -106,6 +110,22 @@ export function JodyReaderInvitation({
               data-testid="jody-reader-email"
               onChange={(event) => setEmail(event.target.value)}
             />
+            <label className="chapter-one-invite-consent">
+              <input
+                type="checkbox"
+                name="promotionalOptIn"
+                data-testid="jody-promotional-consent"
+                checked={promotionalOptIn}
+                onChange={(event) => setPromotionalOptIn(event.target.checked)}
+              />
+              <span>
+                Yes, I&apos;d like occasional emails from Jody about the story, book updates, and ways to
+                continue reading. I can unsubscribe anytime.
+              </span>
+            </label>
+            <p className="chapter-one-invite-note">
+              Leaving this unchecked does not change reading access.
+            </p>
             {error ? (
               <p className="chapter-one-invite-error" role="alert">
                 {error}
