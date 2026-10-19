@@ -6,7 +6,8 @@
  * This function does not send email. Purchase receipts keep using sendEmail.
  *
  * A nurturing sender must call authorizePromotionalNurture and send only when
- * authorized is true. Existing outreach jobs are unchanged.
+ * authorized is true. Older promotional jobs use lookupPromotionalConsent
+ * immediately before a live send. Purchase receipts do not.
  */
 
 const { independentDncActive } = require('./readerContactSuppression.cjs');
@@ -31,11 +32,14 @@ function denied(reason, extra = {}) {
   return {
     authorized: false,
     send: false,
-    reason,
     decision: extra.decision || null,
     treatment: extra.treatment || null,
     readerRef: extra.readerRef || null,
     unsubscribeUrl: null,
+    ...extra,
+    reason,
+    authorized: false,
+    send: false,
   };
 }
 
@@ -202,6 +206,9 @@ async function authorizePromotionalNurture(prisma, request = {}, deps = {}) {
     decision: decision.finalDecision,
     treatment: decision.recommendedTreatment,
     readerRef: decision.readerRef,
+    category: decision.category || null,
+    timing: decision.recommendedTiming || null,
+    prerequisite: decision.prerequisite || null,
   };
 
   if (!decision.canSendPromotional || decision.finalDecision === DECISION.SUPPRESSED) {
@@ -234,11 +241,38 @@ async function authorizePromotionalNurture(prisma, request = {}, deps = {}) {
     decision: decision.finalDecision,
     treatment: decision.recommendedTreatment,
     readerRef: decision.readerRef,
+    category: decision.category || null,
+    timing: decision.recommendedTiming || null,
+    prerequisite: decision.prerequisite || null,
     unsubscribeUrl,
   };
 }
 
+/**
+ * Authorize only the treatment the decision engine itself recommends.
+ * Still does not send. A prerequisite that blocks Text a Friend is not authorized.
+ */
+async function authorizeRecommendedPromotionalNurture(prisma, request = {}, deps = {}) {
+  const preview = await authorizePromotionalNurture(
+    prisma,
+    { ...request, treatment: '__pending__' },
+    deps,
+  );
+  if (preview.reason !== 'treatment_not_eligible' || !preview.treatment || preview.treatment === 'none') {
+    return preview;
+  }
+  if (preview.prerequisite === 'personal_referral_code_required') {
+    return { ...preview, authorized: false, send: false, reason: 'prerequisite_unmet' };
+  }
+  return authorizePromotionalNurture(
+    prisma,
+    { ...request, treatment: preview.treatment },
+    deps,
+  );
+}
+
 module.exports = {
   authorizePromotionalNurture,
+  authorizeRecommendedPromotionalNurture,
   TREATMENT,
 };

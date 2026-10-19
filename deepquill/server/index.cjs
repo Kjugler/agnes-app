@@ -224,7 +224,7 @@ console.log('✅ Mounted /api admin/moderation (approve-signal, approve-review, 
 const adminJobsRouter = require('./routes/adminJobs.cjs');
 app.use('/api/admin/jobs', adminJobsRouter);
 console.log(
-  '✅ Mounted /api/admin/jobs (send-engaged-reminders, send-non-participant-reminders, send-no-purchase-reminders, send-missionary-emails, send-reader-recommendation-outreach, seed-signal-room, daily-contest-summary)'
+  '✅ Mounted /api/admin/jobs (send-engaged-reminders, send-non-participant-reminders, send-no-purchase-reminders, send-missionary-emails, send-reader-recommendation-outreach, promotional-nurture, seed-signal-room, daily-contest-summary)'
 );
 
 const adminEmailRouter = require('./routes/adminEmail.cjs');

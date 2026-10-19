@@ -222,24 +222,34 @@ async function main() {
 
   const root = path.join(__dirname, '..');
   const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
-  const bypass = [
-    'lib/email/sendEmail.cjs',
+  const promotional = [
     'lib/email/runReaderRecommendationOutreach.cjs',
     'lib/email/adminEmailSend.cjs',
     'scripts/send-quiet-reveal-email.cjs',
+    'server/routes/adminJobs.cjs',
+  ];
+  const transactional = [
+    'lib/email/sendEmail.cjs',
     'lib/email/shippingConfirmation.cjs',
     'lib/email/resendPurchaseEmails.cjs',
     'api/stripe-webhook.cjs',
   ];
-  for (const rel of bypass) {
+  for (const rel of promotional) {
+    assert.match(read(rel), /lookupPromotionalConsent/);
     assert.doesNotMatch(read(rel), /authorizePromotionalNurture/);
+  }
+  for (const rel of transactional) {
+    assert.doesNotMatch(read(rel), /authorizePromotionalNurture/);
+    assert.doesNotMatch(read(rel), /lookupPromotionalConsent/);
   }
   assert.match(read('lib/readers/readerOutreachEligibility.cjs'), /authorizePromotionalNurture/);
   assert.doesNotMatch(read('lib/email/sendEmail.cjs'), /checkTransactionalSuppression/);
 
   console.log('verify-promotional-authorization: passed');
-  console.log('unchanged bypass paths:');
-  for (const rel of bypass) console.log(`  ${rel}`);
+  console.log('promotional paths require explicit consent:');
+  for (const rel of promotional) console.log(`  ${rel}`);
+  console.log('transactional paths stay outside the promotional gate:');
+  for (const rel of transactional) console.log(`  ${rel}`);
 }
 
 main().catch((err) => {

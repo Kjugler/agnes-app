@@ -406,6 +406,7 @@ async function runAdminEmailSend(prisma, body) {
 
   let sent = 0;
   let failed = 0;
+  let skippedNoConsent = 0;
   const logs = [];
   const finalIndex = new Set(sentIndex);
 
@@ -417,6 +418,13 @@ async function runAdminEmailSend(prisma, body) {
     const batch = targets.slice(i, i + BATCH_SIZE);
     for (const email of batch) {
       try {
+        const { lookupPromotionalConsent } = require('../readers/lookupPromotionalConsent.cjs');
+        const consent = await lookupPromotionalConsent(prisma, { email });
+        if (!consent.allowed) {
+          skippedNoConsent += 1;
+          logs.push({ email, status: 'skipped_no_promotional_consent', _id: null, reject_reason: consent.reason });
+          continue;
+        }
         const result = await client.messages.send({
           message: {
             from_email: fromEmail,
@@ -469,6 +477,7 @@ async function runAdminEmailSend(prisma, body) {
   } else {
     skippedOut = { ...baseSkip, selection: selectionSkip };
   }
+  skippedOut = { ...skippedOut, noPromotionalConsent: skippedNoConsent };
 
   const resultsSummary = `Targeted ${targets.length} address(es). Mailchimp: ok=${sent} failed=${failed}.`;
 

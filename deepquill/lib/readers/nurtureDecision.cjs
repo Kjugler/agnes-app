@@ -399,6 +399,7 @@ function finish(base, plan, permission, communications) {
     ...base,
     recommendedTreatment: plan.treatment || TREATMENT.NONE,
     recommendedTiming: plan.timing || null,
+    category: plan.category || null,
     prerequisite: plan.prerequisite || null,
     reviewAnchor: plan.reviewAnchor || null,
     textAFriendSentAt: plan.textAFriendSentAt || null,

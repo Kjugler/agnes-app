@@ -40,6 +40,12 @@ async function skipDiscretionaryOutreach(user, logLabel) {
     console.warn(`[${logLabel}] Skipping ineligible reader: ${result.reason || 'lookup_failed'}`);
     return true;
   }
+  const { lookupPromotionalConsent } = require('../../lib/readers/lookupPromotionalConsent.cjs');
+  const consent = await lookupPromotionalConsent(prisma, { userId: user.id, email: user.email });
+  if (!consent.allowed) {
+    console.warn(`[${logLabel}] Skipping reader without promotional consent: ${consent.reason}`);
+    return true;
+  }
   return false;
 }
 
@@ -516,5 +522,22 @@ async function runReaderRecommendationOutreachJob(req, res) {
 
 router.get('/send-reader-recommendation-outreach', runReaderRecommendationOutreachJob);
 router.post('/send-reader-recommendation-outreach', express.json(), runReaderRecommendationOutreachJob);
+
+// GET/POST /api/admin/jobs/promotional-nurture
+// Sends only when NURTURE_PROMOTIONAL_SENDING=1. Otherwise it records nothing and sends nothing.
+async function runPromotionalNurtureJob(req, res) {
+  const { runPromotionalNurture } = require('../../lib/readers/runPromotionalNurture.cjs');
+  try {
+    const limit = req.query?.limit ?? req.body?.limit;
+    const result = await runPromotionalNurture(prisma, { limit });
+    return res.json(result);
+  } catch (err) {
+    console.error('[admin/promotional-nurture]', err);
+    return res.status(500).json({ ok: false, error: err?.message || 'Unknown error', sent: 0 });
+  }
+}
+
+router.get('/promotional-nurture', runPromotionalNurtureJob);
+router.post('/promotional-nurture', express.json(), runPromotionalNurtureJob);
 
 module.exports = router;

@@ -48,6 +48,7 @@ function emptySkipped() {
     archived: 0,
     invalidEmail: 0,
     other: 0,
+    noPromotionalConsent: 0,
   };
 }
 
@@ -361,6 +362,15 @@ async function runReaderRecommendationOutreach(prisma, options = {}) {
       const guarded = guardMailableEmail(recipient.email, 'reader_recommendation_outreach');
       if (!guarded) {
         skipped.invalidEmail += 1;
+        continue;
+      }
+      const { lookupPromotionalConsent } = require('../readers/lookupPromotionalConsent.cjs');
+      const consent = await lookupPromotionalConsent(prisma, {
+        userId: recipient.userId,
+        email: guarded,
+      });
+      if (!consent.allowed) {
+        skipped.noPromotionalConsent += 1;
         continue;
       }
 

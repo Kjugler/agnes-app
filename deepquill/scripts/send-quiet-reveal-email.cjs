@@ -555,6 +555,18 @@ async function main() {
       }
 
       try {
+        const { lookupPromotionalConsent } = require('../lib/readers/lookupPromotionalConsent.cjs');
+        const consent = await lookupPromotionalConsent(prisma, { email });
+        if (!consent.allowed) {
+          skipped += 1;
+          appendJsonl({
+            at: new Date().toISOString(),
+            email,
+            status: 'skipped_no_promotional_consent',
+            providerMessageId: null,
+          });
+          continue;
+        }
         const result = await client.messages.send({
           message: {
             from_email: fromEmail,
