@@ -15,6 +15,7 @@ import {
   clearReadersAgreeRecognition,
   fetchReadersAgreeRecognition,
 } from '@/lib/readersAgreeSession';
+import { sampleChapterEmailPromptVisible } from '@/lib/chapterOneGate';
 import { sampleChaptersHubHref } from '@/lib/sampleChapterNav';
 import { markSampleReadingEngaged } from '@/lib/departureBridge';
 import { BuyBookButton } from '@/components/BuyBookButton';
@@ -235,7 +236,10 @@ export function SampleChapterReader({
             }}
           />
         ) : null}
-        {access === 'anonymous' && exhausted ? (
+        {sampleChapterEmailPromptVisible({
+          recognized: access === 'recognized',
+          exhausted,
+        }) ? (
           <JodyReaderInvitation
             searchParams={searchParams}
             onDecline={handleNotNow}

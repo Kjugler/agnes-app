@@ -6,6 +6,10 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  sampleChapterEmailPromptVisible,
+  sampleChapterReadable,
+} from '../src/lib/chapterOneGate.ts';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -52,14 +56,40 @@ assert.match(landing, /ReadersAgreeEmailCapture/);
 assert.match(lead, /input\.captureSurface === 'cheer'/);
 assert.match(lead, /promotionalOptIn === true/);
 
-assert.match(reader, /access === 'anonymous' && exhausted/);
+assert.match(reader, /sampleChapterEmailPromptVisible\(\{/);
+assert.match(reader, /recognized: access === 'recognized'/);
 assert.match(reader, /if \(access !== 'anonymous' \|\| exhausted\) return/);
 assert.match(reader, /setAccess\('recognized'\)/);
+assert.match(reader, /\[chapterId, identityGeneration\]/);
 assert.match(gate, /data-testid="jody-reader-invitation"/);
 assert.match(gate, /Leaving this unchecked does not change reading access\./);
 
-const anonymousBranch = reader.slice(reader.indexOf("if (recognition.recognized)"));
-assert.match(anonymousBranch, /setAccess\('recognized'\)/);
-assert.match(anonymousBranch, /setExhausted\(false\)/);
+const recognizedBranch = reader.slice(
+  reader.indexOf('if (recognition.recognized)'),
+  reader.indexOf('setEmailHint(null)'),
+);
+assert.match(recognizedBranch, /setAccess\('recognized'\)/);
+assert.match(recognizedBranch, /setExhausted\(false\)/);
+assert.match(recognizedBranch, /return;/);
+assert.doesNotMatch(recognizedBranch, /JodyReaderInvitation|type="email"/);
+
+const chapters = ['1', '2', '9', '45'];
+for (const chapterId of chapters) {
+  assert.equal(
+    sampleChapterReadable({ recognized: true, exhausted: true }),
+    true,
+    `chapter ${chapterId} stays open after recognition`,
+  );
+  assert.equal(
+    sampleChapterEmailPromptVisible({ recognized: true, exhausted: true }),
+    false,
+    `chapter ${chapterId} does not ask for email again after 90 seconds`,
+  );
+  assert.equal(
+    sampleChapterEmailPromptVisible({ recognized: false, exhausted: true }),
+    true,
+    `chapter ${chapterId} still asks an anonymous reader after 90 seconds`,
+  );
+}
 
 console.log('verify-readers-cheer: passed');

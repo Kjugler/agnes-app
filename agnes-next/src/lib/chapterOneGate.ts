@@ -42,6 +42,17 @@ export function sampleChapterReadable(input: { recognized: boolean; exhausted: b
   return input.recognized === true || input.exhausted !== true;
 }
 
+/**
+ * The email invitation appears once, for an anonymous reader whose 90-second
+ * allowance is used up. Recognition on a later chapter does not ask again.
+ */
+export function sampleChapterEmailPromptVisible(input: {
+  recognized: boolean;
+  exhausted: boolean;
+}): boolean {
+  return input.recognized !== true && input.exhausted === true;
+}
+
 export function canAdvanceToPage(input: {
   targetPage: number;
   pageCount: number;

@@ -61,6 +61,14 @@ delete globalThis.__prisma;
 
 const { PrismaClient } = require('@prisma/client');
 const handler = require('../api/readersAgree/lead.cjs');
+const {
+  verifyReadersAgreeSession,
+} = require('../src/lib/readersAgreeSessionToken.cjs');
+const {
+  applyReadingTick,
+  freshAllowanceState,
+  publicAllowance,
+} = require('../src/lib/readingAllowance.cjs');
 const { FUNNEL_EVENT_TYPES } = require('../lib/funnel/funnelEventTypes.cjs');
 const {
   classifyProspectEngagement,
@@ -97,9 +105,9 @@ function mockRes() {
   };
 }
 
-async function postLead(body) {
+async function postLead(body, headers = {}) {
   const res = mockRes();
-  await handler({ body, headers: {} }, res);
+  await handler({ body, headers }, res);
   return res;
 }
 
@@ -313,6 +321,60 @@ async function main() {
   assert.strictEqual(landingProfile.leadAttribution.captureSurface, 'landing');
   assert.strictEqual(landingProfile.leadAttribution.utm_campaign, null);
   assert.strictEqual(landingProfile.leadAttribution.entryPage, undefined);
+
+  const recognized = await postLead(
+    { email, captureSurface: 'cheer' },
+    { 'x-readers-agree-issue-session': '1' },
+  );
+  assertHub(recognized, 'recognized-session');
+  assert.strictEqual(recognized.body.userId, created.body.userId);
+  assert.equal(typeof recognized.body.sessionToken, 'string');
+  const session = verifyReadersAgreeSession(recognized.body.sessionToken);
+  assert.ok(session);
+  assert.strictEqual(session.userId, created.body.userId);
+
+  let allowance = applyReadingTick(freshAllowanceState(0), {
+    now: 0,
+    limitMs: 90_000,
+    active: true,
+    chapterId: '1',
+    page: 1,
+    visitorId: 'visitor-cheer-chapters',
+  });
+  const chapterOrder = ['1', '2', '9', '45'];
+  let now = 0;
+  while (!allowance.exhausted && now < 120_000) {
+    now += 2_500;
+    allowance = applyReadingTick(allowance, {
+      now,
+      limitMs: 90_000,
+      active: true,
+      chapterId: chapterOrder[Math.floor(now / 20_000) % chapterOrder.length],
+      page: 1,
+    });
+  }
+  assert.strictEqual(allowance.accumulatedMs, 90_000);
+  assert.strictEqual(allowance.exhausted, true);
+  for (const chapterId of ['2', '9', '45']) {
+    now += 2_500;
+    allowance = applyReadingTick(allowance, {
+      now,
+      limitMs: 90_000,
+      active: true,
+      chapterId,
+      page: 1,
+    });
+    assert.strictEqual(allowance.chapterId, chapterId);
+    assert.strictEqual(allowance.exhausted, true);
+    assert.strictEqual(publicAllowance(allowance, 90_000).exhausted, true);
+  }
+  const stillRecognized = verifyReadersAgreeSession(recognized.body.sessionToken);
+  assert.ok(stillRecognized);
+  assert.strictEqual(
+    stillRecognized.userId,
+    created.body.userId,
+    'an exhausted allowance on a later chapter does not require another email',
+  );
 
   assert.strictEqual(await prisma.user.count({ where: { email } }), 1);
   assert.strictEqual(await prisma.readerCommunication.count(), 0);
