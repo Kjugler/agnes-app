@@ -23,8 +23,11 @@ function deriveChannel(utm = {}) {
   return 'unknown';
 }
 
+const READERS_CHEER_ENTRY_PAGE = '/readers-cheer';
+
 function resolveCaptureSurface(value) {
-  return value === 'bridge' ? 'bridge' : 'landing';
+  if (value === 'bridge' || value === 'cheer') return value;
+  return 'landing';
 }
 
 function resolveRetailerOrigin(value) {
@@ -39,7 +42,8 @@ function buildLeadAttributionSnapshot({
   captureSurface,
   retailerOrigin,
 }) {
-  return {
+  const surface = resolveCaptureSurface(captureSurface);
+  const snapshot = {
     visitorId: visitorId || null,
     ref: ref || null,
     code: code || null,
@@ -51,10 +55,41 @@ function buildLeadAttributionSnapshot({
     origin: utm.origin || null,
     v: utm.v || null,
     channel: deriveChannel({ ...utm, ref, code }),
-    captureSurface: resolveCaptureSurface(captureSurface),
+    captureSurface: surface,
     retailerOrigin: resolveRetailerOrigin(retailerOrigin),
     capturedAt: new Date().toISOString(),
   };
+  if (surface === 'cheer') snapshot.entryPage = READERS_CHEER_ENTRY_PAGE;
+  return snapshot;
+}
+
+function attributionValuePresent(value) {
+  return value != null && String(value).trim() !== '';
+}
+
+/**
+ * A later /readers-cheer submit may arrive without campaign fields.
+ * Keep the values already stored. Landing and bridge snapshots still replace.
+ */
+function mergeCheerAttribution(prior, incoming) {
+  const base = prior && typeof prior === 'object' && !Array.isArray(prior) ? { ...prior } : {};
+  const next = incoming && typeof incoming === 'object' && !Array.isArray(incoming) ? incoming : {};
+  const merged = { ...base };
+  for (const [key, value] of Object.entries(next)) {
+    if (!attributionValuePresent(value)) continue;
+    if (
+      key === 'channel' &&
+      value === 'unknown' &&
+      attributionValuePresent(base.channel) &&
+      base.channel !== 'unknown'
+    ) {
+      continue;
+    }
+    merged[key] = value;
+  }
+  merged.captureSurface = 'cheer';
+  merged.entryPage = READERS_CHEER_ENTRY_PAGE;
+  return merged;
 }
 
 function mapClassifiedSource(sourceKey) {
@@ -193,9 +228,14 @@ async function syncReadersAgreeLeadProfile(prisma, userId, { attribution, consen
   if (existing) {
     // Latest snapshot for CRM display. Event history remains authoritative
     // for prior retailer journeys (do not fold them into this JSON).
+    // Cheer is the exception: an empty later submit must not erase known attribution.
+    const leadAttribution =
+      snapshot.captureSurface === 'cheer'
+        ? mergeCheerAttribution(existing.leadAttribution, snapshot)
+        : snapshot;
     const data = {
       // Durable Stage A identity anchor for C1. Event.meta.source is not equivalent.
-      leadAttribution: snapshot,
+      leadAttribution,
       ...consentFields(consentAccepted, existing),
     };
     const profile = await prisma.readerProfile.update({
@@ -247,6 +287,7 @@ async function syncReadersAgreeLeadProfile(prisma, userId, { attribution, consen
 
 module.exports = {
   READERS_AGREE_V2_SOURCE,
+  READERS_CHEER_ENTRY_PAGE,
   PROSPECT_TYPE,
   deriveChannel,
   resolveCaptureSurface,

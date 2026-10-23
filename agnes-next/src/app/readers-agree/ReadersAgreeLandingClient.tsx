@@ -7,6 +7,7 @@ import { useSearchParams } from 'next/navigation';
 import SiteFooter from '@/components/SiteFooter';
 import ReadersAgreeScrollCue from '@/components/readers-agree/ReadersAgreeScrollCue';
 import ReadersAgreeEmailCapture from '@/components/readers-agree/ReadersAgreeEmailCapture';
+import ReadersCheerEmailCapture from '@/components/readers-agree/ReadersCheerEmailCapture';
 import {
   READERS_AGREE_APPEAL_LABELS,
   READERS_AGREE_SYNOPSIS_HOOK,
@@ -40,12 +41,21 @@ import {
 import './readers-agree-bn.css';
 
 const BRIDGE_ENABLED = isReadersAgreeDorothyBridgeEnabled();
+const CHEER_ENTRY_META = { entryPage: '/readers-cheer' };
+
+type ReadersAgreeLandingEntry = 'agree' | 'cheer';
 
 function subscribeNoop() {
   return () => {};
 }
 
-export default function ReadersAgreeLandingClient() {
+export default function ReadersAgreeLandingClient({
+  entry = 'agree',
+}: {
+  entry?: ReadersAgreeLandingEntry;
+}) {
+  const cheer = entry === 'cheer';
+  const funnelSource = cheer ? 'readers-cheer' : 'readers-agree';
   const searchParams = useSearchParams();
   const viewFiredRef = useRef(false);
   const emailFormRef = useRef<HTMLElement>(null);
@@ -55,8 +65,10 @@ export default function ReadersAgreeLandingClient() {
     pageViewType: FUNNEL_EVENT_TYPES.READERS_AGREE_PAGE_VIEW,
     timeOnPageType: FUNNEL_EVENT_TYPES.READERS_AGREE_TIME_ON_PAGE,
     scrollDepthType: FUNNEL_EVENT_TYPES.READERS_AGREE_SCROLL_DEPTH,
-    source: 'readers-agree',
+    source: funnelSource,
     searchParams,
+    extraPageViewMeta: cheer ? CHEER_ENTRY_META : undefined,
+    extraEngagementMeta: cheer ? CHEER_ENTRY_META : undefined,
   });
 
   const catalogHref = useMemo(
@@ -78,31 +90,32 @@ export default function ReadersAgreeLandingClient() {
     if (viewFiredRef.current) return;
     viewFiredRef.current = true;
     trackMeta('ViewContent', {
-      content_ids: ['rrf-readers-agree'],
-      content_name: 'Readers Agree Landing',
+      content_ids: [cheer ? 'rrf-readers-cheer' : 'rrf-readers-agree'],
+      content_name: cheer ? 'Readers Cheer Landing' : 'Readers Agree Landing',
       content_type: 'product',
     });
     trackTikTok('ViewContent', {
-      content_id: 'rrf-readers-agree',
-      content_name: 'Readers Agree Landing',
+      content_id: cheer ? 'rrf-readers-cheer' : 'rrf-readers-agree',
+      content_name: cheer ? 'Readers Cheer Landing' : 'Readers Agree Landing',
       content_type: 'product',
     });
-  }, []);
+  }, [cheer]);
 
-  const trackOpts = { source: 'readers-agree' as const, searchParams };
+  const trackOpts = { source: funnelSource, searchParams };
+  const entryMeta = cheer ? CHEER_ENTRY_META : {};
 
   const handleBuyDirectClick = () =>
     trackFunnelEvent(
       FUNNEL_EVENT_TYPES.READERS_AGREE_BUY_DIRECT_CLICK,
-      { destination: 'catalog' },
+      { destination: 'catalog', ...entryMeta },
       trackOpts,
     );
 
   const handleAmazonClick = () =>
-    trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK, {}, trackOpts);
+    trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK, entryMeta, trackOpts);
 
   const handleBnClick = () =>
-    trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_BN_CLICK, {}, trackOpts);
+    trackFunnelEvent(FUNNEL_EVENT_TYPES.READERS_AGREE_BN_CLICK, entryMeta, trackOpts);
 
   const handleRetailerTap = (
     event: MouseEvent<HTMLAnchorElement>,
@@ -271,7 +284,11 @@ export default function ReadersAgreeLandingClient() {
                 {bnControl}
               </div>
 
-              <ReadersAgreeEmailCapture searchParams={searchParams} formRef={emailFormRef} />
+              {cheer ? (
+                <ReadersCheerEmailCapture searchParams={searchParams} formRef={emailFormRef} />
+              ) : (
+                <ReadersAgreeEmailCapture searchParams={searchParams} formRef={emailFormRef} />
+              )}
             </div>
           </div>
         </div>

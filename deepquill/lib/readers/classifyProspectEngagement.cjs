@@ -150,7 +150,7 @@ function isReadersAgreeLeadAttribution(value) {
   if (!capturedAt) return false;
   if (Number.isNaN(new Date(capturedAt).getTime())) return false;
   const surface = asTrimmedString(value.captureSurface);
-  return surface === 'landing' || surface === 'bridge';
+  return surface === 'landing' || surface === 'bridge' || surface === 'cheer';
 }
 
 function leadAttributionVisitorId(value) {

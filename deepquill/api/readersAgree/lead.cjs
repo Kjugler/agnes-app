@@ -8,6 +8,7 @@ const { recordServerFunnelEvent } = require('../../lib/funnel/recordServerFunnel
 const { FUNNEL_EVENT_TYPES } = require('../../lib/funnel/funnelEventTypes.cjs');
 const {
   buildLeadAttributionSnapshot,
+  READERS_CHEER_ENTRY_PAGE,
   resolveCaptureSurface,
   resolveRetailerOrigin,
   syncReadersAgreeLeadProfile,
@@ -169,17 +170,19 @@ module.exports = async function readersAgreeLeadHandler(req, res) {
     }
 
     try {
+      const eventMeta = {
+        captureSurface,
+        retailerOrigin,
+        destination: 'sample-chapters',
+        visitorId: visitorId || null,
+        ref: ref || null,
+        priorEmailSubmitCount,
+      };
+      if (captureSurface === 'cheer') eventMeta.entryPage = READERS_CHEER_ENTRY_PAGE;
       await recordServerFunnelEvent(prisma, {
         type: FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED,
         userId: user.id,
-        meta: {
-          captureSurface,
-          retailerOrigin,
-          destination: 'sample-chapters',
-          visitorId: visitorId || null,
-          ref: ref || null,
-          priorEmailSubmitCount,
-        },
+        meta: eventMeta,
       });
     } catch (eventErr) {
       console.warn('[readers-agree/lead] event record failed', eventErr && eventErr.message);

@@ -17,7 +17,7 @@ export type SubmitReadersAgreeLeadResult =
 
 type SearchParamsLike = { get: (key: string) => string | null } | null | undefined;
 
-export type ReadersAgreeCaptureSurface = 'landing' | 'bridge';
+export type ReadersAgreeCaptureSurface = 'landing' | 'bridge' | 'cheer';
 export type ReadersAgreeRetailerOrigin = 'amazon' | 'bn';
 
 const CONTINUE_PARAM_KEYS = [
@@ -69,7 +69,10 @@ export async function submitReadersAgreeLead(input: {
     ref,
     code,
     utm,
-    captureSurface: input.captureSurface === 'bridge' ? 'bridge' : 'landing',
+    captureSurface:
+      input.captureSurface === 'bridge' || input.captureSurface === 'cheer'
+        ? input.captureSurface
+        : 'landing',
     retailerOrigin:
       input.retailerOrigin === 'amazon' || input.retailerOrigin === 'bn'
         ? input.retailerOrigin

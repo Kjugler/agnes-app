@@ -315,7 +315,7 @@ export default function CatalogClient() {
 
   const trackingParams = useMemo(() => {
     const params = new URLSearchParams();
-    const keysToPreserve = ['ref', 'src', 'v', 'origin', 'code', 'utm_source', 'utm_medium', 'utm_campaign'];
+    const keysToPreserve = ['ref', 'src', 'v', 'origin', 'code', 'utm_source', 'utm_medium', 'utm_campaign', 'fbclid'];
     keysToPreserve.forEach((key) => {
       const value = searchParams.get(key);
       if (value) params.set(key, value);
