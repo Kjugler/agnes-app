@@ -1,6 +1,12 @@
 /**
  * Login-free promotional unsubscribe token.
  * Bound to one reader id and one normalized email. No reading-access privilege.
+ *
+ * New tokens are signed only with PROMOTIONAL_UNSUBSCRIBE_SECRET.
+ * Existing tokens signed with the previous fulfillment secret still verify
+ * when that value is present in FULFILLMENT_TOKEN_SECRET_LEGACY.
+ * Ebook, claim, session, remember-place, and reading-allowance tokens do not
+ * use either of those checks.
  */
 
 const crypto = require('crypto');
@@ -8,33 +14,53 @@ const { getSiteUrl } = require('./readerUrls.cjs');
 
 const TYP = 'promotional_unsubscribe';
 
-function getSecret() {
-  const secret = process.env.FULFILLMENT_TOKEN_SECRET || '';
-  if (secret.length < 32) {
-    throw new Error('FULFILLMENT_TOKEN_SECRET must be at least 32 characters');
+function configuredSecret(name) {
+  const secret = process.env[name] || '';
+  return secret.length >= 32 ? secret : '';
+}
+
+function signingSecret() {
+  const secret = configuredSecret('PROMOTIONAL_UNSUBSCRIBE_SECRET');
+  if (!secret) {
+    throw new Error('PROMOTIONAL_UNSUBSCRIBE_SECRET must be at least 32 characters');
   }
   return secret;
+}
+
+function verificationSecrets() {
+  const secrets = [];
+  const current = configuredSecret('PROMOTIONAL_UNSUBSCRIBE_SECRET');
+  if (current) secrets.push(current);
+  const legacy = configuredSecret('FULFILLMENT_TOKEN_SECRET_LEGACY');
+  if (legacy && !secrets.includes(legacy)) secrets.push(legacy);
+  return secrets;
+}
+
+function signPayload(secret, payload) {
+  const payloadStr = JSON.stringify(payload);
+  const signature = crypto.createHmac('sha256', secret).update(payloadStr).digest('base64url');
+  return `${Buffer.from(payloadStr).toString('base64url')}.${signature}`;
+}
+
+function signatureMatches(secret, payloadStr, signature) {
+  const expected = crypto.createHmac('sha256', secret).update(payloadStr).digest('base64url');
+  const sigBuf = Buffer.from(signature);
+  const expectedBuf = Buffer.from(expected);
+  return sigBuf.length === expectedBuf.length && crypto.timingSafeEqual(sigBuf, expectedBuf);
 }
 
 function signPromotionalUnsubscribeToken({ userId, email }) {
   const uid = typeof userId === 'string' ? userId.trim() : '';
   const em = typeof email === 'string' ? email.trim().toLowerCase() : '';
   if (!uid || !em) throw new Error('userId and email are required');
-  const secret = getSecret();
   const data = { typ: TYP, uid, em };
-  const payloadStr = JSON.stringify(data);
-  const signature = crypto.createHmac('sha256', secret).update(payloadStr).digest('base64url');
-  return `${Buffer.from(payloadStr).toString('base64url')}.${signature}`;
+  return signPayload(signingSecret(), data);
 }
 
 function verifyPromotionalUnsubscribeToken(token) {
   if (!token || typeof token !== 'string') return null;
-  let secret;
-  try {
-    secret = getSecret();
-  } catch {
-    return null;
-  }
+  const secrets = verificationSecrets();
+  if (secrets.length === 0) return null;
   const parts = token.split('.');
   if (parts.length !== 2) return null;
   const [payloadB64, signature] = parts;
@@ -44,12 +70,7 @@ function verifyPromotionalUnsubscribeToken(token) {
   } catch {
     return null;
   }
-  const expected = crypto.createHmac('sha256', secret).update(payloadStr).digest('base64url');
-  const sigBuf = Buffer.from(signature);
-  const expectedBuf = Buffer.from(expected);
-  if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) {
-    return null;
-  }
+  if (!secrets.some((secret) => signatureMatches(secret, payloadStr, signature))) return null;
   let payload;
   try {
     payload = JSON.parse(payloadStr);
