@@ -24,14 +24,34 @@ function isoFrom(value) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+function recognizedConsentSource(source) {
+  const value = typeof source === 'string' ? source.trim() : '';
+  return SOURCES.has(value) ? value : null;
+}
+
+/**
+ * A timestamp alone is not promotional permission.
+ * Active consent requires a recognized affirmative source and no later opt-out.
+ * Missing or unknown sources fail closed. Records are not rewritten here.
+ */
 function promotionalConsentState(profile) {
   const consentAt = isoFrom(profile && profile.emailMarketingConsentAt);
   const optOutAt = isoFrom(profile && profile.emailMarketingOptOutAt);
-  const active = Boolean(consentAt) && (!optOutAt || consentAt > optOutAt);
+  const rawSource = profile && profile.emailMarketingConsentSource;
+  const consentSource = recognizedConsentSource(rawSource);
+  let sourceStatus = 'absent';
+  if (consentAt) {
+    if (consentSource) sourceStatus = 'recognized';
+    else if (rawSource == null || (typeof rawSource === 'string' && rawSource.trim() === '')) sourceStatus = 'missing';
+    else sourceStatus = 'unrecognized';
+  }
+  const newerThanOptOut = Boolean(consentAt) && (!optOutAt || consentAt > optOutAt);
+  const active = newerThanOptOut && sourceStatus === 'recognized';
   return {
     active,
     consentAt,
-    consentSource: (profile && profile.emailMarketingConsentSource) || null,
+    consentSource,
+    sourceStatus,
     optOutAt,
     optOutSource: (profile && profile.emailMarketingOptOutSource) || null,
   };
@@ -113,6 +133,7 @@ async function applyPromotionalPreference(prisma, { userId, action, source, expl
 module.exports = {
   SOURCES,
   CONSENT_FIELDS,
+  recognizedConsentSource,
   promotionalConsentState,
   planPromotionalPreference,
   applyPromotionalPreference,

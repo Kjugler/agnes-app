@@ -1,16 +1,29 @@
 /**
  * Consent-gated nurturing pass.
- * With NURTURE_PROMOTIONAL_SENDING unset, this examines nothing and sends nothing.
+ * With either promotional switch unset, this examines nothing and sends nothing.
+ *
+ * A claim is one lifetime row per reader and category. The final authorization
+ * runs again immediately before the provider call and does not create a second
+ * claim. A crash that leaves the claim reserved or sending is not retried.
+ * A timeout after the provider request is marked ambiguous and is not retried.
+ * The interval between that last read and provider acceptance cannot be made
+ * atomic with an external mail service.
  */
 
 const { nurturingSendEnabled } = require('./nurtureActivation.cjs');
+const { masterPromotionalSendingEnabled, promotionalPostalAddress } = require('./promotionalActivation.cjs');
 const { authorizeRecommendedPromotionalNurture } = require('./authorizePromotionalNurture.cjs');
 const { buildNurtureMessage } = require('../email/builders/nurtureMessage.cjs');
+const { buildTextAFriendUrl } = require('./readerUrls.cjs');
+const { buildPromotionalOneClickUnsubscribeUrl } = require('./promotionalUnsubscribeToken.cjs');
 const { sendEmail } = require('../email/sendEmail.cjs');
+const { classifyProviderFailure, classifyProviderResult } = require('../email/providerSendOutcome.cjs');
+const { normalizeEmail } = require('../../src/lib/normalize.cjs');
 
 const SOURCE = 'promotional_nurture';
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
+const RETRYABLE_OUTCOMES = ['suppressed_before_send', 'provider_rejected'];
 
 function emptyResult(extra = {}) {
   return {
@@ -25,39 +38,100 @@ function emptyResult(extra = {}) {
   };
 }
 
-function dayKey(timing) {
-  const raw = timing ? String(timing) : new Date().toISOString();
-  return raw.slice(0, 10);
+function lifetimeRef(userId, category) {
+  return `nurture:${userId}:${category}`;
 }
 
-async function claimSend(prisma, { userId, email, treatment, category, timing }) {
-  const sourceRef = `nurture:${userId}:${treatment}:${dayKey(timing)}`;
+function gatesOpen(deps, env) {
+  const nurture = deps.sendingEnabled != null
+    ? deps.sendingEnabled === true
+    : nurturingSendEnabled(env);
+  const master = deps.masterEnabled != null
+    ? deps.masterEnabled === true
+    : masterPromotionalSendingEnabled(env);
+  if (!master) return { open: false, reason: 'promotional_sending_disabled' };
+  if (!nurture) return { open: false, reason: 'nurture_sending_disabled' };
+  return { open: true, reason: null };
+}
+
+async function obtainClaim(prisma, { userId, email, treatment, category }) {
+  const sourceRef = lifetimeRef(userId, category);
+  const data = {
+    userId,
+    recipientEmailSnapshot: email,
+    category: category || 'promotional_nurture',
+    templateOrAskId: treatment,
+    trigger: 'automatic_job',
+    jobName: 'promotional-nurture',
+    occurredAt: new Date(),
+    outcome: 'reserved',
+    source: SOURCE,
+    sourceRef,
+  };
   try {
-    await prisma.readerCommunication.create({
-      data: {
-        userId,
-        recipientEmailSnapshot: email,
-        category: category || 'promotional_nurture',
-        templateOrAskId: treatment,
-        trigger: 'automatic_job',
-        jobName: 'promotional-nurture',
-        occurredAt: new Date(),
-        outcome: 'unknown',
-        source: SOURCE,
-        sourceRef,
-      },
-    });
-    return { claimed: true, sourceRef };
+    await prisma.readerCommunication.create({ data });
+    return { owned: true, sourceRef };
   } catch (err) {
-    if (err && err.code === 'P2002') return { claimed: false, sourceRef, duplicate: true };
-    throw err;
+    if (!err || err.code !== 'P2002') throw err;
+  }
+  if (typeof prisma.readerCommunication.updateMany !== 'function') {
+    return { owned: false, sourceRef };
+  }
+  const taken = await prisma.readerCommunication.updateMany({
+    where: { source: SOURCE, sourceRef, outcome: { in: RETRYABLE_OUTCOMES } },
+    data: {
+      outcome: 'reserved',
+      templateOrAskId: treatment,
+      recipientEmailSnapshot: email,
+      occurredAt: new Date(),
+    },
+  });
+  return { owned: taken.count === 1, sourceRef };
+}
+
+async function setOutcome(prisma, sourceRef, outcome, extra = {}) {
+  const data = { outcome, ...extra };
+  if (typeof prisma.readerCommunication.updateMany === 'function') {
+    const updated = await prisma.readerCommunication.updateMany({
+      where: { source: SOURCE, sourceRef, outcome: outcome === 'sending' ? 'reserved' : undefined },
+      data,
+    });
+    if (outcome === 'sending') return updated.count === 1;
+  }
+  if (typeof prisma.readerCommunication.update === 'function') {
+    await prisma.readerCommunication.update({
+      where: { source_sourceRef: { source: SOURCE, sourceRef } },
+      data,
+    });
+    return true;
+  }
+  return false;
+}
+
+async function mark(prisma, sourceRef, outcome, extra) {
+  try {
+    if (outcome === 'sending') return setOutcome(prisma, sourceRef, outcome, extra);
+    if (typeof prisma.readerCommunication.update === 'function') {
+      await prisma.readerCommunication.update({
+        where: { source_sourceRef: { source: SOURCE, sourceRef } },
+        data: { outcome, ...extra },
+      });
+      return true;
+    }
+    return setOutcome(prisma, sourceRef, outcome, extra);
+  } catch {
+    return false;
   }
 }
 
-async function deliver(deps, message, email) {
+async function deliver(deps, message, email, oneClickUrl) {
   const send = deps.send || sendEmail;
   const fromEmail = process.env.MAILCHIMP_FROM_EMAIL;
-  if (!deps.send && !fromEmail) throw new Error('MAILCHIMP_FROM_EMAIL missing');
+  if (!deps.send && !fromEmail) {
+    const err = new Error('MAILCHIMP_FROM_EMAIL missing');
+    err.statusCode = 400;
+    throw err;
+  }
   return send({
     fromEmail,
     fromName: 'Jody',
@@ -65,14 +139,19 @@ async function deliver(deps, message, email) {
     subject: message.subject,
     html: message.html,
     text: message.text,
+    listUnsubscribeUrl: oneClickUrl,
   });
 }
 
 async function runPromotionalNurture(prisma, options = {}, deps = {}) {
-  const enabled = deps.sendingEnabled != null
-    ? deps.sendingEnabled === true
-    : nurturingSendEnabled();
-  if (!enabled) return emptyResult();
+  const gates = gatesOpen(deps, process.env);
+  if (!gates.open) return emptyResult({ reason: gates.reason });
+  const postalAddress = String(
+    options.postalAddress != null ? options.postalAddress : (promotionalPostalAddress() || ''),
+  ).trim();
+  if (!postalAddress) {
+    return emptyResult({ enabled: true, reason: 'postal_address_required' });
+  }
 
   const limit = Math.min(
     MAX_LIMIT,
@@ -97,61 +176,107 @@ async function runPromotionalNurture(prisma, options = {}, deps = {}) {
       continue;
     }
     const auth = await authorize(prisma, { userId, now: options.now }, deps);
-    if (!auth || auth.authorized !== true || auth.treatment === 'none') {
+    if (!auth || auth.authorized !== true || auth.treatment === 'none' || !auth.category) {
       skipped += 1;
       continue;
     }
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true },
+      select: { id: true, email: true, referralCode: true },
     });
     if (!user || !user.email) {
       skipped += 1;
       continue;
     }
-    const message = buildNurtureMessage({
+    const personalCode = String(user.referralCode || '').trim();
+    const textAFriendUrl = auth.treatment === 'text_a_friend_day_28'
+      ? (personalCode ? buildTextAFriendUrl(personalCode) : null)
+      : options.textAFriendUrl;
+    const draft = buildNurtureMessage({
       treatment: auth.treatment,
       unsubscribeUrl: auth.unsubscribeUrl,
       siteUrl: options.siteUrl,
-      textAFriendUrl: options.textAFriendUrl,
+      textAFriendUrl,
+      postalAddress,
     });
-    if (!message) {
+    if (!draft) {
       skipped += 1;
       continue;
     }
-    if (!deps.send && !process.env.MAILCHIMP_FROM_EMAIL) {
-      failed += 1;
-      continue;
-    }
-    const claim = await claimSend(prisma, {
+    const claim = await obtainClaim(prisma, {
       userId,
       email: user.email,
       treatment: auth.treatment,
       category: auth.category,
-      timing: auth.timing,
     });
-    if (!claim.claimed) {
+    if (!claim.owned) {
+      skipped += 1;
+      continue;
+    }
+    const again = await authorize(prisma, { userId, now: options.now }, deps);
+    const current = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, referralCode: true },
+    });
+    const samePerson = current
+      && normalizeEmail(current.email) === normalizeEmail(user.email);
+    if (!again || again.authorized !== true || again.treatment !== auth.treatment || !samePerson) {
+      await mark(prisma, claim.sourceRef, 'suppressed_before_send');
+      skipped += 1;
+      continue;
+    }
+    const currentCode = String(current.referralCode || '').trim();
+    const currentFriendUrl = again.treatment === 'text_a_friend_day_28'
+      ? (currentCode ? buildTextAFriendUrl(currentCode) : null)
+      : textAFriendUrl;
+    let oneClickUrl = null;
+    try {
+      oneClickUrl = buildPromotionalOneClickUnsubscribeUrl({
+        userId: current.id,
+        email: current.email,
+        siteUrl: options.siteUrl,
+      });
+    } catch {
+      oneClickUrl = null;
+    }
+    const message = buildNurtureMessage({
+      treatment: again.treatment,
+      unsubscribeUrl: again.unsubscribeUrl,
+      siteUrl: options.siteUrl,
+      textAFriendUrl: currentFriendUrl,
+      postalAddress,
+    });
+    if (!message || !oneClickUrl) {
+      await mark(prisma, claim.sourceRef, 'suppressed_before_send');
+      skipped += 1;
+      continue;
+    }
+    const locked = await mark(prisma, claim.sourceRef, 'sending');
+    if (!locked) {
       skipped += 1;
       continue;
     }
     try {
-      const result = await deliver(deps, message, user.email);
-      const row = Array.isArray(result) ? result[0] : null;
-      if (typeof prisma.readerCommunication.update === 'function') {
-        try {
-          await prisma.readerCommunication.update({
-            where: { source_sourceRef: { source: SOURCE, sourceRef: claim.sourceRef } },
-            data: {
-              outcome: 'accepted',
-              providerMessageId: row && row._id ? String(row._id) : null,
-            },
-          });
-        } catch {
-          // The claim already prevents a second send.
-        }
+      const result = await deliver(deps, message, current.email, oneClickUrl);
+      const kind = deps.send && (result == null || result === true)
+        ? 'accepted'
+        : classifyProviderResult(result);
+      if (kind === 'accepted') {
+        const row = Array.isArray(result) ? result[0] : null;
+        await mark(prisma, claim.sourceRef, 'accepted', {
+          providerMessageId: row && row._id ? String(row._id) : null,
+        });
+        sent += 1;
+      } else if (kind === 'rejected') {
+        await mark(prisma, claim.sourceRef, 'provider_rejected');
+        failed += 1;
+      } else {
+        await mark(prisma, claim.sourceRef, 'delivery_unknown');
+        failed += 1;
       }
-      sent += 1;
-    } catch {
+    } catch (err) {
+      const kind = classifyProviderFailure(err);
+      await mark(prisma, claim.sourceRef, kind === 'rejected' ? 'provider_rejected' : 'delivery_unknown');
       failed += 1;
     }
   }

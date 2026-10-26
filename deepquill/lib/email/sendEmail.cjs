@@ -34,7 +34,7 @@ function applyContestBanner(html, text, subject) {
  * @param {string} params.text - Plain text email body
  * @returns {Promise<Object>} Mailchimp API response
  */
-async function sendEmail({ fromEmail, fromName, to, subject, html, text }) {
+async function sendEmail({ fromEmail, fromName, to, subject, html, text, listUnsubscribeUrl }) {
   const client = getMailchimpClient();
   if (!client) {
     throw new Error('[EMAIL] Mailchimp client not available');
@@ -61,6 +61,11 @@ async function sendEmail({ fromEmail, fromName, to, subject, html, text }) {
   }
 
   try {
+    const headers = {};
+    if (listUnsubscribeUrl) {
+      headers['List-Unsubscribe'] = `<${listUnsubscribeUrl}>`;
+      headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click';
+    }
     const result = await client.messages.send({
       message: {
         from_email: fromEmail,
@@ -69,6 +74,7 @@ async function sendEmail({ fromEmail, fromName, to, subject, html, text }) {
         subject: finalSubject || subject,
         html: finalHtml,
         text: finalText,
+        ...(Object.keys(headers).length ? { headers } : {}),
       },
     });
 

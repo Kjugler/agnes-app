@@ -13,6 +13,7 @@ const crypto = require('crypto');
 const { getSiteUrl } = require('./readerUrls.cjs');
 
 const TYP = 'promotional_unsubscribe';
+const TOKEN_TTL_MS = 180 * 24 * 60 * 60 * 1000;
 
 function configuredSecret(name) {
   const secret = process.env[name] || '';
@@ -49,11 +50,12 @@ function signatureMatches(secret, payloadStr, signature) {
   return sigBuf.length === expectedBuf.length && crypto.timingSafeEqual(sigBuf, expectedBuf);
 }
 
-function signPromotionalUnsubscribeToken({ userId, email }) {
+function signPromotionalUnsubscribeToken({ userId, email, now } = {}) {
   const uid = typeof userId === 'string' ? userId.trim() : '';
   const em = typeof email === 'string' ? email.trim().toLowerCase() : '';
   if (!uid || !em) throw new Error('userId and email are required');
-  const data = { typ: TYP, uid, em };
+  const issued = now instanceof Date ? now.getTime() : (typeof now === 'number' ? now : Date.now());
+  const data = { typ: TYP, uid, em, exp: issued + TOKEN_TTL_MS };
   return signPayload(signingSecret(), data);
 }
 
@@ -78,11 +80,20 @@ function verifyPromotionalUnsubscribeToken(token) {
     return null;
   }
   if (payload.typ !== TYP || !payload.uid || !payload.em) return null;
+  if (payload.exp != null) {
+    if (typeof payload.exp !== 'number' || !Number.isFinite(payload.exp) || payload.exp <= Date.now()) {
+      return null;
+    }
+  }
   return { userId: payload.uid, email: String(payload.em).trim().toLowerCase() };
 }
 
 function promotionalUnsubscribePath(token) {
   return `/preferences/unsubscribe?token=${encodeURIComponent(token)}`;
+}
+
+function promotionalOneClickUnsubscribePath(token) {
+  return `/api/promotional-email/unsubscribe?token=${encodeURIComponent(token)}`;
 }
 
 /**
@@ -95,10 +106,18 @@ function buildPromotionalUnsubscribeUrl({ userId, email, siteUrl } = {}) {
   return `${base}${promotionalUnsubscribePath(token)}`;
 }
 
+function buildPromotionalOneClickUnsubscribeUrl({ userId, email, siteUrl } = {}) {
+  const token = signPromotionalUnsubscribeToken({ userId, email });
+  const base = (siteUrl || getSiteUrl()).replace(/\/$/, '');
+  return `${base}${promotionalOneClickUnsubscribePath(token)}`;
+}
+
 module.exports = {
   TYP,
   signPromotionalUnsubscribeToken,
   verifyPromotionalUnsubscribeToken,
   promotionalUnsubscribePath,
+  promotionalOneClickUnsubscribePath,
   buildPromotionalUnsubscribeUrl,
+  buildPromotionalOneClickUnsubscribeUrl,
 };

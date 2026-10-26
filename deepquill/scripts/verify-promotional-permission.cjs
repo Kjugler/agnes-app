@@ -8,6 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 process.env.FULFILLMENT_TOKEN_SECRET = 'local-promotional-permission-secret-32';
+process.env.PROMOTIONAL_UNSUBSCRIBE_SECRET = 'local-promotional-unsubscribe-secret';
 
 const {
   planPromotionalPreference,
@@ -219,6 +220,7 @@ async function main() {
 
   const complained = decideReaderNurture(purchaserInput({
     emailMarketingConsentAt: '2026-09-02T16:00:00.000Z',
+    emailMarketingConsentSource: 'reader_preferences',
     providerSuppression: spam,
   }));
   assert.equal(complained.finalDecision, DECISION.SUPPRESSED);
@@ -228,6 +230,7 @@ async function main() {
 
   const unchecked = decideReaderNurture(purchaserInput({
     emailMarketingConsentAt: '2026-09-02T16:00:00.000Z',
+    emailMarketingConsentSource: 'reader_preferences',
     providerSuppression: failed,
   }));
   assert.equal(unchecked.reason, 'provider_check_required');
@@ -235,6 +238,7 @@ async function main() {
 
   const opted = decideReaderNurture(purchaserInput({
     emailMarketingConsentAt: '2026-09-02T16:00:00.000Z',
+    emailMarketingConsentSource: 'reader_preferences',
     emailMarketingOptOutAt: '2026-09-03T16:00:00.000Z',
     providerSuppression: clear,
   }));

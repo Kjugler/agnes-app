@@ -454,6 +454,16 @@ async function main() {
   console.log('----------------------------------------\n');
 
   const realSend = SEND && !DRY_RUN;
+  if (realSend) {
+    const { promotionalDeliveryGate } = require('../lib/readers/promotionalActivation.cjs');
+    const gate = promotionalDeliveryGate();
+    if (gate.blocked) {
+      console.error(`[QUIET_REVEAL] Blocked: ${gate.reason}`);
+      return;
+    }
+    console.error('[QUIET_REVEAL] Blocked: promotional_pathway_compliance_incomplete');
+    return;
+  }
   const isLocalDb = isLocalLikeDatasource(resolvedDatasource);
   if (realSend && isLocalDb && !ALLOW_LOCAL_SEND) {
     console.error(

@@ -264,6 +264,26 @@ async function runAdminEmailSend(prisma, body) {
   const fromName = 'The Agnes Protocol';
 
   const willSend = mode === 'test' || mode === 'selected' || mode === 'all';
+  if (willSend) {
+    const { promotionalDeliveryGate } = require('../readers/promotionalActivation.cjs');
+    const gate = promotionalDeliveryGate();
+    if (gate.blocked) {
+      return {
+        ...emptyResponse({ database }),
+        ok: true,
+        skipped: true,
+        reason: gate.reason,
+        sent: 0,
+      };
+    }
+    return {
+      ...emptyResponse({ database }),
+      ok: true,
+      skipped: true,
+      reason: 'promotional_pathway_compliance_incomplete',
+      sent: 0,
+    };
+  }
   if (willSend && database.label === 'railway_volume_sqlite' && !adminAuthorized) {
     return {
       ...emptyResponse({ database }),

@@ -19,10 +19,9 @@ const fresh = planDepartureOptIn({ explicit: true, accept: true, profile: null }
 assert.equal(fresh.write, true);
 assert.equal(fresh.source, 'departure_bridge');
 
-assert.equal(
-  planDepartureOptIn({ explicit: true, accept: true, profile }).error,
-  'already_decided',
-);
+const legacyTimestamp = planDepartureOptIn({ explicit: true, accept: true, profile });
+assert.equal(legacyTimestamp.write, true);
+assert.equal(legacyTimestamp.source, 'departure_bridge');
 assert.equal(
   planDepartureOptIn({
     explicit: true,
@@ -36,7 +35,7 @@ assert.equal(planDepartureOptIn({ explicit: true, accept: true, archived: true }
 
 assert.deepEqual(departureStatus({ known: false }), { audience: 'unknown', decided: false, emailHint: null });
 assert.equal(departureStatus({ known: true, profile: null }).decided, false);
-assert.equal(departureStatus({ known: true, profile, doNotContact: false, archived: false }).decided, true);
+assert.equal(departureStatus({ known: true, profile, doNotContact: false, archived: false }).decided, false);
 
 const root = path.join(__dirname, '..');
 const handler = fs.readFileSync(path.join(root, 'api/promotionalEmail/departure.cjs'), 'utf8');

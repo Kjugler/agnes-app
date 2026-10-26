@@ -12,6 +12,8 @@ const { buildNonParticipantReminderEmail } = require('../../lib/email/builders/n
 const { buildMissionaryEmail } = require('../../lib/email/builders/missionaryEmail.cjs');
 const { guardMailableEmail } = require('../../lib/email/guardMailableEmail.cjs');
 const { promotionalOutreachEligibility } = require('../../lib/readers/readerOutreachEligibility.cjs');
+const { promotionalDeliveryGate } = require('../../lib/readers/promotionalActivation.cjs');
+const { deliverLegacyPromotional } = require('../../lib/readers/deliverLegacyPromotional.cjs');
 
 const router = express.Router();
 
@@ -60,6 +62,10 @@ router.use((req, res, next) => {
 // GET /api/admin/jobs/send-engaged-reminders
 router.get('/send-engaged-reminders', async (req, res) => {
   try {
+    const gate = promotionalDeliveryGate();
+    if (gate.blocked) {
+      return res.json({ ok: true, skipped: true, reason: gate.reason, sentCount: 0 });
+    }
     if (!shouldSendTransactionalEmails()) {
       return res.json({ ok: true, skipped: true, reason: 'TRANSACTIONAL_EMAIL_ENABLED not set', sentCount: 0 });
     }
@@ -104,17 +110,18 @@ router.get('/send-engaged-reminders', async (req, res) => {
         const journalUrl = `${BASE_URL}/journal`;
         const { subject, html } = buildEngagedReminderEmail({ firstName: user.firstName, buyUrl, challengeUrl, shareUrl, journalUrl });
         const { html: htmlWithBanner, subject: finalSubject } = applyGlobalEmailBanner({ html, subject });
-        await client.messages.send({
-          message: {
-            from_email: fromEmail,
-            subject: finalSubject ?? subject,
-            to: [{ email: mailable, type: 'to' }],
-            html: htmlWithBanner,
-            headers: { 'Reply-To': fromEmail },
-          },
+        const delivery = await deliverLegacyPromotional(prisma, {
+          user,
+          email: mailable,
+          sentAtField: 'engagedEmailSentAt',
+          fromEmail,
+          client,
+          subject: finalSubject ?? subject,
+          html: htmlWithBanner,
+          postalAddress: gate.postalAddress,
         });
-        await prisma.user.update({ where: { id: user.id }, data: { engagedEmailSentAt: new Date() } });
-        sentCount++;
+        if (delivery.sent) sentCount++;
+        else if (delivery.failed) errors.push(`Failed to send (${delivery.reason})`);
       } catch (err) {
         errors.push(`Failed to send to ${user.email}: ${err?.message || 'Unknown error'}`);
       }
@@ -129,6 +136,10 @@ router.get('/send-engaged-reminders', async (req, res) => {
 // GET /api/admin/jobs/send-non-participant-reminders
 router.get('/send-non-participant-reminders', async (req, res) => {
   try {
+    const gate = promotionalDeliveryGate();
+    if (gate.blocked) {
+      return res.json({ ok: true, skipped: true, reason: gate.reason, sentCount: 0 });
+    }
     if (!shouldSendTransactionalEmails()) {
       return res.json({ ok: true, skipped: true, reason: 'TRANSACTIONAL_EMAIL_ENABLED not set', sentCount: 0 });
     }
@@ -179,17 +190,18 @@ router.get('/send-non-participant-reminders', async (req, res) => {
           shareUrl: referUrl,
         });
         const { html: htmlWithBanner, subject: finalSubject } = applyGlobalEmailBanner({ html, subject });
-        await client.messages.send({
-          message: {
-            from_email: fromEmail,
-            subject: finalSubject ?? subject,
-            to: [{ email: mailable, type: 'to' }],
-            html: htmlWithBanner,
-            headers: { 'Reply-To': fromEmail },
-          },
+        const delivery = await deliverLegacyPromotional(prisma, {
+          user,
+          email: mailable,
+          sentAtField: 'nonParticipantEmailSentAt',
+          fromEmail,
+          client,
+          subject: finalSubject ?? subject,
+          html: htmlWithBanner,
+          postalAddress: gate.postalAddress,
         });
-        await prisma.user.update({ where: { id: user.id }, data: { nonParticipantEmailSentAt: new Date() } });
-        sentCount++;
+        if (delivery.sent) sentCount++;
+        else if (delivery.failed) errors.push(`Failed to send (${delivery.reason})`);
       } catch (err) {
         errors.push(`Failed to send to ${user.email}: ${err?.message || 'Unknown error'}`);
       }
@@ -204,6 +216,10 @@ router.get('/send-non-participant-reminders', async (req, res) => {
 // GET /api/admin/jobs/send-no-purchase-reminders
 router.get('/send-no-purchase-reminders', async (req, res) => {
   try {
+    const gate = promotionalDeliveryGate();
+    if (gate.blocked) {
+      return res.json({ ok: true, skipped: true, reason: gate.reason, sentCount: 0 });
+    }
     if (!shouldSendTransactionalEmails()) {
       return res.json({ ok: true, skipped: true, reason: 'TRANSACTIONAL_EMAIL_ENABLED not set', sentCount: 0 });
     }
@@ -241,17 +257,18 @@ router.get('/send-no-purchase-reminders', async (req, res) => {
           journalUrl: `${BASE_URL}/journal`,
         });
         const { html: htmlWithBanner, subject: finalSubject } = applyGlobalEmailBanner({ html, subject });
-        await client.messages.send({
-          message: {
-            from_email: fromEmail,
-            subject: finalSubject ?? subject,
-            to: [{ email: mailable, type: 'to' }],
-            html: htmlWithBanner,
-            headers: { 'Reply-To': fromEmail },
-          },
+        const delivery = await deliverLegacyPromotional(prisma, {
+          user,
+          email: mailable,
+          sentAtField: 'noPurchaseEmailSentAt',
+          fromEmail,
+          client,
+          subject: finalSubject ?? subject,
+          html: htmlWithBanner,
+          postalAddress: gate.postalAddress,
         });
-        await prisma.user.update({ where: { id: user.id }, data: { noPurchaseEmailSentAt: new Date() } });
-        sentCount++;
+        if (delivery.sent) sentCount++;
+        else if (delivery.failed) errors.push(`Failed to send (${delivery.reason})`);
       } catch (err) {
         errors.push(`Failed to send to ${user.email}: ${err?.message || 'Unknown error'}`);
       }
@@ -266,6 +283,10 @@ router.get('/send-no-purchase-reminders', async (req, res) => {
 // GET /api/admin/jobs/send-missionary-emails
 router.get('/send-missionary-emails', async (req, res) => {
   try {
+    const gate = promotionalDeliveryGate();
+    if (gate.blocked) {
+      return res.json({ ok: true, skipped: true, reason: gate.reason, sentCount: 0 });
+    }
     if (!shouldSendTransactionalEmails()) {
       return res.json({ ok: true, skipped: true, reason: 'TRANSACTIONAL_EMAIL_ENABLED not set', sentCount: 0 });
     }
@@ -320,17 +341,18 @@ router.get('/send-missionary-emails', async (req, res) => {
           journalUrl: `${BASE_URL}/journal`,
         });
         const { html: htmlWithBanner, subject: finalSubject } = applyGlobalEmailBanner({ html, subject });
-        await client.messages.send({
-          message: {
-            from_email: fromEmail,
-            subject: finalSubject ?? subject,
-            to: [{ email: mailable, type: 'to' }],
-            html: htmlWithBanner,
-            headers: { 'Reply-To': fromEmail },
-          },
+        const delivery = await deliverLegacyPromotional(prisma, {
+          user,
+          email: mailable,
+          sentAtField: 'missionaryEmailSentAt',
+          fromEmail,
+          client,
+          subject: finalSubject ?? subject,
+          html: htmlWithBanner,
+          postalAddress: gate.postalAddress,
         });
-        await prisma.user.update({ where: { id: user.id }, data: { missionaryEmailSentAt: new Date() } });
-        sentCount++;
+        if (delivery.sent) sentCount++;
+        else if (delivery.failed) errors.push(`Failed to send (${delivery.reason})`);
       } catch (err) {
         errors.push(`Failed to send to ${user.email}: ${err?.message || 'Unknown error'}`);
       }
@@ -524,7 +546,8 @@ router.get('/send-reader-recommendation-outreach', runReaderRecommendationOutrea
 router.post('/send-reader-recommendation-outreach', express.json(), runReaderRecommendationOutreachJob);
 
 // GET/POST /api/admin/jobs/promotional-nurture
-// Sends only when NURTURE_PROMOTIONAL_SENDING=1. Otherwise it records nothing and sends nothing.
+// Sends only when PROMOTIONAL_SENDING_ENABLED=1 and NURTURE_PROMOTIONAL_SENDING=1.
+// A missing PROMOTIONAL_POSTAL_ADDRESS also blocks the pass. Otherwise it records nothing and sends nothing.
 async function runPromotionalNurtureJob(req, res) {
   const { runPromotionalNurture } = require('../../lib/readers/runPromotionalNurture.cjs');
   try {

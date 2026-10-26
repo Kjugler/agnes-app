@@ -96,9 +96,9 @@ function scan(rel) {
 
 function assertSkipBeforeSend(src, label) {
   const skipAt = src.indexOf(`skipDiscretionaryOutreach(user, '${label}')`);
-  const sendAt = src.indexOf('client.messages.send', skipAt);
+  const sendAt = src.indexOf('deliverLegacyPromotional', skipAt);
   assert.ok(skipAt > 0, `${label}: skip helper missing`);
-  assert.ok(sendAt > skipAt, `${label}: messages.send must follow skip`);
+  assert.ok(sendAt > skipAt, `${label}: delivery must follow skip`);
   const between = src.slice(skipAt, sendAt);
   assert.match(between, /continue/);
   assert.doesNotMatch(between, /messages\.send/);
@@ -122,8 +122,9 @@ async function main() {
 
     const outreach = scan('lib/email/runReaderRecommendationOutreach.cjs');
     const eligAt = outreach.indexOf('promotionalOutreachEligibility(prisma');
-    const sendAt = outreach.indexOf('client.messages.send');
+    const sendAt = outreach.indexOf('deliverLegacyPromotional');
     assert.ok(eligAt > 0 && sendAt > eligAt);
+    assert.doesNotMatch(outreach, /client\.messages\.send/);
     assert.match(outreach, /!eligibility\.eligible \|\| eligibility\.lookup !== 'ok'/);
 
     const admin = scan('lib/email/adminEmailSend.cjs');

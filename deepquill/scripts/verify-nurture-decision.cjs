@@ -81,6 +81,9 @@ function allowance(outcome, qualifyingMs, chapters, createdAt) {
 const examples = [];
 
 function check(name, input, assertResult) {
+  if (input && input.emailMarketingConsentAt && input.emailMarketingConsentSource === undefined) {
+    input.emailMarketingConsentSource = 'reader_preferences';
+  }
   const before = JSON.stringify(input);
   const result = decideReaderNurture(input);
   assert.equal(JSON.stringify(input), before, `${name} mutated input`);

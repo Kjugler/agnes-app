@@ -9,6 +9,7 @@
 const { classifyReader, OWNERSHIP, CONFIDENCE } = require('./classifyReader.cjs');
 const { classifyProspectEngagement } = require('./classifyProspectEngagement.cjs');
 const { promotionalConsentState } = require('./promotionalConsent.cjs');
+const { promotionalRecipientBlock } = require('./promotionalRecipientPolicy.cjs');
 const { FUNNEL_EVENT_TYPES } = require('../funnel/funnelEventTypes.cjs');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -40,7 +41,13 @@ const TREATMENT = Object.freeze({
   HONEST_REVIEW: 'honest_review_day_42',
 });
 
-const SENT_OUTCOMES = new Set(['accepted', 'recorded_sent_delivery_unknown', 'unknown']);
+const SENT_OUTCOMES = new Set([
+  'accepted',
+  'recorded_sent_delivery_unknown',
+  'unknown',
+  'sending',
+  'delivery_unknown',
+]);
 const BUY_CLICK_TYPES = new Set([
   FUNNEL_EVENT_TYPES.CATALOG_BUY_CLICK,
   FUNNEL_EVENT_TYPES.SAMPLE_CHAPTERS_BUY_CLICK,
@@ -170,6 +177,10 @@ function permissionFrom(input, ownership) {
   }
   if (ownership.contactability === 'no_mailable_email') {
     return { status: 'no_mailable_email', canSendPromotional: false, reason: 'no_mailable_email', hardStop: true };
+  }
+  const recipientBlock = promotionalRecipientBlock(input.email);
+  if (recipientBlock) {
+    return { status: recipientBlock, canSendPromotional: false, reason: recipientBlock, hardStop: true };
   }
   const providerStop = knownProviderStop(input);
   if (providerStop) return providerStop;

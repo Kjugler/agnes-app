@@ -285,8 +285,9 @@ app.post('/api/promotional-email/consent', promotionalConsentHandler);
 console.log('✅ Mounted /api/promotional-email/consent');
 
 const promotionalUnsubscribeHandler = require('../api/promotionalEmail/unsubscribe.cjs');
+app.get('/api/promotional-email/unsubscribe', promotionalUnsubscribeHandler);
 app.post('/api/promotional-email/unsubscribe', promotionalUnsubscribeHandler);
-console.log('✅ Mounted POST /api/promotional-email/unsubscribe');
+console.log('✅ Mounted GET/POST /api/promotional-email/unsubscribe');
 
 const promotionalDepartureHandler = require('../api/promotionalEmail/departure.cjs');
 app.get('/api/promotional-email/departure', promotionalDepartureHandler);

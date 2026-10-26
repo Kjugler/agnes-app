@@ -7,6 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 process.env.FULFILLMENT_TOKEN_SECRET = 'local-promotional-authorization-secret';
+process.env.PROMOTIONAL_UNSUBSCRIBE_SECRET = 'local-promotional-unsubscribe-secret';
 
 const { authorizePromotionalNurture, TREATMENT } = require('../lib/readers/authorizePromotionalNurture.cjs');
 const {
@@ -57,7 +58,9 @@ function purchaser(extra = {}) {
       status: extra.status || 'active',
       readerType: 'purchased',
       emailMarketingConsentAt: extra.consentAt === undefined ? '2026-09-02T16:00:00.000Z' : extra.consentAt,
-      emailMarketingConsentSource: extra.consentAt ? 'reader_preferences' : null,
+      emailMarketingConsentSource: Object.prototype.hasOwnProperty.call(extra, 'consentSource')
+        ? extra.consentSource
+        : (extra.consentAt === null ? null : 'reader_preferences'),
       emailMarketingOptOutAt: extra.optOutAt || null,
       leadAttribution: null,
       ...extra.profile,

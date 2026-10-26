@@ -5,6 +5,7 @@
 
 const { normalizeEmail } = require('../../src/lib/normalize.cjs');
 const { promotionalConsentState } = require('./promotionalConsent.cjs');
+const { promotionalRecipientBlock } = require('./promotionalRecipientPolicy.cjs');
 
 async function findReader(prisma, { userId, email }) {
   const id = typeof userId === 'string' ? userId.trim() : '';
@@ -36,9 +37,17 @@ async function lookupPromotionalConsent(prisma, { userId, email } = {}) {
   if (user.readerProfile.status === 'archived') {
     return { allowed: false, reason: 'archived' };
   }
+  const blocked = promotionalRecipientBlock(user.email);
+  if (blocked) return { allowed: false, reason: blocked };
   const state = promotionalConsentState(user.readerProfile);
   if (state.optOutAt && !state.active) {
     return { allowed: false, reason: 'promotional_opt_out' };
+  }
+  if (state.sourceStatus === 'missing') {
+    return { allowed: false, reason: 'consent_source_missing' };
+  }
+  if (state.sourceStatus === 'unrecognized') {
+    return { allowed: false, reason: 'consent_source_unrecognized' };
   }
   if (!state.active) {
     return { allowed: false, reason: 'no_promotional_consent' };

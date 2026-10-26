@@ -274,7 +274,7 @@ async function runReaderRecommendationOutreach(prisma, options = {}) {
     email: r.email,
     firstName: r.firstName,
     readerCode: r.readerCode,
-    textAFriendUrl: buildTextAFriendUrl(r.readerCode, r.email),
+    textAFriendUrl: buildTextAFriendUrl(r.readerCode),
     priorBatch: r.priorBatch,
   }));
 
@@ -312,6 +312,20 @@ async function runReaderRecommendationOutreach(prisma, options = {}) {
     options.transactionalEnabled !== undefined
       ? options.transactionalEnabled
       : process.env.TRANSACTIONAL_EMAIL_ENABLED === '1';
+
+  const { promotionalDeliveryGate } = require('../readers/promotionalActivation.cjs');
+  const gate = promotionalDeliveryGate();
+  if (gate.blocked) {
+    return {
+      ok: true,
+      dryRun: false,
+      skipped: true,
+      reason: gate.reason,
+      sent: 0,
+      batch: batchLabel,
+      template: templateId,
+    };
+  }
 
   if (!transactionalEnabled) {
     return {
@@ -374,7 +388,7 @@ async function runReaderRecommendationOutreach(prisma, options = {}) {
         continue;
       }
 
-      const textAFriendUrl = buildTextAFriendUrl(recipient.readerCode, guarded);
+      const textAFriendUrl = buildTextAFriendUrl(recipient.readerCode);
       const { subject, html, text } = buildReaderRecommendationOutreachEmail({
         firstName: recipient.firstName,
         textAFriendUrl,
@@ -382,27 +396,29 @@ async function runReaderRecommendationOutreach(prisma, options = {}) {
       });
       const { html: htmlWithBanner, subject: finalSubject } = applyGlobalEmailBanner({ html, subject });
 
-      await client.messages.send({
-        message: {
-          from_email: fromEmail,
-          from_name: 'Kris Jugler',
-          subject: finalSubject ?? subject,
-          to: [{ email: guarded, type: 'to' }],
-          html: htmlWithBanner,
-          text,
-          headers: { 'Reply-To': fromEmail },
-          metadata: campaignMeta,
-          tags: ['reader_recommendation_outreach', templateId],
-        },
+      const { deliverLegacyPromotional } = require('../readers/deliverLegacyPromotional.cjs');
+      const delivery = await deliverLegacyPromotional(prisma, {
+        user: { id: recipient.userId },
+        email: guarded,
+        sentAtField: 'readerRecommendationOutreachSentAt',
+        fromEmail,
+        fromName: 'The Agnes Protocol',
+        client,
+        subject: finalSubject ?? subject,
+        html: htmlWithBanner,
+        text,
+        postalAddress: gate.postalAddress,
       });
+      if (!delivery.sent) {
+        if (delivery.failed) errors.push(`Failed to send (${delivery.reason})`);
+        else skipped.noPromotionalConsent += 1;
+        continue;
+      }
 
       const sentAt = new Date();
       await prisma.user.update({
         where: { id: recipient.userId },
-        data: {
-          readerRecommendationOutreachSentAt: sentAt,
-          readerRecommendationOutreachBatch: batchLabel,
-        },
+        data: { readerRecommendationOutreachBatch: batchLabel },
       });
 
       sentRecipients.push({
