@@ -11,7 +11,7 @@
  */
 
 const { nurturingSendEnabled } = require('./nurtureActivation.cjs');
-const { masterPromotionalSendingEnabled, promotionalPostalAddress } = require('./promotionalActivation.cjs');
+const { masterPromotionalSendingEnabled, promotionalPostalAddress, promotionalReplyTo } = require('./promotionalActivation.cjs');
 const { authorizeRecommendedPromotionalNurture } = require('./authorizePromotionalNurture.cjs');
 const { buildNurtureMessage } = require('../email/builders/nurtureMessage.cjs');
 const { buildTextAFriendUrl } = require('./readerUrls.cjs');
@@ -24,6 +24,43 @@ const SOURCE = 'promotional_nurture';
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
 const RETRYABLE_OUTCOMES = ['suppressed_before_send', 'provider_rejected'];
+const JODY_MESSAGE_CATEGORIES = new Set([
+  'prospect_nurture',
+  'reader_recommendation_taf',
+  'review_invitation',
+]);
+const PRIOR_JODY_OUTCOMES = new Set([
+  'accepted',
+  'recorded_sent_delivery_unknown',
+  'unknown',
+  'sending',
+  'delivery_unknown',
+]);
+
+async function hasPriorJodyMessage(prisma, userId) {
+  const table = prisma && prisma.readerCommunication;
+  if (!table || typeof table.findMany !== 'function') return false;
+  let rows = [];
+  try {
+    rows = await table.findMany({
+      where: {
+        userId,
+        category: { in: [...JODY_MESSAGE_CATEGORIES] },
+        outcome: { in: [...PRIOR_JODY_OUTCOMES] },
+      },
+      select: { userId: true, category: true, outcome: true },
+    });
+  } catch {
+    return false;
+  }
+  if (!Array.isArray(rows)) return false;
+  return rows.some((row) => {
+    if (!row || !JODY_MESSAGE_CATEGORIES.has(row.category) || !PRIOR_JODY_OUTCOMES.has(row.outcome)) {
+      return false;
+    }
+    return !row.userId || row.userId === userId;
+  });
+}
 
 function emptyResult(extra = {}) {
   return {
@@ -124,7 +161,7 @@ async function mark(prisma, sourceRef, outcome, extra) {
   }
 }
 
-async function deliver(deps, message, email, oneClickUrl) {
+async function deliver(deps, message, email, oneClickUrl, replyTo) {
   const send = deps.send || sendEmail;
   const fromEmail = process.env.MAILCHIMP_FROM_EMAIL;
   if (!deps.send && !fromEmail) {
@@ -140,6 +177,7 @@ async function deliver(deps, message, email, oneClickUrl) {
     html: message.html,
     text: message.text,
     listUnsubscribeUrl: oneClickUrl,
+    ...(replyTo ? { replyTo } : {}),
   });
 }
 
@@ -151,6 +189,12 @@ async function runPromotionalNurture(prisma, options = {}, deps = {}) {
   ).trim();
   if (!postalAddress) {
     return emptyResult({ enabled: true, reason: 'postal_address_required' });
+  }
+  const replyTo = String(
+    options.replyTo != null ? options.replyTo : (promotionalReplyTo() || ''),
+  ).trim();
+  if (!deps.send && !replyTo) {
+    return emptyResult({ enabled: true, reason: 'reply_to_required' });
   }
 
   const limit = Math.min(
@@ -192,12 +236,14 @@ async function runPromotionalNurture(prisma, options = {}, deps = {}) {
     const textAFriendUrl = auth.treatment === 'text_a_friend_day_28'
       ? (personalCode ? buildTextAFriendUrl(personalCode) : null)
       : options.textAFriendUrl;
+    const priorJodyMessage = await hasPriorJodyMessage(prisma, userId);
     const draft = buildNurtureMessage({
       treatment: auth.treatment,
       unsubscribeUrl: auth.unsubscribeUrl,
       siteUrl: options.siteUrl,
       textAFriendUrl,
       postalAddress,
+      priorJodyMessage,
     });
     if (!draft) {
       skipped += 1;
@@ -221,7 +267,9 @@ async function runPromotionalNurture(prisma, options = {}, deps = {}) {
     const samePerson = current
       && normalizeEmail(current.email) === normalizeEmail(user.email);
     if (!again || again.authorized !== true || again.treatment !== auth.treatment || !samePerson) {
-      await mark(prisma, claim.sourceRef, 'suppressed_before_send');
+      await mark(prisma, claim.sourceRef, 'suppressed_before_send', {
+        caption: !samePerson ? 'identity_changed' : (again && again.reason) || 'not_authorized',
+      });
       skipped += 1;
       continue;
     }
@@ -245,6 +293,7 @@ async function runPromotionalNurture(prisma, options = {}, deps = {}) {
       siteUrl: options.siteUrl,
       textAFriendUrl: currentFriendUrl,
       postalAddress,
+      priorJodyMessage,
     });
     if (!message || !oneClickUrl) {
       await mark(prisma, claim.sourceRef, 'suppressed_before_send');
@@ -257,7 +306,7 @@ async function runPromotionalNurture(prisma, options = {}, deps = {}) {
       continue;
     }
     try {
-      const result = await deliver(deps, message, current.email, oneClickUrl);
+      const result = await deliver(deps, message, current.email, oneClickUrl, replyTo);
       const kind = deps.send && (result == null || result === true)
         ? 'accepted'
         : classifyProviderResult(result);

@@ -14,6 +14,12 @@ function promotionalPostalAddress(env = process.env) {
   return value || null;
 }
 
+function promotionalReplyTo(env = process.env) {
+  const value = String(env.PROMOTIONAL_REPLY_TO || '').trim();
+  if (!value || !value.includes('@')) return null;
+  return value;
+}
+
 function promotionalDeliveryGate(env = process.env) {
   if (!masterPromotionalSendingEnabled(env)) {
     return { blocked: true, reason: 'promotional_sending_disabled', postalAddress: null };
@@ -28,5 +34,6 @@ function promotionalDeliveryGate(env = process.env) {
 module.exports = {
   masterPromotionalSendingEnabled,
   promotionalPostalAddress,
+  promotionalReplyTo,
   promotionalDeliveryGate,
 };

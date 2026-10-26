@@ -204,6 +204,23 @@ async function main() {
   assert.match(friendNote.html, /href="https:\/\/www\.theagnesprotocol\.com\/text-a-friend\?ref=TEST-ONLY"/);
   assert.match(friendNote.text, /15% on their paperback purchase/);
   assert.match(friendNote.text, /complete eBook at no additional charge/);
+  assert.match(friendNote.text, /It's Jody\./);
+  assert.doesNotMatch(friendNote.text, /It's Jody again/);
+  assert.doesNotMatch(friendNote.html, /It's Jody again/);
+  const returningFriend = buildNurtureMessage({
+    treatment: 'text_a_friend_day_28',
+    unsubscribeUrl: 'https://www.theagnesprotocol.com/preferences/unsubscribe?token=test',
+    textAFriendUrl: 'https://www.theagnesprotocol.com/text-a-friend?ref=TEST-ONLY',
+    priorJodyMessage: true,
+  });
+  assert.match(returningFriend.text, /It's Jody again\./);
+  assert.match(returningFriend.html, /It's Jody again\./);
+  const firstQualified = buildNurtureMessage({
+    treatment: 'qualified_reading',
+    unsubscribeUrl: 'https://www.theagnesprotocol.com/preferences/unsubscribe?token=test',
+  });
+  assert.match(firstQualified.text, /It's Jody\./);
+  assert.doesNotMatch(firstQualified.text, /It's Jody again/);
   assert.doesNotMatch(friendNote.html, /jody-truth\.png|jody-ascension/);
   const review = buildNurtureMessage({
     treatment: 'honest_review_day_42',
@@ -435,6 +452,15 @@ async function main() {
   assert.equal(afterPurchase.sent, 0);
   assert.equal(realSends.length, 0);
   assert.equal(gate.communications.length, 0);
+
+  delete process.env.PROMOTIONAL_REPLY_TO;
+  const replyBlocked = await runPromotionalNurture({}, { postalAddress: POSTAL }, {
+    sendingEnabled: true,
+    masterEnabled: true,
+  });
+  assert.equal(replyBlocked.reason, 'reply_to_required');
+  assert.equal(replyBlocked.sent, 0);
+  assert.equal(process.env.PROMOTIONAL_REPLY_TO, undefined);
 
   console.log('verify-nurture-runner: passed');
 }

@@ -7,6 +7,7 @@
 const SOURCES = new Set([
   'reader_preferences',
   'unsubscribe_link',
+  'unsubscribe_by_email',
   'departure_bridge',
   'jody-reading-access',
 ]);
@@ -66,6 +67,9 @@ function planPromotionalPreference(profile, { action, source, explicit, now } = 
   }
   if (!SOURCES.has(source)) {
     return { write: false, error: 'unsupported_source' };
+  }
+  if (source === 'unsubscribe_by_email' && action !== 'opt_out') {
+    return { write: false, error: 'unsupported_action' };
   }
 
   const current = promotionalConsentState(profile);

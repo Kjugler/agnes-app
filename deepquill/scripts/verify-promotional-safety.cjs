@@ -486,6 +486,46 @@ async function main() {
     assert.equal(mismatch.body.error, 'identity_mismatch');
   });
 
+  await check('16b an email address unsubscribes without a token, and cannot opt back in', async () => {
+    const row = reader('by-email');
+    const db = memoryDb([row]);
+    const missing = jsonRes();
+    await promotionalUnsubscribeHandler({
+      method: 'POST',
+      body: { email: row.email },
+      query: {},
+    }, missing, { prisma: db });
+    assert.equal(missing.statusCode, 400);
+    assert.equal(row.profile.emailMarketingOptOutAt || null, null);
+    const unknown = jsonRes();
+    await promotionalUnsubscribeHandler({
+      method: 'POST',
+      body: { email: 'nobody@readers.net', confirm: true },
+      query: {},
+    }, unknown, { prisma: db });
+    assert.equal(unknown.statusCode, 200);
+    assert.equal(unknown.body.promotionalEmail, 'off');
+    const posted = jsonRes();
+    await promotionalUnsubscribeHandler({
+      method: 'POST',
+      body: { email: row.email, confirm: true },
+      query: {},
+    }, posted, { prisma: db });
+    assert.equal(posted.statusCode, 200);
+    assert.equal(posted.body.promotionalEmail, 'off');
+    assert.equal(promotionalConsentState(row.profile).active, false);
+    assert.equal(promotionalConsentState(row.profile).optOutSource, 'unsubscribe_by_email');
+    const revived = await applyPromotionalPreference(db, {
+      userId: row.id,
+      action: 'opt_in',
+      source: 'unsubscribe_by_email',
+      explicit: true,
+    });
+    assert.equal(revived.ok, false);
+    assert.equal(revived.error, 'unsupported_action');
+    assert.equal(promotionalConsentState(row.profile).active, false);
+  });
+
   await check('17 master gate off blocks system promotional jobs', async () => {
     assert.equal(masterPromotionalSendingEnabled({}), false);
     assert.equal(masterPromotionalSendingEnabled({ PROMOTIONAL_SENDING_ENABLED: 'yes' }), false);

@@ -118,7 +118,7 @@ function qualifiedReading({ samples, buy, portrait, unsubscribeUrl }) {
   const text = [
     'Hi,',
     '',
-    "It's Jody again.",
+    "It's Jody.",
     '',
     "I see you've spent a little time inside The Agnes Protocol. I hope you've enjoyed what you've discovered so far.",
     '',
@@ -159,7 +159,7 @@ function qualifiedReading({ samples, buy, portrait, unsubscribeUrl }) {
             <td style="padding:32px 28px 8px;font-family:Georgia,'Times New Roman',serif;color:#1c1c1c;">
               <img src="${safePortrait}" alt="Portrait of Jody" width="90" style="width:90px;height:auto;border:0;display:block;margin:0 0 22px;" />
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">Hi,</p>
-              <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">It's Jody again.</p>
+              <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">It's Jody.</p>
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">I see you've spent a little time inside <em>The Agnes Protocol</em>. I hope you've enjoyed what you've discovered so far.</p>
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">But here's something you might find interesting.</p>
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">Those four sample chapters weren't chosen by accident. Each reveals a different piece of a much larger story.</p>
@@ -368,7 +368,7 @@ function textAFriend({ shareUrl, portrait, unsubscribeUrl }) {
   const text = [
     'Hi,',
     '',
-    "It's Jody again.",
+    "It's Jody.",
     '',
     "I hope you've been enjoying The Agnes Protocol.",
     '',
@@ -410,7 +410,7 @@ function textAFriend({ shareUrl, portrait, unsubscribeUrl }) {
             <td style="padding:32px 28px 8px;font-family:Georgia,'Times New Roman',serif;color:#1c1c1c;">
               <img src="${safePortrait}" alt="Portrait of Jody" width="90" style="width:90px;height:auto;border:0;display:block;margin:0 0 22px;" />
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">Hi,</p>
-              <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">It's Jody again.</p>
+              <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">It's Jody.</p>
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">I hope you've been enjoying <em>The Agnes Protocol</em>.</p>
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">There's something special about discovering a story that stays with you. Sometimes it's the characters. Sometimes it's an unexpected twist. And sometimes it's a moment that reminds you of someone you know.</p>
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">That's when a good story becomes something worth sharing.</p>
@@ -673,7 +673,16 @@ function honestReview({ amazonUrl, barnesUrl, portrait, unsubscribeUrl }) {
   return { subject, text, html };
 }
 
-function buildNurtureMessage({ treatment, unsubscribeUrl, siteUrl, textAFriendUrl, postalAddress }) {
+function applyGreeting(built, priorJodyMessage) {
+  if (!priorJodyMessage) return built;
+  return {
+    ...built,
+    text: String(built.text || '').replace("It's Jody.", "It's Jody again."),
+    html: String(built.html || '').replace("It's Jody.</p>", "It's Jody again.</p>"),
+  };
+}
+
+function buildNurtureMessage({ treatment, unsubscribeUrl, siteUrl, textAFriendUrl, postalAddress, priorJodyMessage }) {
   const samples = page(siteUrl, '/sample-chapters');
   const buy = page(siteUrl, '/');
   const portrait = page(siteUrl, '/jody-icons/jody-em1.png');
@@ -734,17 +743,18 @@ function buildNurtureMessage({ treatment, unsubscribeUrl, siteUrl, textAFriendUr
     text: note.text,
     html: note.html || `<pre style="font-family:Georgia,serif;white-space:pre-wrap">${note.text}</pre>`,
   };
+  const stable = page(siteUrl, '/preferences/unsubscribe');
+  const stableLine = `If this link has expired, open ${stable} and enter the email address that received this note.`;
   const address = String(postalAddress || '').trim();
-  if (!address) return built;
   const safeAddress = escapeHtml(address);
-  return {
+  const footerExtra = `<br /><a href="${escapeHtml(stable)}" style="color:#6d675f;">Unsubscribe without this link</a>${
+    address ? `<br />DeepQuill LLC<br />${safeAddress}` : ''
+  }`;
+  return applyGreeting({
     ...built,
-    text: `${built.text}\nDeepQuill LLC\n${address}\n`,
-    html: built.html.replace(
-      '>Unsubscribe</a>',
-      `>Unsubscribe</a><br />DeepQuill LLC<br />${safeAddress}`,
-    ),
-  };
+    text: `${built.text}\n${stableLine}\n${address ? `DeepQuill LLC\n${address}\n` : ''}`,
+    html: built.html.replace('>Unsubscribe</a>', `>Unsubscribe</a>${footerExtra}`),
+  }, priorJodyMessage === true);
 }
 
 module.exports = {
