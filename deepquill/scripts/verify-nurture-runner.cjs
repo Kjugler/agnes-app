@@ -146,9 +146,21 @@ async function main() {
   assert.match(qualified.html, /jody-icons\/jody-em12\.png/);
   assert.doesNotMatch(qualified.html, /jody-em1\.png|jody-truth\.png|jody-ascension/);
   assert.match(qualified.html, /href="https:\/\/www\.theagnesprotocol\.com\/sample-chapters"/);
-  assert.match(qualified.html, /href="https:\/\/www\.theagnesprotocol\.com\/"/);
+  assert.match(qualified.html, /href="https:\/\/www\.theagnesprotocol\.com\/catalog"/);
+  assert.match(qualified.text, /https:\/\/www\.theagnesprotocol\.com\/catalog/);
+  assert.doesNotMatch(qualified.html, /href="https:\/\/www\.theagnesprotocol\.com\/"/);
   assert.match(qualified.text, /Explore Another Chapter:/);
   assert.match(qualified.text, /Discover the Complete Book:/);
+  const attributed = buildNurtureMessage({
+    treatment: 'qualified_reading',
+    unsubscribeUrl: 'https://www.theagnesprotocol.com/preferences/unsubscribe?token=test',
+    siteUrl: 'https://www.theagnesprotocol.com/?ref=HVV8UW&utm_source=friend',
+    textAFriendUrl: 'https://www.theagnesprotocol.com/text-a-friend?ref=KEEP',
+  });
+  assert.match(attributed.html, /href="https:\/\/www\.theagnesprotocol\.com\/catalog\?ref=HVV8UW&amp;utm_source=friend"/);
+  assert.match(attributed.text, /https:\/\/www\.theagnesprotocol\.com\/catalog\?ref=HVV8UW&utm_source=friend/);
+  assert.match(attributed.html, /href="https:\/\/www\.theagnesprotocol\.com\/sample-chapters"/);
+  assert.doesNotMatch(attributed.html, /sample-chapters\?/);
   const multi = buildNurtureMessage({
     treatment: 'multi_chapter_reading',
     unsubscribeUrl: 'https://www.theagnesprotocol.com/preferences/unsubscribe?token=test',
@@ -160,6 +172,8 @@ async function main() {
   assert.match(multi.html, />Discover the Complete Novel</);
   assert.match(multi.text, /Explore the Sample Chapters:/);
   assert.match(multi.text, /Discover the Complete Novel:/);
+  assert.match(multi.html, /href="https:\/\/www\.theagnesprotocol\.com\/catalog"/);
+  assert.match(multi.text, /https:\/\/www\.theagnesprotocol\.com\/catalog/);
   const resume = buildNurtureMessage({
     treatment: 'checkout_resume',
     unsubscribeUrl: 'https://www.theagnesprotocol.com/preferences/unsubscribe?token=test',
@@ -189,6 +203,8 @@ async function main() {
   assert.doesNotMatch(retailer.html, /jody-em1\.png|jody-em12\.png|jody-em2\.png|Amazon|Barnes/);
   assert.match(retailer.html, />Take Another Look</);
   assert.match(retailer.html, />Explore the Complete Book</);
+  assert.match(retailer.html, /href="https:\/\/www\.theagnesprotocol\.com\/catalog"/);
+  assert.match(retailer.text, /https:\/\/www\.theagnesprotocol\.com\/catalog/);
   assert.match(retailer.text, /complete eBook at no additional charge/);
   assert.equal(buildNurtureMessage({
     treatment: 'text_a_friend_day_28',

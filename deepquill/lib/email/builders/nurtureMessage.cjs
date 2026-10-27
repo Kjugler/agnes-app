@@ -6,8 +6,30 @@
 const SITE = 'https://www.theagnesprotocol.com';
 
 function page(siteUrl, path) {
-  const root = String(siteUrl || SITE).replace(/\/$/, '');
-  return `${root}${path}`;
+  const root = String(siteUrl || SITE).trim() || SITE;
+  let origin;
+  try {
+    origin = new URL(root).origin;
+  } catch {
+    origin = new URL(SITE).origin;
+  }
+  const suffix = path.startsWith('/') ? path : `/${path}`;
+  return `${origin}${suffix}`;
+}
+
+function catalogPage(siteUrl) {
+  const root = String(siteUrl || SITE).trim() || SITE;
+  let base;
+  try {
+    base = new URL(root);
+  } catch {
+    base = new URL(SITE);
+  }
+  const target = new URL('/catalog', `${base.origin}/`);
+  for (const [key, value] of base.searchParams) {
+    target.searchParams.append(key, value);
+  }
+  return target.toString();
 }
 
 function footer(unsubscribeUrl) {
@@ -644,7 +666,7 @@ function applyGreeting(built, priorJodyMessage) {
 
 function buildNurtureMessage({ treatment, unsubscribeUrl, siteUrl, textAFriendUrl, postalAddress, priorJodyMessage }) {
   const samples = page(siteUrl, '/sample-chapters');
-  const buy = page(siteUrl, '/');
+  const buy = catalogPage(siteUrl);
   const portrait = page(siteUrl, '/jody-icons/jody-em1.png');
   const qualifiedPortrait = page(siteUrl, '/jody-icons/jody-em12.png');
   const multiPortrait = page(siteUrl, '/jody-icons/jody-em2.png');
@@ -676,13 +698,13 @@ function buildNurtureMessage({ treatment, unsubscribeUrl, siteUrl, textAFriendUr
     }),
     buy_intent: buyIntent({
       samples,
-      catalog: page(siteUrl, '/catalog'),
+      catalog: buy,
       portrait: buyPortrait,
       unsubscribeUrl,
     }),
     checkout_resume: checkoutResume({
       samples,
-      catalog: page(siteUrl, '/catalog'),
+      catalog: buy,
       portrait,
       unsubscribeUrl,
     }),

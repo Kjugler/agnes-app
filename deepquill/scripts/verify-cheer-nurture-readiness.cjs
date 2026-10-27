@@ -288,7 +288,8 @@ async function main() {
   });
   assert.strictEqual(message.subject, "You're starting to see the pieces...");
   assert.match(message.html, /https:\/\/www\.theagnesprotocol\.com\/sample-chapters/);
-  assert.match(message.html, /https:\/\/www\.theagnesprotocol\.com\/"/);
+  assert.match(message.html, /https:\/\/www\.theagnesprotocol\.com\/catalog/);
+  assert.doesNotMatch(message.html, /https:\/\/www\.theagnesprotocol\.com\/"/);
   assert.match(message.text, /Unsubscribe: https:\/\/www\.theagnesprotocol\.com\/preferences\/unsubscribe\?token=/);
   assert.match(message.html, /DeepQuill LLC/);
   assert.match(message.html, /100 Dry Run Street/);
