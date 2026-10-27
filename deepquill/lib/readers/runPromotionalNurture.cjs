@@ -69,6 +69,7 @@ function emptyResult(extra = {}) {
     sent: 0,
     skipped: 0,
     failed: 0,
+    suppressed: 0,
     examined: 0,
     reason: 'nurture_sending_disabled',
     ...extra,
@@ -212,6 +213,7 @@ async function runPromotionalNurture(prisma, options = {}, deps = {}) {
   let sent = 0;
   let skipped = 0;
   let failed = 0;
+  let suppressed = 0;
 
   for (const profile of profiles) {
     const userId = profile && profile.userId;
@@ -221,6 +223,7 @@ async function runPromotionalNurture(prisma, options = {}, deps = {}) {
     }
     const auth = await authorize(prisma, { userId, now: options.now }, deps);
     if (!auth || auth.authorized !== true || auth.treatment === 'none' || !auth.category) {
+      if (auth && auth.decision === 'SUPPRESSED') suppressed += 1;
       skipped += 1;
       continue;
     }
@@ -246,6 +249,7 @@ async function runPromotionalNurture(prisma, options = {}, deps = {}) {
       priorJodyMessage,
     });
     if (!draft) {
+      suppressed += 1;
       skipped += 1;
       continue;
     }
@@ -256,6 +260,7 @@ async function runPromotionalNurture(prisma, options = {}, deps = {}) {
       category: auth.category,
     });
     if (!claim.owned) {
+      suppressed += 1;
       skipped += 1;
       continue;
     }
@@ -270,6 +275,7 @@ async function runPromotionalNurture(prisma, options = {}, deps = {}) {
       await mark(prisma, claim.sourceRef, 'suppressed_before_send', {
         caption: !samePerson ? 'identity_changed' : (again && again.reason) || 'not_authorized',
       });
+      suppressed += 1;
       skipped += 1;
       continue;
     }
@@ -297,6 +303,7 @@ async function runPromotionalNurture(prisma, options = {}, deps = {}) {
     });
     if (!message || !oneClickUrl) {
       await mark(prisma, claim.sourceRef, 'suppressed_before_send');
+      suppressed += 1;
       skipped += 1;
       continue;
     }
@@ -336,6 +343,7 @@ async function runPromotionalNurture(prisma, options = {}, deps = {}) {
     sent,
     skipped,
     failed,
+    suppressed,
     examined: profiles.length,
     reason: null,
   };

@@ -362,6 +362,22 @@ model DailyContestSummaryJobStatus {
   updatedAt     DateTime  @updatedAt
 }
 
+/// One row per nurture-runner invocation. Counts only: no reader, email, or secret.
+model PromotionalNurtureRun {
+  id          String    @id @default(cuid())
+  startedAt   DateTime
+  finishedAt  DateTime?
+  status      String
+  trigger     String
+  reason      String?
+  examined    Int       @default(0)
+  sent        Int       @default(0)
+  suppressed  Int       @default(0)
+  failedCount Int       @default(0)
+
+  @@index([status, startedAt])
+}
+
 model Ledger {
   id        String     @id @default(cuid())
   sessionId String? // Stripe checkout session id (for idempotency and audit)

@@ -97,6 +97,9 @@ async function main() {
   });
   assert.equal(disabled.enabled, false);
   assert.equal(disabled.sent, 0);
+  assert.equal(disabled.examined, 0);
+  assert.equal(disabled.suppressed, 0);
+  assert.equal(disabled.reason, 'promotional_sending_disabled');
   assert.equal(calls, 0);
 
   const noConsent = await lookupPromotionalConsent({

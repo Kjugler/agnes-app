@@ -548,15 +548,54 @@ router.post('/send-reader-recommendation-outreach', express.json(), runReaderRec
 // GET/POST /api/admin/jobs/promotional-nurture
 // Sends only when PROMOTIONAL_SENDING_ENABLED=1 and NURTURE_PROMOTIONAL_SENDING=1.
 // A missing PROMOTIONAL_POSTAL_ADDRESS also blocks the pass. Otherwise it records nothing and sends nothing.
+// Hourly cron and manual calls share one lock. The response and log contain counts only.
 async function runPromotionalNurtureJob(req, res) {
   const { runPromotionalNurture } = require('../../lib/readers/runPromotionalNurture.cjs');
+  const {
+    normalizeTrigger,
+    sanitizeRunReason,
+    publicRunRecord,
+    beginPromotionalNurtureRun,
+    finishPromotionalNurtureRun,
+  } = require('../../lib/readers/recordPromotionalNurtureRun.cjs');
+  const trigger = normalizeTrigger(req.get('x-nurture-trigger'));
+  let acquired = null;
   try {
+    const start = await beginPromotionalNurtureRun(prisma, trigger);
+    if (!start.acquired) {
+      const body = publicRunRecord(start.row);
+      console.log('[admin/promotional-nurture]', JSON.stringify(body));
+      return res.json(body);
+    }
+    acquired = start.row;
     const limit = req.query?.limit ?? req.body?.limit;
     const result = await runPromotionalNurture(prisma, { limit });
-    return res.json(result);
+    const row = await finishPromotionalNurtureRun(prisma, acquired.id, {
+      status: 'completed',
+      reason: result.reason,
+      examined: result.examined,
+      sent: result.sent,
+      suppressed: result.suppressed,
+      failedCount: result.failed,
+    });
+    const body = publicRunRecord(row);
+    console.log('[admin/promotional-nurture]', JSON.stringify(body));
+    return res.json(body);
   } catch (err) {
-    console.error('[admin/promotional-nurture]', err);
-    return res.status(500).json({ ok: false, error: err?.message || 'Unknown error', sent: 0 });
+    const reason = sanitizeRunReason(err && err.message) || 'run_failed';
+    if (acquired) {
+      try {
+        await finishPromotionalNurtureRun(prisma, acquired.id, {
+          status: 'failed',
+          reason,
+          failedCount: 1,
+        });
+      } catch {
+        console.error('[admin/promotional-nurture] run record failed');
+      }
+    }
+    console.error('[admin/promotional-nurture]', reason);
+    return res.status(500).json({ ok: false, error: 'server_error', sent: 0, reason });
   }
 }
 
