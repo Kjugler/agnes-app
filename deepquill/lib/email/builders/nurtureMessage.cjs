@@ -29,6 +29,10 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;');
 }
 
+function portraitImg(src) {
+  return `<img src="${escapeHtml(src)}" alt="Portrait of Jody" width="86" height="86" style="width:86px;height:86px;object-fit:cover;object-position:center;border-radius:50%;border:0;display:block;margin:0 0 8px;" />`;
+}
+
 function identifiedFollowup({ samples, portrait, unsubscribeUrl }) {
   const subject = 'A little something from Jody';
   const text = [
@@ -57,7 +61,6 @@ function identifiedFollowup({ samples, portrait, unsubscribeUrl }) {
     `Unsubscribe: ${unsubscribeUrl}`,
   ].join('\n');
   const safeSamples = escapeHtml(samples);
-  const safePortrait = escapeHtml(portrait);
   const safeUnsubscribe = escapeHtml(unsubscribeUrl);
   const html = `<!DOCTYPE html>
 <html>
@@ -68,7 +71,7 @@ function identifiedFollowup({ samples, portrait, unsubscribeUrl }) {
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;">
           <tr>
             <td style="padding:32px 28px 8px;font-family:Georgia,'Times New Roman',serif;color:#1c1c1c;">
-              <img src="${safePortrait}" alt="Portrait of Jody" width="90" style="width:90px;height:auto;border:0;display:block;margin:0 0 22px;" />
+              ${portraitImg(portrait)}
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">Hi,</p>
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">It's Jody.</p>
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">I noticed you stopped by to explore <em>The Agnes Protocol</em>, and I wanted to make sure you knew something.</p>
@@ -146,7 +149,6 @@ function qualifiedReading({ samples, buy, portrait, unsubscribeUrl }) {
   ].join('\n');
   const safeSamples = escapeHtml(samples);
   const safeBuy = escapeHtml(buy);
-  const safePortrait = escapeHtml(portrait);
   const safeUnsubscribe = escapeHtml(unsubscribeUrl);
   const html = `<!DOCTYPE html>
 <html>
@@ -157,7 +159,7 @@ function qualifiedReading({ samples, buy, portrait, unsubscribeUrl }) {
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;">
           <tr>
             <td style="padding:32px 28px 8px;font-family:Georgia,'Times New Roman',serif;color:#1c1c1c;">
-              <img src="${safePortrait}" alt="Portrait of Jody" width="90" style="width:90px;height:auto;border:0;display:block;margin:0 0 22px;" />
+              ${portraitImg(portrait)}
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">Hi,</p>
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">It's Jody.</p>
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">I see you've spent a little time inside <em>The Agnes Protocol</em>. I hope you've enjoyed what you've discovered so far.</p>
@@ -225,7 +227,6 @@ function multiChapterReading({ samples, buy, portrait, unsubscribeUrl }) {
   ].join('\n');
   const safeSamples = escapeHtml(samples);
   const safeBuy = escapeHtml(buy);
-  const safePortrait = escapeHtml(portrait);
   const safeUnsubscribe = escapeHtml(unsubscribeUrl);
   const html = `<!DOCTYPE html>
 <html>
@@ -236,7 +237,7 @@ function multiChapterReading({ samples, buy, portrait, unsubscribeUrl }) {
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;">
           <tr>
             <td style="padding:32px 28px 8px;font-family:Georgia,'Times New Roman',serif;color:#1c1c1c;">
-              <img src="${safePortrait}" alt="Portrait of Jody" width="90" style="width:90px;height:auto;border:0;display:block;margin:0 0 22px;" />
+              ${portraitImg(portrait)}
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">Hi,</p>
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">It's Jody.</p>
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">I see you've been exploring more than one chapter of <em>The Agnes Protocol</em>.</p>
@@ -306,7 +307,6 @@ function retailerReturn({ samples, buy, portrait, unsubscribeUrl }) {
   ].join('\n');
   const safeSamples = escapeHtml(samples);
   const safeBuy = escapeHtml(buy);
-  const safePortrait = escapeHtml(portrait);
   const safeUnsubscribe = escapeHtml(unsubscribeUrl);
   const html = `<!DOCTYPE html>
 <html>
@@ -317,7 +317,7 @@ function retailerReturn({ samples, buy, portrait, unsubscribeUrl }) {
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;">
           <tr>
             <td style="padding:32px 28px 8px;font-family:Georgia,'Times New Roman',serif;color:#1c1c1c;">
-              <img src="${safePortrait}" alt="Portrait of Jody" width="90" style="width:90px;height:auto;border:0;display:block;margin:0 0 22px;" />
+              ${portraitImg(portrait)}
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">Hi,</p>
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">It's Jody.</p>
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">Sometimes finding the right book takes a little exploring.</p>
@@ -372,21 +372,13 @@ function textAFriend({ shareUrl, portrait, unsubscribeUrl }) {
     '',
     "I hope you've been enjoying The Agnes Protocol.",
     '',
-    "There's something special about discovering a story that stays with you. Sometimes it's the characters. Sometimes it's an unexpected twist. And sometimes it's a moment that reminds you of someone you know.",
+    'If you know someone who might enjoy it too, you can save them 15% on their paperback purchase.',
     '',
-    "That's when a good story becomes something worth sharing.",
-    '',
-    'And I have a little something that might make sharing it even better.',
-    '',
-    'If you know someone who might enjoy The Agnes Protocol, you can save them 15% on their paperback purchase.',
-    '',
-    "It's a small way of saying thank you for introducing someone new to the story.",
-    '',
-    'Just use your personal sharing link below. Your friend will receive the discount when they purchase through it.',
+    'Just use your personal sharing link. Your friend will receive the discount when they purchase through it.',
     '',
     `Share the Story — Save a Friend 15%: ${shareUrl}`,
     '',
-    "And if they purchase the paperback directly, they'll receive the complete eBook at no additional charge, so they can begin reading right away.",
+    "It's a small way of saying thank you for introducing someone new to the story. And if they purchase the paperback directly, they'll receive the complete eBook at no additional charge, so they can begin reading right away.",
     '',
     'Whether you share it with one friend or several, thank you for being part of this adventure.',
     '',
@@ -397,7 +389,6 @@ function textAFriend({ shareUrl, portrait, unsubscribeUrl }) {
     `Unsubscribe: ${unsubscribeUrl}`,
   ].join('\n');
   const safeShare = escapeHtml(shareUrl);
-  const safePortrait = escapeHtml(portrait);
   const safeUnsubscribe = escapeHtml(unsubscribeUrl);
   const html = `<!DOCTYPE html>
 <html>
@@ -408,18 +399,14 @@ function textAFriend({ shareUrl, portrait, unsubscribeUrl }) {
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;">
           <tr>
             <td style="padding:32px 28px 8px;font-family:Georgia,'Times New Roman',serif;color:#1c1c1c;">
-              <img src="${safePortrait}" alt="Portrait of Jody" width="90" style="width:90px;height:auto;border:0;display:block;margin:0 0 22px;" />
+              ${portraitImg(portrait)}
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">Hi,</p>
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">It's Jody.</p>
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">I hope you've been enjoying <em>The Agnes Protocol</em>.</p>
-              <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">There's something special about discovering a story that stays with you. Sometimes it's the characters. Sometimes it's an unexpected twist. And sometimes it's a moment that reminds you of someone you know.</p>
-              <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">That's when a good story becomes something worth sharing.</p>
-              <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">And I have a little something that might make sharing it even better.</p>
-              <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">If you know someone who might enjoy <em>The Agnes Protocol</em>, you can save them 15% on their paperback purchase.</p>
-              <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">It's a small way of saying thank you for introducing someone new to the story.</p>
-              <p style="margin:0 0 8px;font-size:18px;line-height:1.55;">Just use your personal sharing link below. Your friend will receive the discount when they purchase through it.</p>
+              <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">If you know someone who might enjoy it too, you can save them 15% on their paperback purchase.</p>
+              <p style="margin:0 0 8px;font-size:18px;line-height:1.55;">Just use your personal sharing link. Your friend will receive the discount when they purchase through it.</p>
               ${ctaButton(safeShare, 'Share the Story — Save a Friend 15%')}
-              <p style="margin:16px 0 16px;font-size:18px;line-height:1.55;">And if they purchase the paperback directly, they'll receive the complete eBook at no additional charge, so they can begin reading right away.</p>
+              <p style="margin:16px 0 16px;font-size:18px;line-height:1.55;">It's a small way of saying thank you for introducing someone new to the story. And if they purchase the paperback directly, they'll receive the complete eBook at no additional charge, so they can begin reading right away.</p>
               <p style="margin:0 0 0;font-size:18px;line-height:1.55;">Whether you share it with one friend or several, thank you for being part of this adventure.</p>
               <p style="margin:28px 0 0;font-size:18px;line-height:1.55;">Until next time...</p>
               <p style="margin:4px 0 0;font-size:18px;line-height:1.55;">— Jody</p>
@@ -447,21 +434,7 @@ function buyIntent({ samples, catalog, portrait, unsubscribeUrl }) {
     '',
     "It's Jody.",
     '',
-    'I noticed you were taking a closer look at The Agnes Protocol.',
-    '',
-    'That tells me something about you. Maybe the mystery caught your attention. Maybe it was the technology, the unexpected twists, or the people whose lives become tangled together in ways they never imagined.',
-    '',
-    "Whatever drew you in, I'm glad you stopped by.",
-    '',
-    "But there's something you might not know.",
-    '',
-    "The Agnes Protocol isn't just a political thriller. Beneath the suspense is a story about friendship, loyalty, sacrifice, and the choices people make when everything they care about is on the line.",
-    '',
-    'And sometimes, the smallest decisions have the greatest consequences.',
-    '',
-    "That's part of what makes this story so difficult to put down.",
-    '',
-    "Now, here's that little something I promised.",
+    "I noticed you were taking a closer look at The Agnes Protocol. I'm glad you stopped by.",
     '',
     "When you purchase the paperback directly from our website, you'll receive the complete eBook at no additional charge.",
     '',
@@ -469,9 +442,7 @@ function buyIntent({ samples, catalog, portrait, unsubscribeUrl }) {
     '',
     `Discover the Complete Book: ${catalog}`,
     '',
-    "And if you're still deciding, that's perfectly fine.",
-    '',
-    'The four sample chapters are there for you. Each offers a different glimpse into the story, and each reveals another piece of the larger puzzle.',
+    "If you're still deciding, the four sample chapters are open. Each one offers a different glimpse into the story.",
     '',
     `Explore the Sample Chapters: ${samples}`,
     '',
@@ -485,7 +456,6 @@ function buyIntent({ samples, catalog, portrait, unsubscribeUrl }) {
   ].join('\n');
   const safeSamples = escapeHtml(samples);
   const safeCatalog = escapeHtml(catalog);
-  const safePortrait = escapeHtml(portrait);
   const safeUnsubscribe = escapeHtml(unsubscribeUrl);
   const html = `<!DOCTYPE html>
 <html>
@@ -496,22 +466,14 @@ function buyIntent({ samples, catalog, portrait, unsubscribeUrl }) {
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;">
           <tr>
             <td style="padding:32px 28px 8px;font-family:Georgia,'Times New Roman',serif;color:#1c1c1c;">
-              <img src="${safePortrait}" alt="Portrait of Jody" width="90" style="width:90px;height:auto;border:0;display:block;margin:0 0 22px;" />
+              ${portraitImg(portrait)}
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">Hi,</p>
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">It's Jody.</p>
-              <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">I noticed you were taking a closer look at <em>The Agnes Protocol</em>.</p>
-              <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">That tells me something about you. Maybe the mystery caught your attention. Maybe it was the technology, the unexpected twists, or the people whose lives become tangled together in ways they never imagined.</p>
-              <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">Whatever drew you in, I'm glad you stopped by.</p>
-              <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">But there's something you might not know.</p>
-              <p style="margin:0 0 16px;font-size:18px;line-height:1.55;"><em>The Agnes Protocol</em> isn't just a political thriller. Beneath the suspense is a story about friendship, loyalty, sacrifice, and the choices people make when everything they care about is on the line.</p>
-              <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">And sometimes, the smallest decisions have the greatest consequences.</p>
-              <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">That's part of what makes this story so difficult to put down.</p>
-              <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">Now, here's that little something I promised.</p>
+              <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">I noticed you were taking a closer look at <em>The Agnes Protocol</em>. I'm glad you stopped by.</p>
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">When you purchase the paperback directly from our website, <strong>you'll receive the complete eBook at no additional charge.</strong></p>
               <p style="margin:0 0 8px;font-size:18px;line-height:1.55;">That means you can begin reading the entire story without waiting for the paperback to arrive.</p>
               ${ctaButton(safeCatalog, 'Discover the Complete Book')}
-              <p style="margin:16px 0 16px;font-size:18px;line-height:1.55;">And if you're still deciding, that's perfectly fine.</p>
-              <p style="margin:0 0 8px;font-size:18px;line-height:1.55;">The four sample chapters are there for you. Each offers a different glimpse into the story, and each reveals another piece of the larger puzzle.</p>
+              <p style="margin:16px 0 8px;font-size:18px;line-height:1.55;">If you're still deciding, the four sample chapters are open. Each one offers a different glimpse into the story.</p>
               ${ctaButton(safeSamples, 'Explore the Sample Chapters')}
               <p style="margin:16px 0 0;font-size:18px;line-height:1.55;">Whatever you decide, I hope you'll enjoy discovering where the story leads.</p>
               <p style="margin:28px 0 0;font-size:18px;line-height:1.55;">Until next time...</p>
@@ -564,7 +526,6 @@ function checkoutResume({ samples, catalog, portrait, unsubscribeUrl }) {
   ].join('\n');
   const safeSamples = escapeHtml(samples);
   const safeCatalog = escapeHtml(catalog);
-  const safePortrait = escapeHtml(portrait);
   const safeUnsubscribe = escapeHtml(unsubscribeUrl);
   const html = `<!DOCTYPE html>
 <html>
@@ -575,7 +536,7 @@ function checkoutResume({ samples, catalog, portrait, unsubscribeUrl }) {
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;">
           <tr>
             <td style="padding:32px 28px 8px;font-family:Georgia,'Times New Roman',serif;color:#1c1c1c;">
-              <img src="${safePortrait}" alt="Portrait of Jody" width="90" style="width:90px;height:auto;border:0;display:block;margin:0 0 22px;" />
+              ${portraitImg(portrait)}
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">Hi,</p>
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">It's Jody.</p>
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">You spent a moment considering <em>The Agnes Protocol</em>. I'm glad it held your attention.</p>
@@ -633,7 +594,6 @@ function honestReview({ amazonUrl, barnesUrl, portrait, unsubscribeUrl }) {
   ].join('\n');
   const safeAmazon = escapeHtml(amazonUrl);
   const safeBarnes = escapeHtml(barnesUrl);
-  const safePortrait = escapeHtml(portrait);
   const safeUnsubscribe = escapeHtml(unsubscribeUrl);
   const html = `<!DOCTYPE html>
 <html>
@@ -644,7 +604,7 @@ function honestReview({ amazonUrl, barnesUrl, portrait, unsubscribeUrl }) {
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;">
           <tr>
             <td style="padding:32px 28px 8px;font-family:Georgia,'Times New Roman',serif;color:#1c1c1c;">
-              <img src="${safePortrait}" alt="Portrait of Jody" width="90" style="width:90px;height:auto;border:0;display:block;margin:0 0 22px;" />
+              ${portraitImg(portrait)}
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">Hi,</p>
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">It's Jody.</p>
               <p style="margin:0 0 16px;font-size:18px;line-height:1.55;">Thank you for spending time with <em>The Agnes Protocol</em>, and with the people in it.</p>
@@ -746,13 +706,17 @@ function buildNurtureMessage({ treatment, unsubscribeUrl, siteUrl, textAFriendUr
   const stable = page(siteUrl, '/preferences/unsubscribe');
   const stableLine = `If this link has expired, open ${stable} and enter the email address that received this note.`;
   const address = String(postalAddress || '').trim();
-  const safeAddress = escapeHtml(address);
-  const footerExtra = `<br /><a href="${escapeHtml(stable)}" style="color:#6d675f;">Unsubscribe without this link</a>${
-    address ? `<br />DeepQuill LLC<br />${safeAddress}` : ''
-  }`;
+  const alreadyNamed = /^deepquill llc\b/i.test(address);
+  const postalText = !address ? '' : alreadyNamed ? `${address}\n` : `DeepQuill LLC\n${address}\n`;
+  const postalHtml = !address
+    ? ''
+    : alreadyNamed
+      ? `<br />${escapeHtml(address)}`
+      : `<br />DeepQuill LLC<br />${escapeHtml(address)}`;
+  const footerExtra = `<br /><a href="${escapeHtml(stable)}" style="color:#6d675f;">Unsubscribe without this link</a>${postalHtml}`;
   return applyGreeting({
     ...built,
-    text: `${built.text}\n${stableLine}\n${address ? `DeepQuill LLC\n${address}\n` : ''}`,
+    text: `${built.text}\n${stableLine}\n${postalText}`,
     html: built.html.replace('>Unsubscribe</a>', `>Unsubscribe</a>${footerExtra}`),
   }, priorJodyMessage === true);
 }

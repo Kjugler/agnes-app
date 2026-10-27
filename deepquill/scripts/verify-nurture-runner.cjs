@@ -254,6 +254,17 @@ async function main() {
     assert.doesNotMatch(note.subject, subjectMarker);
     assert.doesNotMatch(note.html, /\[TEST — JODY/);
     assert.doesNotMatch(note.text, /\[TEST — JODY/);
+    assert.doesNotMatch(note.html, /Reply-To:|Greeting:|From: Jody/);
+    assert.doesNotMatch(note.text, /Reply-To:|Greeting:|From: Jody/);
+    const addressed = buildNurtureMessage({
+      treatment,
+      unsubscribeUrl: 'https://www.theagnesprotocol.com/preferences/unsubscribe?token=test',
+      textAFriendUrl: 'https://www.theagnesprotocol.com/text-a-friend?ref=TEST-ONLY',
+      postalAddress: 'DeepQuill LLC, 2779 E. 1600 No., Layton, Utah 84040',
+    });
+    assert.equal((addressed.html.match(/DeepQuill LLC/g) || []).length, 1);
+    assert.match(addressed.html, /2779 E\. 1600 No\., Layton, Utah 84040/);
+    assert.match(addressed.text, /2779 E\. 1600 No\., Layton, Utah 84040/);
   }
   assert.match(review.html, />Review on Amazon</);
   assert.match(review.html, />Review on Barnes &amp; Noble</);
