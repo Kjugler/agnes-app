@@ -6,6 +6,10 @@ const express = require('express');
 const router = express.Router();
 const nodemailer = require('nodemailer');
 const { applyGlobalEmailBanner } = require('../../src/lib/emailBanner.cjs');
+const {
+  paperbackReferralSavingsCents,
+  formatUsdFromCents,
+} = require('../../lib/paperbackOffer.cjs');
 
 const {
   MAILCHIMP_TRANSACTIONAL_KEY,
@@ -158,6 +162,7 @@ router.post('/', async (req, res) => {
 
     for (const email of emails) {
       try {
+        const savingsLabel = formatUsdFromCents(paperbackReferralSavingsCents());
         const htmlBody = `
           <!DOCTYPE html>
           <html>
@@ -168,7 +173,7 @@ router.post('/', async (req, res) => {
             <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
               <p>Hey there,</p>
               <p>${baseName} is part of the launch team for a new book called <strong>"The Agnes Protocol."</strong></p>
-              <p>If you decide to grab a copy, this link gives you <strong>$3.90 off</strong> the regular price:</p>
+              <p>If you decide to grab a copy, this link gives you <strong>${savingsLabel} off</strong> the regular price:</p>
               <p style="text-align: center; margin: 20px 0;">
                 <a href="${referralUrl}" style="display: inline-block;">
                   <img
@@ -180,7 +185,7 @@ router.post('/', async (req, res) => {
               </p>
               <p style="text-align: center;">
                 <a href="${referralUrl}" style="display: inline-block; padding: 12px 24px; background-color: #9333ea; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">
-                  Your discount link: Save $3.90
+                  Your discount link: Save ${savingsLabel}
                 </a>
               </p>
               <p style="font-size: 14px; color: #666; margin-top: 30px;">
@@ -206,7 +211,7 @@ router.post('/', async (req, res) => {
 
 ${baseName} is part of the launch team for a new book called "The Agnes Protocol."
 
-If you decide to grab a copy, this link gives you $3.90 off the regular price:
+If you decide to grab a copy, this link gives you ${savingsLabel} off the regular price:
 
 Your discount link:
 ${referralUrl}

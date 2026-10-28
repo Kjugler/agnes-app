@@ -4,6 +4,9 @@ import { useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import type { ReferVideoId } from '@/config/referVideos';
 import { ENTRY_FRONT_DOOR } from '@/lib/entryFrontDoor';
+import { readerDiscountCents } from '@/lib/catalogPricing';
+import { formatPrice } from '@/lib/products';
+import { getPaperbackOffer } from '@/lib/paperbackOffer';
 
 interface ReferActionsProps {
   referralCode: string;
@@ -39,7 +42,7 @@ export default function ReferActions({ referralCode, videoId }: ReferActionsProp
     return params.toString();
   };
 
-  // 1. Get the Book – Save $3.90
+  // 1. Get the Book – Save the live 15% amount
   const handleGetTheBook = () => {
     const q = buildCodeQuery();
     router.push(`/sample-chapters?${q}`);
@@ -141,7 +144,7 @@ export default function ReferActions({ referralCode, videoId }: ReferActionsProp
             e.currentTarget.style.backgroundColor = '#9333ea';
           }}
         >
-          Get the Book – Save $3.90
+          Get the Book – Save {formatPrice(readerDiscountCents(getPaperbackOffer().priceCents))}
         </button>
 
         {/* Button 2 – Sample the Book */}

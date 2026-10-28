@@ -163,6 +163,17 @@ function PaperbackOfferBlock({
   priceCents: number;
   discount: DiscountState;
 }) {
+  if (phase === 'holiday') {
+    return (
+      <>
+        <p style={{ margin: '8px 0 12px', fontSize: '16px', lineHeight: 1.45, color: HUB_THEME.text }}>
+          {PAPERBACK_PROMO_COPY.holiday}
+        </p>
+        <PriceStack priceCents={priceCents} discount={discount} />
+      </>
+    );
+  }
+
   if (phase === 'pre_sale') {
     return (
       <>

@@ -7,9 +7,14 @@ const assert = require('assert');
 const {
   PAPERBACK_SALE_START_YMD,
   PAPERBACK_FREE_SHIPPING_END_YMD,
+  PAPERBACK_LIST_RESUME_YMD,
+  PAPERBACK_HOLIDAY_START_YMD,
+  PAPERBACK_HOLIDAY_END_YMD,
   isPaperbackSalePriceActive,
   isPaperbackFreeShippingWindow,
   getPaperbackCatalogPhase,
+  paperbackReferralTotalDueCents,
+  paperbackReferralSavingsCents,
   resolvePaperbackPriceId,
   resolvePaperbackShippingRateId,
   isPaperbackPriceId,
@@ -117,6 +122,54 @@ assert.strictEqual(isPaperbackPriceId(ENV, 'price_legacy_2600'), true);
 assert.strictEqual(isPaperbackPriceId(ENV, 'price_sale_2195'), true);
 assert.strictEqual(isPaperbackPriceId(ENV, 'price_ebook'), false);
 assert.strictEqual(isPaperbackPriceId(ENV, null), false);
+
+const OCT_31 = new Date('2026-11-01T05:59:59.000Z');
+const NOV_1 = new Date('2026-11-01T06:00:00.000Z');
+const NOV_26 = new Date('2026-11-27T06:59:59.000Z');
+const NOV_27 = new Date('2026-11-27T07:00:00.000Z');
+const NOV_30 = new Date('2026-12-01T06:59:59.000Z');
+const DEC_1 = new Date('2026-12-01T07:00:00.000Z');
+
+assert.strictEqual(formatDenverYmd(OCT_31), '2026-10-31');
+assert.strictEqual(formatDenverYmd(NOV_1), '2026-11-01');
+assert.strictEqual(formatDenverYmd(NOV_26), '2026-11-26');
+assert.strictEqual(formatDenverYmd(NOV_27), '2026-11-27');
+assert.strictEqual(formatDenverYmd(NOV_30), '2026-11-30');
+assert.strictEqual(formatDenverYmd(DEC_1), '2026-12-01');
+assert.strictEqual(PAPERBACK_LIST_RESUME_YMD, '2026-11-01');
+assert.strictEqual(PAPERBACK_HOLIDAY_START_YMD, '2026-11-27');
+assert.strictEqual(PAPERBACK_HOLIDAY_END_YMD, '2026-12-01');
+
+function expectList(now) {
+  const price = resolvePaperbackPriceId(ENV, now);
+  const ship = resolvePaperbackShippingRateId(ENV, now);
+  assert.strictEqual(getPaperbackCatalogPhase(now), 'pre_sale');
+  assert.strictEqual(price.priceId, 'price_legacy_2600');
+  assert.strictEqual(ship.shippingRateId, 'shr_paid_495');
+  assert.strictEqual(paperbackReferralSavingsCents(now), 390);
+  assert.strictEqual(paperbackReferralTotalDueCents(now), 2705);
+}
+
+function expectHoliday(now) {
+  const price = resolvePaperbackPriceId(ENV, now);
+  const ship = resolvePaperbackShippingRateId(ENV, now);
+  assert.strictEqual(getPaperbackCatalogPhase(now), 'holiday');
+  assert.strictEqual(price.priceId, 'price_sale_2195');
+  assert.strictEqual(ship.shippingRateId, 'shr_free_0');
+  assert.strictEqual(paperbackReferralSavingsCents(now), 329);
+  assert.strictEqual(paperbackReferralTotalDueCents(now), 1866);
+}
+
+assert.strictEqual(getPaperbackCatalogPhase(OCT_31), 'sale_paid_shipping');
+assert.strictEqual(resolvePaperbackPriceId(ENV, OCT_31).priceId, 'price_sale_2195');
+assert.strictEqual(resolvePaperbackShippingRateId(ENV, OCT_31).shippingRateId, 'shr_paid_495');
+assert.strictEqual(paperbackReferralTotalDueCents(OCT_31), 2361);
+
+expectList(NOV_1);
+expectList(NOV_26);
+expectHoliday(NOV_27);
+expectHoliday(NOV_30);
+expectList(DEC_1);
 
 const createCheckout = require('fs').readFileSync(
   require('path').join(__dirname, '../api/create-checkout-session.cjs'),

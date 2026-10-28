@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter, useSearchParams } from 'next/navigation';
+import { getPaperbackOffer } from '@/lib/paperbackOffer';
 
 export default function BuyButton() {
   const router = useRouter();
@@ -27,7 +28,7 @@ export default function BuyButton() {
       onClick={onClick}
       className="px-4 py-2 rounded bg-green-500 text-black font-semibold"
     >
-      Buy the Book — $26
+      Buy the Book — {getPaperbackOffer().displayPrice}
     </button>
   );
 }

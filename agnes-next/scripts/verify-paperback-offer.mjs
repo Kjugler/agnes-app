@@ -99,6 +99,48 @@ assert.equal(getPaperbackOffer(AFTER).priceCents, 2195);
 assert.equal(getPaperbackOffer(AFTER).shippingCents, 495);
 assert.equal(paperbackInitiateCheckoutValueCents(AFTER), 2690);
 
+const OCT_31 = new Date('2026-11-01T05:59:59.000Z');
+const NOV_1 = new Date('2026-11-01T06:00:00.000Z');
+const NOV_26 = new Date('2026-11-27T06:59:59.000Z');
+const NOV_27 = new Date('2026-11-27T07:00:00.000Z');
+const NOV_30 = new Date('2026-12-01T06:59:59.000Z');
+const DEC_1 = new Date('2026-12-01T07:00:00.000Z');
+
+assert.equal(formatDenverYmd(OCT_31), '2026-10-31');
+assert.equal(getPaperbackOffer(OCT_31).priceCents, 2195);
+assert.equal(getPaperbackOffer(OCT_31).shippingCents, 495);
+assert.equal(getPaperbackCatalogPhase(OCT_31), 'sale_paid_shipping');
+
+assert.equal(formatDenverYmd(NOV_1), '2026-11-01');
+assert.equal(formatDenverYmd(NOV_26), '2026-11-26');
+assert.equal(getPaperbackOffer(NOV_1).priceCents, 2600);
+assert.equal(getPaperbackOffer(NOV_1).displayPrice, '$26.00');
+assert.equal(getPaperbackOffer(NOV_1).shippingCents, 495);
+assert.equal(getPaperbackCatalogPhase(NOV_1), 'pre_sale');
+assert.equal(getPaperbackOffer(NOV_26).priceCents, 2600);
+assert.equal(getPaperbackOffer(NOV_26).shippingCents, 495);
+assert.equal(discountedPriceCents(2600) + 495, 2705);
+
+assert.equal(formatDenverYmd(NOV_27), '2026-11-27');
+assert.equal(formatDenverYmd(NOV_30), '2026-11-30');
+assert.equal(isPaperbackSalePriceActive(NOV_27), true);
+assert.equal(isPaperbackFreeShippingWindow(NOV_27), true);
+assert.equal(getPaperbackCatalogPhase(NOV_27), 'holiday');
+assert.equal(getPaperbackOffer(NOV_27).priceCents, 2195);
+assert.equal(getPaperbackOffer(NOV_27).shippingCents, 0);
+assert.equal(getPaperbackOffer(NOV_30).priceCents, 2195);
+assert.equal(getPaperbackOffer(NOV_30).shippingCents, 0);
+assert.equal(discountedPriceCents(2195), 1866);
+assert.equal(PAPERBACK_PROMO_COPY.holiday, 'Black Friday through Cyber Monday: paperback + free eBook, $21.95 with free shipping.');
+
+assert.equal(formatDenverYmd(DEC_1), '2026-12-01');
+assert.equal(isPaperbackSalePriceActive(DEC_1), false);
+assert.equal(isPaperbackFreeShippingWindow(DEC_1), false);
+assert.equal(getPaperbackCatalogPhase(DEC_1), 'pre_sale');
+assert.equal(getPaperbackOffer(DEC_1).priceCents, 2600);
+assert.equal(getPaperbackOffer(DEC_1).shippingCents, 495);
+assert.equal(discountedPriceCents(2600) + 495, 2705);
+
 assert.equal(discountedPriceCents(2195), 1866);
 
 assert.equal(PAPERBACK_PROMO_COPY.was, 'WAS $26.00');
@@ -126,6 +168,11 @@ for (const token of order) {
 }
 assert.match(promoFn, /textDecoration: 'line-through'/);
 assert.match(catalog, /Includes FREE eBook/);
+assert.match(catalog, /PAPERBACK_PROMO_COPY\.holiday/);
+assert.match(read(path.join(ROOT, 'src/app/contest/BuyButton.tsx')), /getPaperbackOffer\(\)\.displayPrice/);
+assert.match(read(path.join(ROOT, 'src/app/refer/ReferActions.tsx')), /readerDiscountCents\(getPaperbackOffer\(\)\.priceCents\)/);
+assert.doesNotMatch(read(path.join(ROOT, 'src/app/refer/ReferActions.tsx')), /Save \$3\.90/);
+assert.doesNotMatch(read(path.join(ROOT, 'src/app/contest/BuyButton.tsx')), /\$26/);
 assert.doesNotMatch(catalog, /from '@\/lib\/readersAgree/);
 assert.doesNotMatch(catalog, /Jody/);
 

@@ -202,10 +202,13 @@ module.exports = async function handler(req, res) {
       });
     }
 
+    // One clock for the paperback price and its shipping rate.
+    const offerNow = new Date();
+
     // Resolve and validate priceId (no fallback to STRIPE_PRICE_ID)
     let priceId = PRICE_BY_PRODUCT[product];
     if (product === 'paperback') {
-      const resolvedPrice = resolvePaperbackPriceId(envConfig);
+      const resolvedPrice = resolvePaperbackPriceId(envConfig, offerNow);
       if (!resolvedPrice.ok) {
         return res.status(resolvedPrice.status).json({
           error: resolvedPrice.error,
@@ -824,7 +827,7 @@ module.exports = async function handler(req, res) {
       };
       sessionParams.phone_number_collection = { enabled: true };
 
-      const resolvedShipping = resolvePaperbackShippingRateId(envConfig);
+      const resolvedShipping = resolvePaperbackShippingRateId(envConfig, offerNow);
       if (!resolvedShipping.ok) {
         return res.status(resolvedShipping.status).json({
           error: resolvedShipping.error,
