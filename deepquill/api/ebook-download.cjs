@@ -9,6 +9,9 @@ const { verifyToken } = require('../src/lib/fulfillmentToken.cjs');
 const envConfig = require('../src/config/env.cjs');
 const { stripe } = require('../src/lib/stripe.cjs');
 const { isPaperbackPriceId } = require('../lib/paperbackOffer.cjs');
+const { paidCheckoutEntitlesEbook } = require('../lib/ebookEntitlement.cjs');
+const { authorizeComplimentaryEbookDownload } = require('../lib/complimentaryEbookGrant.cjs');
+const { prisma } = require('../server/prisma.cjs');
 
 const router = express.Router();
 
@@ -204,6 +207,18 @@ router.get('/ebook/download', async (req, res) => {
       return res.status(403).json({ error: 'Invalid or expired token' });
     }
 
+    if (payload.purpose === 'complimentary_ebook') {
+      const decision = await authorizeComplimentaryEbookDownload(prisma, payload);
+      if (!decision.ok) {
+        return res.status(403).json({ error: 'Invalid or expired token' });
+      }
+      await deliverEbook(res, {
+        mode: 'complimentary',
+        grantId: decision.grantId,
+      });
+      return;
+    }
+
     await deliverEbook(res, {
       mode: 'token',
       email: payload.email,
@@ -250,12 +265,10 @@ router.get('/ebook/download-by-session', async (req, res) => {
 
     const { session, productType } = await resolveProductTypeFromStripeSession(sessionId);
 
-    const paid = session.payment_status === 'paid';
-    if (!paid) {
-      return res.status(403).json({ ok: false, error: 'payment_not_completed' });
-    }
-
-    if (productType !== 'ebook' && productType !== 'paperback') {
+    if (!paidCheckoutEntitlesEbook(session, productType)) {
+      if (!session || session.payment_status !== 'paid') {
+        return res.status(403).json({ ok: false, error: 'payment_not_completed' });
+      }
       return res.status(403).json({ ok: false, error: 'ebook_not_entitled' });
     }
 

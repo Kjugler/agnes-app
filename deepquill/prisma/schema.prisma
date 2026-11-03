@@ -378,6 +378,43 @@ model PromotionalNurtureRun {
   @@index([status, startedAt])
 }
 
+/// Complimentary ebook review copy. Not a Purchase, not a shipping order, and not promotional consent.
+model ComplimentaryEbookGrant {
+  id                  String    @id @default(cuid())
+  email               String
+  recipientName       String
+  company             String?
+  role                String?
+  contactStreet       String?
+  contactCity         String?
+  contactState        String?
+  contactZip          String?
+  contactCountry      String?
+  deliveryInstruction String?
+  purpose             String
+  title               String
+  titleKey            String
+  status              String    @default("active")
+  expiresAt           DateTime
+  revokedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  sends               ComplimentaryEbookSend[]
+
+  @@index([email, titleKey])
+}
+
+/// Manual ebook-link sends. Never stores a download token or URL.
+model ComplimentaryEbookSend {
+  id                String                  @id @default(cuid())
+  grantId           String
+  grant             ComplimentaryEbookGrant @relation(fields: [grantId], references: [id], onDelete: Restrict)
+  occurredAt        DateTime                @default(now())
+  outcome           String
+  providerMessageId String?
+
+  @@index([grantId, occurredAt])
+}
+
 model Ledger {
   id        String     @id @default(cuid())
   sessionId String? // Stripe checkout session id (for idempotency and audit)

@@ -3,6 +3,10 @@
 
 const express = require('express');
 const { prisma, fulfillmentPrisma, ensureDatabaseUrl } = require('../prisma.cjs');
+const {
+  complimentaryLedgerRow,
+  complimentaryRowVisible,
+} = require('../../lib/complimentaryEbookGrant.cjs');
 
 const router = express.Router();
 
@@ -232,12 +236,25 @@ router.get('/sales-ledger', async (req, res) => {
       rows.push(row);
     }
 
+    const grants = await prisma.complimentaryEbookGrant.findMany({
+      where: { createdAt: { gte: start, lte: end } },
+      orderBy: { createdAt: 'desc' },
+    });
+    for (const grant of grants) {
+      const row = complimentaryLedgerRow(grant);
+      if (!complimentaryRowVisible(row, { productFilter, saleStatusFilter, shippingFilter })) continue;
+      rows.push(row);
+    }
+    rows.sort((a, b) => String(b.orderDate).localeCompare(String(a.orderDate)));
+
     return res.json({
       ok: true,
       generatedAt: new Date().toISOString(),
       range: { start: start.toISOString(), end: end.toISOString() },
       meta: {
         totalInRange: list.length,
+        paidPurchaseCount: list.length,
+        complimentaryRowCount: rows.filter((row) => row.rowKind === 'complimentary').length,
         rowCount: rows.length,
         capped,
         maxRows: MAX_ROWS,

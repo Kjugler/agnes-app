@@ -18,8 +18,11 @@ type LedgerRow = {
   countsForShippingLabel: string;
   sessionId: string;
   orderId: string | null;
-  purchaseId: string;
-  userId?: string;
+  purchaseId: string | null;
+  userId?: string | null;
+  rowKind?: 'purchase' | 'complimentary';
+  grantId?: string | null;
+  saleStatusLabel?: string;
 };
 
 type LedgerResponse = {
@@ -89,8 +92,13 @@ export default function SalesLedgerPage() {
   }, [start, end, product, saleStatus, shipping]);
 
   const runResend = useCallback(
-    async (kind: 'confirmation' | 'ebook' | 'claim', purchaseId: string, userId: string) => {
-      const busyKey = resendKey(kind, purchaseId);
+    async (
+      kind: 'confirmation' | 'ebook' | 'claim',
+      purchaseId: string,
+      userId: string,
+      grantId?: string | null,
+    ) => {
+      const busyKey = resendKey(kind, grantId || purchaseId);
       setResendBusy(busyKey);
       setActionNote(null);
       setRowFeedback((prev) => {
@@ -102,6 +110,8 @@ export default function SalesLedgerPage() {
       let path: string;
       if (kind === 'confirmation') {
         path = `/api/admin/purchases/${encodeURIComponent(purchaseId)}/resend-confirmation`;
+      } else if (kind === 'ebook' && grantId) {
+        path = `/api/admin/complimentary-ebook-grants/${encodeURIComponent(grantId)}/send-link`;
       } else if (kind === 'ebook') {
         path = `/api/admin/purchases/${encodeURIComponent(purchaseId)}/resend-ebook-link`;
       } else {
@@ -322,13 +332,13 @@ export default function SalesLedgerPage() {
             </thead>
             <tbody>
               {data.rows.map((r) => (
-                <tr key={r.purchaseId} style={{ borderTop: '1px solid #e2e8f0' }}>
+                <tr key={r.grantId || r.purchaseId || r.orderDate} style={{ borderTop: '1px solid #e2e8f0' }}>
                   <td style={td}>{r.orderDate?.replace('T', ' ').slice(0, 19)} UTC</td>
                   <td style={td}>{r.buyerName}</td>
                   <td style={td}>{r.buyerEmail}</td>
                   <td style={td}>{r.productTypeLabel}</td>
                   <td style={td}>{r.amount}</td>
-                  <td style={td}>{r.saleStatus}</td>
+                  <td style={td}>{r.saleStatusLabel || r.saleStatus}</td>
                   <td style={td}>{r.shippingStatusLabel}</td>
                   <td style={td}>{r.countsForPointsLabel}</td>
                   <td style={td}>{r.countsForShippingLabel}</td>
@@ -344,13 +354,16 @@ export default function SalesLedgerPage() {
                   <td style={{ ...td, minWidth: 180 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {(['confirmation', 'ebook', 'claim'] as const).map((kind) => {
+                        if (r.rowKind === 'complimentary' && kind !== 'ebook') {
+                          return null;
+                        }
                         if (kind === 'ebook' && r.productType !== 'ebook' && r.productType !== 'paperback') {
                           return null;
                         }
                         if (kind === 'claim' && !r.userId) {
                           return null;
                         }
-                        const busyKey = resendKey(kind, r.purchaseId);
+                        const busyKey = resendKey(kind, r.grantId || r.purchaseId || '');
                         const busy = resendBusy === busyKey;
                         const feedback = rowFeedback[busyKey];
                         const label =
@@ -365,7 +378,7 @@ export default function SalesLedgerPage() {
                               type="button"
                               disabled={busy}
                               onClick={() =>
-                                runResend(kind, r.purchaseId, r.userId || '')
+                                runResend(kind, r.purchaseId || '', r.userId || '', r.grantId)
                               }
                               style={{
                                 ...btn,

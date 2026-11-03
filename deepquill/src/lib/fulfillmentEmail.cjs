@@ -15,18 +15,25 @@ const envConfig = require('../config/env.cjs');
  * @returns {Object} { subject, text, html }
  */
 function buildEbookFulfillmentEmail({ email, downloadUrl, ttlDays = 7, mode = 'paperback_bonus' }) {
+  const isComplimentary = mode === 'complimentary_review';
   const isEbookOnly = mode === 'ebook_order';
-  const subject = isEbookOnly
-    ? 'Your Agnes Protocol eBook — download link'
-    : 'Your free Agnes Protocol eBook is ready';
+  const subject = isComplimentary
+    ? 'Your Agnes Protocol eBook — complimentary review copy'
+    : isEbookOnly
+      ? 'Your Agnes Protocol eBook — download link'
+      : 'Your free Agnes Protocol eBook is ready';
 
-  const introText = isEbookOnly
-    ? 'Here is your secure eBook download link again.'
-    : 'Thank you for purchasing The Agnes Protocol paperback!\n\nAs promised, your free eBook is ready to download.';
+  const introText = isComplimentary
+    ? 'This is a complimentary distributor evaluation copy of The Agnes Protocol. It is not a purchase.'
+    : isEbookOnly
+      ? 'Here is your secure eBook download link again.'
+      : 'Thank you for purchasing The Agnes Protocol paperback!\n\nAs promised, your free eBook is ready to download.';
 
-  const introHtml = isEbookOnly
-    ? '<p style="margin:0 0 20px 0;font-size:16px;line-height:1.6;color:#333333;">Here is your secure eBook download link again.</p>'
-    : `<p style="margin:0 0 20px 0;font-size:16px;line-height:1.6;color:#333333;">
+  const introHtml = isComplimentary
+    ? '<p style="margin:0 0 20px 0;font-size:16px;line-height:1.6;color:#333333;">This is a complimentary distributor evaluation copy of <strong>The Agnes Protocol</strong>. It is not a purchase.</p>'
+    : isEbookOnly
+      ? '<p style="margin:0 0 20px 0;font-size:16px;line-height:1.6;color:#333333;">Here is your secure eBook download link again.</p>'
+      : `<p style="margin:0 0 20px 0;font-size:16px;line-height:1.6;color:#333333;">
                 Thank you for purchasing <strong>The Agnes Protocol</strong> paperback!
               </p>
               <p style="margin:0 0 20px 0;font-size:16px;line-height:1.6;color:#333333;">
@@ -61,7 +68,7 @@ DeepQuill LLC
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:600px;background-color:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 4px rgba(0,0,0,0.1);">
           <tr>
             <td style="padding:40px 30px;">
-              <h1 style="margin:0 0 20px 0;font-size:24px;color:#0a0a0a;">${isEbookOnly ? 'Your eBook download' : 'Your free eBook is ready'}</h1>
+              <h1 style="margin:0 0 20px 0;font-size:24px;color:#0a0a0a;">${isComplimentary ? 'Your complimentary eBook' : isEbookOnly ? 'Your eBook download' : 'Your free eBook is ready'}</h1>
               
               ${introHtml}
               <div style="margin:30px 0;text-align:center;">

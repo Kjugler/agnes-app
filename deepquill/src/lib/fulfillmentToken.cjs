@@ -53,6 +53,34 @@ function signToken(payload) {
 }
 
 /**
+ * Signed download token bound to one complimentary grant.
+ * The download route must still load that grant and reject revoked or expired grants.
+ */
+function signComplimentaryEbookToken({ email, grantId }, options = {}) {
+  if (!email || !grantId) {
+    throw new Error('[FULFILLMENT_TOKEN] email and grantId are required');
+  }
+  const secret = getSecret();
+  const ttlSeconds = options.ttlSeconds != null
+    ? Number(options.ttlSeconds)
+    : (TTL_DAYS * 24 * 60 * 60);
+  const nowSeconds = options.now instanceof Date
+    ? Math.floor(options.now.getTime() / 1000)
+    : Math.floor(Date.now() / 1000);
+  const data = {
+    email,
+    grantId,
+    purpose: 'complimentary_ebook',
+    exp: nowSeconds + ttlSeconds,
+  };
+  const payloadStr = JSON.stringify(data);
+  const hmac = crypto.createHmac('sha256', secret);
+  hmac.update(payloadStr);
+  const signature = hmac.digest('base64url');
+  return Buffer.from(payloadStr).toString('base64url') + '.' + signature;
+}
+
+/**
  * Verify and decode a signed token
  * 
  * @param {string} token - Signed token
@@ -117,6 +145,7 @@ function verifyToken(token) {
 module.exports = {
   signToken,
   verifyToken,
+  signComplimentaryEbookToken,
   TTL_DAYS,
 };
 

@@ -392,4 +392,5 @@ module.exports = {
   loadPurchaseForResend,
   resolveResendDestinationEmailFromCandidates,
   resolveResendDestinationEmail,
+  sendWithMailchimp,
 };

@@ -386,6 +386,10 @@ const adminPurchaseResendRouter = require('./routes/adminPurchaseResend.cjs');
 app.use('/api/admin/purchases', adminPurchaseResendRouter);
 console.log('✅ Mounted POST /api/admin/purchases/:purchaseId/resend-confirmation, resend-ebook-link');
 
+const adminComplimentaryEbookRouter = require('./routes/adminComplimentaryEbook.cjs');
+app.use('/api/admin/complimentary-ebook-grants', adminComplimentaryEbookRouter);
+console.log('✅ Mounted /api/admin/complimentary-ebook-grants');
+
 // Terminal discovery bonus (SPEC 3: +250 pts for hidden path discovery)
 const contestTerminalDiscoveryHandler = require('../api/contest/terminalDiscovery.cjs');
 app.post('/api/contest/terminal-discovery', contestTerminalDiscoveryHandler);
