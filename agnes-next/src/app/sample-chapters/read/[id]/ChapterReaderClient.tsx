@@ -92,7 +92,7 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
       >
         <p>Chapter not found.</p>
         <Link href={hubHref} style={{ marginTop: 16, color: '#00ff00', textDecoration: 'underline' }}>
-          ← Back to Sample Chapters
+          View All Sample Chapters
         </Link>
       </div>
     );

@@ -4,17 +4,19 @@ import { useEffect, useRef, useState } from 'react';
 import { loadPdfJs, type PdfJsDocument, type PdfJsModule } from '@/lib/loadPdfJs';
 
 type ChapterPdfJsViewerProps = {
-  documentPath: string;
+  pagePath: string;
   title: string;
   pageNumber: number;
   onDocumentLoaded: (pageCount: number) => void;
+  onPageDenied?: () => void;
 };
 
 export function ChapterPdfJsViewer({
-  documentPath,
+  pagePath,
   title,
   pageNumber,
   onDocumentLoaded,
+  onPageDenied,
 }: ChapterPdfJsViewerProps) {
   const frameRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -22,7 +24,9 @@ export function ChapterPdfJsViewer({
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [pageCount, setPageCount] = useState(0);
   const onLoadedRef = useRef(onDocumentLoaded);
+  const onDeniedRef = useRef(onPageDenied);
   onLoadedRef.current = onDocumentLoaded;
+  onDeniedRef.current = onPageDenied;
 
   useEffect(() => {
     let cancelled = false;
@@ -30,11 +34,24 @@ export function ChapterPdfJsViewer({
 
     (async () => {
       try {
+        const res = await fetch(pagePath, { credentials: 'include', cache: 'no-store' });
+        if (cancelled) return;
+        if (res.status === 403) {
+          onDeniedRef.current?.();
+          setStatus('error');
+          return;
+        }
+        if (!res.ok) {
+          setStatus('error');
+          return;
+        }
+        const reportedCount = Number(res.headers.get('X-Sample-Page-Count'));
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        if (cancelled) return;
         const pdfjs = await loadPdfJs();
         if (cancelled) return;
         loadingTask = pdfjs.getDocument({
-          url: documentPath,
-          withCredentials: true,
+          data: bytes,
           disableRange: true,
           disableStream: true,
           isEvalSupported: false,
@@ -45,9 +62,11 @@ export function ChapterPdfJsViewer({
           return;
         }
         pdfRef.current = pdf;
-        setPageCount(pdf.numPages);
+        const count =
+          Number.isInteger(reportedCount) && reportedCount > 0 ? reportedCount : pdf.numPages;
+        setPageCount(count);
         setStatus('ready');
-        onLoadedRef.current(pdf.numPages);
+        onLoadedRef.current(count);
       } catch {
         if (!cancelled) setStatus('error');
       }
@@ -60,7 +79,7 @@ export function ChapterPdfJsViewer({
       pdfRef.current = null;
       if (pdf) void pdf.destroy();
     };
-  }, [documentPath]);
+  }, [pagePath]);
 
   useEffect(() => {
     if (status !== 'ready') return;
@@ -78,7 +97,7 @@ export function ChapterPdfJsViewer({
       const key = `${pageNumber}:${width}`;
       if (key === lastKey) return;
       lastKey = key;
-      const page = await pdf.getPage(pageNumber);
+      const page = await pdf.getPage(1);
       if (cancelled) return;
       const base = page.getViewport({ scale: 1 });
       const cssScale = width / base.width;

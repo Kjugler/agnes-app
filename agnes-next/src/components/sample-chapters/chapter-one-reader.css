@@ -10,55 +10,45 @@
 }
 
 .chapter-one-header {
-  display: flex;
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "nav title actions";
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  column-gap: 12px;
+  row-gap: 8px;
   flex-shrink: 0;
   padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 12px
     max(12px, env(safe-area-inset-left));
   border-bottom: 1px solid rgba(0, 255, 229, 0.2);
+  background: #000;
 }
 
-.chapter-one-nav-mobile {
-  display: none;
-}
-
-.chapter-one-nav-desktop {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  align-items: flex-start;
-}
-
-.chapter-one-nav-desktop a,
-.chapter-one-nav-mobile a,
-.chapter-one-nav-mobile button,
-.chapter-one-nav-desktop button,
-.chapter-one-linkish {
+.chapter-one-nav {
+  grid-area: nav;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   color: #00ffe5;
   font-size: 14px;
   font-family: inherit;
-  text-decoration: none;
-}
-
-.chapter-one-nav-mobile a,
-.chapter-one-nav-mobile button,
-.chapter-one-nav-desktop button {
+  line-height: 1.25;
   text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
-.chapter-one-nav-mobile button,
-.chapter-one-nav-desktop button {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-  text-align: left;
+.chapter-one-nav:focus-visible,
+.chapter-one-buy:focus-visible,
+.chapter-one-actions button:focus-visible,
+.chapter-one-toolbar button:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
 }
 
 .chapter-one-title {
-  flex: 1;
+  grid-area: title;
   min-width: 0;
   text-align: center;
   font-size: 14px;
@@ -69,6 +59,7 @@
 }
 
 .chapter-one-actions {
+  grid-area: actions;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -76,7 +67,22 @@
   align-items: center;
 }
 
-.chapter-one-actions button {
+.chapter-one-buy {
+  background: #00ffe5;
+  color: #001a18;
+  border: none;
+  border-radius: 999px;
+  padding: 8px 16px;
+  min-height: 44px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chapter-one-actions button:not(.chapter-one-buy) {
   color: #00ffe5;
   font-family: inherit;
   font-size: 14px;
@@ -189,11 +195,17 @@
   pointer-events: auto;
 }
 
+.chapter-one-stage--invite .chapter-one-canvas-wrap {
+  padding-bottom: min(42svh, 320px);
+}
+
 .chapter-one-invite-card {
   pointer-events: auto;
   display: flex;
   gap: 12px;
   width: min(520px, 100%);
+  max-height: min(42svh, 320px);
+  overflow: auto;
   padding: 14px;
   border-radius: 16px;
   border: 1px solid rgba(0, 255, 229, 0.35);
@@ -265,6 +277,10 @@
   cursor: pointer;
 }
 
+.chapter-one-invite-submit-short {
+  display: none;
+}
+
 .chapter-one-invite-actions button[type='submit'] {
   border: none;
   background: #00ffe5;
@@ -283,19 +299,97 @@
 }
 
 @media (max-width: 767px) {
-  .chapter-one-nav-mobile {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
+  .chapter-one-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "nav buy"
+      "title scene";
   }
 
-  .chapter-one-nav-desktop {
+  .chapter-one-actions {
+    display: contents;
+  }
+
+  .chapter-one-buy {
+    grid-area: buy;
+    justify-self: end;
+    padding: 8px 12px;
+  }
+
+  .chapter-one-actions button:not(.chapter-one-buy) {
+    grid-area: scene;
+    justify-self: end;
+  }
+
+  .chapter-one-title {
+    text-align: left;
+  }
+
+  .chapter-one-stage--invite .chapter-one-canvas-wrap {
+    padding-bottom: 176px;
+  }
+
+  .chapter-one-invite {
+    padding: 4px 8px 6px;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.72) 20%, rgba(0, 0, 0, 0));
+  }
+
+  .chapter-one-invite-long {
     display: none;
   }
 
   .chapter-one-invite-card {
-    flex-direction: column;
+    flex-direction: row;
     align-items: flex-start;
+    gap: 8px;
+    max-height: 248px;
+    padding: 8px 10px;
+    border-radius: 12px;
+  }
+
+  .chapter-one-invite-card img {
+    width: 36px;
+    height: 36px;
+    flex: 0 0 auto;
+  }
+
+  .chapter-one-invite-card p {
+    margin: 0 0 4px;
+    font-size: 12px;
+    line-height: 1.3;
+  }
+
+  .chapter-one-invite-card input {
+    padding: 8px 10px;
+  }
+
+  .chapter-one-invite-card form {
+    gap: 6px;
+  }
+
+  .chapter-one-invite-consent {
+    font-size: 11px;
+    line-height: 1.3;
+  }
+
+  .chapter-one-invite-note {
+    font-size: 11px;
+  }
+
+  .chapter-one-invite-submit-full {
+    display: none;
+  }
+
+  .chapter-one-invite-submit-short {
+    display: inline;
+  }
+
+  .chapter-one-invite-actions {
+    flex-wrap: nowrap;
+  }
+
+  .chapter-one-invite-actions button {
+    min-height: 40px;
+    padding: 8px 10px;
   }
 }

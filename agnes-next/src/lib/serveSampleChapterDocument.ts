@@ -36,7 +36,7 @@ function denied() {
   });
 }
 
-async function readerIsRecognized(req: NextRequest): Promise<boolean> {
+export async function readerIsRecognized(req: NextRequest): Promise<boolean> {
   const token = req.cookies.get(READERS_AGREE_LEAD_UID_COOKIE)?.value?.trim() || '';
   if (!looksLikeReadersAgreeSessionToken(token)) return false;
   try {
@@ -56,10 +56,25 @@ async function readerIsRecognized(req: NextRequest): Promise<boolean> {
   }
 }
 
-async function openAllowance(req: NextRequest): Promise<{ allowed: boolean; token: string | null }> {
+export type AnonymousAllowance = {
+  ok: boolean;
+  exhausted: boolean;
+  chapterId: string | null;
+  page: number;
+  token: string | null;
+};
+
+export async function loadAnonymousAllowance(req: NextRequest): Promise<AnonymousAllowance> {
   const cookie = req.cookies.get(READING_ALLOWANCE_COOKIE)?.value?.trim() || '';
   const headers: Record<string, string> = {};
   if (looksLikeReadingAllowanceToken(cookie)) headers[READING_ALLOWANCE_HEADER] = cookie;
+  const empty: AnonymousAllowance = {
+    ok: false,
+    exhausted: true,
+    chapterId: null,
+    page: 1,
+    token: null,
+  };
   try {
     const { data, status } = await proxyJson('/api/sample-chapters/reading-allowance', req, {
       method: 'GET',
@@ -67,16 +82,24 @@ async function openAllowance(req: NextRequest): Promise<{ allowed: boolean; toke
       omitForwardHeaders: [READING_ALLOWANCE_HEADER],
     });
     const token = typeof data?.allowanceToken === 'string' ? data.allowanceToken : null;
-    if (status !== 200 || data?.ok !== true || data?.exhausted === true) {
-      return { allowed: false, token: looksLikeReadingAllowanceToken(token) ? token : null };
+    const safeToken = looksLikeReadingAllowanceToken(token) ? token : null;
+    if (status !== 200 || data?.ok !== true || typeof data?.exhausted !== 'boolean') {
+      return { ...empty, token: safeToken };
     }
-    return { allowed: true, token: looksLikeReadingAllowanceToken(token) ? token : null };
+    const page = Number(data.page);
+    return {
+      ok: true,
+      exhausted: data.exhausted === true,
+      chapterId: typeof data.chapterId === 'string' ? data.chapterId : null,
+      page: Number.isInteger(page) && page >= 1 ? page : 1,
+      token: safeToken,
+    };
   } catch {
-    return { allowed: false, token: null };
+    return empty;
   }
 }
 
-function applyAllowanceCookie(response: NextResponse, req: NextRequest, token: string | null) {
+export function applyAllowanceCookie(response: NextResponse, req: NextRequest, token: string | null) {
   if (!token || !looksLikeReadingAllowanceToken(token)) return response;
   response.cookies.set(
     READING_ALLOWANCE_COOKIE,
@@ -98,15 +121,8 @@ export async function serveSampleChapterDocument(req: NextRequest, chapterId: st
   if (decision === 'deny') return denied();
 
   const recognized = await readerIsRecognized(req);
-  let allowanceToken: string | null = null;
-  if (!recognized) {
-    if (decision === 'recognized-only') return denied();
-    const allowance = await openAllowance(req);
-    allowanceToken = allowance.token;
-    if (!allowance.allowed) {
-      return applyAllowanceCookie(denied(), req, allowanceToken);
-    }
-  }
+  // Anonymous readers never receive the whole chapter. They fetch one page at a time.
+  if (!recognized) return denied();
 
   const fileName = FILE_BY_ID[chapterId];
   let disposition = 'inline';
@@ -126,7 +142,7 @@ export async function serveSampleChapterDocument(req: NextRequest, chapterId: st
         'X-Content-Type-Options': 'nosniff',
       },
     });
-    return applyAllowanceCookie(response, req, allowanceToken);
+    return response;
   } catch {
     return new NextResponse('Chapter file is unavailable.', {
       status: 404,

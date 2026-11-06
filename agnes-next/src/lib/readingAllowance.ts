@@ -18,6 +18,10 @@ export function sampleChapterDocumentPath(chapterId: string): string {
   return `/api/sample-chapters/${chapterId}/document`;
 }
 
+export function sampleChapterPagePath(chapterId: string, pageNumber: number): string {
+  return `/api/sample-chapters/${chapterId}/pages/${pageNumber}`;
+}
+
 export function looksLikeReadingAllowanceToken(raw: unknown): boolean {
   if (typeof raw !== 'string') return false;
   const token = raw.trim();

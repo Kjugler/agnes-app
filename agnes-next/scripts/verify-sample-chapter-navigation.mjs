@@ -66,7 +66,14 @@ assert.match(reader, /SampleChapterReader/);
 assert.match(reader, /sampleChaptersHubHref/);
 assert.match(chapterReader, /isActivelyReading/);
 assert.match(chapterReader, /Buy the Book/);
+assert.match(chapterReader, /View All Sample Chapters/);
+assert.match(chapterReader, /className="chapter-one-buy"/);
+assert.ok(chapterReader.indexOf('className="chapter-one-buy"') < chapterReader.indexOf('<JodyReaderInvitation'));
+assert.match(chapterReader, /source="sample-chapter-reader"/);
 assert.match(chapterReader, /sampleChaptersHubHref/);
+const readerCss = read('src/components/sample-chapters/chapter-one-reader.css');
+assert.match(readerCss, /position:\s*sticky/);
+assert.doesNotMatch(readerCss, /chapter-one-buy-bar/);
 assert.doesNotMatch(hub, /ChapterOneReader/);
 assert.doesNotMatch(hub, /SampleChapterReader/);
 

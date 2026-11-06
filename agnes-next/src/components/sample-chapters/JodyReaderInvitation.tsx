@@ -73,11 +73,11 @@ export function JodyReaderInvitation({
   };
 
   return (
-    <div className="chapter-one-invite chapter-one-invite--blocking" data-testid="jody-reader-invitation">
+    <div className="chapter-one-invite" data-testid="jody-reader-invitation">
       <div
         className="chapter-one-invite-card"
         role="dialog"
-        aria-modal="true"
+        aria-modal="false"
         aria-labelledby="jody-reader-invite-title"
       >
         <img
@@ -95,8 +95,10 @@ export function JodyReaderInvitation({
           <p id="jody-reader-invite-title" className="chapter-one-invite-title">
             Hi. I&apos;m Jody.
           </p>
-          <p>Enjoying the story? I&apos;d love to let you keep reading.</p>
-          <p>Just tell me where to send your reading access.</p>
+          <p className="chapter-one-invite-long">
+            Enjoying the story? I&apos;d love to let you keep reading.
+          </p>
+          <p className="chapter-one-invite-long">Just tell me where to send your reading access.</p>
           <p>Your email unlocks all four sample chapters. No purchase necessary.</p>
           <form onSubmit={handleSubmit}>
             <input
@@ -133,7 +135,14 @@ export function JodyReaderInvitation({
             ) : null}
             <div className="chapter-one-invite-actions">
               <button type="submit" disabled={submitting || declining}>
-                {submitting ? 'One moment…' : 'Continue Reading — Enter Email'}
+                {submitting ? (
+                  'One moment…'
+                ) : (
+                  <>
+                    <span className="chapter-one-invite-submit-full">Continue Reading — Enter Email</span>
+                    <span className="chapter-one-invite-submit-short">Continue Reading</span>
+                  </>
+                )}
               </button>
               <button
                 type="button"
@@ -141,7 +150,7 @@ export function JodyReaderInvitation({
                 disabled={submitting || declining}
                 onClick={handleNotNow}
               >
-                {declining ? 'One moment…' : 'Not Now — Back to Website'}
+                {declining ? 'One moment…' : 'Not Now'}
               </button>
             </div>
           </form>

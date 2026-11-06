@@ -9,7 +9,7 @@ import { isActivelyReading } from '@/lib/activeReadingClock';
 import { FUNNEL_EVENT_TYPES, getOrCreateVisitorId } from '@/lib/funnelTracking';
 import {
   fetchReadingAllowance,
-  sampleChapterDocumentPath,
+  sampleChapterPagePath,
 } from '@/lib/readingAllowance';
 import {
   clearReadersAgreeRecognition,
@@ -38,20 +38,24 @@ export function SampleChapterReader({
 }: SampleChapterReaderProps) {
   const searchParams = useSearchParams();
   const hubHref = sampleChaptersHubHref(searchParams);
-  const documentPath = sampleChapterDocumentPath(chapterId);
   const frameRef = useRef<HTMLElement>(null);
   const pageRef = useRef(1);
+  const displayedPageRef = useRef(1);
   const [access, setAccess] = useState<AccessState>('checking');
   const [emailHint, setEmailHint] = useState<string | null>(null);
   const [switching, setSwitching] = useState(false);
   const [pageNumber, setPageNumber] = useState(1);
   const [pageCount, setPageCount] = useState(0);
   const [exhausted, setExhausted] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [lockedChapterId, setLockedChapterId] = useState<string | null>(null);
   const [viewerEpoch, setViewerEpoch] = useState(0);
   const [identityGeneration, setIdentityGeneration] = useState(0);
 
   pageRef.current = pageNumber;
-  const canRead = access === 'recognized' || (access === 'anonymous' && !exhausted);
+  const showPdf =
+    access === 'recognized' ||
+    (access === 'anonymous' && (!exhausted || lockedChapterId === chapterId));
 
   useEffect(() => {
     let cancelled = false;
@@ -60,17 +64,30 @@ export function SampleChapterReader({
     Promise.all([fetchReadersAgreeRecognition(), fetchReadingAllowance({ method: 'GET' })]).then(
       ([recognition, allowance]) => {
         if (cancelled) return;
-        const sameChapter = allowance?.chapterId === chapterId && (allowance.page || 1) > 1;
-        if (sameChapter && allowance) setPageNumber(allowance.page);
-        else setPageNumber(1);
         if (recognition.recognized) {
+          const sameChapter = allowance?.chapterId === chapterId && (allowance.page || 1) > 1;
+          setPageNumber(sameChapter && allowance ? allowance.page : 1);
           setEmailHint(recognition.emailHint);
           setExhausted(false);
+          setInviteOpen(false);
+          setLockedChapterId(null);
           setAccess('recognized');
           return;
         }
         setEmailHint(null);
-        setExhausted(allowance == null || allowance.exhausted);
+        const isExhausted = allowance == null || allowance.exhausted;
+        setExhausted(isExhausted);
+        if (isExhausted) {
+          const locked = allowance?.chapterId || null;
+          setLockedChapterId(locked);
+          setInviteOpen(true);
+          setPageNumber(locked === chapterId ? allowance?.page || 1 : 1);
+        } else {
+          const sameChapter = allowance?.chapterId === chapterId && (allowance.page || 1) > 1;
+          setLockedChapterId(null);
+          setInviteOpen(false);
+          setPageNumber(sameChapter && allowance ? allowance.page : 1);
+        }
         setAccess('anonymous');
       },
     );
@@ -102,8 +119,13 @@ export function SampleChapterReader({
           visitorId: getOrCreateVisitorId(),
         },
       });
-      if (stopped) return;
-      if (!snapshot || snapshot.exhausted) setExhausted(true);
+      if (stopped || !snapshot) return;
+      if (snapshot.exhausted) {
+        setExhausted(true);
+        setLockedChapterId(snapshot.chapterId || chapterId);
+        if (snapshot.chapterId === chapterId && snapshot.page) setPageNumber(snapshot.page);
+        setInviteOpen(true);
+      }
     };
 
     void send(false);
@@ -124,21 +146,30 @@ export function SampleChapterReader({
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (!canRead) return;
+      if (access === 'checking') return;
       const target = event.target;
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
-      if (event.key === 'ArrowRight') {
-        setPageNumber((current) => (pageCount > 0 ? Math.min(pageCount, current + 1) : current + 1));
-      } else if (event.key === 'ArrowLeft') {
-        setPageNumber((current) => Math.max(1, current - 1));
+      if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+      if (access === 'anonymous' && exhausted) {
+        setInviteOpen(true);
+        return;
       }
+      const delta = event.key === 'ArrowRight' ? 1 : -1;
+      setPageNumber((current) => {
+        const next = current + delta;
+        if (next < 1) return current;
+        if (pageCount > 0 && next > pageCount) return current;
+        return next;
+      });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [canRead, pageCount]);
+  }, [access, exhausted, pageCount]);
 
   const handleAccessEstablished = () => {
     setExhausted(false);
+    setInviteOpen(false);
+    setLockedChapterId(null);
     setAccess('recognized');
     setViewerEpoch((value) => value + 1);
     void fetchReadersAgreeRecognition().then((result) => {
@@ -147,6 +178,8 @@ export function SampleChapterReader({
   };
 
   const handleNotNow = async () => {
+    const wrap = frameRef.current?.querySelector('.chapter-one-canvas-wrap');
+    const readingScroll = wrap instanceof HTMLElement ? wrap.scrollTop : 0;
     const snapshot = await fetchReadingAllowance({
       method: 'POST',
       body: {
@@ -160,7 +193,18 @@ export function SampleChapterReader({
     if (!snapshot?.exhausted) {
       throw new Error('allowance_not_closed');
     }
-    window.location.assign('/');
+    setExhausted(true);
+    setLockedChapterId(snapshot.chapterId || chapterId);
+    if (snapshot.chapterId === chapterId && snapshot.page) setPageNumber(snapshot.page);
+    setInviteOpen(false);
+    const restoreReadingScroll = () => {
+      const node = frameRef.current?.querySelector('.chapter-one-canvas-wrap');
+      if (node instanceof HTMLElement) node.scrollTop = readingScroll;
+    };
+    requestAnimationFrame(() => {
+      restoreReadingScroll();
+      requestAnimationFrame(restoreReadingScroll);
+    });
   };
 
   const handleNotYou = async () => {
@@ -173,40 +217,45 @@ export function SampleChapterReader({
     setIdentityGeneration((value) => value + 1);
   };
 
-  const nextAllowed = canRead && (pageCount === 0 || pageNumber < pageCount);
-  const prevAllowed = canRead && pageNumber > 1;
+  const requestStep = (delta: number) => {
+    if (access === 'anonymous' && exhausted) {
+      setInviteOpen(true);
+      return;
+    }
+    setPageNumber((current) => {
+      const next = current + delta;
+      if (next < 1) return current;
+      if (pageCount > 0 && next > pageCount) return current;
+      return next;
+    });
+  };
+
+  const nextDisabled =
+    access === 'checking' || (!exhausted && pageCount > 0 && pageNumber >= pageCount);
+  const prevDisabled = access === 'checking' || pageNumber <= 1;
 
   return (
     <div className="chapter-one-reader">
       <header className="chapter-one-header">
-        <div className="chapter-one-nav-mobile">
-          <Link href={hubHref} onClick={onBackClick}>
-            ← Back to Sample Chapters
-          </Link>
-          <BuyBookButton
-            source="sample-chapter-reader"
-            funnelEventType={FUNNEL_EVENT_TYPES.SAMPLE_CHAPTERS_BUY_CLICK}
-            successPath="/checkout/success"
-            cancelPath={hubHref}
-          >
-            Buy the Book
-          </BuyBookButton>
-        </div>
-        <div className="chapter-one-nav-desktop">
-          <Link href={hubHref} onClick={onBackClick}>
-            ← Back to Sample Chapters
-          </Link>
-          <BuyBookButton
-            source="sample-chapter-reader"
-            funnelEventType={FUNNEL_EVENT_TYPES.SAMPLE_CHAPTERS_BUY_CLICK}
-            successPath="/checkout/success"
-            cancelPath={hubHref}
-          >
-            Buy the Book
-          </BuyBookButton>
-        </div>
+        <Link
+          className="chapter-one-nav"
+          href={hubHref}
+          onClick={onBackClick}
+          data-testid="view-all-sample-chapters"
+        >
+          View All Sample Chapters
+        </Link>
         <span className="chapter-one-title">{title}</span>
         <div className="chapter-one-actions">
+          <BuyBookButton
+            className="chapter-one-buy"
+            source="sample-chapter-reader"
+            funnelEventType={FUNNEL_EVENT_TYPES.SAMPLE_CHAPTERS_BUY_CLICK}
+            successPath="/checkout/success"
+            cancelPath={hubHref}
+          >
+            Buy the Book
+          </BuyBookButton>
           <button type="button" onClick={onTextThisScene}>
             Text This Scene
           </button>
@@ -222,24 +271,35 @@ export function SampleChapterReader({
         </p>
       ) : null}
 
-      <section ref={frameRef} className="chapter-one-stage" aria-label={title}>
+      <section
+        ref={frameRef}
+        className={inviteOpen ? 'chapter-one-stage chapter-one-stage--invite' : 'chapter-one-stage'}
+        aria-label={title}
+      >
         {access === 'checking' ? <p className="chapter-one-status">Opening chapter…</p> : null}
-        {canRead ? (
+        {showPdf ? (
           <ChapterPdfJsViewer
-            key={`${chapterId}:${viewerEpoch}`}
-            documentPath={documentPath}
+            key={`${chapterId}:${pageNumber}:${viewerEpoch}`}
+            pagePath={sampleChapterPagePath(chapterId, pageNumber)}
             title={title}
             pageNumber={pageNumber}
             onDocumentLoaded={(count) => {
+              displayedPageRef.current = pageNumber;
               setPageCount(count);
               setPageNumber((current) => Math.min(Math.max(1, current), count));
+            }}
+            onPageDenied={() => {
+              setExhausted(true);
+              setLockedChapterId((current) => current || chapterId);
+              setInviteOpen(true);
+              setPageNumber(displayedPageRef.current);
             }}
           />
         ) : null}
         {sampleChapterEmailPromptVisible({
           recognized: access === 'recognized',
           exhausted,
-        }) ? (
+        }) && inviteOpen ? (
           <JodyReaderInvitation
             searchParams={searchParams}
             onDecline={handleNotNow}
@@ -252,8 +312,8 @@ export function SampleChapterReader({
         <button
           type="button"
           data-testid="chapter-page-prev"
-          disabled={!prevAllowed}
-          onClick={() => setPageNumber((current) => Math.max(1, current - 1))}
+          disabled={prevDisabled}
+          onClick={() => requestStep(-1)}
         >
           Previous page
         </button>
@@ -263,10 +323,8 @@ export function SampleChapterReader({
         <button
           type="button"
           data-testid="chapter-page-next"
-          disabled={!nextAllowed}
-          onClick={() =>
-            setPageNumber((current) => (pageCount > 0 ? Math.min(pageCount, current + 1) : current))
-          }
+          disabled={nextDisabled}
+          onClick={() => requestStep(1)}
         >
           Next page
         </button>

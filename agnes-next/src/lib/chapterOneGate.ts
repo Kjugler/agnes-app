@@ -53,6 +53,28 @@ export function sampleChapterEmailPromptVisible(input: {
   return input.recognized !== true && input.exhausted === true;
 }
 
+/**
+ * Anonymous readers receive one PDF page per request.
+ * Before the allowance ends, turning pages is allowed.
+ * After it ends, only the page recorded on the signed allowance can be fetched again.
+ */
+export function anonymousSamplePageAllowed(input: {
+  exhausted: boolean;
+  lockedChapterId: string | null;
+  lockedPage: number | null;
+  requestedChapterId: string;
+  requestedPage: number;
+}): boolean {
+  if (!Number.isInteger(input.requestedPage) || input.requestedPage < 1 || input.requestedPage > 500) {
+    return false;
+  }
+  if (input.exhausted !== true) return true;
+  if (!input.lockedChapterId) return false;
+  const lockedPage = input.lockedPage;
+  if (lockedPage == null || !Number.isInteger(lockedPage) || lockedPage < 1) return false;
+  return input.requestedChapterId === input.lockedChapterId && input.requestedPage === lockedPage;
+}
+
 export function canAdvanceToPage(input: {
   targetPage: number;
   pageCount: number;
