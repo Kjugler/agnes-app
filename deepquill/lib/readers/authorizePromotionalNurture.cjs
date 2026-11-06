@@ -271,8 +271,58 @@ async function authorizeRecommendedPromotionalNurture(prisma, request = {}, deps
   );
 }
 
+/**
+ * Local "would send if the provider agrees" preview.
+ * Does not call Mailchimp. The send loop still runs the real authorization,
+ * including the provider reject check, for each chosen candidate.
+ */
+async function previewLocalPromotionalEligibility(prisma, userId, now) {
+  const id = typeof userId === 'string' ? userId.trim() : '';
+  if (!prisma || !id) return false;
+  let snapshot;
+  try {
+    snapshot = await loadSnapshot(prisma, id);
+  } catch {
+    return false;
+  }
+  if (!snapshot || !snapshot.user) return false;
+  const profile = snapshot.profile || {};
+  let decision;
+  try {
+    decision = decideReaderNurture({
+      readerRef: snapshot.user.id,
+      now,
+      email: snapshot.user.email,
+      profile,
+      purchases: snapshot.purchases,
+      evidence: snapshot.evidence,
+      doNotContact: independentDncActive(snapshot.decisions),
+      leadAttribution: profile.leadAttribution || null,
+      events: snapshot.events,
+      communications: snapshot.communications,
+      knownReview: snapshot.knownReview,
+      emailMarketingConsentAt: profile.emailMarketingConsentAt || null,
+      emailMarketingConsentSource: profile.emailMarketingConsentSource || null,
+      emailMarketingOptOutAt: profile.emailMarketingOptOutAt || null,
+      emailMarketingOptOutSource: profile.emailMarketingOptOutSource || null,
+      confirmedPurchaseAt: snapshot.confirmedPurchaseAt,
+      ownReferralCode: (snapshot.user.referralCode || snapshot.user.code || '').trim(),
+      providerSuppression: {
+        checked: true,
+        suppressed: false,
+        reason: null,
+        providerReason: null,
+      },
+    });
+  } catch {
+    return false;
+  }
+  return decision.wouldBeEligible === true;
+}
+
 module.exports = {
   authorizePromotionalNurture,
   authorizeRecommendedPromotionalNurture,
+  previewLocalPromotionalEligibility,
   TREATMENT,
 };

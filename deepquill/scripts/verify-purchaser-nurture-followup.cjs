@@ -121,7 +121,7 @@ async function main() {
   assert.equal(masterPromotionalSendingEnabled(), false);
   assert.equal(nurturingSendEnabled(), false);
 
-  const email = `purchaser.followup.${suffix}@agnes-dry-run.invalid`;
+  const email = `purchaser.followup.${suffix}@readers.net`;
   const res = mockRes();
   await handler({
     body: {

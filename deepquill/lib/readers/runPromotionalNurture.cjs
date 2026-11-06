@@ -12,7 +12,9 @@
 
 const { nurturingSendEnabled } = require('./nurtureActivation.cjs');
 const { masterPromotionalSendingEnabled, promotionalPostalAddress, promotionalReplyTo } = require('./promotionalActivation.cjs');
-const { authorizeRecommendedPromotionalNurture } = require('./authorizePromotionalNurture.cjs');
+const { authorizeRecommendedPromotionalNurture, previewLocalPromotionalEligibility } = require('./authorizePromotionalNurture.cjs');
+const { promotionalConsentState } = require('./promotionalConsent.cjs');
+const { promotionalRecipientBlock } = require('./promotionalRecipientPolicy.cjs');
 const { buildNurtureMessage } = require('../email/builders/nurtureMessage.cjs');
 const { buildTextAFriendUrl } = require('./readerUrls.cjs');
 const { buildPromotionalOneClickUnsubscribeUrl } = require('./promotionalUnsubscribeToken.cjs');
@@ -23,6 +25,8 @@ const { normalizeEmail } = require('../../src/lib/normalize.cjs');
 const SOURCE = 'promotional_nurture';
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
+const SCAN_PAGE = 20;
+const MAX_SCAN = 10000;
 const RETRYABLE_OUTCOMES = ['suppressed_before_send', 'provider_rejected'];
 const JODY_MESSAGE_CATEGORIES = new Set([
   'prospect_nurture',
@@ -60,6 +64,65 @@ async function hasPriorJodyMessage(prisma, userId) {
     }
     return !row.userId || row.userId === userId;
   });
+}
+
+function profileEmail(profile) {
+  if (!profile || typeof profile !== 'object') return '';
+  if (typeof profile.email === 'string' && profile.email.trim()) return profile.email;
+  const nested = profile.user && profile.user.email;
+  return typeof nested === 'string' ? nested : '';
+}
+
+function cheapReject(profile) {
+  if (!profile || !profile.userId) return true;
+  const hasConsent = Object.prototype.hasOwnProperty.call(profile, 'emailMarketingConsentAt')
+    || Object.prototype.hasOwnProperty.call(profile, 'emailMarketingConsentSource');
+  if (hasConsent && !promotionalConsentState(profile).active) return true;
+  const email = profileEmail(profile);
+  if (email && promotionalRecipientBlock(email)) return true;
+  return false;
+}
+
+async function selectCandidates(prisma, { limit, now, deps }) {
+  const chosen = [];
+  let scanned = 0;
+  let cursor = null;
+  let previousLast = null;
+  const usePreview = typeof deps.authorize !== 'function';
+  while (chosen.length < limit && scanned < MAX_SCAN) {
+    const page = await prisma.readerProfile.findMany({
+      where: { emailMarketingConsentAt: { not: null } },
+      orderBy: [{ emailMarketingConsentAt: 'asc' }, { userId: 'asc' }],
+      take: SCAN_PAGE,
+      ...(cursor ? { cursor: { userId: cursor }, skip: 1 } : {}),
+      select: {
+        userId: true,
+        status: true,
+        emailMarketingConsentAt: true,
+        emailMarketingConsentSource: true,
+        emailMarketingOptOutAt: true,
+        emailMarketingOptOutSource: true,
+        user: { select: { email: true } },
+      },
+    });
+    if (!Array.isArray(page) || page.length === 0) break;
+    const lastId = page[page.length - 1] && page[page.length - 1].userId;
+    if (!lastId || lastId === previousLast) break;
+    previousLast = lastId;
+    for (const profile of page) {
+      if (chosen.length >= limit || scanned >= MAX_SCAN) break;
+      scanned += 1;
+      if (cheapReject(profile)) continue;
+      if (usePreview) {
+        const eligible = await previewLocalPromotionalEligibility(prisma, profile.userId, now);
+        if (!eligible) continue;
+      }
+      chosen.push({ userId: profile.userId });
+    }
+    if (chosen.length >= limit || page.length < SCAN_PAGE) break;
+    cursor = lastId;
+  }
+  return { chosen, scanned };
 }
 
 function emptyResult(extra = {}) {
@@ -202,12 +265,8 @@ async function runPromotionalNurture(prisma, options = {}, deps = {}) {
     MAX_LIMIT,
     Math.max(1, Number(options.limit) || DEFAULT_LIMIT),
   );
-  const profiles = await prisma.readerProfile.findMany({
-    where: { emailMarketingConsentAt: { not: null } },
-    select: { userId: true },
-    orderBy: { emailMarketingConsentAt: 'asc' },
-    take: limit,
-  });
+  const selection = await selectCandidates(prisma, { limit, now: options.now, deps });
+  const profiles = selection.chosen;
 
   const authorize = deps.authorize || authorizeRecommendedPromotionalNurture;
   let sent = 0;
@@ -344,7 +403,7 @@ async function runPromotionalNurture(prisma, options = {}, deps = {}) {
     skipped,
     failed,
     suppressed,
-    examined: profiles.length,
+    examined: selection.scanned,
     reason: null,
   };
 }

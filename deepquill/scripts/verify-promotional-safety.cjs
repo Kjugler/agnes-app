@@ -15,6 +15,8 @@ process.env.PROMOTIONAL_UNSUBSCRIBE_SECRET = 'local-promotional-unsubscribe-secr
 delete process.env.PROMOTIONAL_SENDING_ENABLED;
 delete process.env.NURTURE_PROMOTIONAL_SENDING;
 
+const { isMailableEmail } = require('../src/lib/normalize.cjs');
+const { promotionalRecipientBlock } = require('../lib/readers/promotionalRecipientPolicy.cjs');
 const { promotionalConsentState, applyPromotionalPreference } = require('../lib/readers/promotionalConsent.cjs');
 const { lookupPromotionalConsent } = require('../lib/readers/lookupPromotionalConsent.cjs');
 const { masterPromotionalSendingEnabled } = require('../lib/readers/promotionalActivation.cjs');
@@ -593,6 +595,36 @@ async function main() {
       reader('real', { email: 'reader@gmail.com' }),
     ]), { userId: 'real' });
     assert.equal(gmail.allowed, true);
+    const reserved = [
+      'stage@agnes-dry-run.invalid',
+      'reader@foo.test',
+      'reader@foo.example',
+      'reader@foo.localhost',
+      'reader@localhost',
+      'person@example.net',
+    ];
+    for (const email of reserved) {
+      assert.equal(promotionalRecipientBlock(email), 'no_mailable_email', email);
+      assert.equal(isMailableEmail(email), email, email);
+      const looked = await lookupPromotionalConsent(memoryDb([
+        reader(email, { email }),
+      ]), { userId: email });
+      assert.equal(looked.allowed, false, email);
+      assert.equal(looked.reason, 'no_mailable_email', email);
+    }
+    const ordinary = ['hello@theagnesprotocol.com', 'invalid@gmail.com', 'reader@testing.com'];
+    for (const email of ordinary) {
+      assert.equal(promotionalRecipientBlock(email), null, email);
+      assert.equal(isMailableEmail(email), email, email);
+      const looked = await lookupPromotionalConsent(memoryDb([
+        reader(email, { email }),
+      ]), { userId: email });
+      assert.equal(looked.allowed, true, email);
+    }
+    const sendEmail = fs.readFileSync(path.join(root, 'lib/email/sendEmail.cjs'), 'utf8');
+    const guard = fs.readFileSync(path.join(root, 'lib/email/guardMailableEmail.cjs'), 'utf8');
+    assert.doesNotMatch(sendEmail, /promotionalRecipientBlock|RESERVED_DOMAIN_LABELS/);
+    assert.doesNotMatch(guard, /promotionalRecipientBlock|RESERVED_DOMAIN_LABELS/);
   });
 
   await check('unknown consent source fails closed', async () => {

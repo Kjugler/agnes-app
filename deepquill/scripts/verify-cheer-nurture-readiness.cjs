@@ -163,10 +163,10 @@ async function main() {
     utm_campaign: 'readers-cheer-approved',
     fbclid: 'fb-dry-run',
   };
-  const chapterEmail = `cheer.chapters.${suffix}@agnes-dry-run.invalid`;
-  const accessEmail = `cheer.access.${suffix}@agnes-dry-run.invalid`;
-  const giftEmail = `cheer.gift.${suffix}@agnes-dry-run.invalid`;
-  const buyerEmail = `cheer.buyer.${suffix}@agnes-dry-run.invalid`;
+  const chapterEmail = `cheer.chapters.${suffix}@readers.net`;
+  const accessEmail = `cheer.access.${suffix}@readers.net`;
+  const giftEmail = `cheer.gift.${suffix}@readers.net`;
+  const buyerEmail = `cheer.buyer.${suffix}@readers.net`;
 
   const created = await postLead({
     email: chapterEmail,
@@ -192,7 +192,7 @@ async function main() {
   assert.strictEqual(access.body.promotionalConsent, 'not_requested');
 
   const landing = await postLead({
-    email: `cheer.landing.${suffix}@agnes-dry-run.invalid`,
+    email: `cheer.landing.${suffix}@readers.net`,
     captureSurface: 'landing',
     utm: { utm_campaign: 'readers-agree' },
   });

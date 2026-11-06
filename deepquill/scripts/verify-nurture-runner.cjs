@@ -483,6 +483,182 @@ async function main() {
   assert.equal(realSends.length, 0);
   assert.equal(gate.communications.length, 0);
 
+  const hidden = selectionDb([
+    ...Array.from({ length: 25 }, (_, index) => consentingReader({
+      id: `old-${String(index).padStart(2, '0')}`,
+      email: `old-${index}@agnes-dry-run.invalid`,
+      consentAt: `2026-01-${String(index + 1).padStart(2, '0')}T00:00:00.000Z`,
+    })),
+    consentingReader({
+      id: 'newer-eligible',
+      email: 'newer@readers.net',
+      consentAt: '2026-08-01T00:00:00.000Z',
+      eventAt: '2026-08-01T00:00:00.000Z',
+    }),
+  ]);
+  const hiddenSends = [];
+  let hiddenProvider = 0;
+  const hiddenRun = await runPromotionalNurture(hidden, { now: '2026-10-15T16:00:00.000Z', postalAddress: POSTAL }, {
+    ...openGates(),
+    checkTransactionalSuppression: async () => {
+      hiddenProvider += 1;
+      return { checked: true, suppressed: false, reason: null, providerReason: null };
+    },
+    send({ to }) {
+      hiddenSends.push(to);
+      return [{ status: 'sent', _id: 'hidden-eligible' }];
+    },
+  });
+  assert.equal(hiddenRun.sent, 1);
+  assert.deepEqual(hiddenSends, ['newer@readers.net']);
+  assert.equal(hiddenProvider, 4);
+  assert.ok(hiddenRun.examined > 25);
+  assert.equal(hidden.communications.length, 1);
+  assert.equal(hidden.communications[0].userId, 'newer-eligible');
+
+  const waiting = selectionDb([consentingReader({
+    id: 'waiting',
+    email: 'waiting@readers.net',
+    consentAt: '2026-10-10T00:00:00.000Z',
+    eventAt: '2026-10-10T00:00:00.000Z',
+  })]);
+  let waitingProvider = 0;
+  const waitingSends = [];
+  const tooSoon = await runPromotionalNurture(waiting, { now: '2026-10-11T00:00:00.000Z', postalAddress: POSTAL }, {
+    ...openGates(),
+    checkTransactionalSuppression: async () => {
+      waitingProvider += 1;
+      return { checked: true, suppressed: false, reason: null, providerReason: null };
+    },
+    send({ to }) {
+      waitingSends.push(to);
+      return [{ status: 'sent', _id: 'waiting' }];
+    },
+  });
+  assert.equal(tooSoon.sent, 0);
+  assert.equal(waitingProvider, 0);
+  assert.equal(waiting.communications.length, 0);
+  const nowDue = await runPromotionalNurture(waiting, { now: '2026-10-14T00:00:00.000Z', postalAddress: POSTAL }, {
+    ...openGates(),
+    checkTransactionalSuppression: async () => {
+      waitingProvider += 1;
+      return { checked: true, suppressed: false, reason: null, providerReason: null };
+    },
+    send({ to }) {
+      waitingSends.push(to);
+      return [{ status: 'sent', _id: 'waiting-due' }];
+    },
+  });
+  assert.equal(nowDue.sent, 1);
+  assert.deepEqual(waitingSends, ['waiting@readers.net']);
+  assert.equal(waitingProvider, 4);
+
+  const accepted = selectionDb([consentingReader({
+    id: 'accepted',
+    email: 'accepted@readers.net',
+    consentAt: '2026-08-01T00:00:00.000Z',
+    eventAt: '2026-08-01T00:00:00.000Z',
+  })]);
+  let acceptedProvider = 0;
+  let acceptedSends = 0;
+  const acceptedDeps = {
+    ...openGates(),
+    checkTransactionalSuppression: async () => {
+      acceptedProvider += 1;
+      return { checked: true, suppressed: false, reason: null, providerReason: null };
+    },
+    send() {
+      acceptedSends += 1;
+      return [{ status: 'sent', _id: 'accepted-once' }];
+    },
+  };
+  const firstAccepted = await runPromotionalNurture(accepted, { now: '2026-10-15T16:00:00.000Z', postalAddress: POSTAL }, acceptedDeps);
+  const secondAccepted = await runPromotionalNurture(accepted, { now: '2026-11-15T16:00:00.000Z', postalAddress: POSTAL }, acceptedDeps);
+  assert.equal(firstAccepted.sent, 1);
+  assert.equal(secondAccepted.sent, 0);
+  assert.equal(acceptedSends, 1);
+  assert.equal(acceptedProvider, 4);
+  assert.equal(accepted.communications.length, 1);
+  assert.equal(accepted.communications[0].outcome, 'accepted');
+
+  const suppressedReaders = selectionDb([
+    consentingReader({
+      id: 'opted-out',
+      email: 'opted-out@readers.net',
+      consentAt: '2026-01-01T00:00:00.000Z',
+      optOutAt: '2026-01-02T00:00:00.000Z',
+      eventAt: '2026-01-01T00:00:00.000Z',
+    }),
+    consentingReader({
+      id: 'gifted',
+      email: 'gifted@readers.net',
+      consentAt: '2026-02-01T00:00:00.000Z',
+      eventAt: '2026-02-01T00:00:00.000Z',
+      evidence: [{ kind: 'gift_book_owner', status: 'confirmed', sourceLabel: 'gift' }],
+    }),
+    consentingReader({
+      id: 'early-buyer',
+      email: 'early-buyer@readers.net',
+      consentAt: '2026-03-01T00:00:00.000Z',
+      referralCode: 'EARLY1',
+      purchases: [{ sessionId: 'cs_early', saleStatus: 'live', createdAt: '2026-10-14T16:00:00.000Z' }],
+    }),
+    consentingReader({
+      id: 'due-buyer',
+      email: 'due-buyer@readers.net',
+      consentAt: '2026-04-01T00:00:00.000Z',
+      referralCode: 'DUECODE',
+      purchases: [{ sessionId: 'cs_due', saleStatus: 'live', createdAt: '2026-09-01T16:00:00.000Z' }],
+    }),
+  ]);
+  const suppressedSends = [];
+  let suppressedProvider = 0;
+  const suppressedRun = await runPromotionalNurture(suppressedReaders, { now: '2026-10-15T16:00:00.000Z', postalAddress: POSTAL }, {
+    ...openGates(),
+    checkTransactionalSuppression: async () => {
+      suppressedProvider += 1;
+      return { checked: true, suppressed: false, reason: null, providerReason: null };
+    },
+    send({ to }) {
+      suppressedSends.push(to);
+      return [{ status: 'sent', _id: 'due-buyer' }];
+    },
+  });
+  assert.equal(suppressedRun.sent, 1);
+  assert.deepEqual(suppressedSends, ['due-buyer@readers.net']);
+  assert.equal(suppressedProvider, 4);
+  assert.deepEqual(suppressedReaders.communications.map((row) => row.userId), ['due-buyer']);
+
+  const crowd = selectionDb(Array.from({ length: 30 }, (_, index) => consentingReader({
+    id: `crowd-${String(index).padStart(2, '0')}`,
+    email: `crowd-${index}@readers.net`,
+    consentAt: new Date(Date.UTC(2026, 5, 1, 0, index)).toISOString(),
+    eventAt: '2026-08-01T00:00:00.000Z',
+  })));
+  let crowdProvider = 0;
+  const crowdSends = [];
+  const crowdDeps = {
+    ...openGates(),
+    checkTransactionalSuppression: async () => {
+      crowdProvider += 1;
+      return { checked: true, suppressed: false, reason: null, providerReason: null };
+    },
+    send({ to }) {
+      crowdSends.push(to);
+      return [{ status: 'sent', _id: to }];
+    },
+  };
+  const firstCrowd = await runPromotionalNurture(crowd, { now: '2026-10-15T16:00:00.000Z', postalAddress: POSTAL }, crowdDeps);
+  assert.equal(firstCrowd.sent, 25);
+  assert.equal(crowdProvider, 100);
+  assert.equal(crowdSends.length, 25);
+  const secondCrowd = await runPromotionalNurture(crowd, { now: '2026-10-15T17:00:00.000Z', postalAddress: POSTAL }, crowdDeps);
+  assert.equal(secondCrowd.sent, 5);
+  assert.equal(crowdProvider, 120);
+  assert.equal(new Set(crowdSends).size, 30);
+  assert.equal(crowd.communications.length, 30);
+  assert.ok(crowd.communications.every((row) => row.outcome === 'accepted'));
+
   delete process.env.PROMOTIONAL_REPLY_TO;
   const replyBlocked = await runPromotionalNurture({}, { postalAddress: POSTAL }, {
     sendingEnabled: true,
@@ -493,6 +669,146 @@ async function main() {
   assert.equal(process.env.PROMOTIONAL_REPLY_TO, undefined);
 
   console.log('verify-nurture-runner: passed');
+}
+
+function consentingReader(extra) {
+  return {
+    id: extra.id,
+    email: extra.email,
+    referralCode: extra.referralCode || null,
+    profile: {
+      userId: extra.id,
+      status: 'active',
+      readerType: extra.purchases ? 'purchased' : 'prospect',
+      emailMarketingConsentAt: extra.consentAt,
+      emailMarketingConsentSource: 'reader_preferences',
+      emailMarketingOptOutAt: extra.optOutAt || null,
+      emailMarketingOptOutSource: extra.optOutAt ? 'reader_preferences' : null,
+      leadAttribution: {
+        capturedAt: extra.eventAt || extra.consentAt,
+        captureSurface: 'landing',
+        visitorId: `vid-${extra.id}`,
+        channel: 'unknown',
+      },
+    },
+    events: extra.eventAt ? [{
+      id: `event-${extra.id}`,
+      userId: extra.id,
+      type: FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED,
+      createdAt: extra.eventAt,
+      meta: { source: 'server' },
+    }] : [],
+    purchases: (extra.purchases || []).map((row) => ({ ...row, userId: extra.id })),
+    evidence: (extra.evidence || []).map((row) => ({ ...row, userId: extra.id })),
+  };
+}
+
+function selectionDb(rows) {
+  const communications = [];
+  const ordered = () => rows
+    .filter((row) => row.profile && row.profile.emailMarketingConsentAt)
+    .slice()
+    .sort((left, right) => {
+      const consent = String(left.profile.emailMarketingConsentAt).localeCompare(String(right.profile.emailMarketingConsentAt));
+      if (consent) return consent;
+      return String(left.id).localeCompare(String(right.id));
+    });
+  return {
+    communications,
+    readerProfile: {
+      async findMany(args = {}) {
+        let list = ordered();
+        if (args.cursor && args.cursor.userId) {
+          const index = list.findIndex((row) => row.id === args.cursor.userId);
+          list = list.slice(index >= 0 ? index + (args.skip || 0) : 0);
+        }
+        if (args.take) list = list.slice(0, args.take);
+        return list.map((row) => ({
+          userId: row.id,
+          status: row.profile.status,
+          emailMarketingConsentAt: row.profile.emailMarketingConsentAt,
+          emailMarketingConsentSource: row.profile.emailMarketingConsentSource,
+          emailMarketingOptOutAt: row.profile.emailMarketingOptOutAt,
+          emailMarketingOptOutSource: row.profile.emailMarketingOptOutSource,
+          user: { email: row.email },
+        }));
+      },
+      async findUnique({ where }) {
+        const row = rows.find((item) => item.id === where.userId);
+        return row ? row.profile : null;
+      },
+    },
+    user: {
+      async findUnique({ where }) {
+        const row = rows.find((item) => item.id === where.id || item.email === where.email);
+        if (!row) return null;
+        return { id: row.id, email: row.email, referralCode: row.referralCode || null, code: row.referralCode || null };
+      },
+    },
+    purchase: {
+      async findMany({ where } = {}) {
+        return rows
+          .filter((row) => !where || !where.userId || row.id === where.userId)
+          .flatMap((row) => row.purchases || []);
+      },
+    },
+    readerEvidence: {
+      async findMany({ where } = {}) {
+        return rows
+          .filter((row) => !where || !where.userId || row.id === where.userId)
+          .flatMap((row) => row.evidence || []);
+      },
+    },
+    readerContactDecision: { findMany: async () => [] },
+    review: { findFirst: async () => null },
+    event: {
+      async findMany({ where } = {}) {
+        const ids = new Set();
+        if (where && typeof where.userId === 'string') ids.add(where.userId);
+        if (where && where.userId && Array.isArray(where.userId.in)) where.userId.in.forEach((id) => ids.add(id));
+        if (where && Array.isArray(where.OR)) {
+          where.OR.forEach((clause) => {
+            if (clause.userId && Array.isArray(clause.userId.in)) clause.userId.in.forEach((id) => ids.add(id));
+          });
+        }
+        return rows
+          .filter((row) => ids.size === 0 || ids.has(row.id))
+          .flatMap((row) => row.events || []);
+      },
+    },
+    readerCommunication: {
+      async findMany({ where } = {}) {
+        return communications.filter((row) => {
+          if (where.userId && row.userId !== where.userId) return false;
+          if (where.category && Array.isArray(where.category.in) && !where.category.in.includes(row.category)) return false;
+          if (where.outcome && Array.isArray(where.outcome.in) && !where.outcome.in.includes(row.outcome)) return false;
+          return true;
+        });
+      },
+      async create({ data }) {
+        const clash = communications.some((row) => row.source === data.source && row.sourceRef === data.sourceRef);
+        if (clash) {
+          const err = new Error('unique');
+          err.code = 'P2002';
+          throw err;
+        }
+        communications.push({ ...data });
+        return data;
+      },
+      async update({ where, data }) {
+        const key = where.source_sourceRef;
+        const row = communications.find((item) => item.source === key.source && item.sourceRef === key.sourceRef);
+        if (!row) throw new Error('missing');
+        Object.assign(row, data);
+        return row;
+      },
+      async updateMany({ where, data }) {
+        const matches = communications.filter((row) => matchesClaim(row, where));
+        matches.forEach((row) => Object.assign(row, data));
+        return { count: matches.length };
+      },
+    },
+  };
 }
 
 function gateDb(seed) {

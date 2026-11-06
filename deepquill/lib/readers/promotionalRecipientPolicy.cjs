@@ -7,8 +7,15 @@
 
 const { normalizeEmail, isSyntheticReaderEmail } = require('../../src/lib/normalize.cjs');
 
-const PLACEHOLDER_DOMAINS = new Set(['example.com', 'example.org', 'test.com', 'here.com']);
+const PLACEHOLDER_DOMAINS = new Set([
+  'example.com',
+  'example.org',
+  'example.net',
+  'test.com',
+  'here.com',
+]);
 const PLACEHOLDER_EMAILS = new Set(['me@here.com', 'test@test.com', 'noreply@noreply.com']);
+const RESERVED_DOMAIN_LABELS = new Set(['invalid', 'test', 'example', 'localhost']);
 
 function excludedPromotionalEmails(env = process.env) {
   return new Set(
@@ -19,12 +26,18 @@ function excludedPromotionalEmails(env = process.env) {
   );
 }
 
+function isReservedPromotionalDomain(domain) {
+  const labels = String(domain || '').split('.').filter(Boolean);
+  if (!labels.length) return false;
+  return RESERVED_DOMAIN_LABELS.has(labels[labels.length - 1]);
+}
+
 function isPlaceholderPromotionalEmail(email) {
   const normalized = normalizeEmail(email);
   if (!normalized) return true;
   if (isSyntheticReaderEmail(normalized) || PLACEHOLDER_EMAILS.has(normalized)) return true;
   const domain = normalized.split('@')[1] || '';
-  return PLACEHOLDER_DOMAINS.has(domain);
+  return PLACEHOLDER_DOMAINS.has(domain) || isReservedPromotionalDomain(domain);
 }
 
 function isExcludedPromotionalRecipient(email, env = process.env) {
