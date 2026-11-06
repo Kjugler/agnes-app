@@ -19,6 +19,7 @@ const {
   revokeComplimentaryEbookGrant,
   complimentaryLedgerRow,
   complimentaryRowVisible,
+  ledgerLabel,
   DISPLAY_LABEL,
 } = require('../lib/complimentaryEbookGrant.cjs');
 const { signComplimentaryEbookToken, verifyToken, signToken } = require('../src/lib/fulfillmentToken.cjs');
@@ -132,6 +133,29 @@ async function main() {
   assert.strictEqual(row.amount, '$0.00 USD');
   assert.strictEqual(row.productType, 'ebook');
   assert.strictEqual(row.saleStatusLabel, 'Complimentary — distributor evaluation');
+  assert.strictEqual(ledgerLabel({ purpose: 'author ebook swap' }), 'Complimentary — author ebook swap');
+
+  const bill = memoryPrisma();
+  const swap = await createComplimentaryEbookGrant(bill, {
+    email: 'Bill.Joyce@vismgt.com',
+    recipientName: 'Bill Joyce',
+    purpose: 'author ebook swap',
+  }, now);
+  assert.strictEqual(swap.created, true);
+  assert.strictEqual(swap.grant.email, 'bill.joyce@vismgt.com');
+  assert.strictEqual(swap.grant.purpose, 'author ebook swap');
+  assert.strictEqual(bill.grants[0].contactStreet, null);
+  const swapAgain = await createComplimentaryEbookGrant(bill, {
+    email: 'bill.joyce@vismgt.com',
+    recipientName: 'Bill Joyce',
+    purpose: 'author ebook swap',
+  }, now);
+  assert.strictEqual(swapAgain.created, false);
+  assert.strictEqual(swapAgain.grant.id, swap.grant.id);
+  assert.strictEqual(bill.grants.length, 1);
+  assert.strictEqual(bill.sends.length, 0);
+  assert.strictEqual(complimentaryLedgerRow(bill.grants[0]).saleStatusLabel, 'Complimentary — author ebook swap');
+  assert.strictEqual(complimentaryLedgerRow(bill.grants[0]).productType, 'ebook');
   assert.strictEqual(row.countsForPoints, false);
   assert.strictEqual(row.countsForShipping, false);
   assert.strictEqual(row.orderId, null);

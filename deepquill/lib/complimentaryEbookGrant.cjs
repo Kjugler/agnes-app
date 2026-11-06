@@ -57,7 +57,7 @@ async function createComplimentaryEbookGrant(prisma, input = {}, now = new Date(
   const contactState = clean(input.contactState);
   const contactZip = clean(input.contactZip);
   const contactCountry = clean(input.contactCountry);
-  if (!recipientName || !purpose || !contactStreet || !contactCity || !contactState || !contactZip || !contactCountry) {
+  if (!recipientName || !purpose) {
     return { ok: false, error: 'missing_contact' };
   }
   if (input.titleKey && String(input.titleKey).trim() !== TITLE_KEY) {
@@ -131,6 +131,14 @@ async function revokeComplimentaryEbookGrant(prisma, grantId, now = new Date()) 
   return { ok: true, grant: publicGrant(updated) };
 }
 
+function ledgerLabel(grant) {
+  const purpose = clean(grant && grant.purpose);
+  if (purpose && !/distributor evaluation/i.test(purpose)) {
+    return `Complimentary — ${purpose}`;
+  }
+  return DISPLAY_LABEL;
+}
+
 function complimentaryLedgerRow(grant) {
   const created = grant.createdAt instanceof Date ? grant.createdAt : new Date(grant.createdAt);
   return {
@@ -142,7 +150,7 @@ function complimentaryLedgerRow(grant) {
     productTypeLabel: 'eBook',
     amount: '$0.00 USD',
     saleStatus: 'complimentary',
-    saleStatusLabel: DISPLAY_LABEL,
+    saleStatusLabel: ledgerLabel(grant),
     shippingStatusLabel: 'N/A',
     shippingStatusKey: 'na',
     countsForPoints: false,
@@ -178,5 +186,6 @@ module.exports = {
   revokeComplimentaryEbookGrant,
   complimentaryLedgerRow,
   complimentaryRowVisible,
+  ledgerLabel,
   publicGrant,
 };
