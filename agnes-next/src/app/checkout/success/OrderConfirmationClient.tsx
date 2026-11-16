@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback, type CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
-import { trackTikTok } from '@/lib/tiktokPixel';
+import { trackVerifiedTikTokPurchase } from '@/lib/tiktokPixel';
 import { trackMeta } from '@/lib/metaPixel';
 import { pushGtmPurchaseEvent } from '@/lib/googleTagManager';
 import { FUNNEL_EVENT_TYPES, trackFunnelEvent } from '@/lib/funnelTracking';
@@ -14,6 +14,8 @@ const HUB_PATH = '/contest';
 interface SessionData {
   paid?: boolean;
   email?: string;
+  phone?: string | null;
+  customerId?: string | null;
   orderId?: string;
   productType?: 'paperback' | 'ebook' | 'audio_preorder';
   amountTotal?: number;
@@ -178,11 +180,15 @@ export default function OrderConfirmationClient({ sessionId }: OrderConfirmation
 
           if (!purchaseTrackedRef.current) {
             purchaseTrackedRef.current = true;
-            trackTikTok('CompletePayment', {
-              event_id: currentSessionId,
-              content_id: data.productType || 'unknown',
+            void trackVerifiedTikTokPurchase({
+              paid: true,
+              eventId: currentSessionId,
+              contentId: data.productType || 'unknown',
               value: (data.amountTotal || 0) / 100,
               currency: (data.currency || 'usd').toUpperCase(),
+              email: data.email,
+              phone: data.phone,
+              externalId: data.customerId,
             });
             trackMeta(
               'Purchase',

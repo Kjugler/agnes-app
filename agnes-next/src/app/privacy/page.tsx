@@ -106,6 +106,15 @@ export default function PrivacyPolicyPage() {
           or TikTok Events API. We do not upload historical customer lists to
           advertising platforms. We do not sell customer lists.
         </p>
+        <p style={bodyStyle}>
+          When advertising measurement is allowed, a verified website purchase may
+          also send TikTok a SHA-256 hash of the email address Stripe collected
+          for that order, a SHA-256 hash of the phone number if Stripe collected
+          one, and a SHA-256 hash of our internal customer id if that purchase
+          record already exists. These hashes match the purchase for advertising
+          measurement. They do not change marketing email subscription status. An
+          email collected only for sample reading is not sent to TikTok.
+        </p>
 
         <h2 style={headingStyle}>Amazon and Barnes &amp; Noble links</h2>
         <p style={bodyStyle}>

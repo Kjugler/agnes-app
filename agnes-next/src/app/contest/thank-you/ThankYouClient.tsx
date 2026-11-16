@@ -3,12 +3,14 @@
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import '@/styles/button-glow.css';
-import { trackTikTok } from '@/lib/tiktokPixel';
+import { trackVerifiedTikTokPurchase } from '@/lib/tiktokPixel';
 import { trackMeta } from '@/lib/metaPixel';
 
 interface SessionData {
   paid?: boolean;
   email?: string;
+  phone?: string | null;
+  customerId?: string | null;
   orderId?: string;
   productType?: 'paperback' | 'ebook' | 'audio_preorder';
   amountTotal?: number;
@@ -127,11 +129,15 @@ export default function ThankYouClient({ sessionId }: ThankYouClientProps) {
 
           if (!purchaseTrackedRef.current) {
             purchaseTrackedRef.current = true;
-            trackTikTok('CompletePayment', {
-              event_id: currentSessionId,
-              content_id: data.productType || 'unknown',
+            void trackVerifiedTikTokPurchase({
+              paid: true,
+              eventId: currentSessionId,
+              contentId: data.productType || 'unknown',
               value: (data.amountTotal || 0) / 100,
               currency: (data.currency || 'usd').toUpperCase(),
+              email: data.email,
+              phone: data.phone,
+              externalId: data.customerId,
             });
             trackMeta(
               'Purchase',

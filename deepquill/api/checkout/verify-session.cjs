@@ -2,6 +2,7 @@
 // Verify Stripe checkout session and return details
 
 const { stripe } = require('../../src/lib/stripe.cjs');
+const { phoneForAdvertisingMatch } = require('../../lib/ads/phoneForAdvertisingMatch.cjs');
 
 /**
  * Trimmed INTERNAL_PROXY_SECRET only. Empty string = do not validate x-internal-proxy.
@@ -101,12 +102,16 @@ async function handleVerifySession(req, res) {
     // Determine payment status
     const paid = session.payment_status === 'paid';
     const email = session.customer_details?.email || session.customer_email || null;
+    const phone = phoneForAdvertisingMatch(
+      session.customer_details?.phone || session.shipping_details?.phone || null,
+    );
 
     // Extract order ID from metadata if available
     const orderId = session.metadata?.orderId || null;
 
     // When paid: look up Purchase -> userId -> hasContestJoin for fast "See Progress" on thank-you/contest handoff
     let contestJoined = null;
+    let customerId = null;
     if (paid) {
       try {
         const { prisma, ensureDatabaseUrl } = require('../../server/prisma.cjs');
@@ -118,6 +123,7 @@ async function handleVerifySession(req, res) {
             select: { userId: true },
           });
           if (purchase?.userId) {
+            customerId = String(purchase.userId).trim() || null;
             contestJoined = await hasContestJoin(prisma, purchase.userId);
           }
         }
@@ -145,6 +151,8 @@ async function handleVerifySession(req, res) {
       ok: true,
       paid,
       email,
+      phone,
+      customerId,
       orderId,
       sessionId: session.id,
       paymentStatus: session.payment_status,
