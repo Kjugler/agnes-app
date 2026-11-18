@@ -384,6 +384,22 @@ async function buildFunnelReport(prisma, { start, end }) {
       note: 'Back button on the sample-chapters hub, not “entered hub”',
     }),
     eventStage(funnelEvents, {
+      key: 'world_wondering_view',
+      label: 'World Wondering — page viewed',
+      type: FUNNEL_EVENT_TYPES.WORLD_WONDERING_PAGE_VIEW,
+      note: 'Raw page loads of /world-wondering, not unique people',
+    }),
+    eventStage(funnelEvents, {
+      key: 'world_wondering_sample_click',
+      label: 'World Wondering — sample chapters clicked',
+      type: FUNNEL_EVENT_TYPES.WORLD_WONDERING_SAMPLE_CHAPTERS_CLICK,
+    }),
+    eventStage(funnelEvents, {
+      key: 'world_wondering_catalog_click',
+      label: 'World Wondering — catalog clicked',
+      type: FUNNEL_EVENT_TYPES.WORLD_WONDERING_CATALOG_CLICK,
+    }),
+    eventStage(funnelEvents, {
       key: 'catalog_page_view',
       label: 'Catalog — page viewed',
       type: FUNNEL_EVENT_TYPES.CATALOG_PAGE_VIEW,
