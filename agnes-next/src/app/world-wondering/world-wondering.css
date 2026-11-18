@@ -74,8 +74,18 @@
 .ww-actions {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.85rem;
   margin-top: 1.75rem;
+}
+
+.ww-action-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.ww-action-row-retail {
+  gap: 0.65rem;
 }
 
 .ww-cta {
@@ -112,6 +122,19 @@
   background: rgba(243, 239, 230, 0.08);
 }
 
+.ww-cta-retail {
+  min-height: 3rem;
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  color: rgba(243, 239, 230, 0.88);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px rgba(215, 196, 163, 0.42);
+}
+
+.ww-cta-retail:hover {
+  background: rgba(215, 196, 163, 0.08);
+}
+
 .ww-cta:focus-visible {
   outline: 3px solid #e7c27a;
   outline-offset: 3px;
@@ -134,7 +157,7 @@
     padding-top: 3.25rem;
   }
 
-  .ww-actions {
+  .ww-action-row {
     flex-direction: row;
     align-items: stretch;
   }

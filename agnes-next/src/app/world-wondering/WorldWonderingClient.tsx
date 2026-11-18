@@ -11,6 +11,10 @@ import {
   trackFunnelEvent,
   useFunnelPageEngagement,
 } from '@/lib/funnelTracking';
+import {
+  BARNES_NOBLE_REVIEWS_URL,
+  getReadersAgreeAmazonAttributionUrl,
+} from '@/lib/readerRecommendationLanding';
 import { catalogHref, sampleChaptersHubHref } from '@/lib/sampleChapterNav';
 import './world-wondering.css';
 
@@ -28,6 +32,7 @@ export default function WorldWonderingClient() {
 
   const sampleHref = useMemo(() => sampleChaptersHubHref(searchParams), [searchParams]);
   const catalogLink = useMemo(() => catalogHref(searchParams), [searchParams]);
+  const amazonHref = useMemo(() => getReadersAgreeAmazonAttributionUrl(), []);
 
   useEffect(() => {
     if (contentFiredRef.current) return;
@@ -78,32 +83,64 @@ export default function WorldWonderingClient() {
         </section>
 
         <div className="ww-actions">
-          <Link
-            href={sampleHref}
-            className="ww-cta ww-cta-primary"
-            onClick={() =>
-              trackFunnelEvent(
-                FUNNEL_EVENT_TYPES.WORLD_WONDERING_SAMPLE_CHAPTERS_CLICK,
-                { destination: '/sample-chapters' },
-                trackOpts,
-              )
-            }
-          >
-            READ FREE SAMPLE CHAPTERS
-          </Link>
-          <Link
-            href={catalogLink}
-            className="ww-cta ww-cta-secondary"
-            onClick={() =>
-              trackFunnelEvent(
-                FUNNEL_EVENT_TYPES.WORLD_WONDERING_CATALOG_CLICK,
-                { destination: '/catalog' },
-                trackOpts,
-              )
-            }
-          >
-            EXPLORE THE BOOK
-          </Link>
+          <div className="ww-action-row">
+            <Link
+              href={catalogLink}
+              className="ww-cta ww-cta-primary"
+              onClick={() =>
+                trackFunnelEvent(
+                  FUNNEL_EVENT_TYPES.WORLD_WONDERING_CATALOG_CLICK,
+                  { destination: '/catalog' },
+                  trackOpts,
+                )
+              }
+            >
+              BUY THE BOOK
+            </Link>
+            <Link
+              href={sampleHref}
+              className="ww-cta ww-cta-secondary"
+              onClick={() =>
+                trackFunnelEvent(
+                  FUNNEL_EVENT_TYPES.WORLD_WONDERING_SAMPLE_CHAPTERS_CLICK,
+                  { destination: '/sample-chapters' },
+                  trackOpts,
+                )
+              }
+            >
+              EXPLORE THE BOOK
+            </Link>
+          </div>
+          <div className="ww-action-row ww-action-row-retail" role="group" aria-label="Retail purchase options">
+            <a
+              href={amazonHref}
+              className="ww-cta ww-cta-retail"
+              rel="noopener noreferrer"
+              onClick={() =>
+                trackFunnelEvent(
+                  FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK,
+                  { destination: 'amazon' },
+                  trackOpts,
+                )
+              }
+            >
+              AMAZON
+            </a>
+            <a
+              href={BARNES_NOBLE_REVIEWS_URL}
+              className="ww-cta ww-cta-retail"
+              rel="noopener noreferrer"
+              onClick={() =>
+                trackFunnelEvent(
+                  FUNNEL_EVENT_TYPES.READERS_AGREE_BN_CLICK,
+                  { destination: 'bn' },
+                  trackOpts,
+                )
+              }
+            >
+              BARNES &amp; NOBLE
+            </a>
+          </div>
         </div>
 
         <p className="ww-close">The story is fiction. The suspense is real.</p>

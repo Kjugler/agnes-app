@@ -92,6 +92,10 @@ function isBridgeSource(event) {
   return event.meta?.source === 'readers-agree-bridge';
 }
 
+function isWorldWonderingSource(event) {
+  return event.meta?.source === 'world-wondering';
+}
+
 function isLandingRetailerClick(event, type) {
   return event.type === type && !isBridgeSource(event);
 }
@@ -256,26 +260,28 @@ async function buildFunnelReport(prisma, { start, end }) {
       key: 'readers_agree_amazon',
       label: 'Readers Agree — Amazon Reviews clicked',
       type: FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK,
+      extraPredicate: (e) => !isWorldWonderingSource(e),
       note: 'Outbound Amazon clicks from landing and waiting page. Not a retailer return.',
     }),
     eventStage(funnelEvents, {
       key: 'readers_agree_bn',
       label: 'Readers Agree — B&N Reviews clicked',
       type: FUNNEL_EVENT_TYPES.READERS_AGREE_BN_CLICK,
+      extraPredicate: (e) => !isWorldWonderingSource(e),
       note: 'Outbound B&N clicks from landing and waiting page. Not a retailer return.',
     }),
     eventStage(funnelEvents, {
       key: 'readers_agree_amazon_landing',
       label: 'Readers Agree — Amazon outbound (landing)',
       type: FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK,
-      extraPredicate: (e) => !isBridgeSource(e),
+      extraPredicate: (e) => !isBridgeSource(e) && !isWorldWonderingSource(e),
       note: 'Landing-page Amazon click only',
     }),
     eventStage(funnelEvents, {
       key: 'readers_agree_bn_landing',
       label: 'Readers Agree — B&N outbound (landing)',
       type: FUNNEL_EVENT_TYPES.READERS_AGREE_BN_CLICK,
-      extraPredicate: (e) => !isBridgeSource(e),
+      extraPredicate: (e) => !isBridgeSource(e) && !isWorldWonderingSource(e),
       note: 'Landing-page B&N click only',
     }),
     eventStage(funnelEvents, {
