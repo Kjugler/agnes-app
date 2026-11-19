@@ -167,8 +167,11 @@ function PaperbackOfferBlock({
   if (phase === 'holiday') {
     return (
       <>
-        <p style={{ margin: '8px 0 12px', fontSize: '16px', lineHeight: 1.45, color: HUB_THEME.text }}>
+        <p style={{ margin: '8px 0 4px', fontSize: '16px', lineHeight: 1.45, color: HUB_THEME.text }}>
           {PAPERBACK_PROMO_COPY.holiday}
+        </p>
+        <p style={{ margin: '0 0 12px', fontSize: '15px', lineHeight: 1.45, color: HUB_THEME.textMuted }}>
+          This price and free shipping apply when you buy directly from DeepQuill. Amazon and Barnes & Noble set their own prices.
         </p>
         <PriceStack priceCents={priceCents} discount={discount} />
       </>
