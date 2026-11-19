@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useMemo, useEffect, useRef, type CSSProperties } from 'react';
 import { useSearchParams } from 'next/navigation';
 import SiteFooter from '@/components/SiteFooter';
+import { copyNavParams } from '@/lib/funnelVisit';
+import { useAdvertisingClickIdsPermitted } from '@/lib/funnelTracking';
 import { trackMeta } from '@/lib/metaPixel';
 import { trackTikTok } from '@/lib/tiktokPixel';
 import {
@@ -118,18 +120,14 @@ function ReviewCard({
 
 export default function MetaAdLandingClient() {
   const searchParams = useSearchParams();
+  const allowAdvertisingClickIds = useAdvertisingClickIdsPermitted();
   const viewFiredRef = useRef(false);
 
   const sampleChaptersHref = useMemo(() => {
-    const params = new URLSearchParams();
-    const keys = ['ref', 'src', 'v', 'origin', 'code', 'utm_source', 'utm_medium', 'utm_campaign', 'fbclid'];
-    keys.forEach((key) => {
-      const value = searchParams.get(key);
-      if (value) params.set(key, value);
-    });
+    const params = copyNavParams(searchParams, allowAdvertisingClickIds);
     const qs = params.toString();
     return qs ? `${SAMPLE_CHAPTERS_PATH}?${qs}` : SAMPLE_CHAPTERS_PATH;
-  }, [searchParams]);
+  }, [searchParams, allowAdvertisingClickIds]);
 
   useEffect(() => {
     if (viewFiredRef.current) return;

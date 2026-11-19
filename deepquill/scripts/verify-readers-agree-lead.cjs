@@ -18,8 +18,8 @@ assert.strictEqual(
   '/sample-chapters?ref=abc123&utm_source=meta',
 );
 assert.strictEqual(
-  buildRedirectPath({ code: 'xyz', utm: { fbclid: '1' } }),
-  '/sample-chapters?code=xyz&fbclid=1',
+  buildRedirectPath({ code: 'xyz', utm: { fbclid: '1', utm_source: 'meta' } }),
+  '/sample-chapters?code=xyz&utm_source=meta',
 );
 assert.strictEqual(resolveCaptureSurface(undefined), 'landing');
 assert.strictEqual(resolveCaptureSurface('landing'), 'landing');

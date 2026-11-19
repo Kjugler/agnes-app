@@ -34,7 +34,6 @@ const REDIRECT_PARAM_KEYS = [
   'utm_source',
   'utm_medium',
   'utm_campaign',
-  'fbclid',
 ];
 
 function buildRedirectPath({ ref, code, utm }) {
@@ -49,7 +48,6 @@ function buildRedirectPath({ ref, code, utm }) {
     utm_source: source.utm_source || null,
     utm_medium: source.utm_medium || null,
     utm_campaign: source.utm_campaign || null,
-    fbclid: source.fbclid || null,
   };
   for (const key of REDIRECT_PARAM_KEYS) {
     const value = values[key];
@@ -242,6 +240,23 @@ module.exports = async function readersAgreeLeadHandler(req, res) {
       } catch (consentErr) {
         console.warn('[readers-agree/lead] promotional consent not saved', consentErr && consentErr.message);
         promotionalConsent = 'not_recorded';
+      }
+      if (promotionalConsent === 'recorded' || promotionalConsent === 'unchanged') {
+        try {
+          const consentMeta = {
+            visitorId: visitorId || null,
+            captureSurface,
+            explicit: true,
+          };
+          if (captureSurface === 'cheer') consentMeta.entryPage = READERS_CHEER_ENTRY_PAGE;
+          await recordServerFunnelEvent(prisma, {
+            type: FUNNEL_EVENT_TYPES.MARKETING_CONSENT_GRANTED,
+            userId: user.id,
+            meta: consentMeta,
+          });
+        } catch (consentEventErr) {
+          console.warn('[readers-agree/lead] consent event not recorded', consentEventErr && consentEventErr.message);
+        }
       }
     }
 

@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { ChapterPdfJsViewer } from '@/components/sample-chapters/ChapterPdfJsViewer';
 import { JodyReaderInvitation } from '@/components/sample-chapters/JodyReaderInvitation';
 import { isActivelyReading } from '@/lib/activeReadingClock';
-import { FUNNEL_EVENT_TYPES, getOrCreateVisitorId } from '@/lib/funnelTracking';
+import { FUNNEL_EVENT_TYPES, getOrCreateVisitorId, useAdvertisingClickIdsPermitted } from '@/lib/funnelTracking';
 import {
   fetchReadingAllowance,
   sampleChapterPagePath,
@@ -37,7 +37,8 @@ export function SampleChapterReader({
   onTextThisScene,
 }: SampleChapterReaderProps) {
   const searchParams = useSearchParams();
-  const hubHref = sampleChaptersHubHref(searchParams);
+  const allowAdvertisingClickIds = useAdvertisingClickIdsPermitted();
+  const hubHref = sampleChaptersHubHref(searchParams, allowAdvertisingClickIds);
   const frameRef = useRef<HTMLElement>(null);
   const pageRef = useRef(1);
   const displayedPageRef = useRef(1);

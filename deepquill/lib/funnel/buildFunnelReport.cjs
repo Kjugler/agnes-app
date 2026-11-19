@@ -1,6 +1,7 @@
 // Admin funnel report — aggregates Event rows + Purchase / ReferralConversion / Ledger / outreach.
 
 const { FUNNEL_EVENT_TYPES, FUNNEL_EVENT_TYPE_SET } = require('./funnelEventTypes.cjs');
+const { buildLandingPerformance, isCheerSource } = require('./landingAttribution.cjs');
 
 const REPORT_TIME_ZONE = 'America/Denver';
 
@@ -107,7 +108,8 @@ function isBridgeRetailerClick(event, type) {
 function isLandingEmail(event) {
   return (
     event.type === FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED &&
-    event.meta?.captureSurface !== 'bridge'
+    event.meta?.captureSurface !== 'bridge' &&
+    !isCheerSource(event)
   );
 }
 
@@ -206,7 +208,8 @@ async function buildFunnelReport(prisma, { start, end }) {
 
   const funnelTypes = Array.from(FUNNEL_EVENT_TYPE_SET);
 
-  const [funnelEvents, purchases, referralConversions, textFriendLedger, outreachSentUsers] =
+  const purchaseWhere = { createdAt: { gte: rangeStart, lte: rangeEnd } };
+  const [funnelEvents, purchaseRows, purchases, referralConversions, textFriendLedger, outreachSentUsers] =
     await Promise.all([
       prisma.event.findMany({
         where: {
@@ -216,8 +219,12 @@ async function buildFunnelReport(prisma, { start, end }) {
         select: { type: true, meta: true, createdAt: true, userId: true },
         orderBy: { createdAt: 'asc' },
       }),
+      prisma.purchase.findMany({
+        where: purchaseWhere,
+        select: { sessionId: true, createdAt: true },
+      }),
       prisma.purchase.count({
-        where: { createdAt: { gte: rangeStart, lte: rangeEnd } },
+        where: purchaseWhere,
       }),
       prisma.referralConversion.count({
         where: { createdAt: { gte: rangeStart, lte: rangeEnd } },
@@ -239,7 +246,7 @@ async function buildFunnelReport(prisma, { start, end }) {
   const chapters = chapterOpenCounts(funnelEvents);
   const get = (type) => counts[type] || 0;
 
-  const adPredicate = isAdAttributedPageView;
+  const adPredicate = (event) => isAdAttributedPageView(event) && !isCheerSource(event);
 
   const stages = [
     {
@@ -248,41 +255,42 @@ async function buildFunnelReport(prisma, { start, end }) {
       count: funnelEvents.filter(adPredicate).length,
       uniqueVisitors: uniqueVisitorCount(funnelEvents, adPredicate),
       unit: 'events',
-      note: 'Raw page views (not unique people) with utm_*, fbclid, src=ad, or origin=meta|tiktok on that view',
+      note: 'Readers Agree views only. Cheer and World Wondering are in Landing Page Performance. Evidence: utm_*, fbclid, src=ad, or origin=meta|tiktok.',
     },
     eventStage(funnelEvents, {
       key: 'readers_agree_view',
       label: 'Readers Agree — page viewed',
       type: FUNNEL_EVENT_TYPES.READERS_AGREE_PAGE_VIEW,
-      note: 'Raw page loads, not unique people',
+      extraPredicate: (e) => !isCheerSource(e),
+      note: 'Raw /readers-agree loads. /readers-cheer is excluded and reported in Landing Page Performance.',
     }),
     eventStage(funnelEvents, {
       key: 'readers_agree_amazon',
       label: 'Readers Agree — Amazon Reviews clicked',
       type: FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK,
-      extraPredicate: (e) => !isWorldWonderingSource(e),
-      note: 'Outbound Amazon clicks from landing and waiting page. Not a retailer return.',
+      extraPredicate: (e) => !isWorldWonderingSource(e) && !isCheerSource(e),
+      note: 'Outbound Amazon clicks from Readers Agree landing and waiting page. Not a retailer sale. Cheer and World Wondering clicks are excluded.',
     }),
     eventStage(funnelEvents, {
       key: 'readers_agree_bn',
       label: 'Readers Agree — B&N Reviews clicked',
       type: FUNNEL_EVENT_TYPES.READERS_AGREE_BN_CLICK,
-      extraPredicate: (e) => !isWorldWonderingSource(e),
-      note: 'Outbound B&N clicks from landing and waiting page. Not a retailer return.',
+      extraPredicate: (e) => !isWorldWonderingSource(e) && !isCheerSource(e),
+      note: 'Outbound B&N clicks from Readers Agree landing and waiting page. Not a retailer sale. Cheer and World Wondering clicks are excluded.',
     }),
     eventStage(funnelEvents, {
       key: 'readers_agree_amazon_landing',
       label: 'Readers Agree — Amazon outbound (landing)',
       type: FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK,
-      extraPredicate: (e) => !isBridgeSource(e) && !isWorldWonderingSource(e),
-      note: 'Landing-page Amazon click only',
+      extraPredicate: (e) => !isBridgeSource(e) && !isWorldWonderingSource(e) && !isCheerSource(e),
+      note: 'Readers Agree landing-page Amazon click only. Not a sale.',
     }),
     eventStage(funnelEvents, {
       key: 'readers_agree_bn_landing',
       label: 'Readers Agree — B&N outbound (landing)',
       type: FUNNEL_EVENT_TYPES.READERS_AGREE_BN_CLICK,
-      extraPredicate: (e) => !isBridgeSource(e) && !isWorldWonderingSource(e),
-      note: 'Landing-page B&N click only',
+      extraPredicate: (e) => !isBridgeSource(e) && !isWorldWonderingSource(e) && !isCheerSource(e),
+      note: 'Readers Agree landing-page B&N click only. Not a sale.',
     }),
     eventStage(funnelEvents, {
       key: 'readers_agree_amazon_bridge_outbound',
@@ -314,8 +322,8 @@ async function buildFunnelReport(prisma, { start, end }) {
       key: 'readers_agree_buy_direct_landing',
       label: 'Readers Agree — Buy Direct clicked (landing)',
       type: FUNNEL_EVENT_TYPES.READERS_AGREE_BUY_DIRECT_CLICK,
-      extraPredicate: (e) => !isBridgeSource(e),
-      note: 'Landing Buy Direct to /catalog',
+      extraPredicate: (e) => !isBridgeSource(e) && !isCheerSource(e),
+      note: 'Readers Agree Buy Direct to /catalog. Not a checkout and not a sale.',
     }),
     eventStage(funnelEvents, {
       key: 'readers_agree_buy_direct_bridge',
@@ -328,8 +336,8 @@ async function buildFunnelReport(prisma, { start, end }) {
       key: 'readers_agree_email_landing',
       label: 'Readers Agree — Email submitted (landing)',
       type: FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED,
-      extraPredicate: (e) => e.meta?.captureSurface !== 'bridge',
-      note: 'Start Reading on the landing page',
+      extraPredicate: (e) => isLandingEmail(e),
+      note: 'Reading-access email on /readers-agree. Not marketing consent. Cheer submits are excluded.',
     }),
     eventStage(funnelEvents, {
       key: 'readers_agree_email_bridge',
@@ -490,6 +498,7 @@ async function buildFunnelReport(prisma, { start, end }) {
     },
     eventBreakdown: counts,
     chapterOpens: chapters,
+    landingPerformance: buildLandingPerformance(funnelEvents, purchaseRows),
     downstream: {
       purchases,
       referralConversions,
@@ -513,4 +522,5 @@ module.exports = {
   isBridgeEmail,
   isLandingBuyDirect,
   isBridgeBuyDirect,
+  isCheerSource,
 };

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { proxyJson } from '@/lib/deepquillProxy';
+import { redactAdvertisingClickIdsFromFunnelPayload } from '@/lib/funnelVisit';
+import { getServerAdvertisingConsentSnapshot } from '@/lib/privacy/advertisingConsentServer';
 import { rateLimitByIP } from '@/lib/rateLimit';
 import {
   READERS_AGREE_LEAD_UID_COOKIE,
@@ -23,6 +25,13 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json().catch(() => ({}));
+    let allowAdvertisingClickIds = false;
+    try {
+      allowAdvertisingClickIds = (await getServerAdvertisingConsentSnapshot()).allowed;
+    } catch {
+      allowAdvertisingClickIds = false;
+    }
+    const forwarded = redactAdvertisingClickIdsFromFunnelPayload(body, allowAdvertisingClickIds);
     const allowance = req.cookies.get(READING_ALLOWANCE_COOKIE)?.value?.trim() || '';
     const headers: Record<string, string> = { 'x-readers-agree-issue-session': '1' };
     if (looksLikeReadingAllowanceToken(allowance)) {
@@ -30,7 +39,7 @@ export async function POST(req: NextRequest) {
     }
     const { data, status } = await proxyJson('/api/readers-agree/lead', req, {
       method: 'POST',
-      body,
+      body: forwarded,
       headers,
       omitForwardHeaders: ['x-readers-agree-issue-session', READING_ALLOWANCE_HEADER],
     });

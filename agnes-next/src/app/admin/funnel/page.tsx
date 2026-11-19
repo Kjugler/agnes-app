@@ -14,11 +14,77 @@ type FunnelStage = {
   authoritative?: boolean;
 };
 
+type LandingMetric = {
+  key: string;
+  label: string;
+  raw: number | null;
+  uniqueVisitors: number | null;
+  note?: string;
+};
+
+type LandingRate = {
+  display: string;
+  numerator: number | null;
+  denominator: number;
+  percent: number | null;
+};
+
+type LandingCampaign = {
+  source: string;
+  medium: string;
+  campaign: string;
+  content: string;
+  term: string;
+  uniqueVisitors: number;
+};
+
+type LandingPagePerformance = {
+  key: string;
+  label: string;
+  path: string;
+  metrics: LandingMetric[];
+  rates: {
+    sampleEngagement: LandingRate;
+    catalog: LandingRate;
+    checkout: LandingRate;
+    verifiedPurchase: LandingRate;
+  };
+  rateNotes: Record<string, string>;
+  campaigns: LandingCampaign[];
+  attributionGaps: string[];
+};
+
+type LandingPerformance = {
+  pages: LandingPagePerformance[];
+  overview: {
+    uniqueVisitors: number;
+    verifiedDirectPurchases: number;
+    attributedVerifiedPurchases: number;
+    unattributedVerifiedPurchases: number;
+    retailerOutboundClicks: number;
+    unknownVisitors: number;
+    campaigns: LandingCampaign[];
+    measurementEnds: string;
+  };
+  diagnostics: {
+    missingVisitorId: number;
+    missingLandingMetadata: number;
+    unknownSourceVisitors: number;
+    duplicateSubmissions: number;
+    unmatchedCheckouts: number;
+    unknownVisitActivity?: number;
+    unmatchedPurchases: number;
+    legacyEvents: Record<string, number>;
+    eventsWithoutLanding: number;
+  };
+};
+
 type FunnelReport = {
   ok: boolean;
   range?: { start: string; end: string; timeZone?: string };
   stages?: FunnelStage[];
   historicalStages?: FunnelStage[];
+  landingPerformance?: LandingPerformance;
   engagement?: {
     readersAgreeScrollDepth: Record<string, number>;
     readersAgreeMedianSecondsOnPage: number | null;
@@ -142,6 +208,161 @@ function StageTable({ stages }: { stages: FunnelStage[] }) {
   );
 }
 
+function countOrDash(value: number | null) {
+  return typeof value === 'number' ? String(value) : '—';
+}
+
+function CampaignTable({ rows }: { rows: LandingCampaign[] }) {
+  if (!rows.length) return null;
+  return (
+    <div style={{ overflowX: 'auto', marginTop: 8 }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
+        <thead>
+          <tr>
+            <th style={th}>Source</th>
+            <th style={th}>Campaign</th>
+            <th style={th}>Content</th>
+            <th style={th}>Term</th>
+            <th style={{ ...th, textAlign: 'right' }}>Unique visitors</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={`${row.source}|${row.medium}|${row.campaign}|${row.content}|${row.term}`}>
+              <td style={td}>{row.source}</td>
+              <td style={td}>{row.campaign}</td>
+              <td style={td}>{row.content}</td>
+              <td style={td}>{row.term}</td>
+              <td style={{ ...td, textAlign: 'right' }}>{row.uniqueVisitors}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p style={{ margin: '8px 0 0 0', fontSize: 12, color: '#64748b' }}>
+        Unique visitors are not additive across campaign rows. Click identifiers are omitted. A row
+        labeled Advertising click id has a click id and no campaign name.
+      </p>
+    </div>
+  );
+}
+
+function LandingPerformancePanel({ report }: { report: LandingPerformance }) {
+  const rates: Array<{ key: keyof LandingPagePerformance['rates']; label: string }> = [
+    { key: 'sampleEngagement', label: 'Landing page to sample reading' },
+    { key: 'catalog', label: 'Landing page to catalog' },
+    { key: 'checkout', label: 'Landing page to checkout' },
+    { key: 'verifiedPurchase', label: 'Attributed verified purchase' },
+  ];
+
+  return (
+    <section style={{ marginBottom: 36 }}>
+      <h2 style={{ fontSize: 16, fontWeight: 600, margin: '0 0 8px 0' }}>Landing Page Performance</h2>
+      <p style={{ margin: '0 0 16px 0', fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>
+        {report.overview.measurementEnds} The All Landing Pages unique count is deduplicated. Do not
+        add the four page totals together.
+      </p>
+
+      <h3 style={{ fontSize: 15, fontWeight: 600, margin: '0 0 8px 0' }}>All landing pages</h3>
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 12 }}>
+        <tbody>
+          <tr>
+            <td style={td}>Unique visitors</td>
+            <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{report.overview.uniqueVisitors}</td>
+            <td style={{ ...td, color: '#64748b', fontSize: 13 }}>One person who opens more than one landing page counts once.</td>
+          </tr>
+          <tr>
+            <td style={td}>Verified direct purchases</td>
+            <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{report.overview.verifiedDirectPurchases}</td>
+            <td style={{ ...td, color: '#64748b', fontSize: 13 }}>Server Purchase rows. This is the sales total.</td>
+          </tr>
+          <tr>
+            <td style={td}>Attributed verified purchases</td>
+            <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{report.overview.attributedVerifiedPurchases}</td>
+            <td style={{ ...td, color: '#64748b', fontSize: 13 }}>Those sales with a defensible landing page.</td>
+          </tr>
+          <tr>
+            <td style={td}>Unattributed verified purchases</td>
+            <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{report.overview.unattributedVerifiedPurchases}</td>
+            <td style={{ ...td, color: '#64748b', fontSize: 13 }}>Confirmed sales with no reliable landing page.</td>
+          </tr>
+          <tr>
+            <td style={td}>Retailer outbound clicks</td>
+            <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{report.overview.retailerOutboundClicks}</td>
+            <td style={{ ...td, color: '#64748b', fontSize: 13 }}>Amazon and Barnes & Noble clicks. Not retailer sales.</td>
+          </tr>
+          <tr>
+            <td style={td}>Unknown entry visitors</td>
+            <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{report.overview.unknownVisitors}</td>
+            <td style={{ ...td, color: '#64748b', fontSize: 13 }}>Activity with a visitor id and no established landing page.</td>
+          </tr>
+        </tbody>
+      </table>
+      <CampaignTable rows={report.overview.campaigns} />
+
+      {report.pages.map((page) => (
+        <div key={page.key} style={{ marginTop: 28 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 600, margin: '0 0 8px 0' }}>
+            {page.label} <span style={{ fontWeight: 400, color: '#64748b' }}>{page.path}</span>
+          </h3>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
+              <thead>
+                <tr>
+                  <th style={th}>Metric</th>
+                  <th style={{ ...th, textAlign: 'right' }}>Raw events</th>
+                  <th style={{ ...th, textAlign: 'right' }}>Unique visitors</th>
+                  <th style={th}>Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {page.metrics.map((metric) => (
+                  <tr key={metric.key}>
+                    <td style={td}>{metric.label}</td>
+                    <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{countOrDash(metric.raw)}</td>
+                    <td style={{ ...td, textAlign: 'right' }}>{countOrDash(metric.uniqueVisitors)}</td>
+                    <td style={{ ...td, color: '#64748b', fontSize: 13 }}>{metric.note || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <ul style={{ margin: '12px 0 0 0', paddingLeft: 20, fontSize: 13, lineHeight: 1.55, color: '#334155' }}>
+            {rates.map((rate) => (
+              <li key={rate.key}>
+                {rate.label}: <strong>{page.rates[rate.key].display}</strong>
+                <span style={{ color: '#64748b' }}> — {page.rateNotes[rate.key]}</span>
+              </li>
+            ))}
+          </ul>
+          {page.attributionGaps.length > 0 ? (
+            <p style={{ margin: '8px 0 0 0', fontSize: 13, color: '#9a3412' }}>
+              Attribution gaps: {page.attributionGaps.join(' ')}
+            </p>
+          ) : null}
+          <CampaignTable rows={page.campaigns} />
+        </div>
+      ))}
+
+      <h3 style={{ fontSize: 15, fontWeight: 600, margin: '28px 0 8px 0' }}>Data quality</h3>
+      <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13, lineHeight: 1.6, color: '#334155' }}>
+        <li>Events missing a visitor id: {report.diagnostics.missingVisitorId}</li>
+        <li>Landing views that could not be classified: {report.diagnostics.missingLandingMetadata}</li>
+        <li>Landing visitors with no advertising parameters: {report.diagnostics.unknownSourceVisitors}</li>
+        <li>Duplicate submissions within 2 seconds: {report.diagnostics.duplicateSubmissions}</li>
+        <li>Checkout starts with no entry landing: {report.diagnostics.unmatchedCheckouts}</li>
+        <li>Reading, catalog, checkout, or purchase events with no visit entry: {report.diagnostics.unknownVisitActivity || 0}</li>
+        <li>Verified purchases with no landing link: {report.diagnostics.unmatchedPurchases}</li>
+        <li>Events with neither a current landing nor an entry landing: {report.diagnostics.eventsWithoutLanding}</li>
+        <li>
+          Legacy event names still on record: Buy click {report.diagnostics.legacyEvents.READERS_AGREE_BUY_CLICK || 0},
+          sample click {report.diagnostics.legacyEvents.READERS_AGREE_SAMPLE_CHAPTERS_CLICK || 0},
+          unused start-reading {report.diagnostics.legacyEvents.READERS_AGREE_START_READING_CLICK || 0}
+        </li>
+      </ul>
+    </section>
+  );
+}
+
 export default function FunnelReportPage() {
   const initial = defaultRange();
   const [start, setStart] = useState(initial.start);
@@ -201,7 +422,9 @@ export default function FunnelReportPage() {
       <p style={{ margin: '0 0 8px 0', fontSize: 14, color: '#64748b', lineHeight: 1.5 }}>
         Current production path. Event stages show raw events and unique visitors (
         <code>ap_funnel_vid</code>
-        ). Purchase recorded (server) is the sales source of truth.
+        ). Purchase recorded (server) is the sales source of truth. Landing Page
+        Performance separates the four advertising pages. Click identifiers are
+        not displayed.
       </p>
       <p style={{ margin: '0 0 24px 0', fontSize: 13, color: '#64748b' }}>
         Date range is America/Denver. The end date includes the entire selected Mountain Time day.
@@ -257,9 +480,15 @@ export default function FunnelReportPage() {
         <p style={{ color: '#b91c1c', fontSize: 14, marginBottom: 16 }}>{err}</p>
       )}
 
+      {data?.landingPerformance ? <LandingPerformancePanel report={data.landingPerformance} /> : null}
+
       {data?.stages && (
         <>
           <h2 style={{ fontSize: 16, fontWeight: 600, margin: '0 0 12px 0' }}>Conversion path</h2>
+          <p style={{ margin: '0 0 12px 0', fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>
+            Existing stage history. Readers Cheer is no longer included in the Readers Agree rows.
+            World Wondering retailer clicks stay in Landing Page Performance.
+          </p>
           <StageTable stages={data.stages} />
         </>
       )}

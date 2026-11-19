@@ -65,6 +65,7 @@ const bridgeAmazon = { type: FUNNEL_EVENT_TYPES.READERS_AGREE_AMAZON_CLICK, meta
 assert.strictEqual(isBridgeSource(landingAmazon), false);
 assert.strictEqual(isBridgeSource(bridgeAmazon), true);
 assert.ok(isLandingEmail({ type: FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED, meta: { captureSurface: 'landing' } }));
+assert.ok(!isLandingEmail({ type: FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED, meta: { captureSurface: 'cheer', source: 'server' } }));
 assert.ok(isBridgeEmail({ type: FUNNEL_EVENT_TYPES.READERS_AGREE_EMAIL_SUBMITTED, meta: { captureSurface: 'bridge' } }));
 assert.ok(isLandingBuyDirect({ type: FUNNEL_EVENT_TYPES.READERS_AGREE_BUY_DIRECT_CLICK, meta: { source: 'readers-agree' } }));
 assert.ok(isBridgeBuyDirect({ type: FUNNEL_EVENT_TYPES.READERS_AGREE_BUY_DIRECT_CLICK, meta: { source: 'readers-agree-bridge' } }));

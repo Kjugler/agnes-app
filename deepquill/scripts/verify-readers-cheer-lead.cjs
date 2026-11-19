@@ -199,7 +199,7 @@ async function main() {
   assertHub(created, 'create');
   assert.strictEqual(created.body.promotionalConsent, 'not_requested');
   assert.ok(created.body.redirectPath.includes('utm_campaign=cheer-campaign'));
-  assert.ok(created.body.redirectPath.includes('fbclid=fb-cheer-1'));
+  assert.ok(!created.body.redirectPath.includes('fbclid'));
   assert.ok(created.body.redirectPath.includes('utm_source=meta'));
   assert.strictEqual(await prisma.user.count({ where: { email } }), 1);
   assert.strictEqual(await prisma.readerProfile.count(), 1);
@@ -221,7 +221,7 @@ async function main() {
   assert.strictEqual(profile.leadAttribution.entryPage, '/readers-cheer');
   assert.strictEqual(profile.leadAttribution.captureSurface, 'cheer');
   assert.strictEqual(profile.leadAttribution.utm_campaign, 'cheer-campaign');
-  assert.strictEqual(profile.leadAttribution.fbclid, 'fb-cheer-1');
+  assert.strictEqual(profile.leadAttribution.fbclid, null);
   assert.strictEqual(profile.leadAttribution.channel, 'meta');
   assert.strictEqual(profile.emailMarketingConsentAt, null);
   assert.strictEqual(profile.emailMarketingConsentSource, null);
@@ -251,7 +251,7 @@ async function main() {
 
   const kept = await prisma.readerProfile.findFirst({ select: { leadAttribution: true } });
   assert.strictEqual(kept.leadAttribution.utm_campaign, 'cheer-campaign');
-  assert.strictEqual(kept.leadAttribution.fbclid, 'fb-cheer-1');
+  assert.strictEqual(kept.leadAttribution.fbclid, null);
   assert.strictEqual(kept.leadAttribution.utm_source, 'meta');
   assert.strictEqual(kept.leadAttribution.ref, 'refcheer');
   assert.strictEqual(kept.leadAttribution.channel, 'meta');
@@ -300,6 +300,15 @@ async function main() {
   });
   assert.strictEqual(declinedProfile.emailMarketingConsentAt, null);
   assert.strictEqual(declinedProfile.emailMarketingConsentSource, null);
+
+  const consentEvents = await prisma.event.findMany({
+    where: { type: FUNNEL_EVENT_TYPES.MARKETING_CONSENT_GRANTED },
+  });
+  assert.strictEqual(consentEvents.length, 1);
+  assert.strictEqual(consentEvents[0].userId, optIn.body.userId);
+  assert.strictEqual(consentEvents[0].meta.explicit, true);
+  assert.strictEqual(consentEvents[0].meta.captureSurface, 'cheer');
+  assert.strictEqual(consentEvents[0].meta.entryPage, '/readers-cheer');
 
   const landingEmail = `cheer-landing-${suffix}@example.test`;
   const landingFirst = await postLead({

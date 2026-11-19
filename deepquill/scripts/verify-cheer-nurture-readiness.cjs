@@ -181,7 +181,7 @@ async function main() {
   assert.ok(String(created.body.redirectPath).startsWith('/sample-chapters'));
   assert.equal(typeof created.body.sessionToken, 'string');
   assert.ok(created.body.redirectPath.includes('utm_campaign=readers-cheer-approved'));
-  assert.ok(created.body.redirectPath.includes('fbclid=fb-dry-run'));
+  assert.ok(!created.body.redirectPath.includes('fbclid'));
 
   const access = await postLead({
     email: accessEmail,
@@ -205,7 +205,7 @@ async function main() {
   assert.strictEqual(chapterProfile.leadAttribution.captureSurface, 'cheer');
   assert.strictEqual(chapterProfile.leadAttribution.entryPage, '/readers-cheer');
   assert.strictEqual(chapterProfile.leadAttribution.utm_campaign, 'readers-cheer-approved');
-  assert.strictEqual(chapterProfile.leadAttribution.fbclid, 'fb-dry-run');
+  assert.strictEqual(chapterProfile.leadAttribution.fbclid, null);
   assert.strictEqual(chapterProfile.emailMarketingConsentSource, 'jody-reading-access');
   assert.ok(chapterProfile.emailMarketingConsentAt);
   assert.strictEqual(chapterProfile.prospectNurtureEnrolledAt, null);

@@ -32,6 +32,7 @@
     "src/lib/privacy/advertisingConsent.test.ts",
     "src/lib/privacy/googleConsentMode.test.ts",
     "src/lib/departureBridge.test.ts",
-    "src/lib/tiktokPixel.test.ts"
+    "src/lib/tiktokPixel.test.ts",
+    "src/lib/funnelVisit.test.ts"
   ]
 }

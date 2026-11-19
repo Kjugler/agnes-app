@@ -8,7 +8,7 @@ import { readAssociate } from '@/lib/identity';
 import { buildTextThisSceneSmsBody, openSmsWithPrefilledBody } from '@/lib/textThisScene';
 import { trackTikTok } from '@/lib/tiktokPixel';
 import { trackMeta } from '@/lib/metaPixel';
-import { FUNNEL_EVENT_TYPES, useFunnelPageEngagement } from '@/lib/funnelTracking';
+import { FUNNEL_EVENT_TYPES, useAdvertisingClickIdsPermitted, useFunnelPageEngagement } from '@/lib/funnelTracking';
 import { JodyConcierge } from '@/components/jody/JodyConcierge';
 import { isJodyConciergeEnabled } from '@/lib/funnelConfig';
 import { useJodyChapterExit } from '@/hooks/useJodyConcierge';
@@ -23,7 +23,8 @@ interface ChapterReaderClientProps {
 
 export default function ChapterReaderClient({ chapterId }: ChapterReaderClientProps) {
   const searchParams = useSearchParams();
-  const hubHref = sampleChaptersHubHref(searchParams);
+  const allowAdvertisingClickIds = useAdvertisingClickIdsPermitted();
+  const hubHref = sampleChaptersHubHref(searchParams, allowAdvertisingClickIds);
   const chapter = getChapter(chapterId);
   const viewContentFiredRef = useRef(false);
   const { showJody, tryShowOnExit, dismissJody, readerStatus } = useJodyChapterExit(chapterId);
@@ -70,7 +71,7 @@ export default function ChapterReaderClient({ chapterId }: ChapterReaderClientPr
 
     event.preventDefault();
     tryShowOnExit(() => {
-      window.location.href = sampleChaptersHubHref(searchParams);
+      window.location.href = sampleChaptersHubHref(searchParams, allowAdvertisingClickIds);
     });
   };
 

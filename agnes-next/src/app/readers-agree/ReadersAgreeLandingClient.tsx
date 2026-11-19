@@ -36,6 +36,7 @@ import {
 import {
   FUNNEL_EVENT_TYPES,
   trackFunnelEvent,
+  useAdvertisingClickIdsPermitted,
   useFunnelPageEngagement,
 } from '@/lib/funnelTracking';
 import './readers-agree-bn.css';
@@ -57,6 +58,7 @@ export default function ReadersAgreeLandingClient({
   const cheer = entry === 'cheer';
   const funnelSource = cheer ? 'readers-cheer' : 'readers-agree';
   const searchParams = useSearchParams();
+  const allowAdvertisingClickIds = useAdvertisingClickIdsPermitted();
   const viewFiredRef = useRef(false);
   const emailFormRef = useRef<HTMLElement>(null);
   const mobileTwoTap = useSyncExternalStore(subscribeNoop, isMobileTouchBrowser, () => false);
@@ -72,18 +74,18 @@ export default function ReadersAgreeLandingClient({
   });
 
   const catalogHref = useMemo(
-    () => buildReadersAgreePathWithTracking(READERS_AGREE_CATALOG_PATH, searchParams),
-    [searchParams],
+    () => buildReadersAgreePathWithTracking(READERS_AGREE_CATALOG_PATH, searchParams, allowAdvertisingClickIds),
+    [searchParams, allowAdvertisingClickIds],
   );
 
   const amazonGoHref = useMemo(
-    () => buildReadersAgreePathWithTracking(READERS_AGREE_GO_AMAZON_PATH, searchParams),
-    [searchParams],
+    () => buildReadersAgreePathWithTracking(READERS_AGREE_GO_AMAZON_PATH, searchParams, allowAdvertisingClickIds),
+    [searchParams, allowAdvertisingClickIds],
   );
 
   const bnGoHref = useMemo(
-    () => buildReadersAgreePathWithTracking(READERS_AGREE_GO_BN_PATH, searchParams),
-    [searchParams],
+    () => buildReadersAgreePathWithTracking(READERS_AGREE_GO_BN_PATH, searchParams, allowAdvertisingClickIds),
+    [searchParams, allowAdvertisingClickIds],
   );
 
   useEffect(() => {

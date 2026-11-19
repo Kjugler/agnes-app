@@ -1,6 +1,8 @@
 'use client';
 
+import { copyNavParams } from '@/lib/funnelVisit';
 import {
+  advertisingClickIdsPermitted,
   getAttributionFromPage,
   getOrCreateVisitorId,
   rememberFunnelUserId,
@@ -20,26 +22,9 @@ type SearchParamsLike = { get: (key: string) => string | null } | null | undefin
 export type ReadersAgreeCaptureSurface = 'landing' | 'bridge' | 'cheer';
 export type ReadersAgreeRetailerOrigin = 'amazon' | 'bn';
 
-const CONTINUE_PARAM_KEYS = [
-  'ref',
-  'code',
-  'src',
-  'v',
-  'origin',
-  'utm_source',
-  'utm_medium',
-  'utm_campaign',
-  'fbclid',
-  'ra_surface',
-] as const;
-
 /** Sample-chapters path with the same attribution params the lead endpoint preserves. */
 export function buildReadersAgreeContinuePath(searchParams: SearchParamsLike): string {
-  const params = new URLSearchParams();
-  for (const key of CONTINUE_PARAM_KEYS) {
-    const value = searchParams?.get(key);
-    if (value) params.set(key, value);
-  }
+  const params = copyNavParams(searchParams, advertisingClickIdsPermitted(), ['ra_surface']);
   const qs = params.toString();
   return qs ? `/sample-chapters?${qs}` : '/sample-chapters';
 }

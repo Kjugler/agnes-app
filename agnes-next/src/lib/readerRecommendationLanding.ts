@@ -1,6 +1,7 @@
 /** Reader Recommendation Funnel — `/readers-agree` friend landing. */
 
 import { TEXT_A_FRIEND_SITE_URL } from '@/lib/textAFriendOg';
+import { copyNavParams } from '@/lib/funnelVisit';
 import { formatDenverYmd } from '@/lib/paperbackOffer';
 
 export {
@@ -39,13 +40,10 @@ export const READERS_AGREE_GO_BN_PATH = '/readers-agree/go/bn';
 
 export function buildReadersAgreePathWithTracking(
   pathname: string,
-  searchParams: { get: (key: string) => string | null }
+  searchParams: { get: (key: string) => string | null },
+  allowAdvertisingClickIds = false,
 ): string {
-  const params = new URLSearchParams();
-  READERS_AGREE_TRACKING_PARAM_KEYS.forEach((key) => {
-    const value = searchParams.get(key);
-    if (value) params.set(key, value);
-  });
+  const params = copyNavParams(searchParams, allowAdvertisingClickIds);
   const qs = params.toString();
   return qs ? `${pathname}?${qs}` : pathname;
 }
@@ -67,6 +65,7 @@ export const READERS_AGREE_OG_TITLE = "Readers Agree — See Why They Can't Put 
 export const READERS_AGREE_OG_DESCRIPTION =
   'A reader you know thought you would connect with this. A political thriller about AI, corruption, and friendship—read sample chapters or reviews.';
 
+/** Operational params. fbclid, gclid, ttclid, and msclkid are added only when advertising measurement is allowed. */
 export const READERS_AGREE_TRACKING_PARAM_KEYS = [
   'ref',
   'src',
@@ -76,5 +75,6 @@ export const READERS_AGREE_TRACKING_PARAM_KEYS = [
   'utm_source',
   'utm_medium',
   'utm_campaign',
-  'fbclid',
+  'utm_content',
+  'utm_term',
 ] as const;

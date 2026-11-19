@@ -32,7 +32,8 @@ import {
   hubPrimaryButtonStyle,
   hubSecondaryButtonStyle,
 } from '@/lib/hubTheme';
-import { FUNNEL_EVENT_TYPES, trackFunnelEvent } from '@/lib/funnelTracking';
+import { copyNavParams } from '@/lib/funnelVisit';
+import { FUNNEL_EVENT_TYPES, trackFunnelEvent, useAdvertisingClickIdsPermitted } from '@/lib/funnelTracking';
 
 /** Collapse React Strict Mode remount double-fire; still counts a later return visit. */
 let lastCatalogPageViewAt = 0;
@@ -251,6 +252,7 @@ function PaperbackOfferBlock({
 
 export default function CatalogClient() {
   const searchParams = useSearchParams();
+  const allowAdvertisingClickIds = useAdvertisingClickIdsPermitted();
   const router = useRouter();
   const isNarrow = useSyncExternalStore(subscribeNarrow, getIsNarrow, () => true);
 
@@ -324,15 +326,10 @@ export default function CatalogClient() {
     trackFunnelEvent(FUNNEL_EVENT_TYPES.CATALOG_PAGE_VIEW, {}, { source: 'catalog', searchParams });
   }, [searchParams]);
 
-  const trackingParams = useMemo(() => {
-    const params = new URLSearchParams();
-    const keysToPreserve = ['ref', 'src', 'v', 'origin', 'code', 'utm_source', 'utm_medium', 'utm_campaign', 'fbclid'];
-    keysToPreserve.forEach((key) => {
-      const value = searchParams.get(key);
-      if (value) params.set(key, value);
-    });
-    return params;
-  }, [searchParams]);
+  const trackingParams = useMemo(
+    () => copyNavParams(searchParams, allowAdvertisingClickIds),
+    [searchParams, allowAdvertisingClickIds],
+  );
 
   const handleBuyClick = (product: ProductId) => {
     trackFunnelEvent(

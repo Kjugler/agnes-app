@@ -1,6 +1,7 @@
 // Record first-party funnel events in Event table (canonical deepquill DB).
 
 const { isFunnelEventType, isSampleChapterId } = require('./funnelEventTypes.cjs');
+const { omitAdvertisingClickIds, pathWithoutAdvertisingClickIds } = require('./omitAdvertisingClickIds.cjs');
 
 function sanitizeMeta(meta) {
   if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return {};
@@ -57,7 +58,8 @@ async function recordFunnelEvent(prisma, payload) {
   const check = validatePayload({ type, meta: meta || {} });
   if (!check.ok) return check;
 
-  const cleanMeta = sanitizeMeta(meta);
+  const cleanMeta = omitAdvertisingClickIds(sanitizeMeta(meta));
+  const cleanPath = pathWithoutAdvertisingClickIds(path || '');
   const event = await prisma.event.create({
     data: {
       type,
@@ -65,7 +67,7 @@ async function recordFunnelEvent(prisma, payload) {
       meta: {
         visitorId: visitorId || null,
         ref: ref || null,
-        path: path || null,
+        path: cleanPath || null,
         source: source || null,
         ...cleanMeta,
       },

@@ -25,7 +25,7 @@ import {
   READERS_AGREE_MOMENTUM_STORAGE_KEYS,
   syncReadersAgreeMomentumState,
 } from '@/lib/readersAgreeMomentum';
-import { FUNNEL_EVENT_TYPES, trackFunnelEvent, type FunnelEventType } from '@/lib/funnelTracking';
+import { FUNNEL_EVENT_TYPES, trackFunnelEvent, useAdvertisingClickIdsPermitted, type FunnelEventType } from '@/lib/funnelTracking';
 
 const REDIRECT_DELAY_MS = 2500;
 const BRIDGE_ENABLED = isReadersAgreeDorothyBridgeEnabled();
@@ -108,13 +108,14 @@ function retailerOriginFromLabel(label: string): 'amazon' | 'bn' {
 
 function LegacyReviewRedirectClient({ heading, destinationUrl }: ReviewRedirectClientProps) {
   const searchParams = useSearchParams();
+  const allowAdvertisingClickIds = useAdvertisingClickIdsPermitted();
   const [showSpinner, setShowSpinner] = useState(true);
   const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancelledRef = useRef(false);
 
   const readersAgreeHref = useMemo(
-    () => buildReadersAgreePathWithTracking(READERS_AGREE_PATH, searchParams),
-    [searchParams]
+    () => buildReadersAgreePathWithTracking(READERS_AGREE_PATH, searchParams, allowAdvertisingClickIds),
+    [searchParams, allowAdvertisingClickIds]
   );
 
   const cancelRedirect = useCallback(() => {
@@ -256,6 +257,7 @@ function LegacyReviewRedirectClient({ heading, destinationUrl }: ReviewRedirectC
 
 function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRedirectClientProps) {
   const searchParams = useSearchParams();
+  const allowAdvertisingClickIds = useAdvertisingClickIdsPermitted();
   const mobileTwoTap = useSyncExternalStore(subscribeNoop, isMobileTouchBrowser, () => false);
   const [continuationActive, setContinuationActive] = useState(false);
   const [popupBlocked, setPopupBlocked] = useState(false);
@@ -264,13 +266,13 @@ function BridgeReviewRedirectClient({ destinationUrl, retailerLabel }: ReviewRed
   const continuationFallbackRef = useRef<number | null>(null);
 
   const readersAgreeHref = useMemo(
-    () => buildReadersAgreePathWithTracking(READERS_AGREE_PATH, searchParams),
-    [searchParams]
+    () => buildReadersAgreePathWithTracking(READERS_AGREE_PATH, searchParams, allowAdvertisingClickIds),
+    [searchParams, allowAdvertisingClickIds]
   );
 
   const catalogHref = useMemo(
-    () => buildReadersAgreePathWithTracking(READERS_AGREE_CATALOG_PATH, searchParams),
-    [searchParams]
+    () => buildReadersAgreePathWithTracking(READERS_AGREE_CATALOG_PATH, searchParams, allowAdvertisingClickIds),
+    [searchParams, allowAdvertisingClickIds]
   );
 
   const retailerOrigin = useMemo(

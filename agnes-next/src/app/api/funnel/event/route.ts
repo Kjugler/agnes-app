@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { proxyJson } from '@/lib/deepquillProxy';
+import { redactAdvertisingClickIdsFromFunnelPayload } from '@/lib/funnelVisit';
+import { getServerAdvertisingConsentSnapshot } from '@/lib/privacy/advertisingConsentServer';
 import { rateLimitByIP } from '@/lib/rateLimit';
 
 export const runtime = 'nodejs';
@@ -12,9 +14,16 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
+    let allowAdvertisingClickIds = false;
+    try {
+      allowAdvertisingClickIds = (await getServerAdvertisingConsentSnapshot()).allowed;
+    } catch {
+      allowAdvertisingClickIds = false;
+    }
+    const forwarded = redactAdvertisingClickIdsFromFunnelPayload(body, allowAdvertisingClickIds);
     const { data, status } = await proxyJson('/api/funnel/event', req, {
       method: 'POST',
-      body,
+      body: forwarded,
     });
     return NextResponse.json(data, { status });
   } catch (err: unknown) {

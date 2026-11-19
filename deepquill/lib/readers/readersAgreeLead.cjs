@@ -14,7 +14,7 @@ const READERS_AGREE_V2_SOURCE = 'readers-agree-v2';
 const PROSPECT_TYPE = 'prospect';
 
 function deriveChannel(utm = {}) {
-  if (utm.fbclid || utm.utm_source === 'facebook' || utm.utm_source === 'meta') {
+  if (utm.utm_source === 'facebook' || utm.utm_source === 'meta') {
     return 'meta';
   }
   if (utm.utm_source === 'tiktok') return 'tiktok';
@@ -50,7 +50,7 @@ function buildLeadAttributionSnapshot({
     utm_source: utm.utm_source || null,
     utm_medium: utm.utm_medium || null,
     utm_campaign: utm.utm_campaign || null,
-    fbclid: utm.fbclid || null,
+    fbclid: null,
     src: utm.src || null,
     origin: utm.origin || null,
     v: utm.v || null,

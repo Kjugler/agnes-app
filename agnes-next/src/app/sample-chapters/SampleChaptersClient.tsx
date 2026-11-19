@@ -11,6 +11,7 @@ import { trackTikTok } from '@/lib/tiktokPixel';
 import {
   FUNNEL_EVENT_TYPES,
   trackFunnelEvent,
+  useAdvertisingClickIdsPermitted,
   useFunnelPageEngagement,
 } from '@/lib/funnelTracking';
 import { useSafeBack } from '@/lib/nav';
@@ -37,6 +38,7 @@ declare global {
 
 export default function SampleChaptersClient() {
   const searchParams = useSearchParams();
+  const allowAdvertisingClickIds = useAdvertisingClickIdsPermitted();
   const goBack = useSafeBack('/contest');
   const [current, setCurrent] = useState(0);
   const [activeVideo, setActiveVideo] = useState<'left' | 'right'>('left');
@@ -101,25 +103,25 @@ export default function SampleChaptersClient() {
       id: 'btn1',
       label: 'Read Chapter 1',
       text: 'Starts off running.',
-      link: sampleChapterReadHref('1', searchParams),
+      link: sampleChapterReadHref('1', searchParams, allowAdvertisingClickIds),
     },
     {
       id: 'btn2',
       label: 'Read Chapter 2',
       text: 'Fred enters the scene – Agnes already doesn’t like him.',
-      link: sampleChapterReadHref('2', searchParams),
+      link: sampleChapterReadHref('2', searchParams, allowAdvertisingClickIds),
     },
     {
       id: 'btn3',
       label: 'Read Chapter 9',
       text: 'Meet Matt and Reese – straight from the orphanage.',
-      link: sampleChapterReadHref('9', searchParams),
+      link: sampleChapterReadHref('9', searchParams, allowAdvertisingClickIds),
     },
     {
       id: 'btn4',
       label: 'Read Chapter 45',
       text: 'Fred and Jody – always two steps ahead.',
-      link: sampleChapterReadHref('45', searchParams),
+      link: sampleChapterReadHref('45', searchParams, allowAdvertisingClickIds),
     },
   ];
 

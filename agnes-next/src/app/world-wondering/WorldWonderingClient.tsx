@@ -9,6 +9,7 @@ import { trackTikTok } from '@/lib/tiktokPixel';
 import {
   FUNNEL_EVENT_TYPES,
   trackFunnelEvent,
+  useAdvertisingClickIdsPermitted,
   useFunnelPageEngagement,
 } from '@/lib/funnelTracking';
 import {
@@ -22,6 +23,7 @@ const HERO_SRC = '/images/ChatGPT%20Image%20Sep%203%2C%202026%2C%2011_28_25%20AM
 
 export default function WorldWonderingClient() {
   const searchParams = useSearchParams();
+  const allowAdvertisingClickIds = useAdvertisingClickIdsPermitted();
   const contentFiredRef = useRef(false);
 
   useFunnelPageEngagement({
@@ -30,8 +32,14 @@ export default function WorldWonderingClient() {
     searchParams,
   });
 
-  const sampleHref = useMemo(() => sampleChaptersHubHref(searchParams), [searchParams]);
-  const catalogLink = useMemo(() => catalogHref(searchParams), [searchParams]);
+  const sampleHref = useMemo(
+    () => sampleChaptersHubHref(searchParams, allowAdvertisingClickIds),
+    [searchParams, allowAdvertisingClickIds],
+  );
+  const catalogLink = useMemo(
+    () => catalogHref(searchParams, allowAdvertisingClickIds),
+    [searchParams, allowAdvertisingClickIds],
+  );
   const amazonHref = useMemo(() => getReadersAgreeAmazonAttributionUrl(), []);
 
   useEffect(() => {

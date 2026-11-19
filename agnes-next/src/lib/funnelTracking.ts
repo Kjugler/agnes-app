@@ -1,6 +1,16 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { mayUseAdvertisingMeasurement, subscribeAdvertisingConsent } from '@/lib/privacy/advertisingConsentClient';
+import {
+  copyNavParams,
+  normalizeEntryPath,
+  omitDisallowedAdvertisingClickIds,
+  pathWithoutDisallowedClickIds,
+  resolveAdvertisingClickIdPermission,
+  resolveVisitEntry,
+  type StoredVisit,
+} from '@/lib/funnelVisit';
 
 export const FUNNEL_EVENT_TYPES = {
   READERS_AGREE_PAGE_VIEW: 'READERS_AGREE_PAGE_VIEW',
@@ -32,6 +42,7 @@ export const FUNNEL_EVENT_TYPES = {
 
   CHECKOUT_STARTED: 'CHECKOUT_STARTED',
   PURCHASE_COMPLETED: 'PURCHASE_COMPLETED',
+  MARKETING_CONSENT_GRANTED: 'MARKETING_CONSENT_GRANTED',
 
   JODY_APPEAR: 'JODY_APPEAR',
   JODY_CHAPTER_COMPLETED: 'JODY_CHAPTER_COMPLETED',
@@ -48,6 +59,26 @@ export type FunnelEventType = (typeof FUNNEL_EVENT_TYPES)[keyof typeof FUNNEL_EV
 
 const VISITOR_COOKIE = 'ap_funnel_vid';
 const VISITOR_STORAGE = 'ap_funnel_vid';
+/** Historical first landing. Never replaced. Not used as the current visit entry. */
+const ENTRY_COOKIE = 'ap_funnel_entry';
+const ENTRY_STORAGE = 'ap_funnel_entry';
+/** Current visit: landing page, last activity, and campaign identity. */
+const VISIT_COOKIE = 'ap_funnel_visit';
+const VISIT_STORAGE = 'ap_funnel_visit';
+
+export { normalizeEntryPath } from '@/lib/funnelVisit';
+
+/** True only when the existing advertising-consent decision allows measurement. */
+export function advertisingClickIdsPermitted(): boolean {
+  return resolveAdvertisingClickIdPermission({
+    hasDocument: typeof window !== 'undefined',
+    readAllowed: () => mayUseAdvertisingMeasurement(),
+  });
+}
+
+export function useAdvertisingClickIdsPermitted(): boolean {
+  return useSyncExternalStore(subscribeAdvertisingConsent, advertisingClickIdsPermitted, () => false);
+}
 const FUNNEL_USER_COOKIE = 'ap_funnel_uid';
 const FUNNEL_USER_STORAGE = 'ap_funnel_uid';
 
@@ -140,19 +171,32 @@ export function getFunnelUserId(): string | null {
   return id && id.trim() ? id.trim().slice(0, 64) : null;
 }
 
-export function getAttributionFromPage(searchParams?: { get: (key: string) => string | null } | null) {
+function parseStoredVisit(raw: string | null): StoredVisit | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as StoredVisit;
+    if (!parsed || typeof parsed !== 'object') return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function getAttributionFromPage(
+  searchParams?: { get: (key: string) => string | null } | null,
+  options?: { allowAdvertisingClickIds?: boolean },
+) {
   if (typeof window === 'undefined') {
     return { ref: null as string | null, utm: {} as Record<string, string> };
   }
 
+  const allowAdvertisingClickIds = options?.allowAdvertisingClickIds ?? advertisingClickIdsPermitted();
   const params = searchParams ?? new URLSearchParams(window.location.search);
-  const keys = ['ref', 'utm_source', 'utm_medium', 'utm_campaign', 'fbclid', 'src', 'origin'] as const;
+  const copied = copyNavParams(params, allowAdvertisingClickIds);
   const utm: Record<string, string> = {};
-
-  for (const key of keys) {
-    const value = params.get(key);
-    if (value) utm[key] = value;
-  }
+  copied.forEach((value, key) => {
+    if (key !== 'code' && key !== 'v') utm[key] = value;
+  });
 
   let ref = params.get('ref') || params.get('code') || null;
   if (!ref) {
@@ -184,8 +228,28 @@ export function trackFunnelEvent(
 
   const visitorId = getOrCreateVisitorId();
   const userId = getFunnelUserId();
-  const { ref, utm } = getAttributionFromPage(opts?.searchParams);
-  const path = window.location.pathname + window.location.search;
+  const allowAdvertisingClickIds = advertisingClickIdsPermitted();
+  const { ref, utm } = getAttributionFromPage(opts?.searchParams, { allowAdvertisingClickIds });
+  const path = pathWithoutDisallowedClickIds(window.location.pathname + window.location.search, allowAdvertisingClickIds);
+  const storedVisit = parseStoredVisit(readStoredValue(VISIT_STORAGE, VISIT_COOKIE));
+  const entry = resolveVisitEntry({
+    stored: storedVisit,
+    now: Date.now(),
+    source: opts?.source,
+    explicit: meta.entryPage != null ? String(meta.entryPage) : null,
+    path: window.location.pathname,
+    utm,
+    includeAdvertisingClickIds: allowAdvertisingClickIds,
+  });
+  if (entry.visit && (entry.persist || entry.redacted)) {
+    persistClientValue(VISIT_STORAGE, VISIT_COOKIE, JSON.stringify(entry.visit));
+  }
+  if (entry.started && entry.entryPage && !normalizeEntryPath(readStoredValue(ENTRY_STORAGE, ENTRY_COOKIE))) {
+    persistClientValue(ENTRY_STORAGE, ENTRY_COOKIE, entry.entryPage);
+  }
+
+  const safeMeta = omitDisallowedAdvertisingClickIds({ ...meta }, allowAdvertisingClickIds);
+  if (!entry.entryPage) delete safeMeta.entryPage;
 
   const payload = {
     type,
@@ -194,7 +258,11 @@ export function trackFunnelEvent(
     ref,
     path,
     source: opts?.source || null,
-    meta: { ...utm, ...meta },
+    meta: {
+      ...utm,
+      ...safeMeta,
+      ...(entry.entryPage ? { entryPage: entry.entryPage } : {}),
+    },
   };
 
   try {

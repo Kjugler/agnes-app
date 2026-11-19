@@ -850,6 +850,7 @@ module.exports = async function handler(req, res) {
     }
 
     stripStaleCheckoutIdentityFromMetadata(metadata);
+    for (const clickId of ['fbclid', 'gclid', 'ttclid', 'msclkid']) delete metadata[clickId];
 
     // Only set discounts OR allow_promotion_codes, never both
     if (appliedDiscount && discounts.length > 0) {
